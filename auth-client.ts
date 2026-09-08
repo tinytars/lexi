@@ -19,22 +19,11 @@ import type {
   PublicKeyCredentialCreationOptionsJSON,
   PublicKeyCredentialRequestOptionsJSON,
 } from "@simplewebauthn/browser";
+import { bytesToB64 as bytesToBase64, b64ToBytes as base64ToBytes } from "./base64";
+export { bytesToB64 as bytesToBase64, b64ToBytes as base64ToBytes } from "./base64";
 
 export const KDF_ITERATIONS = 200_000;
 export const rand = (n: number) => globalThis.crypto.getRandomValues(new Uint8Array(n));
-
-export function bytesToBase64(bytes: Uint8Array): string {
-  let bin = "";
-  for (const b of bytes) bin += String.fromCharCode(b);
-  return btoa(bin);
-}
-
-export function base64ToBytes(b64: string): Uint8Array {
-  const bin = atob(b64);
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  return bytes;
-}
 
 export function bytesToHex(bytes: Uint8Array): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
