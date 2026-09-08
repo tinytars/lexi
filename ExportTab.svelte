@@ -25,7 +25,7 @@
   } = $props();
 </script>
 
-<div class="export-tab">
+<div class="export-tab leaf-section">
   <h2>{title}</h2>
   <p class="lead">{lead}</p>
 

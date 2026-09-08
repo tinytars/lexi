@@ -111,7 +111,7 @@
   .row label { flex: 1; }
   .primary {
     margin-top: 0.5rem; padding: 0.6rem; font-size: 1rem; font-weight: 600;
-    border: none; border-radius: 6px; background: var(--accent, #2b6aa8); color: #fff; cursor: pointer;
+    border: none; border-radius: 6px; background: var(--accent, #2b6aa8); color: var(--surface, #fff); cursor: pointer;
   }
   .primary:disabled { opacity: 0.6; cursor: default; }
   .err { color: var(--alert); font-size: 0.85rem; margin: 0.25rem 0 0; }

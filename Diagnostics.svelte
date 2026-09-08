@@ -166,8 +166,8 @@
     font-size: 0.78rem;
     padding: 0.05rem 0.35rem;
     border-radius: 0.25rem;
-    background: #eef;
-    color: #335;
+    background: var(--band);
+    color: var(--accent);
   }
   .ev-success {
     background: var(--safe-band);
