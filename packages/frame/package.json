@@ -1,9 +1,65 @@
 {
   "name": "@tinytars/frame",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
+  "description": "Domain-neutral Svelte app-shell: session/auth controllers, account chrome, and menu/card/modal primitives built on @tinytars/vault.",
+  "license": "MIT",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tinytars/lexi",
+    "directory": "packages/frame"
+  },
+  "homepage": "https://github.com/tinytars/lexi",
+  "bugs": "https://github.com/tinytars/lexi/issues",
+  "keywords": [
+    "svelte",
+    "auth",
+    "session",
+    "app-shell",
+    "encryption"
+  ],
+  "engines": {
+    "node": ">=19"
+  },
+  "files": [
+    "*.ts",
+    "*.svelte"
+  ],
+  "exports": {
+    "./account-methods.svelte": "./account-methods.svelte.ts",
+    "./AccountMenu.svelte": "./AccountMenu.svelte",
+    "./anchored-menu.svelte": "./anchored-menu.svelte.ts",
+    "./attach-controller": "./attach-controller.ts",
+    "./AttachPicker.svelte": "./AttachPicker.svelte",
+    "./brand": "./brand.ts",
+    "./Diagnostics.svelte": "./Diagnostics.svelte",
+    "./ExportTab.svelte": "./ExportTab.svelte",
+    "./LeafActionMenu.svelte": "./LeafActionMenu.svelte",
+    "./LeafCard.svelte": "./LeafCard.svelte",
+    "./LoginScreen.svelte": "./LoginScreen.svelte",
+    "./menu-items": "./menu-items.ts",
+    "./menu-registry.svelte": "./menu-registry.svelte.ts",
+    "./Onboarding.svelte": "./Onboarding.svelte",
+    "./recovery-controller.svelte": "./recovery-controller.svelte.ts",
+    "./roster-session.svelte": "./roster-session.svelte.ts",
+    "./support-access.svelte": "./support-access.svelte.ts",
+    "./vault-principals.svelte": "./vault-principals.svelte.ts",
+    "./vault-session.svelte": "./vault-session.svelte.ts",
+    "./VisibilitySettings.svelte": "./VisibilitySettings.svelte"
+  },
+  "scripts": {
+    "typecheck": "svelte-check --tsconfig ./tsconfig.json --threshold error"
+  },
   "dependencies": {
     "@tinytars/vault": "^0.1.15"
+  },
+  "peerDependencies": {
+    "svelte": "^5.0.0"
+  },
+  "devDependencies": {
+    "@tsconfig/svelte": "^5.0.8",
+    "svelte": "^5.55.5",
+    "svelte-check": "^4.4.8",
+    "typescript": "~6.0.2"
   }
 }
