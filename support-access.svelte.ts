@@ -25,7 +25,7 @@ import {
   type SupportProvider,
   type SupportRosterPatient,
   type SupportRequest,
-} from "./auth-support";
+} from "../security/auth-support";
 
 /** What the audited /api/support/access hands back — the envelope plus who it belongs to. */
 export interface SupportEntry extends VaultEntry {

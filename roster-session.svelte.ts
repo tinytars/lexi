@@ -14,9 +14,9 @@
 import type { VaultSession, VaultEntry } from "./vault-session.svelte";
 import { getAccountKey, putAccountKey, clearAccountKey } from "../security/key-store";
 import { unwrapDEKWithPrivateKey } from "../security/crypto";
-import { b64ToBytes } from "./base64";
-import { resumeSession, bootstrapGoogleSession, getMyAccount } from "./auth-client";
-import { revokeProvider } from "./auth-grants";
+import { b64ToBytes } from "../security/base64";
+import { resumeSession, bootstrapGoogleSession, getMyAccount } from "../security/auth-client";
+import { revokeProvider } from "../security/auth-grants";
 
 /** W49 — non-sensitive flag marking that a session may be resumable on reload. */
 export const RESUME_MARKER = "hd_resume";

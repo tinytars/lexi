@@ -11,10 +11,10 @@
 
 import type { VaultSession } from "./vault-session.svelte";
 import { generateDEK, wrapDEKForPublicKey } from "../security/crypto";
-import { bytesToB64 } from "./base64";
-import { listMyProviders, lookupProvider, grantProvider, revokeProvider, type ProviderLinkView } from "./auth-grants";
-import { approveSupport, approveSupportAsProvider } from "./auth-support";
-import { getVaultPrincipals, stageVaultRotation, rotateVault } from "./auth-recovery";
+import { bytesToB64 } from "../security/base64";
+import { listMyProviders, lookupProvider, grantProvider, revokeProvider, type ProviderLinkView } from "../security/auth-grants";
+import { approveSupport, approveSupportAsProvider } from "../security/auth-support";
+import { getVaultPrincipals, stageVaultRotation, rotateVault } from "../security/auth-recovery";
 
 export interface VaultPrincipalsDeps<V> {
   /** The decrypted record, read fresh — never captured. Still App's, along with the sink below. */

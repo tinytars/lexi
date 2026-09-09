@@ -21,7 +21,7 @@ import {
   redeemRecoveryCode,
   regenerateRecoveryCode,
   revokeRecoveryEnvelope,
-} from "./auth-recovery";
+} from "../security/auth-recovery";
 
 /**
  * The minimum a roster row must carry to have a code issued for it. Structural, and the controller is
