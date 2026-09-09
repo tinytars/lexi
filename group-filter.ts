@@ -11,18 +11,20 @@
 // The rule: All (or nothing selected) shows everything; a named group shows exactly its own items,
 // even when that is none. Rendering nothing is a correct answer, and the caller shows an empty
 // state saying so. Never substitute another group's content.
-import { ALL_GROUP_KEY } from "./sidebar-labels";
-
-export function isAllGroup(activeGroup: string | null | undefined): boolean {
-  return !activeGroup || activeGroup === ALL_GROUP_KEY;
+// allGroupKey is caller-supplied rather than a frame-owned constant: it's a health-dash-specific
+// localStorage key convention (see sidebar-labels.ts's ALL_GROUP_KEY), not something generic UI
+// logic should hardcode.
+export function isAllGroup(activeGroup: string | null | undefined, allGroupKey: string): boolean {
+  return !activeGroup || activeGroup === allGroupKey;
 }
 
 export function filterByGroup<T>(
   items: T[],
   activeGroup: string | null | undefined,
   groupOf: (item: T) => string | undefined | null,
+  allGroupKey: string,
 ): T[] {
-  if (isAllGroup(activeGroup)) return items;
+  if (isAllGroup(activeGroup, allGroupKey)) return items;
   return items.filter((i) => groupOf(i) === activeGroup);
 }
 

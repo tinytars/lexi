@@ -2,23 +2,24 @@
   import type { Snippet } from "svelte";
   import LeafActionMenu from "@tinytars/frame/LeafActionMenu.svelte";
   import type { LeafMenuItem } from "@tinytars/frame/menu-items";
-  import { PRODUCT_NAME } from "./brand";
   import { speechRegistry, isSpeechSupported } from "./speech-registry.svelte";
 
-  // W20 — the one persona treatment: a tinted bubble with a head row (uppercase persona tag on the
-  // left; an optional meta/date and an optional action icon, e.g. download, on the right). Colors and
-  // layout live in App.svelte's global .persona-* classes so every surface shares one language.
-  type Persona = "ai" | "patient" | "hospital";
+  // The one persona treatment: a tinted bubble with a head row (uppercase persona tag on the
+  // left; an optional meta/date and an optional action icon, e.g. download, on the right). Colors
+  // and layout live in theme.css's global .persona-* classes so every surface shares one language.
+  type Persona = "assistant" | "owner" | "provider";
   // In-context head actions (edit/chat/delete/etc). `danger` tints the icon as destructive on hover.
-  // M71 — these now render collapsed into one LeafActionMenu, not one button per action.
+  // These render collapsed into one LeafActionMenu, not one button per action.
   export type BubbleAction = LeafMenuItem;
   interface Props {
     persona: Persona;
-    label?: string;
+    // Caller-supplied, matching how LoginScreen/Onboarding take their copy: this package has no
+    // brand name or domain vocabulary of its own to fall back to.
+    label: string;
     meta?: string;
     id?: string;
-    // M72 — Pin now folds into the shared LeafActionMenu (★/⋮ combined control) instead of a
-    // standalone button; pinDisplay defaults to "auto" (hover-revealed ⋮ over the star).
+    // Pin folds into the shared LeafActionMenu (★/⋮ combined control) instead of a standalone
+    // button; pinDisplay defaults to "auto" (hover-revealed ⋮ over the star).
     pinned?: boolean;
     onTogglePin?: () => void;
     pinDisplay?: "auto" | "hidden";
@@ -26,16 +27,15 @@
     children?: Snippet;
   }
   let { persona, label, meta, id, pinned = false, onTogglePin, pinDisplay = "auto", actions, children }: Props = $props();
-  const LABELS: Record<Persona, string> = { ai: PRODUCT_NAME, patient: "Patient", hospital: "Hospital" };
 
-  // W51 — every AI-generated bubble gets Speak for free: reads bodyEl's own rendered text at click
-  // time rather than a prop threaded through every one of this component's ~27 call sites, so no
+  // Every assistant-generated bubble gets Speak for free: reads bodyEl's own rendered text at click
+  // time rather than a prop threaded through every one of this component's call sites, so no
   // existing caller needs to change. speechRegistry is the shared "only one thing speaks at a time"
   // singleton (mirrors menu-registry.svelte.ts); clicking the currently-speaking bubble's own button
   // again toggles it off (speechRegistry.speak handles that toggle internally).
   const uid = $props.id();
   const bubbleId = `${persona}-${uid}`;
-  const speakable = $derived(persona === "ai" && isSpeechSupported());
+  const speakable = $derived(persona === "assistant" && isSpeechSupported());
   const speaking = $derived(speechRegistry.isSpeaking(bubbleId));
   let bodyEl: HTMLDivElement | undefined;
   function toggleSpeak() {
@@ -46,7 +46,7 @@
 <div class="persona-bubble p-{persona}" {id}>
   <div class="persona-head">
     <span class="persona-head-left">
-      <span class="persona-tag">{label ?? LABELS[persona]}</span>
+      <span class="persona-tag">{label}</span>
     </span>
     {#if meta || actions?.length || onTogglePin || speakable}
       <span class="persona-head-right">

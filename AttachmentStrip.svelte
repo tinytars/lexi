@@ -1,18 +1,22 @@
 <script lang="ts">
-  import type { Attachment } from "./types";
-  import { attachmentUrl } from "./attachment-store";
+  import type { Attachment } from "./attachment-types";
   import AttachmentViewer from "./AttachmentViewer.svelte";
 
   // W46 Phase 4/5 — the one shared display for a leaf's attachments[]: a row of small thumbnail
   // chips (image preview, or a document glyph for anything else), each opening the in-app viewer
   // (AttachmentViewer.svelte) instead of a bare new-tab link. Generalizes
   // UnifiedTreatment.svelte's/TreatmentRow.svelte's bespoke img-strip snippets, which this replaces.
+  //
+  // attachmentUrl is injected rather than imported — this package doesn't know the host app's API
+  // route convention (health-dash-web's is `/api/raw/:clientId/:key`), only that one exists.
   interface Props {
     attachments: Attachment[];
     clientId?: string | null;
+    attachmentUrl: (clientId: string, key: string) => string;
+    productName: string;
     onRemove?: (a: Attachment) => void;
   }
-  let { attachments, clientId = null, onRemove }: Props = $props();
+  let { attachments, clientId = null, attachmentUrl, productName, onRemove }: Props = $props();
 
   let openIndex = $state<number | null>(null);
 
@@ -34,13 +38,14 @@
             <span class="attachment-glyph" aria-hidden="true">📄</span>
           {/if}
         </button>
-        <!-- A document that was read contributes its text to whatever LexiTar answers next; one
-             that failed contributes nothing at all. That difference is invisible without a mark,
-             and a silently-ignored document is exactly the failure this milestone set out to end. -->
+        <!-- A document that was read contributes its text to whatever the assistant answers next;
+             one that failed contributes nothing at all. That difference is invisible without a
+             mark, and a silently-ignored document is exactly the failure this milestone set out
+             to end. -->
         {#if a.extracted?.error}
           <span class="attachment-badge failed" title="Couldn't read this document: {a.extracted.error}">!</span>
         {:else if a.extracted && a.extracted.chars > 0}
-          <span class="attachment-badge read" title="Read — {a.extracted.chars.toLocaleString()} characters available to LexiTar">✓</span>
+          <span class="attachment-badge read" title="Read — {a.extracted.chars.toLocaleString()} characters available to {productName}">✓</span>
         {/if}
         {#if onRemove}
           <button type="button" class="attachment-remove" onclick={() => onRemove(a)} aria-label="Remove {a.name}">✕</button>
@@ -49,7 +54,7 @@
     {/each}
   </div>
   {#if openIndex !== null}
-    <AttachmentViewer {attachments} bind:index={openIndex} {clientId} onClose={() => (openIndex = null)} />
+    <AttachmentViewer {attachments} bind:index={openIndex} {clientId} {attachmentUrl} onClose={() => (openIndex = null)} />
   {/if}
 {/if}
 

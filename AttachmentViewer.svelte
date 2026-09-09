@@ -1,7 +1,6 @@
 <script lang="ts">
-  import type { Attachment } from "./types";
+  import type { Attachment } from "./attachment-types";
   import Modal from "./Modal.svelte";
-  import { attachmentUrl } from "./attachment-store";
   import { openPdf, type PdfDoc } from "./pdf-render";
 
   // W46 Phase 5 — the in-app viewer every attachment click opens (AttachmentStrip.svelte) instead
@@ -13,9 +12,10 @@
     attachments: Attachment[];
     index: number;
     clientId: string;
+    attachmentUrl: (clientId: string, key: string) => string;
     onClose: () => void;
   }
-  let { attachments, index = $bindable(), clientId, onClose }: Props = $props();
+  let { attachments, index = $bindable(), clientId, attachmentUrl, onClose }: Props = $props();
 
   let current = $derived(attachments[index]);
   let isImage = $derived(current?.mediaType.startsWith("image/") ?? false);

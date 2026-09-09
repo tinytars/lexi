@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { filterTokens, matchesTokens, onlyIndexed } from "../../src/lib/filter";
+import { filterTokens, matchesTokens, onlyIndexed } from "./filter";
 
 describe("filterTokens", () => {
   it("lowercases, splits on whitespace, drops empties", () => {
