@@ -1,7 +1,7 @@
-import type { VaultSession } from "../security/vault-session";
+import type { VaultSession } from "@tinytars/vault/vault-session";
 
-export type { VaultEntry, VaultSession } from "../security/vault-session";
-export { openVault } from "../security/vault-session";
+export type { VaultEntry, VaultSession } from "@tinytars/vault/vault-session";
+export { openVault } from "@tinytars/vault/vault-session";
 
 // The unlocked-session key material, as one object with one transition each way.
 //

@@ -21,7 +21,7 @@ import {
   redeemRecoveryCode,
   regenerateRecoveryCode,
   revokeRecoveryEnvelope,
-} from "../security/auth-recovery";
+} from "@tinytars/vault/auth-recovery";
 
 /**
  * The minimum a roster row must carry to have a code issued for it. Structural, and the controller is

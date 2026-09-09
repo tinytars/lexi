@@ -2,5 +2,8 @@
   "name": "@tinytars/frame",
   "version": "0.0.0",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "@tinytars/vault": "^0.1.15"
+  }
 }

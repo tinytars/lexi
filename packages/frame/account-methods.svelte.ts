@@ -10,8 +10,8 @@
 // and support-access.svelte.ts. What stays with App is what App owns: the vault principals and access
 // events the owner-only blocks render, and the unit system every tab reads.
 
-import { getMyAccount, addPasskeyMethod, addGoogleMethod } from "../security/auth-client";
-import { listMethods, updateProfile, addPasswordMethod, removeMethod, type LoginMethod } from "../security/auth-recovery";
+import { getMyAccount, addPasskeyMethod, addGoogleMethod } from "@tinytars/vault/auth-client";
+import { listMethods, updateProfile, addPasswordMethod, removeMethod, type LoginMethod } from "@tinytars/vault/auth-recovery";
 
 export type RemovableMethod = "password" | "passkey" | "google";
 

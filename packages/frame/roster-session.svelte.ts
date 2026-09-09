@@ -12,11 +12,11 @@
 // plaintext record cannot outlive it because it cannot be re-read without one.
 
 import type { VaultSession, VaultEntry } from "./vault-session.svelte";
-import { getAccountKey, putAccountKey, clearAccountKey } from "../security/key-store";
-import { unwrapDEKWithPrivateKey } from "../security/crypto";
-import { b64ToBytes } from "../security/base64";
-import { resumeSession, bootstrapGoogleSession, getMyAccount } from "../security/auth-client";
-import { revokeProvider } from "../security/auth-grants";
+import { getAccountKey, putAccountKey, clearAccountKey } from "@tinytars/vault/key-store";
+import { unwrapDEKWithPrivateKey } from "@tinytars/vault/crypto";
+import { b64ToBytes } from "@tinytars/vault/base64";
+import { resumeSession, bootstrapGoogleSession, getMyAccount } from "@tinytars/vault/auth-client";
+import { revokeProvider } from "@tinytars/vault/auth-grants";
 
 /** Non-sensitive flag marking that a session may be resumable on reload. */
 export const RESUME_MARKER = "hd_resume";

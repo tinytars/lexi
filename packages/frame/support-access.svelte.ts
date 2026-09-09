@@ -25,7 +25,7 @@ import {
   type SupportProvider,
   type SupportRosterPatient,
   type SupportRequest,
-} from "../security/auth-support";
+} from "@tinytars/vault/auth-support";
 
 /** What the audited /api/support/access hands back — the envelope plus who it belongs to. */
 export interface SupportEntry extends VaultEntry {

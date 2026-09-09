@@ -10,11 +10,11 @@
 // App is what App owns — the decrypted record and the sink that writes it.
 
 import type { VaultSession } from "./vault-session.svelte";
-import { generateDEK, wrapDEKForPublicKey } from "../security/crypto";
-import { bytesToB64 } from "../security/base64";
-import { listMyProviders, lookupProvider, grantProvider, revokeProvider, type ProviderLinkView } from "../security/auth-grants";
-import { approveSupport, approveSupportAsProvider } from "../security/auth-support";
-import { getVaultPrincipals, stageVaultRotation, rotateVault } from "../security/auth-recovery";
+import { generateDEK, wrapDEKForPublicKey } from "@tinytars/vault/crypto";
+import { bytesToB64 } from "@tinytars/vault/base64";
+import { listMyProviders, lookupProvider, grantProvider, revokeProvider, type ProviderLinkView } from "@tinytars/vault/auth-grants";
+import { approveSupport, approveSupportAsProvider } from "@tinytars/vault/auth-support";
+import { getVaultPrincipals, stageVaultRotation, rotateVault } from "@tinytars/vault/auth-recovery";
 
 export interface VaultPrincipalsDeps<V> {
   /** The decrypted record, read fresh — never captured. Still App's, along with the sink below. */
