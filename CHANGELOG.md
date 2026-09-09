@@ -5,9 +5,8 @@ All notable changes to this project are documented here. Format follows
 
 ## [0.1.0] — 2026-09-09
 
-Initial extraction of `@tinytars/frame` from `plover-code`'s `apps/health-dash-web`, landed via
-`git subtree split --prefix=packages/app-frame` (see `plover-code`'s
-`docs/cross-app/13-generic-app-frame.md`). First published version.
+Initial extraction of `@tinytars/frame` from a health-literacy application's internal app-shell
+code, landed via `git subtree split` to preserve its per-file history. First published version.
 
 ### Added
 
