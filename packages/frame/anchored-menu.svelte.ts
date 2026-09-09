@@ -1,4 +1,4 @@
-// W46 Phase 1 — shared collision-aware positioning for popover panels (LeafActionMenu, AccountMenu).
+// Shared collision-aware positioning for popover panels (LeafActionMenu, AccountMenu).
 // Both used to be `position: absolute` with a hard-coded direction (`top: 100%` / `bottom: 100%`),
 // so a trigger inside a sticky-bottom container (the chat composer) opened its menu straight off the
 // bottom of the viewport. This action portals the panel to <body> (so no ancestor's `overflow` or
@@ -120,7 +120,7 @@ export function anchoredMenu(node: HTMLElement, params: AnchoredMenuParams) {
     });
   }
 
-  // W70 — keyboard access. The reparent into <body> above is what broke it: the panel emits correct
+  // Keyboard access. The reparent into <body> above is what broke it: the panel emits correct
   // role="menu" / role="menuitem" markup, but once it lives at the end of <body> a Tab from the
   // trigger goes to the NEXT HEADER BUTTON, not into the menu — so the app's primary Delete / Edit /
   // Chat / Translate surface could be opened by keyboard and then not used. Nothing moved focus in,
@@ -169,14 +169,14 @@ export function anchoredMenu(node: HTMLElement, params: AnchoredMenuParams) {
   window.addEventListener("scroll", scheduleReposition, { capture: true, passive: true });
   window.addEventListener("resize", scheduleReposition);
 
-  // W82 — placement was computed ONCE, at mount, and revisited only if the user scrolled or resized.
+  // Placement was computed ONCE, at mount, and revisited only if the user scrolled or resized.
   // That made an under-measurement permanent rather than transient: measure the panel before its
   // webfont has reflowed it, and placeMenu clamps against a height that is too small, parking the
   // panel low enough that the real content lands past the bottom of the viewport. Playwright then
   // reported the last menu item as "visible, enabled and stable" AND "outside of the viewport", and
-  // retried it for the full 30s test timeout — twice (runs 33072678513 and 33430419142), never
-  // reproducibly on an M3, because the measurement is only wrong when layout is slow enough to lose
-  // the race. Observing the panel closes the class rather than that one cause: whatever settles late
+  // retried it for the full 30s test timeout — twice in CI, never reproducibly on an M3, because the
+  // measurement is only wrong when layout is slow enough to lose the race. Observing the panel closes
+  // the class rather than that one cause: whatever settles late
   // — fonts, async content, a scrollbar appearing — re-places it on the next frame.
   const sizeObserver = new ResizeObserver(scheduleReposition);
   sizeObserver.observe(node);

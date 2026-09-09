@@ -1,7 +1,7 @@
 <script module lang="ts">
-  // Domain-neutral shape for one operational-audit row (mirrors refresh-client.ts's RefreshLogEntry
-  // in health-dash-web, kept structurally compatible so App.svelte can pass fetchRefreshLog straight
-  // through as fetchLog without either side importing the other's type).
+  // Domain-neutral shape for one operational-audit row (mirrors the consuming app's own log-entry
+  // type, kept structurally compatible so App can pass its own log fetcher straight through as
+  // fetchLog without either side importing the other's type).
   export interface DiagnosticsLogEntry {
     at: string;
     event: string;
@@ -17,10 +17,10 @@
 </script>
 
 <script lang="ts">
-  // W39/Phase 4 — provider-only refresh diagnostics. Reads the PHI-free R2 audit trail via GET
+  // Provider-only refresh diagnostics. Reads the PHI-free R2 audit trail via GET
   // /api/logs and renders it as a table: outcome, attempt, token cost, latency — newest first. This is
   // where a provider confirms "it tried 3 times, hit a truncation, and stopped" instead of guessing
-  // from a vanishing counter (the exact fear W39 answers).
+  // from a vanishing counter.
   import { onMount } from "svelte";
 
   interface Props {
@@ -150,7 +150,7 @@
     font-weight: 600;
     color: var(--muted, #667);
   }
-  /* M100 — the table is horizontal-scroll-only (no visible scrollbar affordance on touch
+  /* The table is horizontal-scroll-only (no visible scrollbar affordance on touch
      browsers); a text hint makes that discoverable on phone widths. */
   .diag-scroll-hint {
     display: none;

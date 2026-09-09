@@ -1,6 +1,6 @@
 // How a session starts, and whose record it is on.
 //
-// W76 — App.svelte's fifth and last controller extraction. This is the cluster that answers "who is
+// App's fifth and last controller extraction. This is the cluster that answers "who is
 // signed in": the cold-load resume, the owner/provider/support routing that follows a login, and the
 // clinician roster that a provider drills into. It had no unit test at all, and two of its rules are
 // security properties rather than conveniences — a stored account key whose session has expired is
@@ -18,11 +18,11 @@ import { b64ToBytes } from "../security/base64";
 import { resumeSession, bootstrapGoogleSession, getMyAccount } from "../security/auth-client";
 import { revokeProvider } from "../security/auth-grants";
 
-/** W49 — non-sensitive flag marking that a session may be resumable on reload. */
+/** Non-sensitive flag marking that a session may be resumable on reload. */
 export const RESUME_MARKER = "hd_resume";
 
 export interface RosterPatient extends VaultEntry {
-  /** W48 — the provider can DELETE /api/providers/{linkId} to drop this patient. */
+  /** The provider can DELETE /api/providers/{linkId} to drop this patient. */
   linkId: string;
   vaultId: string;
 }
@@ -66,8 +66,8 @@ export interface RosterSession {
   /**
    * True while the cold-load resume is still deciding, so the lock screen does not flash. Starts
    * false and is raised by `bootResume` itself — synchronously, before its first await — so the host
-   * has no window in which it must own a second copy of this flag. W76: it did own one, and that
-   * copy was never lowered, leaving every reloaded page on "Restoring your session…" forever.
+   * has no window in which it must own a second copy of this flag. App previously did own one, and
+   * that copy was never lowered, leaving every reloaded page on "Restoring your session…" forever.
    */
   readonly resuming: boolean;
 
@@ -152,7 +152,7 @@ export function createRosterSession(deps: RosterSessionDeps): RosterSession {
     return true;
   }
 
-  /** Google: no client-held key (server custody, W45). A non-Google session 401s and stays locked. */
+  /** Google: no client-held key (server custody). A non-Google session 401s and stays locked. */
   async function resumeGoogle(): Promise<boolean> {
     try {
       await enterAccount(await bootstrapGoogleSession());
@@ -206,7 +206,7 @@ export function createRosterSession(deps: RosterSessionDeps): RosterSession {
       }
     },
 
-    // W48 — dropping a patient deletes the provider's envelope; the patient must re-grant to restore
+    // Dropping a patient deletes the provider's envelope; the patient must re-grant to restore
     // access. The patient's own vault is untouched.
     async removeFromRoster(p: RosterPatient) {
       if (!deps.confirmRemoval(p.displayName)) return;
@@ -219,7 +219,7 @@ export function createRosterSession(deps: RosterSessionDeps): RosterSession {
       }
     },
 
-    // W50 — names are auto-derived at signup (password/passkey → the email local-part;
+    // Names are auto-derived at signup (password/passkey → the email local-part;
     // Google-without-name → "New member"), so when the "name" is really a placeholder we show the
     // full email, which actually tells two patients apart.
     label(p: RosterPatient): string {

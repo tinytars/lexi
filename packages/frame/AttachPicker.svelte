@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { registerAttachPicker, DEFAULT_ATTACH_ACCEPT, type AttachMode } from "./attach-controller";
 
-  // W46 Phase 4 — mounted once (App.svelte), owns the single hidden file input every leaf's
+  // Mounted once (by App), owns the single hidden file input every leaf's
   // "Attach" action shares via attach-controller.ts. One input, not three: the same element's
   // `accept`/`capture` attributes are set right before each programmatic `.click()`, so "Take
   // photo" / "Photo library" / "Choose file" don't need three separate elements per leaf row.

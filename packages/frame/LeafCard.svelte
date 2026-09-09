@@ -3,11 +3,11 @@
   import LeafActionMenu from "./LeafActionMenu.svelte";
   import type { LeafMenuItem } from "./menu-items";
 
-  // M86 Phase 1 — the one shared leaf-card shell: a soft gray rounded card with an optional
+  // The one shared leaf-card shell: a soft gray rounded card with an optional
   // full-width header row (title left, LeafActionMenu right). Generalizes the `.report-group` +
   // `.ct-topic-row`/`.row-actions` pattern Treatment/Study/FutureTreatment each hand-rolled
   // identically.
-  // M88 — the two-column body grid (`.rg-grid`/`.rg-col`) moved in here too, as `:global()`, once
+  // The two-column body grid (`.rg-grid`/`.rg-col`) moved in here too, as `:global()`, once
   // a 5th/6th caller (Markers, Chat) was about to copy it a 5th/6th time. Callers still pass their
   // own body as `children` and layer their own additive modifier classes on top (e.g. `.rg-dx`,
   // `.ft-row`).

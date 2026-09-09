@@ -6,7 +6,7 @@
 </script>
 
 <script lang="ts">
-  // W15/3a — generic panel to configure what a subject's own session sees. Each feature toggles
+  // Generic panel to configure what a subject's own session sees. Each feature toggles
   // between subject-visible and viewer-only; the catalog, current-visibility check, and save are
   // all injected, so this component knows nothing about clients, patients, or providers.
   let {

@@ -1,7 +1,7 @@
-// M104 — the one shared "which popover is open" registry every menu-style popover
+// The one shared "which popover is open" registry every menu-style popover
 // (LeafActionMenu, AccountMenu) consults, so opening any one closes any other open one anywhere in
-// the app. First true singleton runes module in this codebase (draft-sync.svelte.ts is a
-// per-call-site factory, not a singleton — this module's state is created once, at import time,
+// the app. First true singleton runes module in this codebase (most other modules here are
+// per-call-site factories, not singletons — this module's state is created once, at import time,
 // and shared by every caller).
 const state = $state<{ openId: string | null }>({ openId: null });
 

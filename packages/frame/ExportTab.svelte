@@ -11,7 +11,7 @@
 </script>
 
 <script lang="ts">
-  // W11e — a generic "take this record out of the app" panel. The list of destinations (what they
+  // A generic "take this record out of the app" panel. The list of destinations (what they
   // export, in what format, whether they're live yet) is entirely caller-supplied, so this
   // component carries no knowledge of vaults, markers, or any other domain data shape.
   let {

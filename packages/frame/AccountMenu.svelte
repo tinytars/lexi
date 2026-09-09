@@ -1,9 +1,9 @@
 <script lang="ts">
-  // W47 — top-right account pulldown for a signed-in owner (self-service, !providerSession).
+  // Top-right account pulldown for a signed-in owner (self-service, !providerSession).
   // Collapses the former Account / Access / Sign out header buttons into one menu; the items
   // just open the existing Account/Access modals (email, sign-in methods incl. passkey/Google,
   // recovery) and call signOut — no new logic lives here.
-  // W50 — providerAccess mode: a clinician drilled into a patient. The trigger/label shows the
+  // providerAccess mode: a clinician drilled into a patient. The trigger/label shows the
   // PATIENT's identity with a "Provider access" badge; the menu only offers Back to roster + Sign
   // out (provider). Account/Access settings are the provider's own — they live on the roster page.
   import { menuRegistry } from "@tinytars/frame/menu-registry.svelte";
@@ -32,10 +32,10 @@
     onDiagnostics?: () => void;
     onVisibility?: () => void;
     onDag?: () => void;
-    // M84 — Export moved here from the sidebar's Profile row; omitted when no client is selected
+    // Export moved here from the sidebar's Profile row; omitted when no client is selected
     // (provider roster / support console).
     onExport?: () => void;
-    // M78 Phase 9 — About is app-level, not provider/patient-specific, so it's offered in both modes.
+    // About is app-level, not provider/patient-specific, so it's offered in both modes.
     onAbout?: () => void;
     // Copy, all domain-flavorable — defaults are generic, callers override with their own vocabulary
     // (e.g. LexiTar's "patient"/"roster"/"Translation") rather than this package assuming one.
@@ -49,12 +49,12 @@
     translateBusyTitle?: string;
   } = $props();
 
-  // M104 — menuId identifies this instance in the shared menuRegistry so opening any other
+  // menuId identifies this instance in the shared menuRegistry so opening any other
   // popover (a leaf row's LeafActionMenu) closes this one.
   const menuId = $props.id();
   let open = $derived(menuRegistry.isOpen(menuId));
   let root: HTMLDivElement;
-  // W46 Phase 1 — panel is portaled to <body> by the anchoredMenu action; outside-click has to
+  // Panel is portaled to <body> by the anchoredMenu action; outside-click has to
   // check both `root` (the trigger) and `panelEl` (the portaled panel), mirroring LeafActionMenu.
   let triggerEl: HTMLButtonElement;
   let panelEl: HTMLDivElement | undefined;
@@ -184,7 +184,7 @@
   .menu-label { font-size: 0.65rem; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; color: var(--muted); }
   .chevron { color: var(--muted); font-size: 0.7rem; margin-left: auto; }
 
-  /* W46 Phase 1 — top/left/max-height are set inline by the anchoredMenu action (portaled to
+  /* top/left/max-height are set inline by the anchoredMenu action (portaled to
      <body>, position: fixed, flip/clamp math in anchored-menu.svelte.ts) — no more hard-coded
      `bottom: 100%`; this only sets the panel's own look, not its placement. */
   .menu {

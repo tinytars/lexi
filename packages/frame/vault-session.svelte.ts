@@ -3,11 +3,11 @@ import type { VaultSession } from "../security/vault-session";
 export type { VaultEntry, VaultSession } from "../security/vault-session";
 export { openVault } from "../security/vault-session";
 
-// W72 — the unlocked-session key material, as one object with one transition each way.
+// The unlocked-session key material, as one object with one transition each way.
 //
-// docs/cross-app/10 names this as Phase A's only prerequisite: "consolidate App.svelte's DEK/session
-// state machine … as its own careful, tested commit — not a drive-by during the package move. This
-// touches live PHI-handling code and needs its own verification pass."
+// This consolidation was done as its own careful, tested commit rather than a drive-by change
+// folded into a larger move — the key material it manages is live PHI-handling code, and a change
+// to it needs its own verification pass regardless of what else is happening around it.
 //
 // The argument is not only tidiness. Until now `dek`, `vaultR2Id` and the two private keys were four
 // separate `$state` declarations, set in four separate assignments and cleared in four more. Nothing
@@ -17,7 +17,7 @@ export { openVault } from "../security/vault-session";
 // everything, and `isOpen` is derived rather than tracked.
 //
 // What is deliberately NOT here: `vault` itself, the decrypted record. It has 86 references in
-// App.svelte and is mutated by every save, so moving it is a much larger edit than moving the key
+// App and is mutated by every save, so moving it is a much larger edit than moving the key
 // material, and a larger edit on PHI-handling code than this one commit should carry. The key
 // material is the part whose lifetime is a security property; the plaintext record's lifetime is the
 // same as the key's by construction, because it cannot be re-read without one.

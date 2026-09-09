@@ -9,7 +9,7 @@
   import { menuRegistry } from "./menu-registry.svelte";
   import { anchoredMenu } from "./anchored-menu.svelte";
 
-  // M71 — the one shared triple-dot action menu every leaf row uses. Generalizes
+  // The one shared triple-dot action menu every leaf row uses. Generalizes
   // AccountMenu.svelte's dropdown (trigger + outside-click/Escape-closing role="menu" panel) with a
   // generic items[] prop instead of named callback props, and a ⋮ trigger instead of an avatar.
   // Boolean favorite/pin toggles are NOT items here — they stay their own standalone control next
@@ -24,12 +24,12 @@
   }
   let { items, label = "Actions", icon = "⋮", pinned = false, onTogglePin, pinDisplay = "auto" }: Props = $props();
 
-  // M104 — menuId identifies this instance in the shared menuRegistry so opening any other
+  // menuId identifies this instance in the shared menuRegistry so opening any other
   // popover (another leaf row, or AccountMenu) closes this one.
   const menuId = $props.id();
   let open = $derived(menuRegistry.isOpen(menuId));
   let root: HTMLDivElement;
-  // W46 Phase 1 — the panel itself is portaled to <body> by the anchoredMenu action (so no
+  // The panel itself is portaled to <body> by the anchoredMenu action (so no
   // ancestor's overflow/sticky/transform can clip it), so it's no longer a descendant of `root` —
   // outside-click has to check both. `triggerEl` binds whichever of the two mutually-exclusive
   // trigger buttons below is actually rendered.
@@ -136,7 +136,7 @@
     .pin-slot:hover .leaf-menu-trigger.pin-trigger { display: inline-flex; }
   }
 
-  /* M73 Phase 2 — bring the trigger up to the app's 44px touch-target convention on phone widths.
+  /* Bring the trigger up to the app's 44px touch-target convention on phone widths.
      Only .leaf-menu-trigger itself gets a fixed box; .pin-slot stays auto-width (it's a flex row
      that, on touch, can hold the trigger AND a visible ★ status badge side by side — forcing it
      square would clip that). The (hover: hover) and (pointer: fine) block above is unaffected
@@ -146,7 +146,7 @@
     .pin-slot { min-height: 44px; }
   }
 
-  /* W46 Phase 1 — top/left/max-height are set inline by the anchoredMenu action (portaled to
+  /* Top/left/max-height are set inline by the anchoredMenu action (portaled to
      <body>, position: fixed, flip/clamp math in anchored-menu.svelte.ts); this only sets the
      panel's own look, not its placement. */
   .menu {

@@ -1,8 +1,8 @@
 // The support console: which lists a support agent sees, what they have asked for, and whose record
 // they are about to open.
 //
-// W76 — App.svelte's third controller extraction. The server side of support access is well covered
-// (support-access-function.test.ts, support-provider-roster-function.test.ts, and W75's
+// App's third controller extraction. The server side of support access is well covered
+// (support-access-function.test.ts, support-provider-roster-function.test.ts, and
 // auth-client-support.test.ts); what had no test is the browser's answer to "which session is this
 // person in, and whose roster are they looking at" — a six-field state machine that decides whether
 // a patient's name is even offered.
@@ -214,7 +214,7 @@ export function createSupportAccess(deps: SupportAccessDeps): SupportAccess {
     },
 
     reset() {
-      // W76 — all six, where App used to clear two. The drill-in view was the one that mattered:
+      // All six, where App used to clear two. The drill-in view was the one that mattered:
       // nothing reloads it on the next sign-in the way the three lists are reloaded, so a support
       // agent signing out and another signing in on the same browser opened onto the previous
       // agent's clinician roster.

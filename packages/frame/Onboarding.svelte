@@ -18,7 +18,7 @@
 </script>
 
 <script lang="ts">
-  // W46/W47 — first-run screen for a signed-in account with zero records. The field catalog
+  // First-run screen for a signed-in account with zero records. The field catalog
   // (what to ask, and each field's own validity rule) is entirely caller-supplied — a number field
   // is optional and omitted from the create payload when left blank or when the user skips; a
   // select field always has a value and is always included. Everything the caller collects is

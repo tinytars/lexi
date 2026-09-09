@@ -1,6 +1,6 @@
 // The Account panel: who this account is, and every way there is into it.
 //
-// W76 — App.svelte's fourth controller extraction. Adding and removing sign-in methods is the only
+// App's fourth controller extraction. Adding and removing sign-in methods is the only
 // cluster in the component that can lock a person out of their own health record, and the rule that
 // stops it — never remove the last way in — lived in a `disabled` attribute on a button. The server
 // enforces it too (functions/api/account/methods.ts:126), so this was never a hole; it was an
@@ -62,7 +62,7 @@ export interface AccountMethods {
   removeBlockedReason(method: RemovableMethod): string | null;
 
   /**
-   * W49 — after a plain-refresh resume the account key is the non-extractable copy restored from
+   * After a plain-refresh resume the account key is the non-extractable copy restored from
    * IndexedDB, so it cannot be re-wrapped under a new KEK. Adding or changing a login method needs a
    * fresh sign-in; everything else works unchanged. Public because the recovery ladder re-wraps too.
    */
@@ -207,7 +207,7 @@ export function createAccountMethods(deps: AccountMethodsDeps): AccountMethods {
         methods = list;
         editEmail = account.email ?? "";
         editDisplayName = account.displayName;
-        // W55 P4 — the recovery and access-log blocks only apply to an owned vault; a provider
+        // The recovery and access-log blocks only apply to an owned vault; a provider
         // session has none, and asking for principals it does not have is a 403 on every open.
         if (!deps.isProviderSession()) await deps.loadOwnerBlocks();
       } catch (e) {
@@ -221,7 +221,7 @@ export function createAccountMethods(deps: AccountMethodsDeps): AccountMethods {
 
     refresh,
 
-    // W47 — best-effort by design: verification never gates the app, so a failure to send is not
+    // Best-effort by design: verification never gates the app, so a failure to send is not
     // worth a red line across a panel the person opened to do something else.
     async resendVerification() {
       try {
@@ -268,7 +268,7 @@ export function createAccountMethods(deps: AccountMethodsDeps): AccountMethods {
       await mutate(() => removeMethod(method));
     },
 
-    // W45 — OAuth runs in a POPUP so this SPA (and the in-memory key the server needs to wrap)
+    // OAuth runs in a POPUP so this SPA (and the in-memory key the server needs to wrap)
     // survives; the popup postMessages back once the signed link cookie is set, and only then do we
     // hand the server the private key to finish the link.
     connectGoogle() {

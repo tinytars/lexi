@@ -1,11 +1,11 @@
 // Who can open this vault, and the re-key that changes the answer.
 //
-// W76 — the first of App.svelte's five controller extractions. This cluster was ~110 lines of the
+// The first of App's five controller extractions. This cluster was ~110 lines of the
 // component: six `$state` declarations, three `$derived` filters and seven async handlers, including
 // `rotateVaultKey` — the single most consequential operation in the app, whose only test was an e2e
 // that by construction cannot interrupt it.
 //
-// Same getter-parameterized factory shape as leaf-regen-queue.svelte.ts and draft-sync.svelte.ts: the
+// Same getter-parameterized factory shape used consistently across this package's controllers: the
 // host passes thunks rather than values, so this module never captures a stale vault. What stays with
 // App is what App owns — the decrypted record and the sink that writes it.
 
@@ -100,7 +100,7 @@ export function createVaultPrincipals<V>(deps: VaultPrincipalsDeps<V>): VaultPri
     if (!vault || !session.dek || !session.r2Id) return;
     const principals = await getVaultPrincipals();
     const newDek = await generateDEK();
-    // W75 — the blob goes to a NEW object, reserved here, and the envelope commit below doubles as the
+    // The blob goes to a NEW object, reserved here, and the envelope commit below doubles as the
     // pointer swap. This used to re-encrypt in place and commit the matching envelopes four round
     // trips later; anything that interrupted that window — a dropped connection, a closed lid
     // mid-revoke — left every principal holding an envelope for a key the ciphertext no longer used.
@@ -208,7 +208,7 @@ export function createVaultPrincipals<V>(deps: VaultPrincipalsDeps<V>): VaultPri
     async revoke(p: ProviderLinkView) {
       await run(async () => {
         await revokeProvider(p.linkId);
-        // W44 P4c — true forward-secret revocation for SUPPORT: re-key the vault so a support agent
+        // True forward-secret revocation for SUPPORT: re-key the vault so a support agent
         // who cached the DEK can no longer decrypt it. Clinician revoke stays delete-only. Denying a
         // pending (never-active) support request needs no rotation — support never held the DEK.
         if (p.kind === "support" && p.status === "active") await rotateVaultKey();

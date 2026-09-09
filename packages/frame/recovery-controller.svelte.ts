@@ -1,14 +1,14 @@
 // Getting back in: the four ways a person who cannot sign in ends up signed in again, and the one
 // way they give that up on purpose.
 //
-// W76 — App.svelte's second controller extraction, and the one with the least test cover behind it.
-// W73 built this ladder and W75 fixed its server-side attempt cap, but the browser half had no unit
-// test at all: which code kind is in play, what is shown once and never again, and what is left
-// behind when a step fails. Those are state questions, and an e2e that drives the happy path cannot
-// ask them.
+// App's second controller extraction, and the one with the least test cover behind it. This
+// recovery ladder was built first, with its server-side attempt cap fixed afterward, but the
+// browser half had no unit test at all: which code kind is in play, what is shown once and never
+// again, and what is left behind when a step fails. Those are state questions, and an e2e that
+// drives the happy path cannot ask them.
 //
-// Same getter-parameterized factory shape as vault-principals.svelte.ts and leaf-regen-queue.svelte.ts.
-// What stays with App is what App owns: the lock screen's email field, the account private key, and
+// Same getter-parameterized factory shape as vault-principals.svelte.ts and the other controllers in
+// this package. What stays with App is what App owns: the lock screen's email field, the account private key, and
 // what a successful recovery does next (enter the account, persist the key). Two of the five handlers
 // report through panels this module does not own — the Account modal's busy/error line and the lock
 // screen's — so both are injected rather than duplicated here.

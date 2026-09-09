@@ -1,7 +1,7 @@
-// W46 Phase 4 — one shared "open the native file picker" registry, mirroring
-// menu-registry.svelte.ts's singleton shape: a single hidden <input type=file> (AttachPicker.svelte,
-// mounted once in App.svelte) is driven by whichever leaf's "Attach" action last called
-// openAttachPicker, instead of every leaf owning its own hidden input.
+// One shared "open the native file picker" registry, mirroring menu-registry.svelte.ts's singleton
+// shape: a single hidden <input type=file> (AttachPicker.svelte, mounted once in App) is driven by
+// whichever leaf's "Attach" action last called openAttachPicker, instead of every leaf owning its
+// own hidden input.
 export type AttachMode = "camera" | "library" | "files";
 
 // Everything. A leaf's Attach is storage, not import: whatever you attach is kept, shown, and — if
