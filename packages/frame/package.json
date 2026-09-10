@@ -6,7 +6,7 @@
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "https://github.com/tinytars/lexi",
+    "url": "git+https://github.com/tinytars/lexi.git",
     "directory": "packages/frame"
   },
   "homepage": "https://github.com/tinytars/lexi",
