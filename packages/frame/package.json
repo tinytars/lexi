@@ -1,6 +1,6 @@
 {
   "name": "@tinytars/frame",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Domain-neutral Svelte app-shell: session/auth controllers, account chrome, and menu/card/modal primitives built on @tinytars/vault.",
   "license": "MIT",
   "type": "module",
