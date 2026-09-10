@@ -1,0 +1,94 @@
+/* Shell + persona theme: the design tokens and cross-cutting CSS every app built on frame needs,
+   not tied to any one component. Import once (e.g. from the host app's entry point) alongside the
+   app's own stylesheet. Persona tokens name provenance generically — assistant/owner/provider —
+   so a non-health app can reuse the same three-way attribution bubble without health vocabulary. */
+:root {
+  --bg: #fafaf9;
+  --fg: #1a1a1a;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --accent: #0b6bcb;
+  /* Neutral surfaces distinct from --bg, used for cards/panels raised above the page. */
+  --surface: #fff;
+  --surface-2: #f4f4f5;
+  --panel: #fbfcfd;
+  --code-bg: #f4f6f8;
+  --tt-footer-accent: var(--accent);
+  --band: rgba(11, 107, 203, 0.08);
+  --safe: #16a34a;
+  --safe-band: rgba(22, 163, 74, 0.10);
+  --warn: #d97706;
+  --warn-band: rgba(217, 119, 6, 0.10);
+  --alert: #dc2626;
+  --alert-band: rgba(220, 38, 38, 0.10);
+  /* "Generated" content — extracted from a source or produced by the AI. */
+  --gen: #7c5cbf;
+  --gen-band: rgba(124, 92, 191, 0.10);
+  --content-max: 76rem;
+  --leaf-max: 44rem;
+  /* Persona provenance: who produced a piece of content. */
+  --p-assistant: var(--gen);
+  --p-assistant-band: var(--gen-band);
+  --p-owner: #2f6f4f;
+  --p-owner-band: rgba(47, 111, 79, 0.10);
+  --p-provider: #64748b;
+  --p-provider-band: rgba(100, 116, 139, 0.12);
+}
+
+/* The standard visually-hidden recipe: removed from view but kept in the accessibility tree.
+   display:none and visibility:hidden would remove it from BOTH, which defeats the purpose. */
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Shared shell so the footer/disclaimer render on every state (lock/roster/app); sticky footer. */
+.app-shell { display: flex; flex-direction: column; min-height: 100dvh; }
+.app-body { flex: 1 0 auto; }
+
+/* Transient highlight applied when a permalink resolves, so the target is obvious after the
+   scroll. Plain (not scoped) CSS: it lands on arbitrary anchored elements anywhere. */
+.permalink-flash {
+  animation: permalink-flash 1.2s ease-out;
+  border-radius: 6px;
+}
+@keyframes permalink-flash {
+  0% { box-shadow: 0 0 0 3px var(--accent); background: var(--band); }
+  100% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 0%, transparent); background: transparent; }
+}
+
+/* Shared field+action row: every field's own label stays a column (label text above, control
+   below); this wraps just the control + a side action (e.g. a mic button) side by side. */
+.field-row { display: flex; align-items: flex-start; gap: 0.35rem; }
+.field-row input, .field-row textarea { flex: 1; min-width: 0; }
+
+/* The section shell every top-level view repeats, several combined with a dynamic domain class.
+   Plain class, not a component: usage is too dynamic to earn a prop API and moving just the CSS
+   already gets the shared-source-of-truth goal. */
+.leaf-section { max-width: var(--leaf-max); margin: 0 auto; }
+
+/* Same class name, same body, wherever a leaf editor takes a single free-text topic line. */
+.topic-input { font: inherit; font-size: 0.95rem; color: var(--fg); padding: 0.5rem 0.65rem; border: 1px solid var(--border); border-radius: 6px; background: white; width: 100%; box-sizing: border-box; }
+
+/* Shared persona bubble: a tinted box with a head row (uppercase tag on the left, an optional
+   meta/date + action on the right). PersonaBubble.svelte is the sole production emitter. */
+.persona-bubble { border: 1px solid var(--border); border-radius: 12px; padding: 0.55rem 0.7rem; background: var(--surface); }
+.persona-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.4rem; }
+.persona-head-left { display: inline-flex; align-items: center; gap: 0.35rem; }
+.persona-head-right { display: inline-flex; align-items: center; gap: 0.4rem; }
+.persona-tag {
+  display: inline-block; font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em;
+  border: 1px solid; border-radius: 999px; padding: 0.05rem 0.45rem; background: var(--surface);
+}
+.persona-meta { font-size: 0.72rem; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.p-assistant { background: var(--p-assistant-band); border-color: var(--p-assistant); }
+.p-assistant .persona-tag { color: var(--p-assistant); border-color: var(--p-assistant); }
+.p-owner { background: var(--p-owner-band); border-color: var(--p-owner); }
+.p-owner .persona-tag { color: var(--p-owner); border-color: var(--p-owner); }
+.p-provider { background: var(--p-provider-band); border-color: var(--p-provider); }
+.p-provider .persona-tag { color: var(--p-provider); border-color: var(--p-provider); }
