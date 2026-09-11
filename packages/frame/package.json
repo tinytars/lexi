@@ -76,7 +76,7 @@
     "typecheck": "svelte-check --tsconfig ./tsconfig.json --threshold error"
   },
   "dependencies": {
-    "@tinytars/vault": "^0.1.15",
+    "@tinytars/vault": "^0.1.18",
     "pdfjs-dist": "^6.2.108"
   },
   "peerDependencies": {

@@ -14,16 +14,16 @@
 
 import type { VaultSession, VaultEntry } from "./vault-session.svelte";
 import {
-  listSupportPatients,
+  listSupportOwners as listSupportPatients,
   listSupportProviders,
   listSupportRequests,
   requestSupportAccess,
   cancelSupportRequest,
   getProviderRoster,
-  enterSupportPatient,
-  type SupportPatient,
+  enterSupportOwner as enterSupportPatient,
+  type SupportOwner as SupportPatient,
   type SupportProvider,
-  type SupportRosterPatient,
+  type SupportRosterOwner as SupportRosterPatient,
   type SupportRequest,
 } from "@tinytars/vault/auth-support";
 
