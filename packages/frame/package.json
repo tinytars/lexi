@@ -23,7 +23,8 @@
   },
   "files": [
     "*.ts",
-    "*.svelte"
+    "*.svelte",
+    "*.css"
   ],
   "exports": {
     "./account-methods.svelte": "./account-methods.svelte.ts",
