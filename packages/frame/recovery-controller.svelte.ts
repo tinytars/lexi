@@ -29,7 +29,7 @@ import {
  * module importing the roster's shape.
  */
 export interface RecoveryPatient {
-  patientAccountId: string;
+  ownerAccountId: string;
   envelope: { wrappedDEK: string; ephemeralPublicKeyJwk: JsonWebKey };
 }
 
@@ -213,7 +213,7 @@ export function createRecoveryController<P extends RecoveryPatient = RecoveryPat
       issueError = null;
       issuing = true;
       try {
-        const r = await issueRecoveryCode(p.patientAccountId, p.envelope, deps.session.providerKey);
+        const r = await issueRecoveryCode(p.ownerAccountId, p.envelope, deps.session.providerKey);
         issuedCode = r.code;
         issuedExpiresAt = r.expiresAt;
       } catch (e) {
