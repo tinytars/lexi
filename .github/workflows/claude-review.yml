@@ -1,0 +1,107 @@
+name: Claude PR Review
+
+# This repo has no branch protection / ruleset available (private repo on a
+# plan tier that doesn't support it), so there is no "required checks" concept
+# to filter on. Instead of watching checks from inside the pr-review job
+# (which would include itself and deadlock — see pablo-tech/pilos#10),
+# pr-review is triggered by CI's own completion, so it never runs
+# concurrently with the checks it cares about.
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  id-token: write
+
+concurrency:
+  group: claude-review-${{ github.event.workflow_run.pull_requests[0].number || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  pr-review:
+    if: >
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.pull_requests[0] != null
+    runs-on: ubuntu-latest
+    env:
+      PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
+      CI_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_args: '--allowedTools "Read,Grep,Glob,Bash(git diff:*),Bash(git log:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr review:*),Bash(gh pr merge:*)"'
+          prompt: |
+            The CI workflow just finished (conclusion: ${{ env.CI_CONCLUSION }})
+            for PR #${{ env.PR_NUMBER }} in this repo.
+
+            - If CI did not succeed: comment on the PR with
+              `gh pr comment ${{ env.PR_NUMBER }} -b "CI is failing, not reviewing yet."`
+              and stop — do not approve or merge.
+            - Otherwise, review the PR for correctness bugs and for
+              reuse/simplification/efficiency issues, at the same bar as
+              `/code-review` run at high effort. Read the diff with
+              `gh pr diff ${{ env.PR_NUMBER }}`.
+              - If there are no blocking issues: approve with
+                `gh pr review ${{ env.PR_NUMBER }} --approve -b "<one-line
+                summary of what you checked>"`, then merge directly with
+                `gh pr merge ${{ env.PR_NUMBER }} --squash --delete-branch`
+                (not `--auto` — this repo has no branch protection to wait
+                on, and CI has already finished by the time this job runs).
+              - If there are blocking issues: post them as one review comment
+                with `gh pr comment ${{ env.PR_NUMBER }}` (most severe first,
+                with file:line references) and do not approve or merge.
+              - If you are not confident in the verdict, say so in a comment
+                and leave the PR for a human — do not approve or merge.
+
+  push-audit:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_args: '--allowedTools "Read,Grep,Glob,Bash(git show:*),Bash(gh api repos/*/commits/*/comments:*)"'
+          prompt: |
+            A commit was just pushed directly to main, bypassing PR review.
+            Review its diff with `git show HEAD`. Only if you find a blocking
+            correctness bug, post a commit comment explaining it with
+            `gh api repos/${{ github.repository }}/commits/${{ github.sha }}/comments -f body="..."`.
+            Say nothing and take no action if the commit looks fine — this is
+            an audit pass, not a gate, since the commit is already merged.
+
+  notify-failure:
+    needs: [pr-review, push-audit]
+    if: always() && contains(needs.*.result, 'failure')
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="Claude PR review workflow failed"
+          body="Failed run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          Event: ${{ github.event_name }}, ref: ${{ github.ref }}, sha: ${{ github.sha }}"
+          existing=$(gh issue list --search "$title in:title" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body" --assignee pablo-tech
+          fi
