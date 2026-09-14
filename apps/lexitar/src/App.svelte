@@ -947,7 +947,7 @@
   // W48 — "allergies"/"familyHistory" dropped from this set: their sidebar sub-list (Bio/Allergies/
   // Family, nested under "personalization") now navigates via `active` directly, not `activeGroup`
   // — see Sidebar.svelte's "personalization" lowerZoneKind branch.
-  // M111 — on cold boot from a hash link (#Pablo/treatment/…), `section` is set synchronously
+  // M111 — on cold boot from a hash link (#Alex/treatment/…), `section` is set synchronously
   // (line ~231) well before `selectedClientId` resolves (only set once enterAccount's async
   // vault-unlock chain finishes and applies the pending nav). Without the `selectedClientId` guard,
   // this effect ran on that first pass with a null clientId, `loadLastGroup` returned null (its own

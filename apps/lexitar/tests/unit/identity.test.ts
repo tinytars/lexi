@@ -27,14 +27,14 @@ afterAll(async () => {
 
 describe("identity accessors", () => {
   it("creates and reads an account by id and email", async () => {
-    const created = await createAccount(db, { id: "acc-1", displayName: "Pablo", email: "pablo@example.com" });
+    const created = await createAccount(db, { id: "acc-1", displayName: "Alex", email: "alex@example.com" });
     expect(created.emailConfirmed).toBe(false);
     expect(created.lifecycleStage).toBe("active");
 
     const byId = await getAccount(db, "acc-1");
     expect(byId).toEqual(created);
 
-    const byEmail = await getAccountByEmail(db, "pablo@example.com");
+    const byEmail = await getAccountByEmail(db, "alex@example.com");
     expect(byEmail).toEqual(created);
 
     expect(await getAccount(db, "acc-missing")).toBeNull();
@@ -50,7 +50,7 @@ describe("identity accessors", () => {
   });
 
   it("updates email confirmation and lifecycle stage", async () => {
-    await createAccount(db, { id: "acc-2", displayName: "Liz" });
+    await createAccount(db, { id: "acc-2", displayName: "Blair" });
 
     await setEmailConfirmed(db, "acc-2", true);
     let row = await getAccount(db, "acc-2");

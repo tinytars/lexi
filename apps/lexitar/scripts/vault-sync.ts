@@ -303,7 +303,7 @@ function apiAuth(): { accountId: string; token: string } {
   if (!accountId || !token) {
     throw new Error(
       "CLOUDFLARE_ACCOUNT_ID/CLOUDFLARE_API_TOKEN unset — import scripts/load-creds, or source the " +
-        "plover-context cloudflare.env (see scripts/creds.sh).",
+        "the operator's private cloudflare.env (see scripts/creds.sh).",
     );
   }
   return { accountId, token };

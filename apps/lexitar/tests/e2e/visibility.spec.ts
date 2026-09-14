@@ -16,7 +16,7 @@ async function asPatient(page: Page, name: PilotName) {
 }
 
 test("provider drills into a patient and sees the provider-only Investigator tab", async ({ page }) => {
-  await providerInto(page, "Pablo");
+  await providerInto(page, "Alex");
   // Provider controls are present — M62 moved Back to roster + Visibility into the AccountMenu pulldown.
   await page.locator(".account-trigger").click();
   await expect(page.getByRole("menuitem", { name: "← Back to roster" })).toBeVisible();
@@ -48,7 +48,7 @@ test("provider drills into a patient and sees the provider-only Investigator tab
 });
 
 test("a patient's own session hides the provider-only Investigator tab but keeps the rest", async ({ page }) => {
-  await asPatient(page, "Pablo");
+  await asPatient(page, "Alex");
   // No provider controls.
   await expect(page.getByRole("button", { name: "Visibility", exact: true })).toHaveCount(0);
   // Investigator (Analysis + Study + Hypothesis + Exploration) is provider-only — none of its
@@ -73,7 +73,7 @@ test("a patient's own session hides the provider-only Investigator tab but keeps
 });
 
 test("the Visibility panel lists the configurable features", async ({ page }) => {
-  await providerInto(page, "Pablo");
+  await providerInto(page, "Alex");
   await page.locator(".account-trigger").click();
   await page.getByRole("menuitem", { name: "Visibility" }).click();
   const vis = page.locator(".vis");

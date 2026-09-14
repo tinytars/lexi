@@ -54,7 +54,7 @@ export default defineConfig({
     //
     //   vault-integrity  — the served ciphertext matches records/private (needs PASSPHRASE)
     //   vault-v2         — round-trips against the real committed org key (needs ORG_KEY_PASSPHRASE)
-    //   processed-store  — every Pablo source has a pre-fold processed artifact
+    //   processed-store  — every Alex source has a pre-fold processed artifact
     //   unit-systems     — every convertible analyte in the real vault is mapped or allow-listed
     //   vault-opacity    — no real served filename / dir / vault key embeds a real display name (G1),
     //                      no served blob opens as the roster (G8), every served blob is v2 (G10)

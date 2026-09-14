@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 
-// G1 — these two used to route `**/api/vault/pablo` by name. That silently did nothing for any other
+// G1 — these two used to route `**/api/vault/alex` by name. That silently did nothing for any other
 // client, which is the W64 trap again: a stub that cannot fire reads exactly like one that did. The
 // blob route is the only PUT under /api/vault (rotate, org-key, principals and recovery-envelope are
 // GET/POST/DELETE), so matching the id segment is precise, not a widening.
@@ -29,7 +29,7 @@ export async function stubChatHistory(page: Page) {
 
 /**
  * Accept every vault write and forget it. For specs that exercise an in-memory interaction and must
- * not touch the shared Pablo fixture.
+ * not touch the shared Alex fixture.
  */
 export async function stubVaultSave(page: Page) {
   await page.route(VAULT_BLOB, (route) =>

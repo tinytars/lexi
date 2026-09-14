@@ -2,7 +2,7 @@
 // src/lib/treatment-infer.ts) against attachments a treatment ALREADY has on file, for a treatment
 // that was hand-entered and never went through the app's Identify+Save flow. Exists because that
 // flow only runs from the browser (UnifiedTreatment.svelte) — there is no CLI/script path to it, and
-// a handful of Pablo's real treatments (e.g. N-Acetyl-L-Cysteine) have real label photos attached
+// a handful of Alex's real treatments (e.g. N-Acetyl-L-Cysteine) have real label photos attached
 // (added via the app) but were never actually identified against them.
 //
 // Mirrors UnifiedTreatment.svelte's medicine-scope save fan-out exactly (M-doseunit-relabel): every
@@ -16,7 +16,7 @@
 // pick up patientPlan's drift from the administration change and regen treatmentGroups/aiOnPlan etc.
 // at the leaf tier, cheap — no full core regen needed since patientPlan is a "source" node, not core).
 //
-//   npx tsx scripts/treatment-photo-extract.ts --client Pablo --name "N-Acetyl-L-Cysteine" \
+//   npx tsx scripts/treatment-photo-extract.ts --client Alex --name "N-Acetyl-L-Cysteine" \
 //     --key 85ed692a-image.jpg --key cbac0c37-image.jpg [--save]
 //
 // Without --save, prints the proposed extraction and the rows it would touch, and stops there.

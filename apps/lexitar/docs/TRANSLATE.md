@@ -10,7 +10,7 @@ Vocabulary first, because the two get conflated and the conflation has already c
 
 These three are **not interchangeable**, and each has been gated wrongly at least once:
 
-- Gating **Translate** on provider access (W62's first cut) meant a patient could write a note and
+- Gating **Translate** on provider access (an early design) meant a patient could write a note and
   get silence back — no reply, no error. Reverted.
 - Leaving **the sweep** ungated meant any signed-in patient's page load could fire six leaf
   Translates nobody asked for. Fixed in `e9a7e86`.
@@ -40,7 +40,7 @@ if (!force && (!stale.has(key) || node.inputs.some((k) => stale.has(k) && dagNod
 So: **anything you add to a node's input closure that can mark a computed ancestor stale will
 silence every leaf Translate downstream of it, until someone runs Translate all.**
 
-This is not hypothetical. W62 tried folding "pinned areas of query" into every node's input closure
+This is not hypothetical. An earlier design tried folding "pinned areas of query" into every node's input closure
 so that a pin would suggest a regeneration. Every computed ancestor went stale, and a single pin
 would have silenced every subsequent turn reply. It was reverted for exactly this reason — and no
 data migration could have saved it, since the *next* pin would re-break it. If you want something to
@@ -81,7 +81,7 @@ menu item) deliberately bypasses the two marked ⚑.
 
 9. The sweep iterates only `LEAF_REGEN_NODES` ([src/App.svelte:447](../src/App.svelte)) — six of them.
    A leaf outside that list is only ever reached by a deliberate save or menu click.
-10. `staleNodes` returns **empty** for a Finding carrying no `nodeHashes` (pre-W15b), so on such a
+10. `staleNodes` returns **empty** for a Finding carrying no `nodeHashes` (an older schema version), so on such a
     vault nothing is ever stale and the sweep never fires. Callers fall back to the monolithic
     `isFindingStale`.
 

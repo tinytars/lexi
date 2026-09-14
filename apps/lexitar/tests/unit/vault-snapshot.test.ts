@@ -8,27 +8,27 @@ import { snapshotIdFor, parseSnapshotId, idsToPrune } from "../../scripts/vault-
 
 describe("classifyKey", () => {
   it("classifies every key class storeKey() writes", () => {
-    expect(classifyKey("dev", "dev/data-pablo.enc")).toBe("vault");
+    expect(classifyKey("dev", "dev/data-alex.enc")).toBe("vault");
     expect(classifyKey("dev", "dev/data-8dafade9-9f33-426d-bb35-1f63ae168212.enc")).toBe("vault");
-    expect(classifyKey("dev", "dev/chat-liz.enc")).toBe("chat");
-    expect(classifyKey("dev", "dev/raw/liz/2025November17-imaging-37fe2b1b.pdf")).toBe("raw");
-    expect(classifyKey("dev", "dev/processed/pablo/0851c334.json")).toBe("processed");
+    expect(classifyKey("dev", "dev/chat-blair.enc")).toBe("chat");
+    expect(classifyKey("dev", "dev/raw/blair/2025November17-imaging-37fe2b1b.pdf")).toBe("raw");
+    expect(classifyKey("dev", "dev/processed/alex/0851c334.json")).toBe("processed");
     expect(classifyKey("dev", "dev/logs/refresh-finding/2026-07-15/a1b92036-1.json")).toBe("logs");
   });
 
   it("returns null for a key shape it has not been taught — the snapshot turns that into a hard failure", () => {
     expect(classifyKey("dev", "dev/something-new/x.json")).toBeNull();
-    expect(classifyKey("dev", "dev/data-pablo.txt")).toBeNull();
+    expect(classifyKey("dev", "dev/data-alex.txt")).toBeNull();
     expect(classifyKey("dev", "dev/raw/")).toBeNull();
   });
 
   it("refuses keys outside the store prefix, so one deploy's snapshot can never absorb another's", () => {
-    expect(classifyKey("dev", "prod/data-pablo.enc")).toBeNull();
+    expect(classifyKey("dev", "prod/data-alex.enc")).toBeNull();
     expect(classifyKey("dev", "data-nope.enc")).toBeNull();
   });
 
   it("does not treat a nested key as a top-level vault blob", () => {
-    expect(classifyKey("dev", "dev/raw/liz/data-x.enc")).toBe("raw");
+    expect(classifyKey("dev", "dev/raw/blair/data-x.enc")).toBe("raw");
   });
 });
 

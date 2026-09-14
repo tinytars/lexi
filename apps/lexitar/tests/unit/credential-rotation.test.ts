@@ -15,19 +15,19 @@ import {
 // rotation that half-lands takes a person's record away permanently. Nothing here touches D1 or R2 —
 // those are the shell. What is asserted is what the shell is told to do, and when it must refuse.
 
-const row = { accountId: "acct-liz", email: "liz@local.invalid", displayName: "Liz" };
+const row = { accountId: "acct-blair", email: "blair@local.invalid", displayName: "Blair" };
 
 describe("the values this repo itself documented", () => {
   it("offers the email local part and the display name, deduplicated", () => {
-    expect(weakCandidates({ email: "pablo@local.invalid", displayName: "Pablo" })).toEqual(["pablo"]);
-    expect(weakCandidates(row)).toEqual(["liz"]);
-    expect(weakCandidates({ email: "liz@local.invalid", displayName: "Dr. Reyes" })).toEqual(["liz", "dr. reyes"]);
+    expect(weakCandidates({ email: "alex@local.invalid", displayName: "Alex" })).toEqual(["alex"]);
+    expect(weakCandidates(row)).toEqual(["blair"]);
+    expect(weakCandidates({ email: "blair@local.invalid", displayName: "Dr. Reyes" })).toEqual(["blair", "dr. reyes"]);
   });
 
   it("prefixes recovery codes, because a recovery code wraps the same private key", () => {
     // If this returned the bare slug for --method recovery, an audit would report "ok" over the very
-    // `recover-liz` values AUTH.md tabulates, and the hole would stay exactly where it was.
-    expect(weakCandidates(row, "recovery")).toEqual(["recover-liz"]);
+    // `recover-blair` values AUTH.md tabulates, and the hole would stay exactly where it was.
+    expect(weakCandidates(row, "recovery")).toEqual(["recover-blair"]);
   });
 
   it("has nothing to offer for an account with neither an email nor a name", () => {
@@ -37,21 +37,21 @@ describe("the values this repo itself documented", () => {
 
 describe("naming an account", () => {
   it("accepts the full address, the account id, or the local part", () => {
-    expect(matchesSelector(row, ["liz@local.invalid"])).toBe(true);
-    expect(matchesSelector(row, ["acct-liz"])).toBe(true);
-    expect(matchesSelector(row, ["liz"])).toBe(true);
+    expect(matchesSelector(row, ["blair@local.invalid"])).toBe(true);
+    expect(matchesSelector(row, ["acct-blair"])).toBe(true);
+    expect(matchesSelector(row, ["blair"])).toBe(true);
   });
 
   it("does not match a different account, and does not match on an empty email", () => {
-    expect(matchesSelector(row, ["pablo"])).toBe(false);
+    expect(matchesSelector(row, ["alex"])).toBe(false);
     expect(matchesSelector({ accountId: "acct-x", email: null }, [""])).toBe(false);
   });
 });
 
 describe("the verdict on a rotation that has already been written", () => {
   const base: RotationOutcome = {
-    accountId: "acct-liz",
-    email: "liz@local.invalid",
+    accountId: "acct-blair",
+    email: "blair@local.invalid",
     expectedVaults: 2,
     oldPasswordStillWorks: false,
     access: [
@@ -120,27 +120,27 @@ describe("what the command refuses to do", () => {
   });
 
   it("reads --account repeatedly, lowercased, and takes the mint flag only under --apply", () => {
-    const a = parseRotateArgs(["--apply", "--account", "Liz@Local.Invalid", "--account", "pablo", "--mint-org-envelope"]);
-    expect(a).toMatchObject({ mode: "apply", selectors: ["liz@local.invalid", "pablo"], mintOrgEnvelope: true });
+    const a = parseRotateArgs(["--apply", "--account", "Blair@Local.Invalid", "--account", "alex", "--mint-org-envelope"]);
+    expect(a).toMatchObject({ mode: "apply", selectors: ["blair@local.invalid", "alex"], mintOrgEnvelope: true });
     expect(parseRotateArgs(["--mint-org-envelope"]).mintOrgEnvelope).toBe(false);
   });
 
   it("takes the current password only from the environment", () => {
-    expect(parseRotateArgs(["--apply", "--account", "liz"], { CURRENT_PASSWORD: "s3cret" }).supplied).toBe("s3cret");
+    expect(parseRotateArgs(["--apply", "--account", "blair"], { CURRENT_PASSWORD: "s3cret" }).supplied).toBe("s3cret");
     // Passing it as an argument must not work: argv is visible in `ps` and kept in shell history.
-    expect(parseRotateArgs(["--apply", "--account", "liz", "--current-password", "s3cret"]).supplied).toBeUndefined();
+    expect(parseRotateArgs(["--apply", "--account", "blair", "--current-password", "s3cret"]).supplied).toBeUndefined();
   });
 });
 
 describe("who a supplied password may be tried against", () => {
   it("applies it only to an explicitly named account", () => {
-    const args = parseRotateArgs(["--apply", "--account", "liz"], { CURRENT_PASSWORD: "s3cret" });
+    const args = parseRotateArgs(["--apply", "--account", "blair"], { CURRENT_PASSWORD: "s3cret" });
     expect(suppliedAppliesTo(row, args)).toBe(true);
     // Trying one holder's secret against every row turns it into an oracle over the whole table.
-    expect(suppliedAppliesTo({ accountId: "acct-pablo", email: "pablo@local.invalid" }, args)).toBe(false);
+    expect(suppliedAppliesTo({ accountId: "acct-alex", email: "alex@local.invalid" }, args)).toBe(false);
   });
 
   it("applies to nobody when none was supplied", () => {
-    expect(suppliedAppliesTo(row, parseRotateArgs(["--apply", "--account", "liz"]))).toBe(false);
+    expect(suppliedAppliesTo(row, parseRotateArgs(["--apply", "--account", "blair"]))).toBe(false);
   });
 });

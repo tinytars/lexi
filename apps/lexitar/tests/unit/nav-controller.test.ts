@@ -108,12 +108,12 @@ describe("createNavController.navigate", () => {
 describe("createNavController.applyNav", () => {
   it("only honours a client that resolves in the current vault", async () => {
     const { state, clients, nav } = makeHarness();
-    clients.add("liz");
-    await nav.applyNav({ tab: "chat", client: "liz" });
-    expect(state.selectedClientId).toBe("liz");
+    clients.add("blair");
+    await nav.applyNav({ tab: "chat", client: "blair" });
+    expect(state.selectedClientId).toBe("blair");
 
     await nav.applyNav({ tab: "chat", client: "ghost" });
-    expect(state.selectedClientId).toBe("liz");
+    expect(state.selectedClientId).toBe("blair");
   });
 
   it("awaits tick only when the tab actually changes", async () => {

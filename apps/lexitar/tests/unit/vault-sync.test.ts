@@ -51,15 +51,15 @@ describe("wranglerTarget", () => {
 
 describe("vault-sync key derivation", () => {
   it("keys by lowercased id as {store}/data-{id}.enc, matching the slice filename", () => {
-    expect(r2KeyFor("dev", "pablo")).toBe("dev/data-pablo.enc");
-    expect(r2KeyFor("dev", "Pablo")).toBe("dev/data-pablo.enc"); // CLI passes capitalized ids
-    expect(r2KeyFor("prod", "Liz")).toBe("prod/data-liz.enc");
+    expect(r2KeyFor("dev", "alex")).toBe("dev/data-alex.enc");
+    expect(r2KeyFor("dev", "Alex")).toBe("dev/data-alex.enc"); // CLI passes capitalized ids
+    expect(r2KeyFor("prod", "Blair")).toBe("prod/data-blair.enc");
   });
   it("raw key mirrors the on-disk records/private/{id}/raw layout, prefixed by store", () => {
-    expect(r2RawKeyFor("dev", "Pablo", "x-597cd4e7.pdf")).toBe("dev/raw/pablo/x-597cd4e7.pdf");
+    expect(r2RawKeyFor("dev", "Alex", "x-597cd4e7.pdf")).toBe("dev/raw/alex/x-597cd4e7.pdf");
   });
   it("refs the bucket this branch binds, and never a hardcoded one", () => {
-    expect(r2RefFor("dev", "Pablo")).toBe(`${declared.bucket}/dev/data-pablo.enc`);
+    expect(r2RefFor("dev", "Alex")).toBe(`${declared.bucket}/dev/data-alex.enc`);
   });
 });
 
@@ -82,22 +82,22 @@ describe("resolveStore", () => {
 
 describe("vault-sync wrangler arg arrays", () => {
   it("pull = r2 object get <ref> --remote --file <dest>", () => {
-    const a = pullArgs("dev", "Pablo", "/tmp/x.enc");
+    const a = pullArgs("dev", "Alex", "/tmp/x.enc");
     expect(a).toEqual([
       "wrangler", "r2", "object", "get",
-      `${declared.bucket}/dev/data-pablo.enc`,
+      `${declared.bucket}/dev/data-alex.enc`,
       "--remote", "--file", "/tmp/x.enc",
     ]);
   });
   it("push = r2 object put <ref> --remote --file <local slice>", () => {
-    const a = pushArgs("dev", "Liz");
+    const a = pushArgs("dev", "Blair");
     expect(a.slice(0, 6)).toEqual([
       "wrangler", "r2", "object", "put",
-      `${declared.bucket}/dev/data-liz.enc`,
+      `${declared.bucket}/dev/data-blair.enc`,
       "--remote",
     ]);
     expect(a[6]).toBe("--file");
-    expect(a[7]).toMatch(/records\/public\/data-liz\.enc$/);
+    expect(a[7]).toMatch(/records\/public\/data-blair\.enc$/);
   });
   it("--remote is present (without it wrangler hits a local sim bucket, not the cloud)", () => {
     expect(pullArgs("dev", "x", "/t")).toContain("--remote");

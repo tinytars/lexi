@@ -20,7 +20,7 @@ const LEAF_OWNED_SECTIONS = ["treatmentGroups", "studyResults", "noteResults", "
 
 const client = () =>
   ({
-    displayName: "Pablo",
+    displayName: "Alex",
     results: [],
     watchlist: [],
     factors: {

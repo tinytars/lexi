@@ -3,7 +3,7 @@ import * as XLSX from "xlsx";
 // W69 — a synthetic HealthMatters-shaped lab workbook, built in memory.
 //
 // `parse-source.test.ts` and `import-flow.test.ts` used to read a real 12-year blood panel out of
-// `records/private/pablo/raw/`. Neither is testing that patient: they are testing the xlsx parser and
+// `records/private/alex/raw/`. Neither is testing that patient: they are testing the xlsx parser and
 // the classify/dedup/fold spine, and the file is incidental to both. Reading it pinned two otherwise
 // clean tests to plaintext PHI, and through them the whole unit suite to a machine that has it.
 //

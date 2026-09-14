@@ -37,11 +37,11 @@ beforeEach(async () => {
 
 describe("recordOrgKeyUse / flushOrgKeyUses", () => {
   it("dedupes identical (clientId, purpose) pairs, keeping distinct purposes for the same client", async () => {
-    mockLookup([{ vault_id: "vault-liz", owner_account_id: "owner-liz", r2_key: "data-liz.enc" }]);
+    mockLookup([{ vault_id: "vault-blair", owner_account_id: "owner-blair", r2_key: "data-blair.enc" }]);
 
-    recordOrgKeyUse({ clientId: "liz", purpose: "restore-drill" });
-    recordOrgKeyUse({ clientId: "liz", purpose: "restore-drill" }); // duplicate — collapses
-    recordOrgKeyUse({ clientId: "liz", purpose: "ingest" });
+    recordOrgKeyUse({ clientId: "blair", purpose: "restore-drill" });
+    recordOrgKeyUse({ clientId: "blair", purpose: "restore-drill" }); // duplicate — collapses
+    recordOrgKeyUse({ clientId: "blair", purpose: "ingest" });
 
     await flushOrgKeyUses();
 
@@ -55,7 +55,7 @@ describe("recordOrgKeyUse / flushOrgKeyUses", () => {
 
   it("ORG_ACCESS_LOG=off skips the flush without touching wrangler", async () => {
     process.env.ORG_ACCESS_LOG = "off";
-    recordOrgKeyUse({ clientId: "pablo", purpose: "manual-decrypt" });
+    recordOrgKeyUse({ clientId: "alex", purpose: "manual-decrypt" });
 
     await flushOrgKeyUses();
 
@@ -76,9 +76,9 @@ describe("recordOrgKeyUse / flushOrgKeyUses", () => {
   });
 
   it("generates the expected INSERT SQL for a single buffered use", async () => {
-    mockLookup([{ vault_id: "vault-x", owner_account_id: "owner-x", r2_key: "data-pablo.enc" }]);
+    mockLookup([{ vault_id: "vault-x", owner_account_id: "owner-x", r2_key: "data-alex.enc" }]);
 
-    recordOrgKeyUse({ clientId: "pablo", purpose: "vault-verify" });
+    recordOrgKeyUse({ clientId: "alex", purpose: "vault-verify" });
     await flushOrgKeyUses();
 
     const insertCall = execFileSyncMock.mock.calls.find((c) => sqlArg(c).startsWith("INSERT"));

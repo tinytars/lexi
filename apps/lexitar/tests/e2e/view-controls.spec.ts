@@ -24,7 +24,7 @@ const cards = (page: Page) => page.locator(".markers-tab section.client-section 
 const groupRow = (page: Page, label: string) => page.locator(".sidebar .group-list .sub-item", { hasText: label });
 
 test("the Markers view is a single page with no mode or source selector", async ({ page }) => {
-  await openMarkers(page, "Pablo");
+  await openMarkers(page, "Alex");
   // `.markers-controls > *` toHaveCount(1) below is the complete statement of "no mode or source
   // selector" — it admits exactly one control. A separate `.view-toggle` line added nothing and
   // could not fail: that class went out with the mode selector it named.
@@ -44,7 +44,7 @@ test("the Markers view is a single page with no mode or source selector", async 
 // M74 removed the dedicated Watchlist option/section — starring now bubbles a marker within its
 // own Marker Levels group instead of duplicating it into a separate filterable section.
 test("the sidebar group rows narrow the page to one group at a time (M61 Part A)", async ({ page }) => {
-  await openMarkers(page, "Pablo");
+  await openMarkers(page, "Alex");
 
   await groupRow(page, "Ratios").click();
   await expect(page.locator(".marker-ratios-screen")).toBeVisible();
@@ -96,20 +96,20 @@ async function routeAccountPatch(page: Page, accountId: string, providerKind: st
 }
 
 test("US|Metric is an always-visible sidebar toggle that switches displayed units (mg/dL ↔ mmol/L)", async ({ page }) => {
-  const { getCaptured } = await routeAccountPatch(page, "pablo");
+  const { getCaptured } = await routeAccountPatch(page, "alex");
   await openPatient(page);
 
   const glucose = () => cards(page).filter({ has: page.getByText("Glucose", { exact: true }) }).first();
   const showGlucose = async () => {
     await clickNav(page, "Markers");
     await page.waitForSelector(".markers-tab", { timeout: 10_000 });
-    // Glucose is a real marker in Pablo's committed data, in the Metabolic Health group (M76 Phase 2 —
+    // Glucose is a real marker in Alex's committed data, in the Metabolic Health group (M76 Phase 2 —
     // single-group rendering means the right sidebar group must be selected first).
     await groupRow(page, "Metabolic Health").click();
     await page.locator(".markers-controls select.dropdown").first().selectOption({ label: "All time" });
   };
 
-  // Pablo's actual current preference decides the starting side — don't hardcode US-first,
+  // Alex's actual current preference decides the starting side — don't hardcode US-first,
   // just verify the toggle flips whichever way it starts.
   const unitToggle = page.locator(".sidebar .unit-toggle");
   const startsOnMetric = await unitToggle.getByRole("button", { name: "Metric" }).evaluate((el) => el.classList.contains("active"));
@@ -131,7 +131,7 @@ test("US|Metric is an always-visible sidebar toggle that switches displayed unit
 
 test("a provider's own unit toggle persists to their own account, independent of the patient (M93)", async ({ page }) => {
   const { getCaptured } = await routeAccountPatch(page, "provider", "clinician");
-  await openAsProvider(page, "Pablo");
+  await openAsProvider(page, "Alex");
 
   const unitToggle = page.locator(".sidebar .unit-toggle");
   const startsOnMetric = await unitToggle.getByRole("button", { name: "Metric" }).evaluate((el) => el.classList.contains("active"));
@@ -140,12 +140,12 @@ test("a provider's own unit toggle persists to their own account, independent of
   await unitToggle.getByRole("button", { name: targetLabel }).click();
   await expect.poll(() => getCaptured() !== null, { timeout: 10_000 }).toBe(true);
   // The PATCH persists to the signed-in provider's OWN account row (session.accountId) — never
-  // to Pablo's vault or account, so it can never collide with the sibling test's patient-side change.
+  // to Alex's vault or account, so it can never collide with the sibling test's patient-side change.
   expect(getCaptured()?.unitSystem).toBe(targetLabel === "Metric" ? "metric" : "imperial");
 });
 
 test("the time-window selector applies without losing the marker grid", async ({ page }) => {
-  await openMarkers(page, "Pablo");
+  await openMarkers(page, "Alex");
   await page.locator(".markers-controls select.dropdown").first().selectOption({ label: "All time" });
   await expect(cards(page).first()).toBeVisible();
 });
@@ -155,7 +155,7 @@ test("the time-window selector applies without losing the marker grid", async ({
 // page, and each marker whose readings all fall outside it says so on its own card instead of
 // pairing a current-looking value with a plot reading "no data in window".
 test("narrowing the window zooms every chart and hides no marker (W65)", async ({ page }) => {
-  await openMarkers(page, "Pablo");
+  await openMarkers(page, "Alex");
   const windowSelect = page.locator(".markers-controls select.dropdown").first();
   const emptyPlots = page.locator(".markers-tab svg text").filter({ hasText: "no data in window" });
   const stale = page.locator(".markers-tab .mc-badge.stale");
@@ -169,7 +169,7 @@ test("narrowing the window zooms every chart and hides no marker (W65)", async (
   await windowSelect.selectOption({ label: "3 months" });
   await expect(cards(page)).toHaveCount(allTime);
 
-  // Pablo's committed data spans 2019–2026, so the shortest window necessarily leaves some markers
+  // Alex's committed data spans 2019–2026, so the shortest window necessarily leaves some markers
   // with nothing to plot — and the card must SAY so rather than pair an empty plot with a
   // current-looking value. One badge per empty plot, exactly: a count that merely exceeds zero would
   // pass with a single badge among hundreds of silent cards.
@@ -188,11 +188,11 @@ test("narrowing the window zooms every chart and hides no marker (W65)", async (
 
 test("watchlisted markers carry a filled star, unpinned ratios a hollow one (W30/W36/M74)", async ({ page }) => {
   await stubVaultSave(page);
-  await openMarkers(page, "Pablo");
+  await openMarkers(page, "Alex");
   // M72 Phase 8 — the standalone star-btn was merged into LeafActionMenu's combined pin-slot.
   // M74 — the dedicated Watchlist block is gone; a watchlisted marker now renders once, in its
   // normal Marker Levels position, bubbled to the top of its group. "Apolipoprotein B" is a real
-  // entry in Pablo's committed client.watchlist, in the Cardiovascular Risk group (M76 Phase 2).
+  // entry in Alex's committed client.watchlist, in the Cardiovascular Risk group (M76 Phase 2).
   await groupRow(page, "Cardiovascular Risk").click();
   const watchStar = cards(page).filter({ hasText: "Apolipoprotein B" }).first().locator(".pin-star");
   await expect(watchStar).toHaveClass(/visible/);
@@ -201,7 +201,7 @@ test("watchlisted markers carry a filled star, unpinned ratios a hollow one (W30
   // Marker Levels and Ratios are separate groups under single-group rendering (M76 Phase 2).
   //
   // W78 — this used to read "none are pinned by default" and assert the first star was hollow.
-  // Pablo's vault carries a pinned ratio since the 2026-08-26 reconcile, so that stopped being
+  // Alex's vault carries a pinned ratio since the 2026-08-26 reconcile, so that stopped being
   // true. Selecting a row BY its hollow star would make the assertion true by construction, so
   // drive the row through both states instead and check the star follows: same property, no
   // dependence on what the vault happens to hold.
@@ -222,7 +222,7 @@ test("watchlisted markers carry a filled star, unpinned ratios a hollow one (W30
 });
 
 test("a marker's definition shows as 'What this is:' in the details panel (W30/M88)", async ({ page }) => {
-  await openMarkers(page, "Pablo");
+  await openMarkers(page, "Alex");
   await groupRow(page, "Cardiovascular Risk").click();
   const card = cards(page).filter({ hasText: "Apolipoprotein B" }).first();
   await clickLeafMenuItem(card, "Details");
@@ -232,8 +232,8 @@ test("a marker's definition shows as 'What this is:' in the details panel (W30/M
 });
 
 test("system groups combine sources — no Blood/Imaging sub-header even when a group spans both (M102)", async ({ page }) => {
-  await openMarkers(page, "Pablo");
-  // Cardiovascular Risk spans blood + imaging in Pablo's committed data. W30 used to split those
+  await openMarkers(page, "Alex");
+  // Cardiovascular Risk spans blood + imaging in Alex's committed data. W30 used to split those
   // into source sub-headers; M102 removed that split — every marker in the group now renders in
   // one flat, pinned/concern-ordered list.
   await groupRow(page, "Cardiovascular Risk").click();
@@ -246,7 +246,7 @@ test("system groups combine sources — no Blood/Imaging sub-header even when a 
 });
 
 test("the marker delta indicator renders for a longitudinal series", async ({ page }) => {
-  await openMarkers(page, "Pablo");
+  await openMarkers(page, "Alex");
   await page.locator(".markers-controls select.dropdown").first().selectOption({ label: "All time" });
   const delta = page.locator(".markers-tab .mc-delta").first();
   await expect(delta).toBeVisible();

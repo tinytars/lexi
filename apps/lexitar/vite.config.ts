@@ -14,7 +14,7 @@ import { decryptVault } from '../../packages/security/crypto'
 // writeFile(path, data) opens the destination in truncate mode ('w') and THEN streams the
 // content; if the process dies between the truncate and the flush (killed dev server, a crash,
 // two concurrent writes racing), the file is left at 0 bytes — exactly the corruption seen twice
-// on records/private/liz/vault.json with no reproducing command. rename() on the same filesystem
+// on records/private/blair/vault.json with no reproducing command. rename() on the same filesystem
 // is atomic on macOS/Linux: readers only ever see the old complete content or the new complete
 // content, never a truncated in-between.
 async function atomicWriteFile(path: string, data: Buffer | string): Promise<void> {

@@ -17,7 +17,7 @@ describe("flatMarkers", () => {
   // W65 — the decision the removed `windowYears` parameter records: the window is a per-chart zoom,
   // so a marker last measured years ago is still in the record and still listed. Reintroducing a
   // set filter (rather than a series filter) fails here, which is the point — at the default 1-year
-  // window it would have dropped 23 of Pablo's 372 markers on load while the sidebar listed all 372.
+  // window it would have dropped 23 of Alex's 372 markers on load while the sidebar listed all 372.
   it("lists a marker whose only reading predates any plausible window", () => {
     const c = client({
       results: [

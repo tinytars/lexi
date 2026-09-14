@@ -13,7 +13,7 @@ import { refreshFindingWithLeaves } from "../../src/lib/refresh-client";
 import { leafRegenOrder } from "../../src/lib/finding-refresh";
 
 const CORE = { disease: [], marker: "core" } as unknown as ClientFinding;
-const client = () => ({ displayName: "Pablo", results: [] }) as unknown as Client;
+const client = () => ({ displayName: "Alex", results: [] }) as unknown as Client;
 
 const generateCore = async () => CORE;
 
@@ -29,7 +29,7 @@ describe("refreshFindingWithLeaves", () => {
     const saved: number[] = [];
     const stages: string[] = [];
 
-    const { failures } = await refreshFindingWithLeaves(client(), "tok", "pablo", {
+    const { failures } = await refreshFindingWithLeaves(client(), "tok", "alex", {
       generateCore,
       onStage: (s) => { if (s.index > 0) stages.push(s.node!); },
       save: async () => { saved.push(1); },
@@ -49,7 +49,7 @@ describe("refreshFindingWithLeaves", () => {
     });
     vi.mocked(applyLeafRegen).mockImplementation(async (c) => c);
 
-    const { client: out, failures } = await refreshFindingWithLeaves(client(), "tok", "pablo", { generateCore });
+    const { client: out, failures } = await refreshFindingWithLeaves(client(), "tok", "alex", { generateCore });
 
     expect(failures.map((f) => f.node)).toEqual([order[1]]);
     expect(failures[0].message).toBe("rate limited");
@@ -62,7 +62,7 @@ describe("refreshFindingWithLeaves", () => {
 
   it("leaves an empty node untouched instead of merging nothing over it", async () => {
     vi.mocked(fetchLeafRegen).mockResolvedValue(null);
-    await refreshFindingWithLeaves(client(), "tok", "pablo", { generateCore });
+    await refreshFindingWithLeaves(client(), "tok", "alex", { generateCore });
     expect(applyLeafRegen).not.toHaveBeenCalled();
   });
 });

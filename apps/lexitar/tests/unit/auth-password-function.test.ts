@@ -111,7 +111,7 @@ describe("POST /api/auth/password/signup", () => {
   it("200s, persists account/vault/envelope rows, stores the R2 blob, sets a session cookie", async () => {
     const store = new Map<string, Uint8Array>();
     const env = makeEnv(store);
-    const { body } = await buildSignupBody("pablo@example.com", "Pablo", "hunter2");
+    const { body } = await buildSignupBody("alex@example.com", "Alex", "hunter2");
 
     const res = await signup({ request: postJson("http://x/api/auth/password/signup", body), env });
     expect(res.status).toBe(200);
@@ -119,7 +119,7 @@ describe("POST /api/auth/password/signup", () => {
 
     const { accountId, vaultId } = (await res.json()) as { accountId: string; vaultId: string };
 
-    const account = await getAccountByEmail(db, "pablo@example.com");
+    const account = await getAccountByEmail(db, "alex@example.com");
     expect(account?.id).toBe(accountId);
 
     const vaults = await listVaultsForOwner(db, accountId);
@@ -167,10 +167,10 @@ describe("POST /api/auth/password/login", () => {
   it("200s with the correct authHash, returns wrapped material, and rejects a wrong authHash", async () => {
     const store = new Map<string, Uint8Array>();
     const env = makeEnv(store);
-    const { body, authHash } = await buildSignupBody("liz@example.com", "Liz", "correct-horse");
+    const { body, authHash } = await buildSignupBody("blair@example.com", "Blair", "correct-horse");
     await signup({ request: postJson("http://x/s", body), env });
 
-    const ok = await login({ request: postJson("http://x/l", { email: "liz@example.com", authHash }), env });
+    const ok = await login({ request: postJson("http://x/l", { email: "blair@example.com", authHash }), env });
     expect(ok.status).toBe(200);
     expect(ok.headers.get("set-cookie")).toMatch(/^hd_session=/);
     const data = (await ok.json()) as {
@@ -182,7 +182,7 @@ describe("POST /api/auth/password/login", () => {
     expect(data.ownerEnvelope).toBeTruthy();
     expect(data.kdfParams.authHashSha256).toBeUndefined();
 
-    const bad = await login({ request: postJson("http://x/l", { email: "liz@example.com", authHash: "wrong-hash" }), env });
+    const bad = await login({ request: postJson("http://x/l", { email: "blair@example.com", authHash: "wrong-hash" }), env });
     expect(bad.status).toBe(401);
   });
 
@@ -201,7 +201,7 @@ describe("POST /api/auth/password/login", () => {
 
     it("answers a registered address and an unknown one indistinguishably", async () => {
       const env = makeEnv(new Map());
-      const real = await saltFor(env, "liz@example.com");
+      const real = await saltFor(env, "blair@example.com");
       const decoy = await saltFor(env, "nobody@example.com");
       expect(decoy.status).toBe(real.status);
       const a = (await real.json()) as { salt: string; iterations: number };

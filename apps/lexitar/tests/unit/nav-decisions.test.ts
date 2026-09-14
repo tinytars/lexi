@@ -32,13 +32,13 @@ describe("resolveNestedSection", () => {
 
 describe("decideHashSync", () => {
   it("pushes when client+tab (the coarse key) changes", () => {
-    const result = decideHashSync({ selectedClientId: "liz", activeTab: "reports" }, "pablo|reports");
-    expect(result).toEqual({ mode: "push", nextLastCoarse: "liz|reports" });
+    const result = decideHashSync({ selectedClientId: "blair", activeTab: "reports" }, "alex|reports");
+    expect(result).toEqual({ mode: "push", nextLastCoarse: "blair|reports" });
   });
 
   it("replaces when client+tab is unchanged, even if section differs", () => {
-    const result = decideHashSync({ selectedClientId: "liz", activeTab: "reports" }, "liz|reports");
-    expect(result).toEqual({ mode: "replace", nextLastCoarse: "liz|reports" });
+    const result = decideHashSync({ selectedClientId: "blair", activeTab: "reports" }, "blair|reports");
+    expect(result).toEqual({ mode: "replace", nextLastCoarse: "blair|reports" });
   });
 
   it("treats a null selectedClientId as its own coarse value", () => {

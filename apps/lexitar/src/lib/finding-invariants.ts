@@ -115,7 +115,7 @@ export function assembledFindingViolations(client: Client): string[] {
       if (!assessed.has(subject)) out.push(`planAssessmentRows: planned action "${label}" has no assessment`);
     }
   }
-  // The reverse direction, found by running this module against the live vault: Pablo's plan was
+  // The reverse direction, found by running this module against the live vault: Alex's plan was
   // refined from one "Mitochondrial stack" row into its four component supplements, and the old
   // assessment rows survived. aiOnPlan's checkAgainstInput rejects a fabricated action at GENERATION
   // time, but nothing ever revisits a row that was valid when written and stopped being so — it keeps

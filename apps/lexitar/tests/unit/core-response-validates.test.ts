@@ -140,7 +140,7 @@ describe("validate accepts a core-only response WITH expected inputs", () => {
   });
 
   it("does not demand plan actions be assessed in an absent planAssessmentRows", () => {
-    // Pablo has five planned treatments, so this is the rule that would have failed the next run.
+    // Alex has five planned treatments, so this is the rule that would have failed the next run.
     expect(() => validateFindingWithInputs(coreOnlyResponse() as never, expected)).not.toThrow();
   });
 

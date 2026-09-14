@@ -69,8 +69,8 @@ describe("a conversation that cannot be opened is not overwritten", () => {
     server.etag = "e0";
     const putsBefore = server.puts;
 
-    expect(await loadThreads("Pablo", dek)).toBeNull(); // opens fresh, as it should
-    await expect(saveThreads(threads("mine"), "Pablo", dek)).rejects.toThrow(/not overwriting/i);
+    expect(await loadThreads("Alex", dek)).toBeNull(); // opens fresh, as it should
+    await expect(saveThreads(threads("mine"), "Alex", dek)).rejects.toThrow(/not overwriting/i);
     expect(server.puts).toBe(putsBefore);
 
     // And the original is still there, still openable by whoever holds the right key.
@@ -81,38 +81,38 @@ describe("a conversation that cannot be opened is not overwritten", () => {
     const server = fakeServer();
     server.blob = await encryptVaultV2({ threads: threads("theirs") }, other);
     server.etag = "e0";
-    expect(await loadThreads("Pablo", dek)).toBeNull();
-    await expect(saveThreads(threads("mine"), "Pablo", dek)).rejects.toThrow();
+    expect(await loadThreads("Alex", dek)).toBeNull();
+    await expect(saveThreads(threads("mine"), "Alex", dek)).rejects.toThrow();
 
     // A later load with the correct key clears the block — the refusal is about THIS blob, not a
     // permanent state the tab can never leave.
-    expect((await loadThreads("Pablo", other))![0].title).toBe("theirs");
-    await expect(saveThreads(threads("mine"), "Pablo", other)).resolves.toBeUndefined();
+    expect((await loadThreads("Alex", other))![0].title).toBe("theirs");
+    await expect(saveThreads(threads("mine"), "Alex", other)).resolves.toBeUndefined();
   });
 
   it("a client that has genuinely never saved still starts fresh and saves", async () => {
     fakeServer();
-    expect(await loadThreads("Pablo", dek)).toBeNull();
-    await expect(saveThreads(threads("first"), "Pablo", dek)).resolves.toBeUndefined();
+    expect(await loadThreads("Alex", dek)).toBeNull();
+    await expect(saveThreads(threads("first"), "Alex", dek)).resolves.toBeUndefined();
   });
 });
 
 describe("two tabs cannot silently overwrite each other", () => {
   it("round-trips through the etag the server handed back", async () => {
     fakeServer();
-    await saveThreads(threads("one"), "Pablo", dek);
-    await saveThreads(threads("two"), "Pablo", dek); // uses the etag from the first save
-    expect((await loadThreads("Pablo", dek))![0].title).toBe("two");
+    await saveThreads(threads("one"), "Alex", dek);
+    await saveThreads(threads("two"), "Alex", dek); // uses the etag from the first save
+    expect((await loadThreads("Alex", dek))![0].title).toBe("two");
   });
 
   it("the second tab is refused rather than allowed to discard the first tab's write", async () => {
     const server = fakeServer();
-    await saveThreads(threads("tab A"), "Pablo", dek);
+    await saveThreads(threads("tab A"), "Alex", dek);
     const winner = server.blob;
 
     // Tab B never read the blob, so it has no token: it must claim create-only and lose.
     const fresh = await tab();
-    await expect(fresh.saveThreads(threads("tab B"), "Pablo", dek)).rejects.toThrow(/another tab/i);
+    await expect(fresh.saveThreads(threads("tab B"), "Alex", dek)).rejects.toThrow(/another tab/i);
     expect(server.blob).toBe(winner);
   });
 });

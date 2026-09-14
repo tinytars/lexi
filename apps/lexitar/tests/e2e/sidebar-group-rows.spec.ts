@@ -161,7 +161,7 @@ test("Notes offers Pin but no Rename — free text has no title field to rename"
 // The name also claimed more than the body checked: there was no reload, so nothing about
 // persistence was exercised. There is one now.
 test("Study offers inline Rename from the sidebar row, and it persists", async ({ page }) => {
-  await openAsProvider(page, "Pablo");
+  await openAsProvider(page, "Alex");
   await clickNav(page, "Study");
 
   const rows = () => page.locator(".sidebar .group-children .leaf-list .side-row");
@@ -191,7 +191,7 @@ test("Study offers inline Rename from the sidebar row, and it persists", async (
     // fails, so it is really reading back what was saved.
     await page.reload();
     await page.waitForSelector(".roster-list");
-    await page.click('.roster-name:has-text("Pablo")');
+    await page.click('.roster-name:has-text("Alex")');
     await clickNav(page, "Study");
     await expect(page.locator(".sidebar .group-children .leaf-list .sub-item", { hasText: renamed })).toBeVisible();
   } finally {
@@ -221,7 +221,7 @@ test("Hypothesis has an All row spanning every system, and its patient ideas pin
   // Two gaps the owner caught: Hypothesis had no All row at all, and its rows are keyed
   // positionally (topic+side+index, which is what the anchor needs) so a pin addressed an id
   // matching no record and silently did nothing.
-  await openAsProvider(page, "Pablo");
+  await openAsProvider(page, "Alex");
   await clickNav(page, "Hypothesis");
   const rows = await openAllRow(page);
 
@@ -251,7 +251,7 @@ test("Hypothesis has an All row spanning every system, and its patient ideas pin
   await expect.poll(wasCaptured, { timeout: 10_000 }).toBe(true);
   await page.reload({ waitUntil: "networkidle" });
   await page.waitForSelector(".roster-list", { timeout: 15_000 });
-  await page.locator(".roster-name", { hasText: "Pablo" }).click();
+  await page.locator(".roster-name", { hasText: "Alex" }).click();
   await page.waitForSelector(".sidebar .nav-item", { timeout: 10_000 });
   await clickNav(page, "Hypothesis");
   await openAllRow(page);

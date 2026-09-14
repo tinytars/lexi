@@ -26,7 +26,7 @@ const fullBasis = () => Object.fromEntries(BASIS_KEYS.map((k) => [k, "Based on u
 /** A Finding shaped like a real post-merge one: three phases of one drug, all nine leaf sections. */
 function assembled(): Client {
   return {
-    displayName: "Pablo",
+    displayName: "Alex",
     dob: "1980-01-01",
     gender: "male",
     watchlist: [],
@@ -138,7 +138,7 @@ describe("each rule catches its own corruption", () => {
     ]);
   });
 
-  // Found by running this module against the live vault, not invented: two of Pablo's assessment rows
+  // Found by running this module against the live vault, not invented: two of Alex's assessment rows
   // named a "Mitochondrial stack" that had since been split into four component supplements.
   it("4 — an assessment row for an action that is no longer planned", () => {
     const c = assembled();

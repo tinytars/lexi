@@ -110,13 +110,13 @@ describe("a stranger cannot reach another patient's namespace", () => {
     ["GET /api/chat-history", getChat],
     ["PUT /api/chat-history", putChat],
   ])("%s is refused", async (_label, call) => {
-    const p = await patient("pablo");
+    const p = await patient("alex");
     const s = await stranger();
     expect((await call(s.id, p.slug)).status).toBe(404);
   });
 
   it("404, not 403 — a 403 would confirm the object exists", async () => {
-    const p = await patient("pablo");
+    const p = await patient("alex");
     const s = await stranger();
     const denied = await getRaw(s.id, p.slug);
     const absent = await getRaw(s.id, "no-such-client");
@@ -150,7 +150,7 @@ describe("a stranger cannot reach another patient's namespace", () => {
   });
 
   it("cannot delete it either — the file is still there afterwards", async () => {
-    const p = await patient("pablo");
+    const p = await patient("alex");
     const s = await stranger();
     await deleteRaw(s.id, p.slug);
     expect(await bucket.get(`${STORE}/raw/${p.slug}/report.pdf`)).not.toBeNull();
@@ -159,7 +159,7 @@ describe("a stranger cannot reach another patient's namespace", () => {
   it("cannot overwrite into it, and does not become its owner by trying", async () => {
     // Namespace squatting: without a PREFIX check an attacker could PUT a brand-new filename into
     // someone else's folder, become its first writer under `INSERT OR IGNORE`, and own a key inside it.
-    const p = await patient("pablo");
+    const p = await patient("alex");
     const s = await stranger();
     expect((await putRaw(s.id, p.slug, "squat.pdf")).status).toBe(404);
     expect(await bucket.get(`${STORE}/raw/${p.slug}/squat.pdf`)).toBeNull();
@@ -169,7 +169,7 @@ describe("a stranger cannot reach another patient's namespace", () => {
   it("cannot read another patient's EXTRACTED TEXT, which was the cheapest oracle of the lot", async () => {
     // document-extract's cache branch answered before it ever touched raw/, so a cross-tenant read of
     // someone's plaintext cost nothing and billed nothing.
-    const p = await patient("pablo");
+    const p = await patient("alex");
     const s = await stranger();
     const res = await getText(s.id, p.slug);
     expect(res.status).toBe(404);
@@ -183,12 +183,12 @@ describe("the owner still has full access", () => {
     ["GET /api/document-extract", getText, 200],
     ["PUT /api/chat-history", putChat, 204],
   ])("%s works", async (_label, call, expected) => {
-    const p = await patient("pablo");
+    const p = await patient("alex");
     expect((await call(p.id, p.slug)).status).toBe(expected);
   });
 
   it("can still upload into their own namespace", async () => {
-    const p = await patient("pablo");
+    const p = await patient("alex");
     expect((await putRaw(p.id, p.slug, "another.pdf")).status).toBe(204);
   });
 });
@@ -198,14 +198,14 @@ describe("a clinician with a live grant still reaches their patient's files", ()
   // exactly their envelope, decided by getEnvelope — the same accessor the vault route uses, so link
   // expiry is not re-implemented here.
   it("reads the original and the extracted text", async () => {
-    const p = await patient("pablo");
+    const p = await patient("alex");
     const doc = await clinicianFor(p);
     expect((await getRaw(doc.id, p.slug)).status).toBe(200);
     expect((await getText(doc.id, p.slug)).status).toBe(200);
   });
 
   it("loses that access when the link is revoked", async () => {
-    const p = await patient("pablo");
+    const p = await patient("alex");
     const doc = await clinicianFor(p, { status: "revoked" });
     expect((await getRaw(doc.id, p.slug)).status).toBe(404);
   });
@@ -218,7 +218,7 @@ describe("write ORDER does not decide who is locked out", () => {
   // NOT the patient — a clinician drilled in on their behalf uploads a report first. Checking only
   // "can the caller read the recorded owner's vault" then denies the PATIENT their own files.
   it("a patient still reaches files their clinician uploaded first", async () => {
-    const p = await patient("pablo");
+    const p = await patient("alex");
     const doc = await clinicianFor(p);
 
     // Wipe the seeded ownership so the clinician genuinely claims the namespace first.
@@ -232,7 +232,7 @@ describe("write ORDER does not decide who is locked out", () => {
   });
 
   it("but a stranger is still refused, whichever way round the relationship is missing", async () => {
-    const p = await patient("pablo");
+    const p = await patient("alex");
     const doc = await clinicianFor(p);
     await db.prepare("DELETE FROM raw_objects WHERE account_id = ?").bind(p.id).run();
     await putRaw(doc.id, p.slug, "from-clinic.pdf");
@@ -241,7 +241,7 @@ describe("write ORDER does not decide who is locked out", () => {
   });
 
   it("and a revoked link closes it in that direction too", async () => {
-    const p = await patient("pablo");
+    const p = await patient("alex");
     const doc = await clinicianFor(p, { status: "revoked" });
     await db.prepare("DELETE FROM raw_objects WHERE account_id = ?").bind(p.id).run();
     // The clinician cannot even claim it — a revoked link is not access in either direction.
@@ -253,11 +253,11 @@ describe("write ORDER does not decide who is locked out", () => {
 describe("two patients no longer share a namespace by having the same client name", () => {
   it("keeps them apart even when the slug collides", async () => {
     // The collision the display-name namespace always allowed: two accounts each with a client called
-    // "pablo" wrote into the same folder. The first writer now owns it and the second is refused.
-    const first = await patient("pablo");
+    // "alex" wrote into the same folder. The first writer now owns it and the second is refused.
+    const first = await patient("alex");
     const second = await stranger();
-    expect((await putRaw(second.id, "pablo", "theirs.pdf")).status).toBe(404);
-    expect(await rawAccessFor(db, { STORE_PREFIX: STORE }, second.id, "pablo")).toMatchObject({ kind: "denied", ownerAccountId: first.id });
+    expect((await putRaw(second.id, "alex", "theirs.pdf")).status).toBe(404);
+    expect(await rawAccessFor(db, { STORE_PREFIX: STORE }, second.id, "alex")).toMatchObject({ kind: "denied", ownerAccountId: first.id });
   });
 });
 
@@ -306,7 +306,7 @@ describe("an unclaimed namespace is readable but NOT destroyable (W75)", () => {
 
 describe("deleting an original releases its ownership row", () => {
   it("does not leave an orphan that erasure would count forever", async () => {
-    const p = await patient("pablo");
+    const p = await patient("alex");
     expect((await deleteRaw(p.id, p.slug)).status).toBe(200);
     const rows = await listRawObjectsForAccount(db, p.id);
     expect(rows).not.toContain(`${STORE}/raw/${p.slug}/report.pdf`);

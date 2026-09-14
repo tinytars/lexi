@@ -8,7 +8,7 @@ import { atomicWriteFile, atomicWriteJson } from "../../scripts/atomic-write";
 // The failure this guards is not "a write produced wrong content", it is "a write destroyed good PHI
 // and left nothing" — so every assertion here checks that the PREVIOUS content survived.
 
-const GOOD = '{\n  "clients": {\n    "liz": 1\n  }\n}\n';
+const GOOD = '{\n  "clients": {\n    "blair": 1\n  }\n}\n';
 
 async function fixture() {
   const dir = await mkdtemp(resolve(tmpdir(), "atomic-write-"));
@@ -34,8 +34,8 @@ describe("atomicWriteFile / atomicWriteJson (W59)", () => {
 
   it("writes valid content and leaves no temp file behind", async () => {
     const { dir, path } = await fixture();
-    await atomicWriteJson(path, { clients: { liz: 2 } });
-    expect(JSON.parse(await readFile(path, "utf8")).clients.liz).toBe(2);
+    await atomicWriteJson(path, { clients: { blair: 2 } });
+    expect(JSON.parse(await readFile(path, "utf8")).clients.blair).toBe(2);
     expect((await readdir(dir)).filter((f) => f.includes(".tmp-"))).toEqual([]);
   });
 
@@ -50,13 +50,13 @@ describe("atomicWriteFile / atomicWriteJson (W59)", () => {
   });
 
   it("a large payload round-trips (the 512 KB mid-write boundary case)", async () => {
-    // pablo/vault.json is ~654 KB and was once found truncated at exactly 524288 bytes (512x1024) —
+    // alex/vault.json is ~654 KB and was once found truncated at exactly 524288 bytes (512x1024) —
     // a chunk boundary of an interrupted streaming write. A payload spanning that boundary must land
     // whole or not at all.
     const { path } = await fixture();
-    const big = { clients: { liz: "x".repeat(700 * 1024) } };
+    const big = { clients: { blair: "x".repeat(700 * 1024) } };
     await atomicWriteJson(path, big);
     const back = JSON.parse(await readFile(path, "utf8"));
-    expect(back.clients.liz.length).toBe(700 * 1024);
+    expect(back.clients.blair.length).toBe(700 * 1024);
   });
 });

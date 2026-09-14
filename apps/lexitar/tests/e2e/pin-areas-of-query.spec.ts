@@ -10,7 +10,7 @@ import { interceptVaultSave } from "./_stubs";
 // the star survives a real save/reload, and the app SAYS that a pin steers the inference.
 
 async function drillToNotes(page: Page) {
-  await page.locator(".roster-name", { hasText: "Pablo" }).click();
+  await page.locator(".roster-name", { hasText: "Alex" }).click();
   await page.waitForSelector(".sidebar .nav-item", { timeout: 10_000 });
   await clickNav(page, "Notes");
   await page.waitForSelector(".sidebar .group-list", { timeout: 10_000 });

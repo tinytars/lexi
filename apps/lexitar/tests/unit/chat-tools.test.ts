@@ -8,7 +8,7 @@ function r(marker: string, date: string, value: number, unit = "mg/dL"): MarkerR
 
 function client(): Client {
   return {
-    displayName: "Pablo",
+    displayName: "Alex",
     dob: "1980-01-01",
     gender: "male",
     watchlist: [],

@@ -1,6 +1,6 @@
 // One-time backfill: force-regen every currently-stale sweepable leaf for a client whose
 // finding.nodeHashes predate a treatment-data change large enough to stale it. The "never three
-// turns" milestone's Step 5 walkthrough gave 22 of Pablo's treatments real administration/
+// turns" milestone's Step 5 walkthrough gave 22 of Alex's treatments real administration/
 // ingredients data for the first time via the app's own Identify flow. That staled treatmentGroups
 // (its patientPlan input folds in productCanonical()) — the original reason this script exists —
 // but a later, legitimate step in the same walkthrough (re-extracting the treatments themselves)
@@ -9,7 +9,7 @@
 // of them, because the code path that now does that automatically (UnifiedTreatment.svelte's save,
 // on an administration unit change) never re-ran on those already-completed rows.
 //
-// Left stale, every e2e spec that opens Pablo as a provider fires the unprompted background
+// Left stale, every e2e spec that opens Alex as a provider fires the unprompted background
 // sweep() (leaf-regen-queue.svelte.ts), which is unmocked in most specs — a real Anthropic call
 // against the shared wrangler pages dev server on every such test, which is what turned into
 // widespread e2e timeouts/workerd crashes across unrelated specs sharing that server.
@@ -33,11 +33,11 @@
 // from the plaintext, not written by the merges above, so skipping it leaves vault:verify (and the
 // app's own decrypt) seeing stale data regardless of what the plaintext now says.
 //
-//   npx tsx scripts/treatment-groups-backfill.ts --client Pablo [--dry-run] [--no-sync]
-//   npx tsx scripts/treatment-groups-backfill.ts --client Pablo --rebuild-enc-only   # recovery:
+//   npx tsx scripts/treatment-groups-backfill.ts --client Alex [--dry-run] [--no-sync]
+//   npx tsx scripts/treatment-groups-backfill.ts --client Alex --rebuild-enc-only   # recovery:
 //     plaintext already has the fix (e.g. a prior run's vault:build step was missing) — just
 //     re-derive and push the .enc, without re-billing Anthropic.
-//   npx tsx scripts/treatment-groups-backfill.ts --client Pablo --diagnose treatmentAssessment \
+//   npx tsx scripts/treatment-groups-backfill.ts --client Alex --diagnose treatmentAssessment \
 //     --target-labels "Fish Oil"
 //     Read-only: makes ONE real runLeafRegen call, scoped exactly like the browser's own dose-edit
 //     trigger (leafContextFor + targetLabels), and prints the raw outcome. Does not pull, merge,

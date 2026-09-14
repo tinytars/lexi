@@ -13,7 +13,7 @@
 //   npm run roster:rotate            # --check (default): report, write NOTHING
 //   npm run roster:rotate -- --apply
 //
-// --apply writes the new value into the plover-context credentials file beside its siblings. It is
+// --apply writes the new value into the operator's private credentials file beside its siblings. It is
 // never printed: a rotation that echoes the secret into a terminal, a log or a transcript has moved
 // the exposure rather than closed it. Set the GitHub Actions secret from that file afterwards.
 
@@ -70,7 +70,7 @@ async function pushSecret(): Promise<void> {
   if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
     value = value.slice(1, -1);
   }
-  const child = execFile("gh", ["secret", "set", "ROSTER_PASS", "--repo", "pablo-tech/plover-code"]);
+  const child = execFile("gh", ["secret", "set", "ROSTER_PASS", "--repo", "tinytars/lexi"]);
   child.stdin!.end(value);
   await new Promise<void>((ok, fail) =>
     child.on("close", (code) => (code === 0 ? ok() : fail(new Error(`gh secret set exited ${code}`)))),
@@ -82,7 +82,7 @@ async function main(): Promise<void> {
   if (process.argv.includes("--push-secret")) return pushSecret();
   const apply = process.argv.includes("--apply");
   const current = rosterPassFromEnv();
-  if (!current) throw new Error("no current roster passphrase — source the plover-context health-dash.env");
+  if (!current) throw new Error("no current roster passphrase — source the operator's private health-dash.env");
 
   // Prove the blob opens before touching anything, and that it is what we think it is.
   const roster = await decryptVault<Roster>(new Uint8Array(readFileSync(DATA_PATH)), current);

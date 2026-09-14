@@ -1,6 +1,6 @@
 # DPGA.md — Digital Public Goods Alliance: what it is & how LexiTar gets certified
 
-**Created:** 2026-07-11 · **Folder:** `apps/health-dash-web/`
+**Created:** 2026-07-11 · **Folder:** `apps/lexitar/`
 **Why this doc:** LexiTar's positioning (`../BRANDING.md` §1) and its funding strategy — kept with the Foundation's records, not in this repo — both hinge on LexiTar being **developed as a Digital Public Good (DPG)** and the Tiny Tars Foundation **pursuing DPGA registration**. This doc explains what that means and the concrete path to it.
 
 > **Claim discipline (`../BRANDING.md` §1):** say LexiTar is **"developed as a Digital Public Good."** Do **not** say "certified," "DPG-certified," or "certified-ready" until the Foundation has actually submitted a DPGA application. Once submitted, LexiTar is a **"nominee"**; only after full review is it a **recognized DPG**.
@@ -41,10 +41,10 @@ A **Digital Public Good** is open-source software, open data, an open AI system,
 | 3 | **Clear Ownership** | 🟡 Tiny Tars Foundation owns it, but the LLC↔charity IP split isn't formalized | Document ownership + the license/service arrangement (LLC keeps enterprise-integration sales; utility stays open) |
 | 4 | **Platform Independence** | 🟡 Runs on Cloudflare + depends on a proprietary LLM (Anthropic) | Show core function isn't locked to one closed platform; document the model dependency (and any open-model fallback) — the AI dependency is the nuance to address |
 | 5 | **Documentation** | 🟡 Internal docs exist; not public/DPG-grade | Publish technical + user docs (install, API, contribution guide) |
-| 6 | **Non-PII Data Extraction** (export in a non-proprietary format) | ✅ **Likely already satisfied** — `src/lib/export.ts` ships CSV (`exportCsv`) and a structured JSON dump (`exportJson`) through `ExportTab.svelte`. The indicator asks for *a* non-proprietary format, not specifically FHIR (verified 2026-08-22, doc `cross-app/11`) | Document the existing CSV/JSON export as the evidence. FHIR remains a nice-to-have for Indicator 8, **not a blocker here** |
-| 7 | **Privacy & Applicable Laws** | 🟡 **Downgraded 2026-08-24; the engineering half closed 2026-08-25.** Six mandatory sub-requirements: data minimization, consent mechanisms, a *published* privacy policy, **deletion mechanisms**, retention transparency, governance/access-control docs. **Deletion now exists** — `POST /api/account/erase` (W72), with an access-control policy that can be read in one place (`functions/_lib/capabilities.ts`). The remaining five are documentation, not code, and the honest caveat is that erasure reports itself `complete: false` for objects written before migration 0008 | Publish `/privacy`; document the other four; close the pre-0008 raw-object gap (`SECURITY.md` gap 1) so erasure is unconditionally complete |
+| 6 | **Non-PII Data Extraction** (export in a non-proprietary format) | ✅ **Likely already satisfied** — `src/lib/export.ts` ships CSV (`exportCsv`) and a structured JSON dump (`exportJson`) through `ExportTab.svelte`. The indicator asks for *a* non-proprietary format, not specifically FHIR | Document the existing CSV/JSON export as the evidence. FHIR remains a nice-to-have for Indicator 8, **not a blocker here** |
+| 7 | **Privacy & Applicable Laws** | 🟡 **Downgraded 2026-08-24; the engineering half closed 2026-08-25.** Six mandatory sub-requirements: data minimization, consent mechanisms, a *published* privacy policy, **deletion mechanisms**, retention transparency, governance/access-control docs. **Deletion now exists** — `POST /api/account/erase`, with an access-control policy that can be read in one place (`functions/_lib/capabilities.ts`). The remaining five are documentation, not code, and the honest caveat is that erasure reports itself `complete: false` for objects written before migration 0008 | Publish `/privacy`; document the other four; close the pre-0008 raw-object gap (`SECURITY.md` gap 1) so erasure is unconditionally complete |
 | 8 | **Open Standards & Best Practices** | ✅ **Already satisfied by shipped mechanisms** — WebAuthn/FIDO2 (passkeys, live), NIST-standard AES-GCM-256 and PBKDF2-SHA256, ECDH-ES over P-256, HMAC-SHA256, all via WebCrypto | Cite these rather than blocking on FHIR. See `SECURITY.md` §Cryptographic choices |
-| 9A | **Do No Harm — Data Privacy & Security** | 🟡 **Same six sub-requirements as Indicator 7; deletion closed 2026-08-25.** The architecture is strong and written down (`SECURITY.md`), *including* the authorisation gaps that remain open — `/api/raw` is authenticated but not authorised, and `chat-history` PUT is unscoped. W72 built the missing primitive for the first (`raw_objects` ownership rows) without yet enforcing it on reads | `SECURITY.md` is the architecture document; the two named gaps must close before an application, not after |
+| 9A | **Do No Harm — Data Privacy & Security** | 🟡 **Same six sub-requirements as Indicator 7; deletion closed 2026-08-25.** The architecture is strong and written down (`SECURITY.md`), *including* the authorisation gaps that remain open — `/api/raw` is authenticated but not authorised, and `chat-history` PUT is unscoped. The missing primitive for the first has been built (`raw_objects` ownership rows) without yet enforcing it on reads | `SECURITY.md` is the architecture document; the two named gaps must close before an application, not after |
 | 9B | **Do No Harm — Inappropriate/Illegal Content** | 🟡 LexiTar generates health explanations | Document the **education-not-medicine, fail-closed, no-diagnosis** safeguards (`BRANDING.md` §1/§7) as the content-harm control |
 | 9C | **Do No Harm — Protection from Harassment** | ✅ Effectively N/A — single-user self-service, no user-to-user/social surface | Note N/A with rationale |
 
@@ -73,9 +73,9 @@ Support / questions: `support@digitalpublicgoods.net`. Detailed evaluation crite
 
 ---
 
-## 5b. Verified status, 2026-08-24 (W72)
+## 5b. Verified status, 2026-08-24
 
-Re-checked against the code rather than against the previous row, per `docs/cross-app/11`:
+Re-checked against the code rather than against the previous row:
 
 - **Indicator 6 moves from "once FHIR ships" to "likely already satisfied."** CSV and JSON export
   exist and ship today. This was a self-inflicted blocker: the indicator never required FHIR.
@@ -84,10 +84,10 @@ Re-checked against the code rather than against the previous row, per `docs/cros
   six sub-requirements were not previously cross-walked, and one of them — a deletion mechanism —
   does not exist. Marking these green would have failed an assessor's first check.
 - **Indicator 5** now has `SECURITY.md`, `LINTING.md` and `ARCHITECTURE.md` in-repo; the public-grade
-  README/CONTRIBUTING set follows the split (`cross-app/06` and `10` Phase B).
+  README/CONTRIBUTING set followed from open-sourcing the repo.
 
 Net: two indicators cheaper than believed, two more honest than believed, one unchanged blocker
-(Indicator 2, open licensing, which only executing 06/10 closes).
+(Indicator 2, open licensing, which only the open-source release itself closes).
 
 ## 6. Next actions
 - [ ] Run the **free eligibility test** to get an official readiness read against the 9 indicators.

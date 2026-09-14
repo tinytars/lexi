@@ -28,7 +28,7 @@ const SHEET_RESULT = {
 
 test("Treatment: From text extracts a product sheet into description/ingredients/links, without touching the dose", async ({ page }) => {
   page.on("dialog", (d) => d.accept());
-  await openAsProvider(page, "Pablo");
+  await openAsProvider(page, "Alex");
   await clickNav(page, "Treatment");
 
   const marker = `Thyroid Support ${Date.now()}`;
@@ -98,7 +98,7 @@ const TINY_PNG = Buffer.from(
 // so a later PHI review can always find the original next to what LexiTar read off it.
 test("Treatment: From photos persists the raw capture alongside the extraction", async ({ page }) => {
   page.on("dialog", (d) => d.accept());
-  await openAsProvider(page, "Pablo");
+  await openAsProvider(page, "Alex");
   await clickNav(page, "Treatment");
 
   const marker = `Bottle Product ${Date.now()}`;
@@ -136,7 +136,7 @@ test("Treatment: From photos persists the raw capture alongside the extraction",
 // No "Manual" option: a brand-new treatment's ONLY entry point is a capture. Nothing else in the
 // modal — not the fields, not a way to Save — is reachable until an extraction succeeds.
 test("Treatment: a fresh Add shows nothing but capture until an extraction succeeds", async ({ page }) => {
-  await openAsProvider(page, "Pablo");
+  await openAsProvider(page, "Alex");
   await clickNav(page, "Treatment");
 
   await page.getByTitle("Add treatment").click();
@@ -159,7 +159,7 @@ test("Treatment: a fresh Add shows nothing but capture until an extraction succe
 // "2 softgel/day" means nothing to an ER doctor; "1000mg/day EPA" does.
 test("Treatment: administration locks Unit and computes a Daily total from the patient's own quantity", async ({ page }) => {
   page.on("dialog", (d) => d.accept());
-  await openAsProvider(page, "Pablo");
+  await openAsProvider(page, "Alex");
   await clickNav(page, "Treatment");
 
   const marker = `M-conclusion ${Date.now()}`;
@@ -203,7 +203,7 @@ test("Treatment: administration locks Unit and computes a Daily total from the p
 // number, and never render nothing (silence reads as "not applicable", not "refused to compute").
 test("Treatment: 'as needed' dosing shows an explanatory line, not a fabricated total", async ({ page }) => {
   page.on("dialog", (d) => d.accept());
-  await openAsProvider(page, "Pablo");
+  await openAsProvider(page, "Alex");
   await clickNav(page, "Treatment");
 
   const marker = `M-as-needed ${Date.now()}`;
@@ -238,7 +238,7 @@ test("Treatment: 'as needed' dosing shows an explanatory line, not a fabricated 
 // numeric value is taken as already being a count of the new unit (M-doseunit-relabel).
 test("Treatment: re-extracting an existing drug relabels every sibling row's Unit, unlocking the Daily total", async ({ page }) => {
   page.on("dialog", (d) => d.accept());
-  await openAsProvider(page, "Pablo");
+  await openAsProvider(page, "Alex");
   await clickNav(page, "Treatment");
 
   const marker = `M-relabel ${Date.now()}`;

@@ -116,7 +116,7 @@ describe("coverage gate over the committed vault", () => {
     // to every client surfaces unmapped analytes in the other vault that predate G1 and need a
     // clinical decision, which is a separate piece of work.
     const roster = JSON.parse(readFileSync(resolve("records/private/roster.json"), "utf8")) as Roster;
-    const id = resolveClientId("Pablo", roster);
+    const id = resolveClientId("Alex", roster);
     const vault = JSON.parse(readFileSync(resolve(`records/private/${id}/vault.json`), "utf8")) as Vault;
     const rows: MarkerResult[] = Object.values(vault.clients).flatMap((c) => c.results ?? []);
     const gaps = unmappedConvertible(rows).filter((g) => !KNOWN_UNMAPPED.has(g.marker));

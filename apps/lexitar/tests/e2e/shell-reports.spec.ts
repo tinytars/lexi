@@ -17,7 +17,7 @@ import { unlock } from "./_shell";
 // the seven live in `_shell.ts`; a helper with one caller stayed with its caller.
 
 test("Export downloads a CSV and a JSON", async ({ page }) => {
-  await unlock(page, "Pablo");
+  await unlock(page, "Alex");
   // M78 Phase 6 moved Export off the header into the Profile sidebar row; M84 moved it again, off
   // the sidebar entirely and into the bottom-left account menu.
   await page.click(".account-trigger");
@@ -37,7 +37,7 @@ test("Export downloads a CSV and a JSON", async ({ page }) => {
 });
 
 test("Health Reports maps Hospital reports to LexiTar diagnoses and downloads via /api/raw (W13e/W20)", async ({ page }) => {
-  await unlock(page, "Pablo");
+  await unlock(page, "Alex");
   await clickNav(page, "Reports");
 
   // Each source is a Hospital persona bubble; its title is a plausible study type, never a filename.
@@ -66,20 +66,20 @@ test("Health Reports maps Hospital reports to LexiTar diagnoses and downloads vi
   // W46 Phase 1 — the panel is portaled to <body>, no longer a descendant of `row`.
   await openLeafMenu(row.locator(".leaf-card-head"));
   const [req, download] = await Promise.all([
-    page.waitForRequest((r) => r.url().includes(`/api/raw/${PILOTS.pablo.clientId}/`)),
+    page.waitForRequest((r) => r.url().includes(`/api/raw/${PILOTS.alex.clientId}/`)),
     page.waitForEvent("download"),
     page.getByRole("menuitem", { name: "Download" }).click(),
   ]);
-  expect(req.url()).toContain(`/api/raw/${PILOTS.pablo.clientId}/`);
+  expect(req.url()).toContain(`/api/raw/${PILOTS.alex.clientId}/`);
   expect(download.suggestedFilename().length).toBeGreaterThan(0);
 });
 
 test("Health Reports: the ✎ edit modal edits a report's title and a linked diagnosis (M66 P3)", async ({ page }) => {
-  await openAsProvider(page, "Pablo");
+  await openAsProvider(page, "Alex");
   await clickNav(page, "Reports");
 
   // "Echocardiogram" is an imaging report — its title IS its studyType field, so editing Study
-  // type there literally edits the title shown on the bubble. Pablo has more than one on record
+  // type there literally edits the title shown on the bubble. Alex has more than one on record
   // (titration-style repeats), so scope to the first (most recent, sources sort newest-first).
   const row = page.locator(".leaf-card").filter({ has: page.locator(".cr-title", { hasText: "Echocardiogram" }) }).first();
   await expect(row).toBeVisible();
@@ -116,13 +116,13 @@ test("Health Reports: the ✎ edit modal edits a report's title and a linked dia
 
   await page.reload();
   await page.waitForSelector(".roster-list");
-  await page.click('.roster-name:has-text("Pablo")');
+  await page.click('.roster-name:has-text("Alex")');
   await page.waitForSelector(".sidebar .nav-item");
   await clickNav(page, "Reports");
   await expect(page.locator(".health-reports")).toContainText(editedTitle);
   await expect(page.locator(".health-reports")).toContainText(editedDx);
 
-  // Restore Pablo's real record — this test must not leave committed PHI mutated.
+  // Restore Alex's real record — this test must not leave committed PHI mutated.
   const editedRow = page.locator(".leaf-card").filter({ has: page.locator(".cr-title", { hasText: editedTitle }) }).first();
   await clickLeafMenuItem(editedRow.locator(".leaf-card-head"), "Edit");
   await modal.locator("label.field", { hasText: "Study type" }).locator("input").fill(originalTitle);
@@ -133,7 +133,7 @@ test("Health Reports: the ✎ edit modal edits a report's title and a linked dia
 });
 
 test("Reports delete is available to a patient session too — download and delete both present (W34/M51)", async ({ page }) => {
-  await unlock(page, "Pablo");
+  await unlock(page, "Alex");
   await clickNav(page, "Reports");
   const patientReportRow = page.locator(".health-reports .leaf-card").filter({ has: page.locator(".leaf-menu-trigger") }).first();
   // W46 Phase 1 — the panel is portaled to <body>, no longer a descendant of `patientReportRow`.

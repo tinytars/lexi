@@ -1,5 +1,5 @@
 // Load health-dash operational passphrases (ORG_KEY_PASSPHRASE, PASSPHRASE, …) and the
-// Cloudflare API credentials from the plover-context credentials repo — the canonical source;
+// Cloudflare API credentials from the operator's private credential store — the canonical source;
 // they are NOT committed in this repo. Import this for its side effect wherever a script/test
 // needs those vars. Non-fatal by design: if a file is absent it leaves process.env untouched so
 // the caller fails with its own clear error (and an already-set env var always wins). Override

@@ -18,7 +18,7 @@ test("modal-Add, modal-Edit, and Delete all persist immediately (M66)", async ({
   const marker = `M63 note ${Date.now()}`;
   const edited = `M63 note edited ${Date.now()}`;
 
-  await openNotes(page, "Pablo");
+  await openNotes(page, "Alex");
 
   await page.getByTitle("Add note").click();
   await expect(page.locator(".modal-panel")).toHaveAttribute("aria-label", "Add note");
@@ -38,7 +38,7 @@ test("modal-Add, modal-Edit, and Delete all persist immediately (M66)", async ({
 
   await page.reload();
   await page.waitForSelector(".roster-list");
-  await page.click('.roster-name:has-text("Pablo")');
+  await page.click('.roster-name:has-text("Alex")');
   await page.waitForSelector('.sidebar .nav-item');
   await clickNav(page, "Notes");
   await expect(page.locator(".notes")).toContainText(edited);
@@ -65,17 +65,17 @@ test("noteResults answers land on their own note regardless of the order they co
   const noteA = `W67 pairing A ${stamp}`;
   const noteB = `W67 pairing B ${stamp}`;
   // Three, not two: the reversal has to be a real permutation, not a swap a position-pairing merge
-  // could survive by accident. This used to lean on Pablo's pre-existing notes to get past two —
+  // could survive by accident. This used to lean on Alex's pre-existing notes to get past two —
   // a fixture property nothing asserted and nothing preserved. The test supplies its own third now.
   const noteC = `W67 pairing C ${stamp}`;
   // Deterministic from the note's own text, so a mismatch names the note that actually got the answer.
   const echoOf = (text: string) => `echo<<${text}>>`;
 
-  // W78 — Liz, not Pablo. The subject here is answer-to-note PAIRING, and it needs the regen to
-  // fire at all: `regen()` skips a leaf whose computed ancestors are stale, and Pablo's committed
+  // W78 — Blair, not Alex. The subject here is answer-to-note PAIRING, and it needs the regen to
+  // fire at all: `regen()` skips a leaf whose computed ancestors are stale, and Alex's committed
   // vault has read stale on markerLevels/aiFindings since the 2026-08-26 reconcile, so every note
-  // saved here got silence and the pairing was never exercised. Liz's fixture is fresh on both.
-  await openNotes(page, "Liz");
+  // saved here got silence and the pairing was never exercised. Blair's fixture is fresh on both.
+  await openNotes(page, "Blair");
 
   const posted: { node?: string; inputs?: { pursuedNotes?: { id: string; text: string }[] } }[] = [];
   await page.route("**/api/leaf-regen", async (route) => {

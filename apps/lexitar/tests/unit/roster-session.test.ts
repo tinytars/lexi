@@ -42,11 +42,11 @@ const DEK = { id: "dek" } as unknown as CryptoKey;
 
 const PATIENT: RosterPatient = {
   linkId: "link-1",
-  vaultId: "vault-liz",
-  ownerAccountId: "acct-liz",
-  displayName: "Liz",
-  email: "liz@example.com",
-  r2Key: "vaults/vault-liz.enc",
+  vaultId: "vault-blair",
+  ownerAccountId: "acct-blair",
+  displayName: "Blair",
+  email: "blair@example.com",
+  r2Key: "vaults/vault-blair.enc",
   envelope: { wrappedDEK: "wrapped", ephemeralPublicKeyJwk: { kid: "eph" } as JsonWebKey },
 };
 
@@ -276,24 +276,24 @@ describe("the roster", () => {
 describe("label", () => {
   it("shows the email when the name is the untouched local-part", () => {
     const { roster } = harness();
-    expect(roster.label({ ...PATIENT, displayName: "liz" })).toBe("liz@example.com");
+    expect(roster.label({ ...PATIENT, displayName: "blair" })).toBe("blair@example.com");
   });
 
   it("shows the email for the Google placeholder and for no name at all", () => {
     const { roster } = harness();
-    expect(roster.label({ ...PATIENT, displayName: "New member" })).toBe("liz@example.com");
-    expect(roster.label({ ...PATIENT, displayName: "   " })).toBe("liz@example.com");
+    expect(roster.label({ ...PATIENT, displayName: "New member" })).toBe("blair@example.com");
+    expect(roster.label({ ...PATIENT, displayName: "   " })).toBe("blair@example.com");
   });
 
   it("keeps a human-set name, including one that only differs by case", () => {
     const { roster } = harness();
-    expect(roster.label({ ...PATIENT, displayName: "Liz" })).toBe("Liz");
-    expect(roster.label({ ...PATIENT, displayName: "Liz Okonjo" })).toBe("Liz Okonjo");
+    expect(roster.label({ ...PATIENT, displayName: "Blair" })).toBe("Blair");
+    expect(roster.label({ ...PATIENT, displayName: "Blair Okonjo" })).toBe("Blair Okonjo");
   });
 
   it("falls back to the name when there is no email to show", () => {
     const { roster } = harness();
-    expect(roster.label({ ...PATIENT, email: null, displayName: "Liz" })).toBe("Liz");
+    expect(roster.label({ ...PATIENT, email: null, displayName: "Blair" })).toBe("Blair");
   });
 });
 
@@ -347,7 +347,7 @@ describe("reset", () => {
   it("clears the roster, the role and who was entered", async () => {
     const { roster, session } = harness();
     await roster.enterAccount({ vaultId: null, r2Key: null, privateKey: PROVIDER_KEY, dek: null });
-    roster.setEnteredPatient({ email: "liz@example.com", displayName: "Liz" });
+    roster.setEnteredPatient({ email: "blair@example.com", displayName: "Blair" });
     roster.reset();
     expect(roster.isProvider).toBe(false);
     expect(roster.patients).toEqual([]);

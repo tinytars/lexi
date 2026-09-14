@@ -19,7 +19,7 @@ import type { Permalink } from "../../src/lib/permalink";
 
 function makeHarness(overrides: Partial<ChatThreadSessionDeps> = {}) {
   const state = {
-    selectedClientId: "liz" as string | null,
+    selectedClientId: "blair" as string | null,
     dek: {} as CryptoKey | null,
     vault: {} as Vault | null,
     activeTab: "chat",

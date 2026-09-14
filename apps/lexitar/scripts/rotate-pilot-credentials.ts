@@ -1,7 +1,7 @@
 // W52 Phase 3 — close the credential blockers the W44 migration left behind.
 //
 // scripts/migrate-accounts.ts seeded each pilot's password credential with their own slug
-// ("pablo", "liz"), and VAULT.md documented those values as current. That is one problem, not two:
+// ("alex", "blair"), and VAULT.md documented those values as current. That is one problem, not two:
 // the password is BOTH the login secret AND the KEK that unwraps the account private key, which
 // unwraps the vault DEK. So a guessable password means confidentiality currently rests on endpoint
 // gating rather than on encryption — and W53 would copy exactly that into production.
@@ -12,7 +12,7 @@
 // (provider, org recovery) loses access.
 //
 //   npm run vault:rotate                          # --check (default): report, write NOTHING
-//   npm run vault:rotate -- --apply --account liz@local.invalid
+//   npm run vault:rotate -- --apply --account blair@local.invalid
 //
 // An account whose password is NOT a seed value can only be rotated if the holder's current password
 // is supplied out of band, via the CURRENT_PASSWORD env var (never argv — that leaks into `ps` and

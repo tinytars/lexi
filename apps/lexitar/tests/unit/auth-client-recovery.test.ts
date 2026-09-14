@@ -306,19 +306,19 @@ describe("what someone locked out is told", () => {
     respond = (url) =>
       url.startsWith("/api/auth/recovery/salt")
         ? json(200, { salt: "00", iterations: 1 })
-        : json(429, { error: "no recovery credential for liz@example.com" });
-    const err = (await recoverAccount("liz@example.com", "AAAA-BBBB-CCCC").catch((e: Error) => e)) as Error;
+        : json(429, { error: "no recovery credential for blair@example.com" });
+    const err = (await recoverAccount("blair@example.com", "AAAA-BBBB-CCCC").catch((e: Error) => e)) as Error;
     expect(err.message).toMatch(/recovery failed: 429/);
-    expect(err.message).not.toContain("liz@example.com");
+    expect(err.message).not.toContain("blair@example.com");
   });
 
   it("keeps the salt lookup opaque, because a decoy is returned for an unknown address", async () => {
     // Deliberately NOT routed through the server's message: any detail here would answer whether the
     // account exists, which the decoy exists to refuse.
-    respond = (url) => (url.startsWith("/api/auth/recovery/salt") ? json(500, { error: "no recovery credential for liz@example.com" }) : json(200, {}));
-    const err = await recoverAccount("liz@example.com", "AAAA-BBBB-CCCC").catch((e: Error) => e);
+    respond = (url) => (url.startsWith("/api/auth/recovery/salt") ? json(500, { error: "no recovery credential for blair@example.com" }) : json(200, {}));
+    const err = await recoverAccount("blair@example.com", "AAAA-BBBB-CCCC").catch((e: Error) => e);
     expect((err as Error).message).toMatch(/recovery is unavailable right now \(500\)/);
-    expect((err as Error).message).not.toContain("liz@example.com");
+    expect((err as Error).message).not.toContain("blair@example.com");
   });
 
   it("reports a refused rotation commit with the server's reason, not as a bare conflict", async () => {

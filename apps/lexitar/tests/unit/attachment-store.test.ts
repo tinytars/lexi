@@ -26,7 +26,7 @@ describe("buildAttachmentKey", () => {
 
 describe("attachmentUrl", () => {
   it("lowercases the client id and encodes the key", () => {
-    expect(attachmentUrl("Pablo", "ab12cd34-my file.jpg")).toBe("/api/raw/pablo/ab12cd34-my%20file.jpg");
+    expect(attachmentUrl("Alex", "ab12cd34-my file.jpg")).toBe("/api/raw/alex/ab12cd34-my%20file.jpg");
   });
 });
 
@@ -67,7 +67,7 @@ describe("attachFiles", () => {
       new File([new Uint8Array([1, 2, 3])], "report.pdf", { type: "application/pdf" }),
       new File([new Uint8Array([4, 5, 6, 7])], "notes.txt", { type: "text/plain" }),
     ];
-    const attachments = await attachFiles("Pablo", files);
+    const attachments = await attachFiles("Alex", files);
     expect(puts).toHaveLength(2);
     expect(attachments.map((a) => a.name)).toEqual(["report.pdf", "notes.txt"]);
     expect(attachments[0].mediaType).toBe("application/pdf");
@@ -78,7 +78,7 @@ describe("attachFiles", () => {
   it("caps at maxCount, silently dropping the rest", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 204 })));
     const files = [1, 2, 3].map((n) => new File([new Uint8Array([n])], `f${n}.txt`, { type: "text/plain" }));
-    const attachments = await attachFiles("pablo", files, { maxCount: 2 });
+    const attachments = await attachFiles("alex", files, { maxCount: 2 });
     expect(attachments).toHaveLength(2);
   });
 
@@ -86,7 +86,7 @@ describe("attachFiles", () => {
     const put = vi.fn(async () => new Response(null, { status: 204 }));
     vi.stubGlobal("fetch", put);
     const big = new File([new Uint8Array(MAX_ATTACHMENT_BYTES + 1)], "huge.pdf", { type: "application/pdf" });
-    await expect(attachFiles("pablo", [big])).rejects.toThrow(/too large/);
+    await expect(attachFiles("alex", [big])).rejects.toThrow(/too large/);
     expect(put).not.toHaveBeenCalled();
   });
 
@@ -96,7 +96,7 @@ describe("attachFiles", () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 204 })));
     const original = new Uint8Array([9, 9, 9]);
     const file = new File([original], "photo.heic", { type: "image/heic" });
-    const [attachment] = await attachFiles("pablo", [file]);
+    const [attachment] = await attachFiles("alex", [file]);
     expect(attachment.mediaType).toBe("image/heic");
     expect(attachment.bytes).toBe(3);
   });

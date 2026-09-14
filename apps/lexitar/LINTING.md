@@ -3,8 +3,7 @@
 `npm run lint` — oxlint, wired into the `hosted` CI job.
 
 **oxlint rather than ESLint**, chosen 2026-08-24 when the repo had no linter at all. A single binary
-with no plugin dependency tree matters for a repo scheduled for a public split (`docs/cross-app/10`),
-and it is fast enough not to lengthen CI. The tradeoff is real and worth stating: oxlint has **no
+with no plugin dependency tree matters for a public repo, and it is fast enough not to lengthen CI. The tradeoff is real and worth stating: oxlint has **no
 type-aware rules**, so `no-floating-promises` and `no-misused-promises` — genuinely valuable in a
 codebase this asynchronous — are not covered. `npm run check` (svelte-check + tsc) remains the only
 type-level gate. Adding typescript-eslint later for those two rules specifically is a reasonable
@@ -44,7 +43,7 @@ findings in the same commit, or in preparatory commits before it is switched on.
 Thirty-five in source, forty-nine in tests, all fixed rather than suppressed — the ratchet starts at
 zero, with `--deny-warnings`, so the next one fails CI.
 
-Forty of the test findings were dead `readFileSync`/`fileURLToPath` imports left behind by W71's own
+Forty of the test findings were dead `readFileSync`/`fileURLToPath` imports left behind by an earlier
 `_migrate.ts` consolidation: real debt, invisible until something looked. Two were genuine defects
 rather than tidiness:
 

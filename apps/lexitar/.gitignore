@@ -18,8 +18,8 @@ dist-ssr
 # Local Pages Functions secrets (mirror the prod Pages secrets; never committed)
 .dev.vars
 
-# Cloudflare API token / account id are NOT committed here — they live in the plover-context repo
-# (infra/cloud/credentials/cloudflare.env), loaded via scripts/creds.sh. Ignore any local copy.
+# Cloudflare API token / account id are NOT committed here — they live in the operator's private
+# credential store, loaded via scripts/creds.sh. Ignore any local copy.
 .cloudflare.env
 
 # Test artifacts
@@ -51,7 +51,7 @@ plaintext*
 # A write interrupted between writeFile and rename leaves one behind holding a full copy of a vault,
 # and because records/** is force-included above it would otherwise show up as a stageable untracked
 # file — i.e. committable plaintext PHI under a name nobody recognises. Found exactly that on
-# 2026-08-11: liz/vault.json.tmp-81353-… , 347122 bytes of real PHI, untracked and not ignored.
+# 2026-08-11: blair/vault.json.tmp-81353-… , 347122 bytes of real PHI, untracked and not ignored.
 records/**/*.tmp-*
 
 # Editor directories and files

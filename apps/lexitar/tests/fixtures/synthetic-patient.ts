@@ -2,7 +2,7 @@ import type { Client, Vault } from "../../src/lib/types";
 
 // W69 — a fully synthetic patient, so e2e can stop sharing two real ones.
 //
-// `playwright.config.ts` pins `workers: 1` because most specs mutate Pablo's and Liz's REAL vault rows
+// `playwright.config.ts` pins `workers: 1` because most specs mutate Alex's and Blair's REAL vault rows
 // through the real save API, and two workers doing that concurrently is a read-modify-write race. That
 // single constraint is why 216 browser tests run strictly serially and why e2e is 87% of the gate's
 // wall time. It also means every one of those specs needs plaintext PHI on the machine running it.

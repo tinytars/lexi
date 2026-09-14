@@ -16,7 +16,7 @@ async function cardWidth(page: Page, sel: string): Promise<number> {
 }
 
 test("every turn cell is the same width as Study's", async ({ page }) => {
-  await openAsProvider(page, "Pablo");
+  await openAsProvider(page, "Alex");
   await clickNav(page, "Study");
   const reference = await cardWidth(page, ".study .leaf-card");
   expect(reference).toBeGreaterThan(600); // guards against the reference itself collapsing
@@ -36,7 +36,7 @@ test("every turn cell is the same width as Study's", async ({ page }) => {
 // which also duplicated the cell's own title on the single-item blocks ("On Treatment" above
 // "ON TREATMENT"). The block keeps its anchor — permalinks still resolve — but not a visible heading.
 test("Analysis renders no headings outside its cells, and keeps its anchors", async ({ page }) => {
-  await openAsProvider(page, "Pablo");
+  await openAsProvider(page, "Alex");
   await clickNav(page, "Analysis");
   await expect(page.locator(".analysis .leaf-card").first()).toBeVisible();
   await expect(page.locator(".analysis h2")).toHaveCount(0);
@@ -48,7 +48,7 @@ test("Analysis renders no headings outside its cells, and keeps its anchors", as
 // the same item in Analysis was a full turn cell. It renders the shared AnalysisItemCard now, so
 // this asserts the two surfaces agree — the same check the plan called for once search had a cell.
 test("an Analysis search hit renders the same cell the section does", async ({ page }) => {
-  await openAsProvider(page, "Pablo");
+  await openAsProvider(page, "Alex");
   await clickNav(page, "Analysis");
   const sectionWidth = await cardWidth(page, ".analysis .leaf-card");
   const label = (await page.locator(".analysis .leaf-card-head").first().innerText()).replace("🔗", "").trim();
@@ -68,7 +68,7 @@ test("an Analysis search hit renders the same cell the section does", async ({ p
 // per-diagnosis pins, the preview did not). One component now serves both, so this asserts the two
 // surfaces still show the same report the same way.
 test("a Reports search hit renders the same cell the section does", async ({ page }) => {
-  await openAsProvider(page, "Pablo");
+  await openAsProvider(page, "Alex");
   await clickNav(page, "Reports");
 
   const card = page.locator(".health-reports .leaf-card").first();
@@ -93,7 +93,7 @@ test("a Reports search hit renders the same cell the section does", async ({ pag
 // really there, since a scoped-CSS or snippet mistake would still render *something*.
 test("an Allergies search hit renders the turn its section does", async ({ page }) => {
   page.on("dialog", (d) => d.accept());
-  await openAsProvider(page, "Pablo");
+  await openAsProvider(page, "Alex");
   await clickProfileSub(page, "Allergies");
 
   const allergen = `W64 parity ${Date.now()}`;

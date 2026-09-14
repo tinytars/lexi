@@ -51,7 +51,7 @@ describe("a provisioned e2e patient", () => {
   it("logs in with a public password — no secret anywhere in the provisioning path", async () => {
     const p = (await provisionWorld(4)).patients[3];
     expect(p.email).toBe("e2e-w3@local.invalid");
-    expect(p.password).toBe("e2e-w3"); // the slug itself, exactly like the pablo/liz pilots
+    expect(p.password).toBe("e2e-w3"); // the slug itself, exactly like the alex/blair pilots
   });
 
   // Two workers sharing an id would defeat the entire point: their writes would land on one vault and

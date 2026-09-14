@@ -22,7 +22,7 @@ function ai(intervention: string, purpose = "") {
 
 function baseClient(): Client {
   return {
-    displayName: "Pablo",
+    displayName: "Alex",
     dob: "1980-01-01",
     gender: "male",
     watchlist: ["ApoB"],

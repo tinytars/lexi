@@ -1,6 +1,6 @@
 # Ingest: lab files → stored readings
 
-The shared first stage for **every** marker source in `health-dash-web`. A raw
+The shared first stage for **every** marker source in this app. A raw
 file becomes a list of normalized readings in the patient's encrypted vault; the
 later **range** and **interpret** stages then act on those readings (see
 `BLOOD.md` and `DEXA.md`, which now cover only range + interpret).
@@ -50,9 +50,9 @@ content sniffing for PDFs.
 | anything else | rejected (`ingest.ts:403`) | — |
 
 ```
-npm run ingest -- --client Pablo path/to/labs.xlsx     # blood
-npm run ingest -- --client Pablo path/to/scale.xlsx    # InBody / scale
-npm run ingest -- --client Pablo path/to/dexa.pdf      # DEXA
+npm run ingest -- --client Alex path/to/labs.xlsx     # blood
+npm run ingest -- --client Alex path/to/scale.xlsx    # InBody / scale
+npm run ingest -- --client Alex path/to/dexa.pdf      # DEXA
 ```
 
 > A positional `.pdf` is assumed to be a **DEXA** report and goes to `parseDexa`.
@@ -143,9 +143,8 @@ retained and tracked, sharing one mechanism (`scripts/sources-store.ts`):
 - **Content hash → `sourceId`** = `sha256(bytes).slice(0,12)`. Re-ingesting an
   identical file is **detected and reported** (positional files skip re-parse
   unless `--force`; reports reuse their cached extraction — see `NARRATIVE.md`).
-- **The file is copied into the repo** under
-  `apps/health-dash-web/records/private/<id>/raw/` (W13) with a **self-describing name**
-  (`storedName`, now in `src/lib/ingest-core.ts`):
+- **The file is retained** under a **self-describing name**
+  (`storedName`, in `src/lib/ingest-core.ts`):
   **`<date>-<type>-<subtype>-<sha8>.<ext>`** — e.g.
   `2021October15-imaging-coronary-13da11c4.pdf`,
   `2025September02-2026May19-blood-panel-<sha8>.xlsx`.
@@ -154,10 +153,9 @@ retained and tracked, sharing one mechanism (`scripts/sources-store.ts`):
   - `<type>` ← kind (`lab→blood`, `dexa`, `scale`, `imaging`); `<subtype>` is
     `panel`/`bodycomp`/`inbody` for those, and the study region for imaging
     (`slugStudyType`: "Renal Ultrasound" → `renal`).
-  `records/private/` holds plaintext PHI and is **never served** (only the derived,
-  encrypted `records/public/*.enc` is copied into `dist/`); see `VAULT.md` for the
-  four-layer store. A pre-fold **processed artifact** (`records/private/<id>/processed/<sha8>.json`)
-  is written per source at apply time (the faithful, pre-dedup extraction).
+  The raw file is never served directly — see `VAULT.md` for the storage model.
+  A pre-fold **processed artifact** is written per source at apply time (the
+  faithful, pre-dedup extraction).
 - **Every reading carries `sourceId`** (`MarkerResult.sourceId`), and each source
   is registered in **`client.sources: SourceRecord[]`** (`kind`:
   `lab|dexa|scale|imaging`, the stored `file`, date range / study date, counts,
@@ -172,7 +170,7 @@ retained and tracked, sharing one mechanism (`scripts/sources-store.ts`):
   `importReportsFor`. `--migrate-sources` renames existing stored files to the
   scheme above (`scripts/ingest.ts`).
 
-### Removing a source (W13h)
+### Removing a source
 
 A source is one deletable unit: `{ raw file, processed artifact, SourceRecord, all
 derived data tagged with its sourceId }`. Remove it with:
@@ -196,9 +194,8 @@ no duplicate tombstone). **Re-ingesting the same sha clears its tombstone.**
 - `vault:verify` enforces the **provenance invariant** (no dangling `sourceId`, no
   tombstone/live collision, every source has its raw + processed files), so a bad delete
   fails the pre-push gate.
-- The working tree, served `.enc`, and R2 are cleaned immediately, but the raw bytes
-  remain in **git history** until a rewrite. For a sensitive (wrong-patient) removal,
-  follow the `git filter-repo` purge in **`RECOVERY.md`**.
+- The working tree, served `.enc`, and R2 are cleaned immediately. For a sensitive
+  (wrong-patient) removal, see `AUTH.md` for account/data erasure.
 
 ### Cross-source naming & provenance — the two-way lesson
 
@@ -255,9 +252,8 @@ AES-GCM 256, key via PBKDF2-SHA256 (200k iterations), random salt + IV per write
 `HD1` magic header. The served per-client vault `records/public/data-<id>.enc` uses the
 **lowercased client id** as its passphrase. The provider roster
 `records/roster.enc` uses the provider passphrase and holds **display names only** — no clinical or
-demographic data. It sits outside `records/public/` and is therefore never served (see `VAULT.md`). Since W13 the served `.enc` is a **derived** artifact: the
-source of truth is the plaintext `records/private/<id>/vault.json`, and `vault:verify`
-guards the two against drift (see `VAULT.md`).
+demographic data. It sits outside `records/public/` and is therefore never served (see `VAULT.md`). The served `.enc` is a **derived**
+artifact, and `vault:verify` guards it against drift (see `VAULT.md`).
 
 ---
 

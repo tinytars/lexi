@@ -1,10 +1,10 @@
-# health-dash-web — HTTP API
+# LexiTar — HTTP API
 
 The dashboard is a static Cloudflare Pages SPA, but it carries a small server-side API
 implemented as **Cloudflare Pages Functions** under `functions/`. Each file maps to a route on
 the same Pages deployment (no separate Worker, no separate domain). Live endpoints:
-**`POST /api/chat`** (W4), **`GET|PUT /api/vault/{id}`** (W6, R2-backed), and
-**`GET /api/raw/{id}/{file}`** (W13d, session-gated raw-original download).
+**`POST /api/chat`**, **`GET|PUT /api/vault/{id}`** (R2-backed), and
+**`GET /api/raw/{id}/{file}`** (session-gated raw-original download).
 
 - Runtime: Cloudflare Workers (V8 isolate), `nodejs_compat` enabled (`wrangler.jsonc`).
 - Source: `functions/api/chat.ts`, `functions/api/vault/[id].ts`, `functions/api/raw/[[path]].ts`
@@ -76,7 +76,7 @@ supplies. The Function holds no patient data — the browser assembles and sends
 {
   "question":   "what changed since my last echo?", // required, non-empty string
   "context":    { /* ChatContext — see below */ },   // optional; omit/empty = no record to reason over
-  "history":    [ { "role": "user"|"assistant", "text": "…" } ], // optional prior turns (W11b multi-turn)
+  "history":    [ { "role": "user"|"assistant", "text": "…" } ], // optional prior turns (multi-turn)
   "unitSystem": "imperial" | "metric"                // optional; default imperial (US). See note below.
 }
 ```
@@ -85,7 +85,7 @@ supplies. The Function holds no patient data — the browser assembles and sends
 builds it with `src/lib/chat-context.ts → buildChatContext(client, unitSystem)`; an empty/absent
 context yields a "no data provided" answer (by design, not an error).
 
-**Units (W14):** the browser **pre-converts** every reading/delta in `context` to the chosen
+**Units:** the browser **pre-converts** every reading/delta in `context` to the chosen
 `unitSystem` (US-conventional or SI) so chat numbers match the grid; the Function adds one
 system-prompt line naming the active system. The model does no unit arithmetic. Default is `imperial`
 (US), matching the app's default selector.
@@ -102,11 +102,11 @@ interface ChatContext {
   medications: { drug: string; dose: string; since: string }[];   // collapsed: 1 row/drug, earliest start + latest dose
   supplements: { drug: string; dose: string; since: string }[];
   watchlist: string[];
-  readings: {                                                      // COMPLETE per-marker history (W11b)
+  readings: {                                                      // COMPLETE per-marker history
     marker: string;
     rows: { date: string; value: number; unit: string; valueText?: string }[]; // converted to unitSystem
   }[];
-  deltas: {                                                        // from src/lib/marker-deltas.ts (W2)
+  deltas: {                                                        // from src/lib/marker-deltas.ts
     marker: string;
     unit: string;
     latest: { value: number; date: string };
@@ -165,7 +165,7 @@ curl -s -X POST "$BASE/api/chat" \
   -d '{
     "question":"what changed since my last echo?",
     "context":{
-      "patient":{"name":"Pablo","age":46,"gender":"male"},
+      "patient":{"name":"Alex","age":46,"gender":"male"},
       "deltas":[{"marker":"Aortic valve mean gradient","unit":"mmHg",
                  "latest":{"value":14,"date":"2026-06-15"},
                  "vsBaseline":{"abs":4,"pct":40,"direction":"up","spanDays":1826}}]
@@ -191,14 +191,14 @@ curl -s -o /dev/null -w '%{http_code}\n' -X POST "$BASE/api/chat" \
 | `ANTHROPIC_API_KEY` | Pages secret (prod) / `.dev.vars` (local) | Key the Function uses to call Anthropic. **Must be distinct** from the CLI pipeline's key so chat usage can't exhaust the Finding's credits. |
 | `CHAT_TOKEN` | — | **Deleted 2026-08-26.** `/api/chat` is session-gated (`requireSession`); no Function read this. |
 | `VAULT_TOKEN` | Pages secret (prod) / `.dev.vars` (local) | Same allowlist value — gates `PUT /api/vault/{id}`. |
-| `RAW_TOKEN` | — | **Deleted 2026-08-26.** `/api/raw` is gated by `hd_session` plus a per-record `rawAccessFor` check (W73); this Function never read a bearer. |
+| `RAW_TOKEN` | — | **Deleted 2026-08-26.** `/api/raw` is gated by `hd_session` plus a per-record `rawAccessFor` check; this Function never read a bearer. |
 | `STORE_PREFIX` | Pages **var** (committed per-branch in `wrangler.jsonc`) | R2 key namespace per deployment (dev branch = `dev`). Not a secret. **Interim:** the adopted target is physically separate per-env buckets (`health-vault-dev`/`-prod`), retiring this var — see `VAULT.md` §8. |
 
 `.dev.vars` is gitignored and used only by `wrangler pages dev`. Production secrets are set
 out of band (full runbook: **`AUTH.md`**):
 
 ```bash
-# from apps/health-dash-web/
+# from apps/lexitar/
 wrangler pages secret put ANTHROPIC_API_KEY   # paste the distinct key
 wrangler pages secret put VAULT_TOKEN         # same allowlist value
 ```
@@ -237,18 +237,18 @@ the Cloudflare dashboard and `wrangler pages deployment tail`:
 
 It records request **shape and outcome only** — status, latency, Anthropic token counts, and a
 short `errorCode` on failures. **Never** the `question`, `context`, `answer`, vault bytes,
-passphrase, or bearer (all PHI/secret). Retention, alerting, and a vault-write audit trail are
-the W8 observability milestone (`docs/plans/08-w8-observability.md`).
+passphrase, or bearer (all PHI/secret). Retention, alerting, and a vault-write audit trail remain
+an observability follow-up.
 
-## Verifiability (W10) — every behavior is provable headlessly
+## Verifiability — every behavior is provable headlessly
 
 **Standing rule:** nothing merges that can only be checked by clicking the UI. Each layer is
 proven by its native headless tool, and new features ship with the matching coverage:
 
 | Layer | Prove it with | Examples |
 |---|---|---|
-| **API / server** (`functions/`) | a vitest test importing the handler + a `curl` contract | `chat-function.test.ts` (mocked Anthropic SDK — guard/validation/success/error-mapping/PHI-free log + the W14 unit-system prompt line); `vault-function.test.ts` (GET/PUT, store-prefixed key, self-seed); `raw-function.test.ts` (401/400/404/200, lowercase id, PHI-free log); `store.test.ts` (`storeKey` throws on empty prefix). No live billable call. |
-| **UI behaviour** | Playwright (headless) | `tests/e2e/chat.spec.ts` (route-stubbed `/api/chat`: answer + the W7f billing link), `view-controls.spec.ts` (mode/filter/unit/window + delta indicator), `editor-roundtrip.spec.ts` (save→reload→persisted + unlock error states). |
+| **API / server** (`functions/`) | a vitest test importing the handler + a `curl` contract | `chat-function.test.ts` (mocked Anthropic SDK — guard/validation/success/error-mapping/PHI-free log + the unit-system prompt line); `vault-function.test.ts` (GET/PUT, store-prefixed key, self-seed); `raw-function.test.ts` (401/400/404/200, lowercase id, PHI-free log); `store.test.ts` (`storeKey` throws on empty prefix). No live billable call. |
+| **UI behaviour** | Playwright (headless) | `tests/e2e/chat.spec.ts` (route-stubbed `/api/chat`: answer + the billing link), `view-controls.spec.ts` (mode/filter/unit/window + delta indicator), `editor-roundtrip.spec.ts` (save→reload→persisted + unlock error states). |
 | **Pure logic** (`src/lib`) | vitest unit test | `marker-deltas`, `ranges`, `status`, `units`, `staleness`, `crypto`, … |
 
 Notes for authors:
@@ -261,11 +261,9 @@ Notes for authors:
   `curl` per the §Examples above. Automated coverage is the vitest Function test.
 - Run `npm run test:all` (unit + e2e) before every commit; surface both pass counts.
 
-Detail: `docs/plans/10-w10-headless-verifiability.md`.
-
 ---
 
-## `GET|PUT /api/vault/[id]` — W6 (R2 sink)
+## `GET|PUT /api/vault/[id]` (R2 sink)
 
 Remote/mobile vault persistence (`functions/api/vault/[id].ts`). The Function only ever moves an
 **already-encrypted HD1 blob** — it never decrypts, derives a key, or sees the passphrase. The
@@ -277,7 +275,7 @@ via `functions/_lib/store.ts → storeKey`. The static-asset self-seed source st
   secret, generated by `npm run allowlist`. The client sends a passphrase-derived bearer
   (`deriveBearerToken`). Body must begin with the `HD1` magic (else `400`), be ≥ 32 bytes
   (else `400`) and ≤ 5 MB (else `413`); on success `204`. Every write emits a PHI-free **audit**
-  log line (W8d): `{route:"/api/vault", status:204, id, bytes}` — id + size only, **never** the
+  log line: `{route:"/api/vault", status:204, id, bytes}` — id + size only, **never** the
   blob bytes.
 - **`GET`** (read) — **the ops bearer (`VAULT_TOKEN`) OR a session holding an envelope for this
   vault** (§G). Note this gate is not a confidentiality boundary: the identical bytes stay
@@ -302,11 +300,10 @@ Auth coarseness (accepted): `VAULT_TOKEN`'s value equals the chat allowlist toda
 as separate secrets so they rotate independently. Finer per-vault binding
 (`HMAC(serverSecret, id)`) is a deferred option. Local test: `wrangler pages dev dist --r2 VAULT`
 with `VAULT_TOKEN` in `.dev.vars`; automated coverage in `tests/unit/vault-function.test.ts`.
-Design: `docs/plans/06-w6-r2-sink.md`.
 
 ---
 
-## `GET /api/vault/org-key` — W55 P4 (org-recovery public key)
+## `GET /api/vault/org-key` (org-recovery public key)
 
 Serves the org-recovery public key (`functions/api/vault/org-key.ts`). **Unauthenticated by
 design** — signup calls it before a session exists, and a public key carries no confidentiality
@@ -325,7 +322,7 @@ to build the `orgEnvelope` both signup bodies now require (see below).
 
 ---
 
-## `POST` / `DELETE /api/vault/recovery-envelope` — W55 P4 (mint / revoke org recovery)
+## `POST` / `DELETE /api/vault/recovery-envelope` (mint / revoke org recovery)
 
 Mints or revokes the org-recovery envelope for the caller's own vault
 (`functions/api/vault/recovery-envelope.ts`). Session-gated (`requireSession`), scoped to the
@@ -356,7 +353,7 @@ key" block).
 
 ---
 
-## `GET /api/account/access-events` — W55 P4 (patient-visible access log)
+## `GET /api/account/access-events` (patient-visible access log)
 
 The patient-visible read of `phi_access_events` (`functions/api/account/access-events.ts`) — the
 first caller of `listAccessEventsForSubject`. Session-gated.
@@ -378,7 +375,7 @@ Rendered in the Account modal's "Recovery key" block (`src/App.svelte`).
 
 ### Related — new fields on existing (undocumented) routes
 
-Not otherwise covered by this file, but touched by W55 P4:
+Not otherwise covered by this file, but touched by the org-recovery work above:
 
 - `GET /api/vault/principals` response gains `envelopePrincipalIds: string[]` (principal ids
   holding an envelope for the caller's vault) and `orgRecoveryRevokedAt: string | null`.
@@ -388,7 +385,7 @@ Not otherwise covered by this file, but touched by W55 P4:
 
 ---
 
-## `GET` / `DELETE /api/raw/[[path]]` — W13d/h (raw-original download + delete)
+## `GET` / `DELETE /api/raw/[[path]]` (raw-original download + delete)
 
 Stream an **original imported file** (PDF/XLSX) for the Export tab's "Imported files" section
 (`functions/api/raw/[[path]].ts`). Raw originals are **plaintext PHI**. The Function never decrypts:
@@ -396,12 +393,12 @@ raw is stored **unencrypted** in R2 under `{STORE_PREFIX}/raw/{id}/{file}`. The 
 server-side — a no-op since G1 made client keys the lowercased account id, kept because a vault
 predating G1 can still carry a display-cased key.
 
-> **Corrected W71 — this section described a gate the code does not have.** It said the route is
-> bearer-gated by `RAW_TOKEN`. It is **session**-gated (`requireSession`, since W44): `RAW_TOKEN` is
+> **Corrected — this section described a gate the code does not have.** It said the route is
+> bearer-gated by `RAW_TOKEN`. It is **session**-gated (`requireSession`): `RAW_TOKEN` is
 > not read by this Function and is not in its `Env`. A doc that names a stronger gate than the code
 > implements is worse than no doc, because it is what a reviewer checks instead of the code.
 >
-> **Known gap, not yet fixed (W71 item 2).** The route is authenticated but **not authorised**: `id`
+> **Known gap, not yet fixed.** The route is authenticated but **not authorised**: `id`
 > is the vault's client key — a human display name — and is never compared against anything the
 > session owns. Any signed-up account can therefore read, overwrite or delete another patient's
 > plaintext originals, two accounts with a client of the same name share one namespace, and revoking
@@ -418,9 +415,9 @@ predating G1 can still carry a display-cased key.
   stream bytes with a content-type by extension (`pdf`/`xlsx`/`xls`/`json`, else octet-stream),
   `cache-control: no-store`. `400` on a missing segment or path traversal (`.`/`..`); `404` on a miss.
   PHI-free log `{route:"/api/raw", status, id}` — id + outcome, never the filename or bytes.
-- **`DELETE /api/raw/{id}/{file}`** (W13h, `hd_session` cookie): `env.VAULT.delete(storeKey(env,"raw",id,file))`
+- **`DELETE /api/raw/{id}/{file}`** (`hd_session` cookie): `env.VAULT.delete(storeKey(env,"raw",id,file))`
   → `200 {deleted:true}`. Same path/guard rules (`400`/`401`). **Idempotent** — deleting an absent object
-  still `200`s. This is the web-delete shape for W15: the browser runs the pure `removeSource()`,
+  still `200`s. This is the web-delete shape: the browser runs the pure `removeSource()`,
   `PUT`s the re-encrypted vault, then `DELETE`s the raw object. (The CLI `--remove-source` does the
   equivalent server-side today, incl. deleting the processed artifact.)
 
@@ -438,12 +435,12 @@ curl -X DELETE "https://<domain>/api/raw/<client-id>/2020March04-imaging-echo-0a
 In dev, `vite` doesn't run Functions — a dev-only middleware (`vite.config.ts → rawFileMiddleware`)
 mirrors this route from `records/private/{id}/raw/` (no bearer locally). Automated coverage:
 `tests/unit/raw-function.test.ts` (401/400/404/200 + lowercase id + PHI-free log) and the Export e2e
-in `tests/e2e/shell-nav.spec.ts`. Design + R2 layout: `docs/plans/13-w13-data-store.md` §W13d.
+in `tests/e2e/shell-nav.spec.ts`.
 
-### Log retention — W8a (Logpush → R2, ops follow-up, not yet enabled)
+### Log retention (Logpush → R2, ops follow-up, not yet enabled)
 
 Cloudflare keeps the structured request/audit lines (above) only for a short default window. To
 retain them owner-only and queryable, enable **Cloudflare Logpush → the `health-vault` R2 bucket**
 (or a dedicated `health-logs` bucket) with a retention window — no third-party SaaS for a
 single-owner deployment. This is a dashboard/account action that needs the R2 bucket to exist
-first; enable it after W6's bucket is created. Design: `docs/plans/08-w8-observability.md` (W8a).
+first; enable it once the vault R2 bucket is created (see `AUTH.md`).

@@ -1,7 +1,6 @@
-# BACKUP.md — snapshots, the restore drill, and the alarm (W52)
+# BACKUP.md — snapshots, the restore drill, and the alarm
 
-Beta users' vaults live **only** in R2. `records/private/` is a per-branch repo copy that goes stale
-the moment someone edits live (`VAULT.md` §7), so it is not a backup. This is the backup.
+Beta users' vaults live **only** in R2. This is the backup.
 
 The rule this file exists to enforce: **a backup that has never been restored is not a backup.**
 The snapshot is only the input; [the drill](#the-drill) is the deliverable.
@@ -15,10 +14,11 @@ The snapshot is only the input; [the drill](#the-drill) is the deliverable.
 | `npm run vault:restore` | Restore the newest snapshot to a scratch prefix and open every vault |
 | `npm run vault:restore -- --keep-scratch` | …and leave the restored objects in R2 to inspect |
 | `npm run vault:snapshot:check` | Is a fresh snapshot present? Non-zero if not (also run by `npm run doctor`) |
-| `npm run vault:rotate` | Report which accounts still hold a W44 seeded password (read-only) |
+| `npm run vault:rotate` | Report which accounts still hold a seeded password (read-only) |
 
 All of them need `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID`; the restore drill also needs
-`ORG_KEY_PASSPHRASE`. Both come from the plover-context credentials repo via `scripts/load-creds.ts`.
+`ORG_KEY_PASSPHRASE`. All three are local credential files loaded by `scripts/load-creds.ts`
+(not committed in this repo).
 
 ## What a snapshot contains
 
@@ -39,7 +39,7 @@ manifest.json                 every key, size and sha256 + the D1 row counts
 Plus `stores/{store}/manifests/{id}.json` (a copy, so listing snapshots is cheap) and
 `stores/{store}/latest.json` (the pointer the freshness alarm reads).
 
-**Everything is keyed by the source store, and that is load-bearing** (W75). Snapshot ids are
+**Everything is keyed by the source store, and that is load-bearing.** Snapshot ids are
 timestamps, so before this, two stores backed up into one bucket collided on the same manifest key —
 and retention, which listed `manifests/` globally and deleted everything past `--keep`, would have
 deleted prod's first-ever backup on dev's next nightly. `latest.json` was global too, so the
@@ -83,7 +83,7 @@ npm run vault:restore
 **Pass condition: every vault the org holds an envelope for opens.** A vault the org has *no* envelope
 for is verified to the byte (digest, HD1 magic, correct key) and reported as `bytes-only` — that is the
 intended key custody, not a backup defect: only the account holder's client can decrypt it, and only
-they can ever grant anyone else that ability ([W55](../../docs/health-dash/plans/55-w55-password-recovery.md)).
+they can ever grant anyone else that ability (see `AUTH.md` for the org recovery envelope model).
 Vault blobs with no `vaults` row at all are listed separately — nothing registers them.
 
 Because it restores to a scratch prefix, this is safe to run any day, which is the point: an
@@ -105,9 +105,9 @@ Dispatch one by hand from the Actions tab, choosing the store and optionally the
 gh workflow run snapshot.yml -f store=prod
 ```
 
-**It used to be a macOS LaunchAgent on one laptop** (W52 → W77). That was always the known weakness
-— no snapshot happens while a machine is off — and W74 made it worse by retiring the self-hosted CI
-runner from that same Mac, so the laptop stopped being part of any other pipeline and nothing
+**It used to be a macOS LaunchAgent on one laptop.** That was always the known weakness
+— no snapshot happens while a machine is off — and retiring the self-hosted CI
+runner from that same Mac made it worse, so the laptop stopped being part of any other pipeline and nothing
 noticed when it was off, while remaining the only host of the only scheduled backup this project
 has. The LaunchAgent and its plist are gone; the schedule now runs where nothing depends on a lid
 being open.
@@ -134,19 +134,19 @@ than 36 hours — and `npm run doctor` runs it, so a dead schedule surfaces in t
 rather than the next incident. That second, independent path is unchanged by the move and is the
 reason a missed red job is not a silent failure.
 
-**W75 flags this for a decision rather than fixing it.** It changed character when W74 retired the
-self-hosted CI runner from this same Mac: the laptop is no longer part of any other pipeline, so
+**This is flagged as a decision rather than fixed.** It changed character when the self-hosted CI
+runner was retired from this same Mac: the laptop is no longer part of any other pipeline, so
 nothing else in the project notices when it is off, and the only scheduled backup this project has
 now runs on a machine whose lid closing is a normal event. The alarm still fires — into the same
 laptop.
 
 ## Notes
 
-- **R2 has no object versioning** on this account — the feature does not exist for R2, so the second
-  layer W52 asked about is not available. The nearest equivalent is a bucket **lock** rule
+- **R2 has no object versioning** on this account — the feature does not exist for R2, so a second
+  layer of protection is not available. The nearest equivalent is a bucket **lock** rule
   (`wrangler r2 bucket lock`), which makes objects undeletable for a retention period. It is not
   enabled: it would also block the 30-day prune, and it is hard to undo. Worth revisiting for prod
-  in W53 with a lock window shorter than the retention window.
+  with a lock window shorter than the retention window.
 - A snapshot takes ~7.5 minutes, almost all of it fetching audit-log objects one at a time. The
   Cloudflare API rate limit (~1200 requests / 5 min, account-wide) is why `scripts/vault-sync.ts`
   throttles to 3 requests/second; `CF_API_RPS` overrides it for a one-off catch-up.

@@ -8,7 +8,7 @@ function r(marker: string, date: string, value: number, unit = "mg/dL"): MarkerR
 
 function fixture(): Client {
   return {
-    displayName: "Pablo",
+    displayName: "Alex",
     dob: "1980-01-01",
     gender: "male",
     watchlist: ["LDL-C", "ApoB"],
@@ -127,7 +127,7 @@ describe("buildChatContext", () => {
   it("carries comorbidities with ICD codes and the trimmed Finding slice", () => {
     const ctx = buildChatContext(fixture());
     expect(ctx.diseases[0]).toMatchObject({ diagnostic: "CAD", icdCodes: ["I25.10"], summary: "CAC 220" });
-    expect(ctx.patient).toMatchObject({ name: "Pablo", gender: "male" });
+    expect(ctx.patient).toMatchObject({ name: "Alex", gender: "male" });
     expect(ctx.finding?.progression?.overall).toBe("favorable");
     // criticalRatios trimmed to name + meaning only
     expect(ctx.finding?.criticalRatios).toEqual([

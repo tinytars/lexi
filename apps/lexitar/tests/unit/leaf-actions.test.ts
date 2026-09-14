@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { standardLeafActions, buildNoteAttachment } from "../../src/lib/leaf-actions";
 import { registerAttachPicker } from "@tinytars/frame/attach-controller";
 
-const attachTarget = { clientId: "pablo", onAttached: vi.fn() };
+const attachTarget = { clientId: "alex", onAttached: vi.fn() };
 
 describe("standardLeafActions", () => {
   it("orders items Edit → Chat → Annotate → Attach → Preview → Download → extra → Delete", () => {
@@ -96,7 +96,7 @@ describe("standardLeafActions — attach routeFile", () => {
 
     const onAttached = vi.fn();
     const routeFile = vi.fn(async (f: File) => f.name.endsWith(".pdf"));
-    const items = standardLeafActions({ attach: { clientId: "pablo", onAttached, routeFile } });
+    const items = standardLeafActions({ attach: { clientId: "alex", onAttached, routeFile } });
     items[0].onClick();
 
     const pdfFile = new File([new Uint8Array([1])], "report.pdf", { type: "application/pdf" });
@@ -117,7 +117,7 @@ describe("standardLeafActions — attach routeFile", () => {
 
     const onAttached = vi.fn();
     const items = standardLeafActions({
-      attach: { clientId: "pablo", onAttached, routeFile: async () => true },
+      attach: { clientId: "alex", onAttached, routeFile: async () => true },
     });
     items[0].onClick();
     await capturedOnFiles!([new File([new Uint8Array([1])], "report.pdf", { type: "application/pdf" })]);

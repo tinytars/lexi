@@ -26,7 +26,7 @@ async function openMarkers(page: Page) {
 
 async function openProviderTreatment(page: Page) {
   await stubChatHistory(page);
-  await openAsProvider(page, "Pablo");
+  await openAsProvider(page, "Alex");
   await openSidebarIfDrawer(page);
   await clickNav(page, "Treatment");
 }
@@ -102,7 +102,7 @@ test.describe("phone viewport", () => {
 });
 
 test("every leaf action (Edit/Chat/Delete/etc) renders as a labeled item inside one triple-dot LeafActionMenu — PersonaBubble-driven and bespoke leaves alike", async ({ page }) => {
-  await openAsProvider(page, "Pablo");
+  await openAsProvider(page, "Alex");
 
   // PersonaBubble-driven: UnifiedTreatment's rowActions() (M66/M70/M71 idiom) — M71 collapsed
   // Edit/Chat/Delete into one LeafActionMenu; all three are labeled menu items now, including

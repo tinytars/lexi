@@ -86,7 +86,7 @@ describe("validateLeafResult is the one gate", () => {
 describe("row-scoped Translate", () => {
   function clientWithTwoNotes(): Client {
     return {
-      displayName: "Pablo",
+      displayName: "Alex",
       dob: "1980-01-01",
       gender: "male",
       watchlist: [],

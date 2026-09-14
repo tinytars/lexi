@@ -12,7 +12,7 @@ import { search } from "./_search";
 test("sidebar search finds a note by its text and navigates to it (M85)", async ({ page }) => {
   page.on("dialog", (d) => d.accept());
   const marker = `M85 search note ${Date.now()}`;
-  await openAsProvider(page, "Pablo");
+  await openAsProvider(page, "Alex");
 
   await clickNav(page, "Notes");
   await page.waitForSelector(".notes", { timeout: 10_000 });
@@ -29,7 +29,7 @@ test("sidebar search finds a note by its text and navigates to it (M85)", async 
   // Anchor scroll/flash is app-internal state (App.svelte's resolveAnchor), never written into the
   // URL hash (see App.svelte's hash-sync effect: "Anchor is never written here") — so the
   // navigation is confirmed via the flash highlight, not the URL.
-  await expect(page).toHaveURL(new RegExp(`${hashOf.Pablo}/notes$`));
+  await expect(page).toHaveURL(new RegExp(`${hashOf.Alex}/notes$`));
   await expect(page.locator(".notes .permalink-flash")).toBeVisible({ timeout: 5_000 });
   await expect(page.locator(".notes")).toContainText(marker);
 
@@ -41,18 +41,18 @@ test("sidebar search finds a note by its text and navigates to it (M85)", async 
 });
 
 test("sidebar search finds a clinical report by its title (M85)", async ({ page }) => {
-  await openAsProvider(page, "Pablo");
+  await openAsProvider(page, "Alex");
   await search(page, "Echocardiogram");
   await expect(page.locator(".search-results .search-group", { hasText: "Reports" })).toBeVisible();
   const reportRow = page.locator(".search-results .leaf-card", { hasText: "Echocardiogram" }).first();
   await clickLeafMenuItem(reportRow, "Open");
-  await expect(page).toHaveURL(new RegExp(`${hashOf.Pablo}/healthReports`));
+  await expect(page).toHaveURL(new RegExp(`${hashOf.Alex}/healthReports`));
 });
 
 test("sidebar search finds an allergy by its text (M85)", async ({ page }) => {
   page.on("dialog", (d) => d.accept());
   const marker = `M85 search allergen ${Date.now()}`;
-  await openAsProvider(page, "Pablo");
+  await openAsProvider(page, "Alex");
   await clickProfileSub(page, "Allergies");
   await page.waitForSelector(".allergies", { timeout: 10_000 });
   await page.locator('.side-row-action[aria-label="Add allergy"]').click();
@@ -75,7 +75,7 @@ test("sidebar search finds an allergy by its text (M85)", async ({ page }) => {
 test("sidebar search finds a family history entry by its text (M85)", async ({ page }) => {
   page.on("dialog", (d) => d.accept());
   const marker = `M85 search relative ${Date.now()}`;
-  await openAsProvider(page, "Pablo");
+  await openAsProvider(page, "Alex");
   await clickProfileSub(page, "Family");
   await page.waitForSelector(".family", { timeout: 10_000 });
   await page.locator('.side-row-action[aria-label="Add family history"]').click();
@@ -98,7 +98,7 @@ test("sidebar search finds a family history entry by its text (M85)", async ({ p
 
 test("sidebar search finds a study topic by its text (M85)", async ({ page }) => {
   page.on("dialog", (d) => d.accept());
-  await openAsProvider(page, "Pablo");
+  await openAsProvider(page, "Alex");
   const marker = `M85 search topic ${Date.now()}`;
   await clickNav(page, "Study");
   await page.getByTitle("Add study").click();
@@ -119,7 +119,7 @@ test("sidebar search finds a study topic by its text (M85)", async ({ page }) =>
 });
 
 test("sidebar search finds a glossary term (M85)", async ({ page }) => {
-  await openAsProvider(page, "Pablo");
+  await openAsProvider(page, "Alex");
   await search(page, "ApoB");
   const group = page.locator(".search-results .search-group", { hasText: "Glossary" });
   await expect(group).toBeVisible();
@@ -132,7 +132,7 @@ test("sidebar search finds a glossary term (M85)", async ({ page }) => {
 });
 
 test("sidebar search finds a doctor question (M85)", async ({ page }) => {
-  await openAsProvider(page, "Pablo");
+  await openAsProvider(page, "Alex");
   await search(page, "FibroScan");
   const group = page.locator(".search-results .search-group", { hasText: "Questions" });
   await expect(group).toBeVisible();

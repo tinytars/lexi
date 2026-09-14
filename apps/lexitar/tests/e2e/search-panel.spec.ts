@@ -8,14 +8,14 @@ import { openSearch, search } from "./_search";
 // This half: the panel as a surface — home vs results layout, opening, closing, refocusing.
 
 test("clicking the Search nav row shows a centered home box with no results (M91)", async ({ page }) => {
-  await openAsProvider(page, "Pablo");
+  await openAsProvider(page, "Alex");
   await openSearch(page);
   await expect(page.locator(".search-panel.home")).toBeVisible();
   await expect(page.locator(".search-group")).toHaveCount(0);
 });
 
 test("typing a query flips the panel to the top-left/results layout without losing input focus (M91)", async ({ page }) => {
-  await openAsProvider(page, "Pablo");
+  await openAsProvider(page, "Alex");
   await openSearch(page);
   const input = page.locator(".search-panel .search-input");
   await input.click();
@@ -26,7 +26,7 @@ test("typing a query flips the panel to the top-left/results layout without losi
 });
 
 test("clicking a different sidebar nav row while search is open closes the panel (M91)", async ({ page }) => {
-  await openAsProvider(page, "Pablo");
+  await openAsProvider(page, "Alex");
   await search(page, "cortisol");
   await expect(page.locator(".search-group").first()).toBeVisible();
 
@@ -36,7 +36,7 @@ test("clicking a different sidebar nav row while search is open closes the panel
 });
 
 test("re-clicking Search while already open keeps the existing query/results and refocuses the input (M104)", async ({ page }) => {
-  await openAsProvider(page, "Pablo");
+  await openAsProvider(page, "Alex");
   await search(page, "cortisol");
   await expect(page.locator(".search-group").first()).toBeVisible();
 
@@ -50,7 +50,7 @@ test("re-clicking Search while already open keeps the existing query/results and
 });
 
 test("navigating away and back to Search resumes the last query/results (M104)", async ({ page }) => {
-  await openAsProvider(page, "Pablo");
+  await openAsProvider(page, "Alex");
   await search(page, "cortisol");
   await expect(page.locator(".search-group").first()).toBeVisible();
 
@@ -62,7 +62,7 @@ test("navigating away and back to Search resumes the last query/results (M104)",
 });
 
 test("the sidebar Search row's \"+\" clears the query, shows the home state, and refocuses the input (M104)", async ({ page }) => {
-  await openAsProvider(page, "Pablo");
+  await openAsProvider(page, "Alex");
   await search(page, "cortisol");
   await expect(page.locator(".search-group").first()).toBeVisible();
 

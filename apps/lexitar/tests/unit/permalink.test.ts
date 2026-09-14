@@ -3,22 +3,22 @@ import { parseHash, toHash, type Permalink } from "../../src/lib/permalink";
 
 describe("parseHash", () => {
   it("parses a flat client + section (M82 flat grammar)", () => {
-    expect(parseHash("#pablo/study")).toEqual({ client: "pablo", tab: "ai", section: "study", anchor: undefined });
+    expect(parseHash("#alex/study")).toEqual({ client: "alex", tab: "ai", section: "study", anchor: undefined });
   });
   it("tolerates a missing leading '#'", () => {
-    expect(parseHash("pablo/study")?.section).toBe("study");
+    expect(parseHash("alex/study")?.section).toBe("study");
     expect(parseHash("chat")?.tab).toBe("chat");
   });
   it("parses client + section + anchor", () => {
-    expect(parseHash("#pablo/healthReports/report-abc123def456")).toEqual({
-      client: "pablo", tab: "labs", section: "healthReports", anchor: "report-abc123def456",
+    expect(parseHash("#alex/healthReports/report-abc123def456")).toEqual({
+      client: "alex", tab: "labs", section: "healthReports", anchor: "report-abc123def456",
     });
   });
   it("parses chat with a thread id", () => {
-    expect(parseHash("#pablo/chat/t2")).toEqual({ client: "pablo", tab: "chat", section: "t2", anchor: undefined });
+    expect(parseHash("#alex/chat/t2")).toEqual({ client: "alex", tab: "chat", section: "t2", anchor: undefined });
   });
   it("returns null when no segment is a section key, chat, or a legacy tab id", () => {
-    expect(parseHash("#pablo/nonsense")).toBeNull();
+    expect(parseHash("#alex/nonsense")).toBeNull();
     expect(parseHash("#")).toBeNull();
     expect(parseHash("")).toBeNull();
   });
@@ -33,10 +33,10 @@ describe("parseHash", () => {
       ["appointment", "notes"],
       ["ai", "study"],
     ])("drops a stale '%s' tab segment ahead of a real '%s' section", (tab, section) => {
-      expect(parseHash(`#pablo/${tab}/${section}`)).toMatchObject({ client: "pablo", section });
+      expect(parseHash(`#alex/${tab}/${section}`)).toMatchObject({ client: "alex", section });
     });
     it("legacy chat/<threadId> is unchanged (chat never had a tab-vs-section ambiguity)", () => {
-      expect(parseHash("#pablo/chat/t9")).toMatchObject({ client: "pablo", tab: "chat", section: "t9" });
+      expect(parseHash("#alex/chat/t9")).toMatchObject({ client: "alex", tab: "chat", section: "t9" });
     });
     it.each([
       ["labs", "markers"],
@@ -44,13 +44,13 @@ describe("parseHash", () => {
       ["appointment", "notes"],
       ["ai", "analysis"],
     ])("maps a bare legacy '%s' tab to its LEGACY_TAB_DEFAULT section '%s'", (tab, section) => {
-      expect(parseHash(`#pablo/${tab}`)).toMatchObject({ client: "pablo", tab, section });
+      expect(parseHash(`#alex/${tab}`)).toMatchObject({ client: "alex", tab, section });
     });
     it("maps a bare pre-W38 tab-only hash (no client) the same way", () => {
       expect(parseHash("#doctor")).toEqual({ client: undefined, tab: "doctor", section: "treatment", anchor: undefined });
     });
     it("a bare chat segment has no default thread (chat's own section slot stays empty)", () => {
-      expect(parseHash("#pablo/chat")).toEqual({ client: "pablo", tab: "chat", section: undefined, anchor: undefined });
+      expect(parseHash("#alex/chat")).toEqual({ client: "alex", tab: "chat", section: undefined, anchor: undefined });
     });
   });
 });
@@ -63,20 +63,20 @@ describe("toHash", () => {
     expect(toHash({ tab: "doctor", section: "treatment" })).toBe("#doctor");
   });
   it("emits client + section, no tab segment", () => {
-    expect(toHash({ client: "pablo", tab: "ai", section: "study" })).toBe("#pablo/study");
+    expect(toHash({ client: "alex", tab: "ai", section: "study" })).toBe("#alex/study");
   });
   it("emits client only when there is no section (flat grammar drops the tab)", () => {
-    expect(toHash({ client: "pablo", tab: "ai" })).toBe("#pablo");
+    expect(toHash({ client: "alex", tab: "ai" })).toBe("#alex");
   });
   it("emits the full path", () => {
-    expect(toHash({ client: "pablo", tab: "labs", section: "healthReports", anchor: "report-abc" }))
-      .toBe("#pablo/healthReports/report-abc");
+    expect(toHash({ client: "alex", tab: "labs", section: "healthReports", anchor: "report-abc" }))
+      .toBe("#alex/healthReports/report-abc");
   });
   it("omits a dangling anchor when there is no section", () => {
-    expect(toHash({ client: "pablo", tab: "doctor", anchor: "report-abc" })).toBe("#pablo");
+    expect(toHash({ client: "alex", tab: "doctor", anchor: "report-abc" })).toBe("#alex");
   });
   it("keeps chat's literal 'chat' segment", () => {
-    expect(toHash({ client: "pablo", tab: "chat", section: "t2" })).toBe("#pablo/chat/t2");
+    expect(toHash({ client: "alex", tab: "chat", section: "t2" })).toBe("#alex/chat/t2");
   });
   it("encodes odd segments", () => {
     expect(toHash({ client: "li/z", tab: "chat" })).toBe("#li%2Fz/chat");
@@ -86,9 +86,9 @@ describe("toHash", () => {
 describe("round-trip", () => {
   const cases: Permalink[] = [
     { tab: "doctor", section: "treatment" },
-    { client: "pablo", tab: "ai", section: "study" },
-    { client: "pablo", tab: "labs", section: "healthReports", anchor: "report-abc123" },
-    { client: "liz", tab: "chat", section: "conv", anchor: "t2-turn-3" },
+    { client: "alex", tab: "ai", section: "study" },
+    { client: "alex", tab: "labs", section: "healthReports", anchor: "report-abc123" },
+    { client: "blair", tab: "chat", section: "conv", anchor: "t2-turn-3" },
   ];
   for (const pl of cases) {
     it(`toHash→parseHash preserves ${JSON.stringify(pl)}`, () => {

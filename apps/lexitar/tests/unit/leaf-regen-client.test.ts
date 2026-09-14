@@ -13,7 +13,7 @@ import type { Client } from "../../src/lib/types";
 // of any leaf, so this exercises the transport without dragging in a whole Finding fixture.
 function clientWithAllergies(): Client {
   return {
-    displayName: "Pablo",
+    displayName: "Alex",
     dob: "1980-01-01",
     gender: "male",
     watchlist: [],
@@ -102,7 +102,7 @@ describe("leaf context construction", () => {
 // back from raw storage and folded into the request as image blocks.
 function clientWithPhotoTreatment(): Client {
   return {
-    displayName: "Pablo",
+    displayName: "Alex",
     dob: "1980-01-01",
     gender: "male",
     watchlist: [],
@@ -130,7 +130,7 @@ describe("vision attachments", () => {
       return "AAAA";
     });
     vi.mocked(fetch).mockResolvedValue(json(200, { result: { items: [] } }));
-    await fetchLeafRegen(clientWithPhotoTreatment(), "treatmentAssessment", undefined, "pablo");
+    await fetchLeafRegen(clientWithPhotoTreatment(), "treatmentAssessment", undefined, "alex");
     expect(fetch).toHaveBeenCalledTimes(1);
     const sent = JSON.parse((vi.mocked(fetch).mock.calls[0][1] as RequestInit).body as string);
     expect(sent.images).toEqual([{ mediaType: "image/jpeg", base64: "AAAA" }]);
@@ -139,7 +139,7 @@ describe("vision attachments", () => {
   it("sends no images at all when every attachment fails, rather than failing the regen", async () => {
     fetchAttachmentBase64.mockRejectedValue(new Error("404"));
     vi.mocked(fetch).mockResolvedValue(json(200, { result: { items: [] } }));
-    await fetchLeafRegen(clientWithPhotoTreatment(), "treatmentAssessment", undefined, "pablo");
+    await fetchLeafRegen(clientWithPhotoTreatment(), "treatmentAssessment", undefined, "alex");
     const sent = JSON.parse((vi.mocked(fetch).mock.calls[0][1] as RequestInit).body as string);
     expect(sent.images).toBeUndefined();
   });
@@ -153,7 +153,7 @@ describe("applyLeafRegen stamping", () => {
   // pending.inputHash, the hash taken at request time.
   it("stamps nodeHashes from the request-time inputHash, not the merge-time client", async () => {
     const client = {
-      displayName: "Pablo",
+      displayName: "Alex",
       dob: "1980-01-01",
       gender: "male",
       watchlist: [],

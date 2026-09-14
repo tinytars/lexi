@@ -2,8 +2,8 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { onRequestPut, onRequestGet } from "../../functions/api/vault/[id]";
 import type { D1Database } from "../../functions/_lib/identity-types";
 
-const KEY = "dev/data-pablo.enc"; // R2 key — store-prefixed (W13d)
-const ASSET = "data-pablo.enc"; // static-asset filename — unprefixed (Vite copies to dist root)
+const KEY = "dev/data-alex.enc"; // R2 key — store-prefixed (W13d)
+const ASSET = "data-alex.enc"; // static-asset filename — unprefixed (Vite copies to dist root)
 
 // HD1-prefixed blob of length n (>= 32 passes the validity check).
 function hd1(n = 40): Uint8Array<ArrayBuffer> {
@@ -66,17 +66,17 @@ const putCtx = (env: ReturnType<typeof makeEnv>, opts: { auth?: string; body?: B
   const headers: Record<string, string> = { "content-type": "application/octet-stream" };
   if (opts.auth !== undefined) headers.authorization = opts.auth;
   return {
-    request: new Request("http://x/api/vault/pablo", { method: "PUT", headers, body: opts.body ?? hd1() }),
+    request: new Request("http://x/api/vault/alex", { method: "PUT", headers, body: opts.body ?? hd1() }),
     env,
-    params: { id: "pablo" },
+    params: { id: "alex" },
   };
 };
 // GET is §G-gated; the ops bearer (VAULT_TOKEN) bypasses the session/envelope check, so these R2/
 // self-seed behaviour tests use it. The session+envelope matrix lives in vault-get-gate-function.test.ts.
 const getCtx = (env: ReturnType<typeof makeEnv>) => ({
-  request: new Request("http://x/api/vault/pablo", { headers: { authorization: "Bearer t" } }),
+  request: new Request("http://x/api/vault/alex", { headers: { authorization: "Bearer t" } }),
   env,
-  params: { id: "pablo" },
+  params: { id: "alex" },
 });
 
 const bytesOf = async (res: Response) => new Uint8Array(await res.arrayBuffer());
@@ -133,7 +133,7 @@ describe("GET /api/vault/:id", () => {
     const res = await onRequestGet(getCtx(env));
     expect(res.status).toBe(200);
     expect(await bytesOf(res)).toEqual(asset);
-    expect(env.store.get(KEY)).toEqual(asset); // seeded under dev/data-pablo.enc for next time
+    expect(env.store.get(KEY)).toEqual(asset); // seeded under dev/data-alex.enc for next time
   });
 
   it("404s when neither R2 nor a static asset has it", async () => {
@@ -171,7 +171,7 @@ describe("W8d vault-write audit logging is PHI-free", () => {
     const env = makeEnv();
     await onRequestPut(putCtx(env, { auth: "Bearer t", body: hd1(64) }));
     const entry = JSON.parse(lines.find((l) => l.includes('"/api/vault"'))!);
-    expect(entry).toMatchObject({ route: "/api/vault", status: 204, id: "pablo", bytes: 64 });
+    expect(entry).toMatchObject({ route: "/api/vault", status: 204, id: "alex", bytes: 64 });
     expect(Object.keys(entry).sort()).toEqual(["at", "bytes", "id", "latencyMs", "route", "status"]);
   });
 });

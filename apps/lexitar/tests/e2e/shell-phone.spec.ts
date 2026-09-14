@@ -24,7 +24,7 @@ test.describe("phone viewport", () => {
   // "a section with sub-sections keeps the drawer open" distinction no longer exists — tapping
   // any row navigates and closes the drawer.
   test("the sidebar starts closed; the hamburger opens it, and tapping a section navigates and closes the drawer", async ({ page }) => {
-    await unlock(page, "Pablo");
+    await unlock(page, "Alex");
     await expect(page.locator(".sidebar")).not.toHaveClass(/open/);
     await page.locator(".sidebar-toggle").click();
     await expect(page.locator(".sidebar")).toHaveClass(/open/);
@@ -34,7 +34,7 @@ test.describe("phone viewport", () => {
   });
 
   test("tapping a sub-section on phone navigates and closes the drawer", async ({ page }) => {
-    await unlock(page, "Pablo");
+    await unlock(page, "Alex");
     await page.locator(".sidebar-toggle").click();
     await clickNav(page, "Treatment");
     await expect(page).toHaveURL(/#.*treatment/);
@@ -42,7 +42,7 @@ test.describe("phone viewport", () => {
   });
 
   test("tapping Chat (no sub-sections) navigates and closes the drawer", async ({ page }) => {
-    await unlock(page, "Pablo");
+    await unlock(page, "Alex");
     await page.locator(".sidebar-toggle").click();
     await clickNav(page, "Treatment"); // navigate away first; M82 — every row now closes the drawer
     await page.locator(".sidebar-toggle").click(); // reopen — Treatment's own navigation just closed it
@@ -52,7 +52,7 @@ test.describe("phone viewport", () => {
   });
 
   test("tapping the scrim closes the drawer", async ({ page }) => {
-    await unlock(page, "Pablo");
+    await unlock(page, "Alex");
     await page.locator(".sidebar-toggle").click();
     await expect(page.locator(".sidebar")).toHaveClass(/open/);
     // W78 — click to the RIGHT of the 260px drawer, not the scrim's centre. The scrim spans the
@@ -65,7 +65,7 @@ test.describe("phone viewport", () => {
   });
 
   test("the chat thread list is a drawer toggled from the header", async ({ page }) => {
-    await unlock(page, "Pablo");
+    await unlock(page, "Alex");
     // M76 Phase 5 — Chat is the landing tab; the thread list now lives in the sidebar's own lower
     // zone, so it's part of the same drawer every other tab uses, closed until ☰ is tapped.
     await expect(page.locator(".sidebar")).not.toHaveClass(/open/);
@@ -90,7 +90,7 @@ test.describe("phone viewport", () => {
     await page.route("**/api/chat", (route) =>
       route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ kind: "answer", answer: "answer" }) }),
     );
-    await unlock(page, "Pablo");
+    await unlock(page, "Alex");
 
     // Name the first thread distinctly, then push it down with enough freshly-created (and thus
     // more-recent, per sortThreads' lastActivityAt order) blank threads to overflow the drawer.

@@ -1,5 +1,5 @@
 // ORG_KEY_PASSPHRASE (opens the real committed org key, records/org-key.json) is loaded from the
-// plover-context credentials repo by tests/setup.ts (vitest setupFiles), not hardcoded here.
+// operator's private credential store by tests/setup.ts (vitest setupFiles), not hardcoded here.
 import { describe, it, expect } from "vitest";
 import { isV2, sidecarPathFor, buildV2, openV2 } from "../../scripts/vault-v2";
 import { encryptVault } from "@tinytars/vault/crypto";
@@ -32,6 +32,6 @@ describe("vault-v2", () => {
   });
 
   it("sidecarPathFor maps a .enc path to its .dek.enc sidecar", () => {
-    expect(sidecarPathFor("/x/records/public/data-pablo.enc")).toBe("/x/records/public/data-pablo.dek.enc");
+    expect(sidecarPathFor("/x/records/public/data-alex.enc")).toBe("/x/records/public/data-alex.dek.enc");
   });
 });

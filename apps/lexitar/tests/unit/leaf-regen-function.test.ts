@@ -81,7 +81,7 @@ describe("functions/api/leaf-regen: targetLabels", () => {
 
   // Regression for a live bug: a scope note placed only AFTER the node's systemPromptExtra (which
   // spends many sentences instructing "answer every populated row") contradicts rather than overrides
-  // it, and the tool schema's own row-array description said the same "every row" thing — on Pablo's
+  // it, and the tool schema's own row-array description said the same "every row" thing — on Alex's
   // 19-row Study list the model apparently followed that dominant framing, tried to answer every row,
   // and overran max_tokens, coming back with no `items` key at all (spec.validate's "items missing or
   // not an array"). The fix: the SCOPE OVERRIDE must appear BEFORE systemPromptExtra, and the tool

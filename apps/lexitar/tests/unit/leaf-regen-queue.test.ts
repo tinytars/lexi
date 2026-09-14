@@ -34,7 +34,7 @@ function makeQueue(over: Partial<Parameters<typeof createLeafRegenQueue>[0]> = {
   const held = client();
   const q = createLeafRegenQueue({
     getClient: () => held,
-    getClientId: () => "pablo",
+    getClientId: () => "alex",
     getProviderToken: () => "tok",
     persist,
     ...over,
@@ -236,10 +236,10 @@ describe("the staleness gate looks only at the node's own staleness", () => {
 describe("a context that goes away mid-flight is a skip, not a failure", () => {
   it("abandons the result when the client is swapped while staleNodes is resolving", async () => {
     let current = client("before");
-    let currentId = "pablo";
+    let currentId = "alex";
     staleNodes.mockImplementation(async () => {
       current = client("after"); // provider switched patients during the await
-      currentId = "liz";
+      currentId = "blair";
       return allStale();
     });
     const { q } = makeQueue({ getClient: () => current, getClientId: () => currentId });

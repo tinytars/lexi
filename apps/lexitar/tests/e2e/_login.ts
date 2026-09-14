@@ -6,8 +6,8 @@ import { expect, type Page } from "@playwright/test";
 // (see scripts/migrate-accounts.ts); the provider lands on the roster and drills into a
 // patient by display name. Runs against the real /api/auth/* Functions via wrangler pages dev.
 // The provider's login password is the family passphrase (its verifier hash is seeded in
-// migration 0002); it's sourced from the plover-context health-dash.env, not committed here.
-// pablo/liz passwords are just the public lowercased slugs — not secrets — so they stay literal.
+// migration 0002); it's sourced from the operator's private health-dash.env, not committed here.
+// alex/blair passwords are just the public lowercased slugs — not secrets — so they stay literal.
 // W69 — resolved when a spec USES the provider, not when this module is imported.
 //
 // The throw used to sit at module scope, and almost every spec imports this file — so on a machine
@@ -20,7 +20,7 @@ import { expect, type Page } from "@playwright/test";
 // fails loudly, by name, the moment a pilot-provider spec actually asks for the password.
 function providerPassword(): string {
   const pass = process.env.PASSPHRASE;
-  if (!pass) throw new Error("PASSPHRASE not set — source the plover-context health-dash.env (see VAULT.md)");
+  if (!pass) throw new Error("PASSPHRASE not set — source the operator's private health-dash.env (see VAULT.md)");
   return pass;
 }
 
@@ -29,15 +29,15 @@ function providerPassword(): string {
 // specs that assert on a location or stub a vault route need it. Here rather than in each spec: it
 // is one fact, and the whole point of G1 is that it is not derivable from the display name.
 export const PILOTS = {
-  pablo: { email: "pablo@local.invalid", password: "pablo", name: "Pablo", clientId: "834bc60d-c937-467d-9e78-3caa734acf45" },
-  liz: { email: "liz@local.invalid", password: "liz", name: "Liz", clientId: "7de3dfed-c872-4971-a923-c85d3322c087" },
+  alex: { email: "alex@local.invalid", password: "alex", name: "Alex", clientId: "834bc60d-c937-467d-9e78-3caa734acf45" },
+  blair: { email: "blair@local.invalid", password: "blair", name: "Blair", clientId: "7de3dfed-c872-4971-a923-c85d3322c087" },
   provider: {
     email: "fam4@local.invalid",
     get password(): string {
       return providerPassword();
     },
   },
-  // W44 P4b — a support agent + a pending request against Liz, seeded LOCAL-only by seed-support-e2e.sql.
+  // W44 P4b — a support agent + a pending request against Blair, seeded LOCAL-only by seed-support-e2e.sql.
   support: { email: "support@local.invalid", name: "Support Agent" },
 };
 
@@ -49,16 +49,16 @@ export async function loginAs(page: Page, email: string, password: string) {
 }
 
 /** The pilots a spec can sign in as BY NAME. W64 — six spec-local wrappers took a `name: string`
- *  and then called openPatient() with no argument, so every one of them silently yielded Pablo (the
- *  default) whatever was passed. Liz is a real pilot, so `openClient(page, "Liz")` reading as Pablo
+ *  and then called openPatient() with no argument, so every one of them silently yielded Alex (the
+ *  default) whatever was passed. Blair is a real pilot, so `openClient(page, "Blair")` reading as Alex
  *  was a trap waiting for the first spec that needed her. */
-export const PILOT_BY_NAME = { Pablo: PILOTS.pablo, Liz: PILOTS.liz } as const;
+export const PILOT_BY_NAME = { Alex: PILOTS.alex, Blair: PILOTS.blair } as const;
 export type PilotName = keyof typeof PILOT_BY_NAME;
 
 /** A pilot's URL-hash prefix, `#{clientId}`. Regex-safe — a uuid has no metacharacters. */
 export const hashOf: Record<PilotName, string> = {
-  Pablo: `#${PILOTS.pablo.clientId}`,
-  Liz: `#${PILOTS.liz.clientId}`,
+  Alex: `#${PILOTS.alex.clientId}`,
+  Blair: `#${PILOTS.blair.clientId}`,
 };
 
 export async function openPatientNamed(page: Page, name: PilotName) {
@@ -66,7 +66,7 @@ export async function openPatientNamed(page: Page, name: PilotName) {
 }
 
 // Sign in as a patient (their own account) and wait for the app shell (the tab strip).
-export async function openPatient(page: Page, who: { email: string; password: string } = PILOTS.pablo) {
+export async function openPatient(page: Page, who: { email: string; password: string } = PILOTS.alex) {
   await loginAs(page, who.email, who.password);
   await page.waitForSelector('.sidebar .nav-item');
 }

@@ -127,7 +127,7 @@ export function removeFrom(client: Client, kind: SidebarItemKind, id: string): C
   // content behind forever: no merge ever removes an entry (mergeLabeledItems deliberately keeps an
   // existing one with no returned counterpart, so a scoped regen cannot wipe its siblings), and no
   // caller pruned. Found by running finding-invariants.ts against the live vault, which reported two
-  // assessments for treatments Pablo deleted months ago.
+  // assessments for treatments Alex deleted months ago.
   return pruneFindingFor(removed, client, kind, id);
 }
 

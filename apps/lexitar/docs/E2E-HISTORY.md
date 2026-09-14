@@ -1,10 +1,10 @@
-# e2e incident history — health-dash-web
+# e2e incident history
 
 Dated post-mortems for e2e-suite failures whose root cause and fix are non-obvious enough to be
 worth a full writeup. `BUILDING.md` keeps only the durable rule each of these produced, with a
 pointer back here — this file is the "why," not live policy.
 
-## In-flight requests are intercepted suite-wide in e2e (W76, 2026-08-27)
+## In-flight requests are intercepted suite-wide in e2e (2026-08-27)
 
 **A `page.reload()` that severs an in-flight whole-vault PUT kills `wrangler pages dev` outright.**
 This was the gate's chronic shard failure for weeks, and it is a wrangler dev-server bug rather than
@@ -66,7 +66,7 @@ Consequences:
 - **No production exposure.** The ProxyWorker exists only in `wrangler pages dev`.
 
 **One test was passing by race, and the fixture exposed it.** `cover-render.spec.ts` asserts the
-dashboard renders with no console errors, while Pablo's vault references four real attachment blobs
+dashboard renders with no console errors, while the pilot account's vault references four real attachment blobs
 (~200 KB medication-label photos) that exist only in the deployed R2. Dev and CI structurally cannot
 have them — seeding would mean copying PHI into the repo or onto a runner — so the `<img>` 404s were
 always happening; they simply landed outside the assertion window five times in six. Resolving the
@@ -110,7 +110,7 @@ Leaving it to fail across a real connection buys no coverage and costs a shard.
 ### Applying that rule to the whole route table, instead of one route at a time
 
 The leaf-regen fix held — it vanished from the next crash's prelude — and a *third* source took its
-place: `/api/raw`, the attachment blobs. Pablo's vault references real medication-label photos that
+place: `/api/raw`, the attachment blobs. The pilot account's vault references real medication-label photos that
 live only in the deployed R2, so every `<img>` fires a GET that 404s, in bursts of four to eight as a
 cover renders.
 

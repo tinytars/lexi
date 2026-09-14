@@ -12,7 +12,7 @@ import { clickNav } from "./_nav";
 // threads, treatments, hypotheses, exploration cells.
 
 test("sidebar search finds a marker and renders a real chart (M85 Phase 6)", async ({ page }) => {
-  await openAsProvider(page, "Pablo");
+  await openAsProvider(page, "Alex");
   await search(page, "Apolipoprotein B");
   // Exact heading match: "Recommended Markers" is its own search group now, and a plain
   // hasText:"Markers" filter matches both.
@@ -28,12 +28,12 @@ test("sidebar search finds a marker and renders a real chart (M85 Phase 6)", asy
   await expect(chart.locator(".marker-name")).toHaveText("Apolipoprotein B");
 
   await clickLeafMenuItem(chart, "Details");
-  await expect(page).toHaveURL(new RegExp(`${hashOf.Pablo}/markers`));
+  await expect(page).toHaveURL(new RegExp(`${hashOf.Alex}/markers`));
   await expect(page.locator(".markers-tab .permalink-flash")).toBeVisible({ timeout: 5_000 });
 });
 
 test("sidebar search finds an Analysis bubble by its text (M85 Phase 8)", async ({ page }) => {
-  await openAsProvider(page, "Pablo");
+  await openAsProvider(page, "Alex");
   // W78 — the phrase is READ OFF the card it is meant to find. It used to be a literal ("SERM
   // Enclomiphene") lifted from the prose of one regen of one patient's Finding, re-confirmed by hand
   // after each regen until the 2026-08-26 one dropped it and the search simply returned nothing.
@@ -52,7 +52,7 @@ test("sidebar search finds an Analysis bubble by its text (M85 Phase 8)", async 
   await expect(hit).toBeVisible();
   await clickLeafMenuItem(hit, "Open");
 
-  await expect(page).toHaveURL(new RegExp(`${hashOf.Pablo}/analysis`));
+  await expect(page).toHaveURL(new RegExp(`${hashOf.Alex}/analysis`));
   await expect(page.locator(".analysis .permalink-flash")).toBeVisible({ timeout: 5_000 });
 });
 
@@ -69,7 +69,7 @@ async function ask(page: Page, q: string) {
 
 test("sidebar search finds a chat thread by its title (first message) (M85)", async ({ page }) => {
   await stubChatHistory(page);
-  await openAsProvider(page, "Pablo");
+  await openAsProvider(page, "Alex");
   await page.waitForSelector(".chat-tab textarea", { timeout: 10_000 });
   const marker = `M85 chat title ${Date.now()}`;
   await stubChat(page, "Acknowledged.");
@@ -84,8 +84,8 @@ test("sidebar search finds a chat thread by its title (first message) (M85)", as
 });
 
 test("sidebar search finds a treatment and auto-selects its bucket (M85 Phase 7)", async ({ page }) => {
-  await openAsProvider(page, "Pablo");
-  // Tirzepatide is one of Pablo's real ongoing drugs (see shell-treatment.spec.ts's Treatment test), but the
+  await openAsProvider(page, "Alex");
+  // Tirzepatide is one of Alex's real ongoing drugs (see shell-treatment.spec.ts's Treatment test), but the
   // name also appears inside real Finding prose (ranges rationale, futureTreatment/docInference text,
   // and — since M85 Phase 8 — Analysis' On Treatment bubble, whose "On Treatment" context chip makes a
   // plain hasText:"Treatment" match the Analysis group too) — scope to the group whose heading is
@@ -97,14 +97,14 @@ test("sidebar search finds a treatment and auto-selects its bucket (M85 Phase 7)
   await expect(row).toBeVisible();
   await clickLeafMenuItem(row, "Open");
 
-  await expect(page).toHaveURL(new RegExp(`${hashOf.Pablo}/treatment`));
+  await expect(page).toHaveURL(new RegExp(`${hashOf.Alex}/treatment`));
   await expect(page.locator(".unified-treatment .permalink-flash")).toBeVisible({ timeout: 5_000 });
   await expect(page.locator(".sidebar .group-list .sub-item", { hasText: "Ongoing" })).toHaveClass(/active/);
 });
 
 test("sidebar search finds a hypothesis topic and auto-selects its system group (M85 Phase 7)", async ({ page }) => {
-  await openAsProvider(page, "Pablo");
-  // Real seeded topic/system pair for Pablo (finding.treatmentGroups) — the 2-token query is
+  await openAsProvider(page, "Alex");
+  // Real seeded topic/system pair for Alex (finding.treatmentGroups) — the 2-token query is
   // specific enough to avoid the cross-section name collisions found in the Treatment test above.
   // M96 Phase 10 regen: re-confirmed against the current Finding's treatmentGroups.
   await search(page, "Lipid-lowering Rosuvastatin");
@@ -118,14 +118,14 @@ test("sidebar search finds a hypothesis topic and auto-selects its system group 
   await expect(topicCard.getByText("PCSK9 inhibitor", { exact: false })).toHaveCount(0);
   await clickLeafMenuItem(topicCard, "Open");
 
-  await expect(page).toHaveURL(new RegExp(`${hashOf.Pablo}/futureTreatment`));
+  await expect(page).toHaveURL(new RegExp(`${hashOf.Alex}/futureTreatment`));
   await expect(page.locator(".future-treatment .permalink-flash")).toBeVisible({ timeout: 5_000 });
   await expect(page.locator(".sidebar .group-list .sub-item", { hasText: "Cardiovascular Risk" })).toHaveClass(/active/);
 });
 
 test("sidebar search finds one item within a multi-item exploration cell and scopes the preview to it (M103)", async ({ page }) => {
-  await openAsProvider(page, "Pablo");
-  // Real seeded dataRequisition cell for Pablo: type "Scan / Imaging", group "Cardiovascular Risk"
+  await openAsProvider(page, "Alex");
+  // Real seeded dataRequisition cell for Alex: type "Scan / Imaging", group "Cardiovascular Risk"
   // has 3 items (CAC, echocardiogram, aortic imaging) — search a string unique to just the
   // echocardiogram item and confirm the preview scopes to that ONE item.
   // W61 — an exploration item is its own LeafCard now (modality in the card title, item text in a
@@ -143,14 +143,14 @@ test("sidebar search finds one item within a multi-item exploration cell and sco
   await expect(cell.locator(".persona-bubble.p-assistant")).toContainText(/echocardiogram/i);
   await clickLeafMenuItem(cell, "Open");
 
-  await expect(page).toHaveURL(new RegExp(`${hashOf.Pablo}/exploration`));
+  await expect(page).toHaveURL(new RegExp(`${hashOf.Alex}/exploration`));
   await expect(page.locator(".tests-consider .permalink-flash")).toBeVisible({ timeout: 5_000 });
   await expect(page.locator(".sidebar .group-list .sub-item", { hasText: "Cardiovascular Risk" })).toHaveClass(/active/);
 });
 
 test("sidebar search finds a chat thread by a later message's text, not just its title (M85)", async ({ page }) => {
   await stubChatHistory(page);
-  await openAsProvider(page, "Pablo");
+  await openAsProvider(page, "Alex");
   await page.waitForSelector(".chat-tab textarea", { timeout: 10_000 });
   await stubChat(page, "Ack 1");
   await ask(page, "an unrelated first question");

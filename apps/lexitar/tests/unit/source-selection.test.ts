@@ -11,9 +11,9 @@ const basename = (p: string) => p.split("/").pop() ?? p;
 
 const src = (id: string, file: string, originalName: string) => ({ id, file, originalName });
 const SOURCES = [
-  src("a1b2c3d4e5", "records/private/liz/raw/2024-labs.xlsx", "Quest 2024.xlsx"),
-  src("a1b2c3ffff", "records/private/liz/raw/2025-labs.xlsx", "Quest 2025.xlsx"),
-  src("99887766", "records/private/liz/raw/dexa.pdf", "DEXA.pdf"),
+  src("a1b2c3d4e5", "records/private/blair/raw/2024-labs.xlsx", "Quest 2024.xlsx"),
+  src("a1b2c3ffff", "records/private/blair/raw/2025-labs.xlsx", "Quest 2025.xlsx"),
+  src("99887766", "records/private/blair/raw/dexa.pdf", "DEXA.pdf"),
 ];
 
 describe("naming the source to remove", () => {

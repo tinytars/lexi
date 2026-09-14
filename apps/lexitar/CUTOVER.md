@@ -1,6 +1,6 @@
-# CUTOVER.md — moving beta users from dev to prod (W53 Phase 4)
+# CUTOVER.md — moving beta users from dev to prod
 
-The runbook for the one irreversible-feeling step in W53: `health-dash-dev` currently holds the live
+The runbook for the one irreversible-feeling step: `health-dash-dev` currently holds the live
 beta users' vaults, and `health-dash-main` must take them over. Written before the window, to be
 followed *during* it — the point of a runbook is that nothing is decided under time pressure.
 
@@ -17,14 +17,15 @@ R2 and D1 are two halves of one secret, and the halves reference each other:
 
 Copy either side alone and you get vaults nobody can open — including the owner, including the org.
 
-**`r2_key` is a bare object name, not a path — do not rewrite it.** It holds `data-pablo.enc`, and
-the store prefix is composed at *read* time by `storeKey()` (`functions/_lib/store.ts:13`) and
+**`r2_key` is a bare object name, not a path — do not rewrite it.** It holds `data-<client-id>.enc`,
+and the store prefix is composed at *read* time by `storeKey()` (`functions/_lib/store.ts:13`) and
 `r2KeyFor()` (`scripts/vault-sync.ts:41`) from the branch's `STORE_PREFIX`. So the `dev/` → `prod/`
 prefix change is entirely an **R2 key** change; D1 needs no rewrite at all.
 
 Earlier revisions of this file said the opposite — that `r2_key` "stores the R2 key path itself" and
-every copied one needs its prefix rewritten. Following that would have written `prod/data-pablo.enc`
-into `r2_key`, and `storeKey` would then have looked for **`prod/prod/data-pablo.enc`**: every
+every copied one needs its prefix rewritten. Following that would have written
+`prod/data-<client-id>.enc` into `r2_key`, and `storeKey` would then have looked for
+**`prod/prod/data-<client-id>.enc`**: every
 migrated vault unopenable, which is precisely the failure this section exists to prevent. Corrected
 2026-08-13.
 
@@ -34,17 +35,16 @@ migrated vault unopenable, which is precisely the failure this section exists to
       surfaces post-cutover as a broken route on a user's account.
 - [ ] `literacy.tinytars.foundation` is bound to `health-dash-main` and serving, and `WEBAUTHN_ORIGIN`
       matches it exactly. Do not cut over onto the `pages.dev` hostname. The zone is still on Google
-      DNS — see `~/.claude/planning/plover-code/docs/cross-app/05-tinytars-foundation-zone-migration.md`
-      (moved 2026-09-12). Proof is a passkey
+      DNS. Proof is a passkey
       registered *and* used to sign in on that hostname, not a green DNS lookup.
-- [ ] W55 Phase 4 is deployed: every account being migrated has an **org recovery envelope**. An
+- [ ] Every account being migrated has an **org recovery envelope**. An
       account without one is a vault the org can never migrate or prove restorable, and it cannot be
       fixed server-side afterwards. **Two accounts fail this and are deliberately excluded** (audited
       2026-08-13): `6e4de08e…` "Deprecated Admin" — passkey-only *and* envelope-less, so it could not
       sign in post-cutover either — and `d59c9b0c…` "sekhar101", email unconfirmed. Both vaults are
       empty shells (182 and 192 bytes). Both accounts are marked `lifecycle_stage='churned'` on dev
-      and stay there. **So the migration set is 6 accounts, not 8, and 3 vaults, not 5** — Pablo,
-      Liz, Nancy. The row-count check below must be read against that, or it fails as a surprise.
+      and stay there. **So the migration set is 6 accounts, not 8, and 3 vaults, not 5.** The
+      row-count check below must be read against that, or it fails as a surprise.
 - [ ] The vault tooling can actually address prod. `scripts/vault-sync.ts`, `vault-snapshot.ts`,
       `org-d1.ts`, `access-log.ts` and `rotate-pilot-credentials.ts` hardcoded `health-vault` /
       `health-identity-dev` until 2026-08-13; they now derive the target from the worktree's
@@ -54,7 +54,7 @@ migrated vault unopenable, which is precisely the failure this section exists to
 - [ ] A fresh snapshot exists (`npm run vault:snapshot`) and `npm run vault:snapshot:check` is green.
 - [ ] The restore drill in BACKUP.md has been run at least once against this snapshot format.
 - [ ] Prod D1 is baselined `0001…0006` and holds **no rows** except the org operational key
-      (`00000000-…-0001`). `0002_seed_migrated_accounts.sql` seeds pre-W52 guessable credentials on a
+      (`00000000-…-0001`). `0002_seed_migrated_accounts.sql` seeds guessable credentials on a
       fresh database — the migration record stays, the seeded data does not.
 - [ ] Beta users have been told the freeze window, and that **they will need to re-register their
       passkeys afterwards** (see below).

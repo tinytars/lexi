@@ -2,8 +2,8 @@
 //
 // The sibling `--rekey-client` moves R2 object keys and `/api/vault/rotate` moves the D1 row, but
 // nothing rewrites the clients map inside the blob. On prod that half was done offline as a repo
-// edit and pushed; dev only ever got the R2 half, so its vault still keyed "Pablo" while its
-// objects sat under the uuid — every /api/raw/pablo/... 404'd. This closes that gap in place,
+// edit and pushed; dev only ever got the R2 half, so its vault still keyed "Alex" while its
+// objects sat under the uuid — every /api/raw/alex/... 404'd. This closes that gap in place,
 // against the deployed blob, so a store whose content has diverged from the repo is fixed without
 // copying another store's vault over it.
 

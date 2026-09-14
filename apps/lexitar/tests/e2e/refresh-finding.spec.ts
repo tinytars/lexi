@@ -19,11 +19,11 @@ test("a patient's own session has no Translate control", async ({ page }) => {
 
 test("the idle Translate button's tooltip shows the last successful translation time (W41)", async ({ page }) => {
   await page.route("**/api/provider-token", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ token: "provtok-123" }) }));
-  await providerInto(page, "Pablo");
+  await providerInto(page, "Alex");
   await page.locator(".account-trigger").click();
   const item = page.getByRole("menuitem", { name: /Translate/ });
   await expect(item).toBeVisible();
-  // Pablo's vault carries a generated Translation, so the hover reports when it last succeeded.
+  // Alex's vault carries a generated Translation, so the hover reports when it last succeeded.
   await expect(item).toHaveAttribute("title", /^Last translated .+ · Regenerate this patient's Translation/);
 });
 
@@ -40,7 +40,7 @@ test("provider clicks Translate → streams with the provider token → surfaces
     route.fulfill({ status: 200, contentType: "text/plain", body: "\n[[REFRESH_ERROR]] test generation failure" });
   });
 
-  await providerInto(page, "Pablo");
+  await providerInto(page, "Alex");
   await page.locator(".account-trigger").click();
   const item = page.getByRole("menuitem", { name: /Translate/ });
   await expect(item).toBeVisible();
@@ -68,7 +68,7 @@ test("provider opens Diagnostics and sees the persisted refresh events with toke
     });
   });
 
-  await providerInto(page, "Pablo");
+  await providerInto(page, "Alex");
   await page.locator(".account-trigger").click();
   await page.getByRole("menuitem", { name: "Diagnostics" }).click();
 
@@ -90,7 +90,7 @@ test("refresh shows a progress bar while generating, with no attempt/portion cou
     route.fulfill({ status: 200, contentType: "text/plain", body: '{"progression":{"latest":"","recent":"","overall":""}}' });
   });
 
-  await providerInto(page, "Pablo");
+  await providerInto(page, "Alex");
   await page.locator(".account-trigger").click();
   await page.getByRole("menuitem", { name: /Translate/ }).click();
 

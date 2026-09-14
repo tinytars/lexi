@@ -1,9 +1,7 @@
-# Building health-dash-web
+# Building LexiTar
 
-App-specific working rules for `apps/health-dash-web`. The repo-wide policy lives in the
-root `CLAUDE.md`; this file holds what is specific to the dashboard app. Planning docs for
-this app live in `plover-context`, at `~/.claude/planning/plover-code/docs/health-dash/plans/`
-(roadmap = `00-roadmap.md`) — moved out of this repo 2026-09-12, per `~/.claude/CLAUDE.md` "Planning".
+App-specific working rules for `apps/lexitar`. The repo-wide policy lives in the
+root `CLAUDE.md`; this file holds what is specific to the app.
 
 ## Translate / regeneration
 
@@ -13,36 +11,10 @@ Translate. Read it before adding anything to a DAG node's input closure or any n
 staleness is a **gate** on Translates, not just a badge, so a change that marks computed ancestors
 stale silences turn replies.
 
-## Vault / PHI security (app-specific detail)
-
-This is a **private** repo and, by the owner's decision, secrets and data **may** be committed
-(the repo-wide statement of this is in the root `CLAUDE.md`). For this app specifically:
-
-- **Plaintext patient data (PHI)** is committed under `records/private/` (raw originals,
-  `processed/` extractions, and `vault.json` / `roster.json`). This is the W13 source of truth —
-  at rest, openable in VS Code, and key-loss-proof; the served `records/public/*.enc` is the
-  encrypted, derived copy. See `VAULT.md`.
-  - W46 — `records/private/{id}/raw/` also holds every leaf **attachment** (a note/treatment/etc's
-    attached photo or document, uploaded via the same `/api/raw/{id}/{key}` PUT as a report
-    original), not just imported clinical reports. They carry the same plaintext-PHI posture as
-    raw reports — a wound photo is more sensitive than a lab PDF, and this is the deliberate,
-    owner-accepted model (`functions/api/raw/[[path]].ts`) — so the purge below covers them too.
-  - **Attached documents add a second R2 prefix, `text/{id}/{key}.json`** — the transcription of an
-    attached PDF/text file, written once at attach time by `/api/document-extract` and served back
-    to whichever surface answers a patient turn. It is **plaintext PHI in the same sense `raw/` is**,
-    under the same session gate and in the same bucket, so it inherits the same posture and the same
-    purge. It lives outside the vault deliberately: a long PDF's text in a vault blob would be
-    re-encrypted and rewritten on every unrelated edit, so the vault carries only
-    `Attachment.extracted` metadata (`types.ts`) — never the text. Content-addressed like `raw/`, so
-    re-attaching the same bytes anywhere reuses the extraction and never bills a second read.
-- If the repo's visibility ever changes to public, **purge `records/private/` from git history**
-  (plaintext PHI cannot be "rotated" — it must be expunged; `git filter-repo` procedure in
-  `RECOVERY.md`) in addition to rotating every committed credential.
-
 ## `miniflare` is pinned, and must stay pinned
 
 Every unit test that instantiates `new Miniflare(...)` directly (32 files as of 2026-08-29, and
-growing) does so to get a real workerd D1/R2 to run the Pages Functions against. Until W71
+growing) does so to get a real workerd D1/R2 to run the Pages Functions against. At one point
 `miniflare` was **not declared in any `package.json`** — the tests simply imported whatever version
 `wrangler` happened to ship transitively.
 
@@ -63,8 +35,7 @@ runtime, and `dev` went red — for a change that had nothing to do with the tes
 ## Cheap-execution model (default for substantial milestones)
 
 A single long Opus turn re-sends its whole transcript each step, so cost grows ~quadratically.
-Structure any substantial milestone this way (playbook:
-`docs/health-dash/plans/32-real-time-web-ingestion-and-cheap-execution.md`):
+Structure any substantial milestone this way:
 
 - **One turn per phase** (types → UI → entry → finding → tests), `/clear` between; the plan file
   is the handoff.
@@ -78,7 +49,7 @@ Structure any substantial milestone this way (playbook:
 
 Both subagents are defined in `.claude/agents/` (auto-loaded in a fresh session).
 
-## Testing discipline (W75, 2026-08-26)
+## Testing discipline (2026-08-26)
 
 Four rules that came out of auditing twelve milestones' claims against the code. They are the
 standing answer to "is this test worth having", not advice.
@@ -103,9 +74,7 @@ standing answer to "is this test worth having", not advice.
    `.github/workflows/tip-watch.yml` exists for that, and the same question applies to any nightly:
    a job that stops firing reports nothing, forever.
 
-Written up in full: `docs/health-dash/plans/75-w75-prove-what-we-claim.md`.
-
-## In-flight requests are intercepted suite-wide in e2e (W76, 2026-08-27)
+## In-flight requests are intercepted suite-wide in e2e (2026-08-27)
 
 **Any request still in flight when a Playwright context tears down kills `wrangler pages dev`**
 outright — a reload severing a large PUT, plain test teardown, or an unawaited background call

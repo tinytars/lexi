@@ -10,8 +10,8 @@
 // module turns that into an answer.
 //
 // WHY OWNERSHIP IS RESOLVED BY PREFIX, NOT BY EXACT KEY. Checking only the exact key would leave the
-// namespace squattable — an attacker could PUT `raw/pablo/anything-new.pdf`, become its first writer,
-// and thereafter own a key inside someone else's folder. Resolving `raw/pablo/` as a whole means the
+// namespace squattable — an attacker could PUT `raw/alex/anything-new.pdf`, become its first writer,
+// and thereafter own a key inside someone else's folder. Resolving `raw/alex/` as a whole means the
 // first writer claims the CLIENT, and everyone else is measured against them.
 //
 // WHY A PROVIDER STILL PASSES. A clinician drilled into a patient reads that patient's attachments
@@ -110,7 +110,7 @@ export async function rawAccessFor(
   // Ownership is FIRST-WRITER-WINS, and the first writer into a patient's namespace is very often not
   // the patient: a clinician drilled in on their behalf uploads a report, and the clinician is recorded
   // as owner. Checking only one direction then denies the PATIENT access to their own files — which is
-  // exactly what main's e2e caught, with a provider and a patient disagreeing about who owned `pablo`.
+  // exactly what main's e2e caught, with a provider and a patient disagreeing about who owned `alex`.
   //
   // Widening to both directions grants nothing new: a live provider link already means each side can
   // open the other's relevant vault. It just stops an accident of write ORDER from deciding who is

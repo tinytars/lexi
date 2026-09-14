@@ -11,7 +11,7 @@ test("selecting a submenu FILTERS the body to that group, in every section", asy
   // The reported bug: some submenus scrolled instead of filtering. Analysis took no group at all
   // (all six blocks stayed on screen); Hypothesis and Exploration fell back to the first system
   // when the selected one was empty, so the click looked ignored or showed the wrong cells.
-  await openAsProvider(page, "Pablo");
+  await openAsProvider(page, "Alex");
 
   // Analysis: picking one block shows only that block.
   await clickNav(page, "Analysis");
@@ -67,7 +67,7 @@ test("a child row under Notes > Markers filters to that one system", async ({ pa
 });
 
 test("a child row under Analysis filters to that one turn", async ({ page }) => {
-  await openAsProvider(page, "Pablo");
+  await openAsProvider(page, "Alex");
   await clickNav(page, "Analysis");
   expect(await page.locator(".analysis .leaf-card").count()).toBeGreaterThan(1);
 
@@ -86,7 +86,7 @@ test("a child row under Analysis filters to that one turn", async ({ page }) => 
 // Picking the group back means "show the whole group" — otherwise a child click would be a one-way
 // door with no way back to the full list.
 test("selecting the group again clears the child filter", async ({ page }) => {
-  await openAsProvider(page, "Pablo");
+  await openAsProvider(page, "Alex");
   await clickNav(page, "Analysis");
   const all = await page.locator(".analysis .leaf-card").count();
 
@@ -103,7 +103,7 @@ test("selecting the group again clears the child filter", async ({ page }) => {
 // `filteredDecisions` only sorted by pin — it never filtered, despite the name. A DecisionEntry has
 // no system of its own, so the AI's grouping is what supplies one.
 test("a Hypothesis idea appears under its own system and under All, not everywhere", async ({ page }) => {
-  await openAsProvider(page, "Pablo");
+  await openAsProvider(page, "Alex");
   await clickNav(page, "Hypothesis");
 
   const rows = page.locator(".group-list .sub-item");

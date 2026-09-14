@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # W44 P7 — the one wrangler wrapper. Sets up the out-of-repo env every headless wrangler call needs
 # (homebrew Node on PATH, the CA bundle without which wrangler/SDK report "fetch failed", and the
-# Cloudflare API token from the plover-context credentials repo), then runs wrangler with all args passed
+# Cloudflare API token from the operator's private credential store), then runs wrangler with all args passed
 # through. Use it for every wrangler invocation:  bash scripts/wrangler.sh d1 migrations list --remote
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -22,7 +22,7 @@ if [ -z "${NODE_EXTRA_CA_CERTS:-}" ] && [ -r /etc/ssl/cert.pem ]; then
   export NODE_EXTRA_CA_CERTS=/etc/ssl/cert.pem
 fi
 
-# Cloudflare API token comes from the plover-context credentials repo, not this repo.
+# Cloudflare API token comes from the operator's private credential store, not this repo.
 . "$SCRIPT_DIR/creds.sh"
 load_creds cloudflare.env \
   || echo "wrangler.sh: warning — cloudflare.env not loaded; wrangler will use ambient CLOUDFLARE_* env or interactive auth." >&2

@@ -17,8 +17,8 @@ import { SYNTHETIC_SPECS } from "../../playwright.config";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const E2E = join(ROOT, "tests/e2e");
 
-/** Any reach for a real pilot — Pablo, Liz, or the fam4 provider whose password is the family passphrase. */
-const TOUCHES_PILOTS = /\bPILOTS\.(pablo|liz|provider)\b|\bopenPatient\b|\bopenPatientNamed\b|\bopenAsProvider\b|\bPILOT_BY_NAME\b/;
+/** Any reach for a real pilot — Alex, Blair, or the fam4 provider whose password is the family passphrase. */
+const TOUCHES_PILOTS = /\bPILOTS\.(alex|blair|provider)\b|\bopenPatient\b|\bopenPatientNamed\b|\bopenAsProvider\b|\bPILOT_BY_NAME\b/;
 
 const specFiles = readdirSync(E2E).filter((f) => f.endsWith(".spec.ts"));
 

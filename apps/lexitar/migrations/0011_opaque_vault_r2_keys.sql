@@ -2,7 +2,7 @@
 --
 -- `r2_key` is the identifier at every layer at once: it is the R2 object name, the `/api/vault/{id}`
 -- route segment (functions/api/vault/[id].ts looks the route up BY r2_key, not by vault_id), and the
--- name of the served static asset. So while the ciphertext was always sound, `data-pablo.enc` was
+-- name of the served static asset. So while the ciphertext was always sound, `data-alex.enc` was
 -- reachable unauthenticated at a guessable URL and the filename alone disclosed who the patient was.
 --
 -- The scheme replacing it is not new: every account created since signup shipped is already keyed by

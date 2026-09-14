@@ -27,7 +27,7 @@ function hyp(intervention: string, purpose = "a stated purpose") {
 
 function client(): Client {
   return {
-    displayName: "Pablo",
+    displayName: "Alex",
     dob: "1980-01-01",
     gender: "male",
     watchlist: [],

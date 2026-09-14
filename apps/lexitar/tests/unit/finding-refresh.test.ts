@@ -4,7 +4,7 @@ import { LEAF_REGEN_SPECS } from "../../src/lib/leaf-regen-registry";
 import { dagNode } from "../../src/lib/finding-dag";
 import type { Client, ClientFinding } from "../../src/lib/types";
 
-const client = () => ({ displayName: "Pablo", results: [] } as unknown as Client);
+const client = () => ({ displayName: "Alex", results: [] } as unknown as Client);
 const finding = () => ({ disease: [] } as unknown as ClientFinding);
 
 describe("leafRegenOrder", () => {

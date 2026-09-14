@@ -20,7 +20,7 @@
 //   npm run vault:restore -- --expand-logs     # also re-materialise every audit-log object
 //
 // Needs ORG_KEY_PASSPHRASE (the org private key unwraps each vault's org-recovery envelope) —
-// that is a key, not data, and lives out of band in the plover-context repo. See VAULT.md §Keys.
+// that is a key, not data, and lives out of band in the operator's private credential store. See VAULT.md §Keys.
 
 import "./load-creds";
 import { realpathSync } from "node:fs";

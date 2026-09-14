@@ -3,6 +3,20 @@
 All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased] — 2026-09-14
+
+### Added
+
+- `apps/lexitar` — the LexiTar web app, moved here from its original private monorepo. Imported as
+  a single squashed commit rather than with full history (the source history carries old versions
+  of several docs/fixtures with real self-disclosed example content that would otherwise need a
+  content-level filter to exclude — squashing off a clean HEAD made that unnecessary). No patient
+  data, plaintext or encrypted, and none of the private repo's pilot-only operator scripts came
+  with it; both stay behind in the source monorepo permanently.
+- This repo's root docs (`README.md`, `ARCHITECTURE.md`, `CONTRIBUTING.md`, `SECURITY.md`,
+  `START-HERE.md`) rewritten so `apps/lexitar` is the repo's primary subject; `@tinytars/frame`'s
+  own docs moved to `packages/frame/`.
+
 ## [0.1.0] — 2026-09-09
 
 Initial extraction of `@tinytars/frame` from a health-literacy application's internal app-shell

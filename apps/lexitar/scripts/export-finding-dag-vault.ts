@@ -7,7 +7,7 @@ import { PRODUCT_NAME } from "../src/lib/brand";
 
 // Writes FINDING_DAG out as an Obsidian-openable vault: one markdown note per node, via
 // @pablotech/neuro-pil's dagToFiles (brain/neuro-pil/markdown.ts). The engine is public
-// (pablo-tech/pilos); this script's default output is not — docs/cross-app/06-open-source-akesi-pil.md
+// (alex-tech/pilos); this script's default output is not — docs/cross-app/06-open-source-akesi-pil.md
 // requires the public repo carry no LexiTar/product branding.
 //
 // The literal PRODUCT_NAME is replaced with a `{{PRODUCT_NAME}}` placeholder token in every file's

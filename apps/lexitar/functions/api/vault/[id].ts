@@ -24,7 +24,7 @@ interface Ctx {
 
 const ROUTE = "/api/vault";
 const MIN_BYTES = 32; // MAGIC(3) + VERSION(1) + SALT(16) + IV(12) — mirrors decryptVault
-const MAX_BYTES = 5 * 1024 * 1024; // pablo is ~405 KB; generous ceiling
+const MAX_BYTES = 5 * 1024 * 1024; // alex is ~405 KB; generous ceiling
 const HD1 = [0x48, 0x44, 0x31]; // "HD1" — the in-browser crypto magic prefix
 
 // The static-asset filename (unprefixed — Vite copies records/public to the dist root,

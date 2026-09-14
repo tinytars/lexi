@@ -12,7 +12,7 @@ function ownedDb() {
   // Both store prefixes, because these fixtures do not agree on one ("dev" here, "test" there) and the
   // ownership key is store-scoped.
   for (const store of ["dev", "test"]) {
-    for (const id of ["pablo", "liz", "acct-1"]) {
+    for (const id of ["alex", "blair", "acct-1"]) {
       db.own(`${store}/raw/${id}/%`, "acct-1");
       db.own(`${store}/text/${id}/%`, "acct-1");
       db.own(`${store}/chat-${id}.enc`, "acct-1");
@@ -22,7 +22,7 @@ function ownedDb() {
 }
 
 
-const KEY = "dev/chat-pablo.enc"; // R2 key — store-prefixed (W13d)
+const KEY = "dev/chat-alex.enc"; // R2 key — store-prefixed (W13d)
 
 // HD1-prefixed blob of length n (>= 32 passes the validity check).
 function hd1(n = 40): Uint8Array<ArrayBuffer> {
@@ -67,18 +67,18 @@ const putCtx = async (env: ReturnType<typeof makeEnv>, opts: { auth?: "valid" | 
   if (opts.ifMatch) headers["if-match"] = opts.ifMatch;
   if (opts.ifNoneMatch) headers["if-none-match"] = opts.ifNoneMatch;
   return {
-    request: new Request("http://x/api/chat-history/pablo", { method: "PUT", headers, body: opts.body ?? hd1() }),
+    request: new Request("http://x/api/chat-history/alex", { method: "PUT", headers, body: opts.body ?? hd1() }),
     env,
-    params: { id: "pablo" },
+    params: { id: "alex" },
   };
 };
 const getCtx = async (env: ReturnType<typeof makeEnv>, auth: "valid" | "bogus" | "none" = "valid") => ({
-  request: new Request("http://x/api/chat-history/pablo", {
+  request: new Request("http://x/api/chat-history/alex", {
     headers:
       auth === "valid" ? { cookie: `hd_session=${await signSession(env, "acct-1")}` } : auth === "bogus" ? { cookie: "hd_session=bogus" } : {},
   }),
   env,
-  params: { id: "pablo" },
+  params: { id: "alex" },
 });
 
 const bytesOf = async (res: Response) => new Uint8Array(await res.arrayBuffer());
@@ -193,7 +193,7 @@ describe("W8d chat-history write audit is PHI-free", () => {
     const env = makeEnv();
     await onRequestPut(await putCtx(env, { auth: "valid", body: hd1(64) }));
     const entry = JSON.parse(lines.find((l) => l.includes('"/api/chat-history"'))!);
-    expect(entry).toMatchObject({ route: "/api/chat-history", status: 204, id: "pablo", bytes: 64, access: "owner" });
+    expect(entry).toMatchObject({ route: "/api/chat-history", status: 204, id: "alex", bytes: 64, access: "owner" });
     expect(Object.keys(entry).sort()).toEqual(["access", "at", "bytes", "id", "latencyMs", "route", "status"]);
   });
 });

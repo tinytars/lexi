@@ -4,7 +4,7 @@ import { openAsProvider as openAsProviderHelper, loginAs, PILOTS, openPatientNam
 import { clickNav } from "./_nav";
 import { stubChatHistory } from "./_stubs";
 
-const CLIENTS = ["Pablo", "Liz"];
+const CLIENTS = ["Alex", "Blair"];
 
 // W24 retired the monolithic PDF report. These tests cover what replaced it: the provider roster
 // stays PHI-free, each client's dashboard renders without runtime errors, the sections that were
@@ -63,7 +63,7 @@ for (const clientName of CLIENTS) {
   test(`${clientName}'s dashboard renders without runtime errors`, async ({ page }) => {
     const errors: string[] = [];
     // W76 — an attachment blob missing from the DEV R2 is not a render defect, and this environment
-    // structurally cannot have those blobs: Pablo's vault references real medication-label photos
+    // structurally cannot have those blobs: Alex's vault references real medication-label photos
     // (~200 KB each) that live only in the deployed R2, and copying PHI into the repo or onto a CI
     // runner to seed them is exactly what is forbidden. The browser reports each failed <img> as a
     // generic "Failed to load resource … 404" with no URL in the text, so the URL has to come from
@@ -94,8 +94,8 @@ for (const clientName of CLIENTS) {
   });
 }
 
-test("Pablo's ex-PDF sections have on-screen homes (Clinical Synthesis, Pattern & Anti-pattern, Final Thoughts, Glossary)", async ({ page }) => {
-  await openAsProvider(page, "Pablo");
+test("Alex's ex-PDF sections have on-screen homes (Clinical Synthesis, Pattern & Anti-pattern, Final Thoughts, Glossary)", async ({ page }) => {
+  await openAsProvider(page, "Alex");
   await clickNav(page, "Analysis");
   // M80 — Pattern & Anti-pattern, Clinical Synthesis, and Final Thoughts are direct top-level blocks
   // in Analysis now (the AI Conclusion wrapper was dissolved so each gets its own sidebar nav row).
@@ -112,7 +112,7 @@ test("Pablo's ex-PDF sections have on-screen homes (Clinical Synthesis, Pattern 
 // a visible `.leaf-card` is what EVERY marker row renders, chart or not. The "pinned atop" claim is
 // also stale — M96 Phase 2 made Ratios its own sidebar group rather than a block above the levels.
 test("each ratio in the Ratios group renders as its own chart (W36/M96)", async ({ page }) => {
-  await openClient(page, "Pablo");
+  await openClient(page, "Alex");
   await expect(page.locator(".sidebar .nav-list .nav-item", { hasText: "Critical Ratios" })).toHaveCount(0);
 
   await clickNav(page, "Markers");
@@ -133,7 +133,7 @@ test("each ratio in the Ratios group renders as its own chart (W36/M96)", async 
 });
 
 test("per-section print: chrome is hidden and only the active section prints", async ({ page }) => {
-  await openAsProvider(page, "Pablo");
+  await openAsProvider(page, "Alex");
   await clickNav(page, "Analysis");
   await expect(page.locator(".analysis .health-progression")).toBeVisible();
 

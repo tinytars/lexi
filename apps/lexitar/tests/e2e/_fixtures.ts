@@ -75,7 +75,7 @@ export const test = base.extend<{ vaultGuard: void }>({
           body: JSON.stringify({ error: "leaf-regen backend error", errorCode: "anthropic_error" }),
         }),
       );
-      // W76 — the THIRD source, and the same shape again: attachment blobs. Pablo's vault references
+      // W76 — the THIRD source, and the same shape again: attachment blobs. Alex's vault references
       // real medication-label photos that live only in the deployed R2, so every <img> fires a GET
       // that 404s. They arrive in bursts of four to eight as a cover renders, nothing awaits them, and
       // a test that ends promptly ends over several. Measured across the shard-2 and shard-9 logs:

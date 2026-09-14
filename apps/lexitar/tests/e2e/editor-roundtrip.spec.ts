@@ -10,7 +10,7 @@ import { interceptVaultSave, VAULT_BLOB } from "./_stubs";
 // public/data-*.enc on disk is never written.
 
 // W44 accounts follow {slug}@local.invalid + slug-as-password (see _login.ts). Only valid for the
-// PUBLIC slugs — pablo/liz, whose password is their own lowercased slug, and a deliberately bogus
+// PUBLIC slugs — alex/blair, whose password is their own lowercased slug, and a deliberately bogus
 // one. The provider is NOT one of them: its password is the family passphrase, which happens to
 // equal its slug, so `unlock(page, "fam4")` read as a slug and was a committed live credential.
 // Use PILOTS.provider, whose getter sources it from the environment.
@@ -23,9 +23,9 @@ test("Personalization save → reload → the edit persisted (no disk write)", a
   const wasCaptured = interceptVaultSave(page);
 
   const sentinel = "E2E roundtrip sentinel 4271";
-  // W37 — the profile editor lives at Patient → Profile; drill in from the provider roster (→ Pablo).
+  // W37 — the profile editor lives at Patient → Profile; drill in from the provider roster (→ Alex).
   const drillFromRoster = async () => {
-    await page.locator(".roster-name", { hasText: "Pablo" }).click();
+    await page.locator(".roster-name", { hasText: "Alex" }).click();
     await page.waitForSelector(".sidebar .nav-item", { timeout: 10_000 });
     await clickNav(page, "Profile");
     await page.waitForSelector(".personalization", { timeout: 10_000 });
@@ -78,7 +78,7 @@ test("a corrupt blob surfaces a decrypt error", async ({ page }) => {
       : route.fulfill({ status: 200, contentType: "application/octet-stream", body: garbage }),
   );
   await page.goto("/", { waitUntil: "networkidle" });
-  await unlock(page, "pablo");
+  await unlock(page, "alex");
   await expect(page.locator("p.err")).toBeVisible();
   await expect(page.locator("p.err")).not.toBeEmpty();
 });

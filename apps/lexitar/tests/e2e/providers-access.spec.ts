@@ -34,7 +34,7 @@ test("the Access item is absent from a provider's account menu", async ({ page }
   await page.fill('input[type="email"]', PILOTS.provider.email);
   await page.fill('input[type="password"]', PILOTS.provider.password);
   await page.click('button[type="submit"]');
-  await page.click(`.roster-name:has-text("${PILOTS.pablo.name}")`);
+  await page.click(`.roster-name:has-text("${PILOTS.alex.name}")`);
   await page.waitForSelector(".sidebar .nav-item");
   await page.click(".account-trigger");
   await expect(page.locator('.menu-item:has-text("Who can access")')).toHaveCount(0);

@@ -29,8 +29,8 @@ const PROVIDER_KEY = { id: "provider" } as unknown as CryptoKey;
 const ACCOUNT_KEY = { id: "account", extractable: true } as unknown as CryptoKey;
 
 const PATIENT = {
-  ownerAccountId: "acct-liz",
-  displayName: "Liz",
+  ownerAccountId: "acct-blair",
+  displayName: "Blair",
   envelope: { wrappedDEK: "wrapped", ephemeralPublicKeyJwk: { kid: "eph" } as JsonWebKey },
 };
 
@@ -38,7 +38,7 @@ const PATIENT = {
 function harness(over: Partial<RecoveryControllerDeps> = {}) {
   const session = createVaultSession();
   const host = {
-    email: "liz@example.com",
+    email: "blair@example.com",
     accountBusy: false,
     accountError: null as string | null,
     unlocking: false,
@@ -92,7 +92,7 @@ describe("which rung of the ladder the code goes to", () => {
     recovery.codeInput = SELF_CODE;
     recovery.newPassword = "hunter2";
     await recovery.recover();
-    expect(auth.recoverAccount).toHaveBeenCalledWith("liz@example.com", SELF_CODE, "hunter2");
+    expect(auth.recoverAccount).toHaveBeenCalledWith("blair@example.com", SELF_CODE, "hunter2");
     expect(auth.redeemRecoveryCode).not.toHaveBeenCalled();
   });
 
@@ -101,7 +101,7 @@ describe("which rung of the ladder the code goes to", () => {
     recovery.codeInput = GRANT_CODE;
     recovery.newPassword = "hunter2";
     await recovery.recover();
-    expect(auth.redeemRecoveryCode).toHaveBeenCalledWith("liz@example.com", GRANT_CODE, "hunter2");
+    expect(auth.redeemRecoveryCode).toHaveBeenCalledWith("blair@example.com", GRANT_CODE, "hunter2");
     expect(auth.recoverAccount).not.toHaveBeenCalled();
   });
 
@@ -117,7 +117,7 @@ describe("which rung of the ladder the code goes to", () => {
     const { recovery } = harness();
     recovery.codeInput = `  ${SELF_CODE} \n`;
     await recovery.recover();
-    expect(auth.recoverAccount).toHaveBeenCalledWith("liz@example.com", SELF_CODE, "");
+    expect(auth.recoverAccount).toHaveBeenCalledWith("blair@example.com", SELF_CODE, "");
   });
 
   it("does not call out at all without an email or with a blank code", async () => {
@@ -199,7 +199,7 @@ describe("the one-time code a provider reads to a patient", () => {
     const { session, recovery } = harness();
     session.setProviderKey(PROVIDER_KEY);
     await recovery.issueForPatient(PATIENT);
-    expect(auth.issueRecoveryCode).toHaveBeenCalledWith("acct-liz", PATIENT.envelope, PROVIDER_KEY);
+    expect(auth.issueRecoveryCode).toHaveBeenCalledWith("acct-blair", PATIENT.envelope, PROVIDER_KEY);
     expect(recovery.issuedCode).toBe("AAAA-BBBB");
     expect(recovery.issuedExpiresAt).toBe("2026-09-01T00:00:00Z");
     expect(recovery.issuing).toBe(false);
@@ -212,12 +212,12 @@ describe("the one-time code a provider reads to a patient", () => {
     session.setProviderKey(PROVIDER_KEY);
     await recovery.issueForPatient(PATIENT);
 
-    const other = { ...PATIENT, ownerAccountId: "acct-pablo", displayName: "Pablo" };
+    const other = { ...PATIENT, ownerAccountId: "acct-alex", displayName: "Alex" };
     let release: (v: { code: string; expiresAt: string }) => void = () => {};
     auth.issueRecoveryCode.mockReturnValue(new Promise((r) => (release = r)));
     const pending = recovery.issueForPatient(other);
 
-    expect(recovery.issuedFor?.ownerAccountId).toBe("acct-pablo");
+    expect(recovery.issuedFor?.ownerAccountId).toBe("acct-alex");
     expect(recovery.issuedCode).toBeNull();
     expect(recovery.issuing).toBe(true);
 

@@ -39,8 +39,8 @@ describe("vault identifier opacity (G1)", () => {
   it("flags an identifier that embeds a display name", () => {
     // The check has to be able to go red, so prove it on the exact shape G1 removed rather than
     // trusting a green run over records that no longer contain the defect.
-    expect(leaks(["Pablo"], ["data-pablo.enc", "data-0b8c.enc"])).toEqual(["data-pablo.enc"]);
-    expect(leaks(["Pablo"], ["data-0b8c.enc"])).toEqual([]);
+    expect(leaks(["Alex"], ["data-alex.enc", "data-0b8c.enc"])).toEqual(["data-alex.enc"]);
+    expect(leaks(["Alex"], ["data-0b8c.enc"])).toEqual([]);
   });
 
   it("no served filename, private directory or vault key embeds a display name", async () => {

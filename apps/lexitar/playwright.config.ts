@@ -4,7 +4,7 @@ import { defineConfig } from "@playwright/test";
  * W69 — the specs that need NO credential and NO pilot data, and can therefore run on a hosted runner.
  *
  * Membership is a property of the spec, not a preference: a file belongs here only if it never reaches
- * for Pablo, Liz, or fam4. `tests/unit/e2e-projects.test.ts` re-derives that from the sources and fails
+ * for Alex, Blair, or fam4. `tests/unit/e2e-projects.test.ts` re-derives that from the sources and fails
  * if this list and the imports disagree, so the list cannot quietly rot into a lie.
  *
  * Everything else stays in `pilots`. Both projects run in CI (gate.yml passes PASSPHRASE to the e2e
@@ -45,7 +45,7 @@ export default defineConfig({
   // `fullyParallel: false` only serializes tests *within* one spec file — Playwright still schedules
   // different spec files onto separate worker processes by default (one per ~2 CPUs, so 4 on an
   // 8-core box). But every spec file shares the ONE `wrangler pages dev` server + local D1/R2 below
-  // (webServer isn't per-file), and most specs mutate the same two seeded pilots' (Pablo/Liz) real
+  // (webServer isn't per-file), and most specs mutate the same two seeded pilots' (Alex/Blair) real
   // vault rows through the real save API, not a mock. Two files running concurrently against the same
   // patient's vault is a genuine read-modify-write race on shared backend state — a save from one
   // worker can silently lose an edit from another (last-write-wins), or leave a leaf-regen node
@@ -53,7 +53,7 @@ export default defineConfig({
   // surfaced as cross-spec-file flakiness (e.g. shell-nav's M66/M68 "no-double-post" tests asserting a
   // POST count of 0 instead of 1, and editor.spec.ts's Family/Allergies test reading back its own edit
   // reverted) that vanished once those two files were isolated — isolating them removed every *other*
-  // concurrent writer to Pablo's vault. Force one worker so the whole suite runs strictly serially
+  // concurrent writer to Alex's vault. Force one worker so the whole suite runs strictly serially
   // against the shared server, matching what `fullyParallel: false` already implied was the intent.
   workers: 1,
   // These specs drive a real wrangler-pages-dev server + WebCrypto ceremonies, so a step can

@@ -226,7 +226,7 @@ export function createRosterSession(deps: RosterSessionDeps): RosterSession {
       const name = p.displayName?.trim() ?? "";
       if (!p.email) return name;
       // Exact match against the verbatim local-part — that is the untouched auto value. A
-      // capitalised or edited name like "Liz" is a real, human-set one and stands.
+      // capitalised or edited name like "Blair" is a real, human-set one and stands.
       const localPart = p.email.split("@")[0];
       return name === "" || name === "New member" || name === localPart ? p.email : name;
     },

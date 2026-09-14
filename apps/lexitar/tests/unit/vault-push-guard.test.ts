@@ -41,16 +41,16 @@ describe("whether a CLI push may overwrite what is in R2", () => {
 
 describe("what the operator is told", () => {
   it("names both versions, so the next step is obvious rather than a guess", () => {
-    const m = describePushConflict("liz", "etag-a", "etag-b");
-    expect(m).toContain("liz");
+    const m = describePushConflict("blair", "etag-a", "etag-b");
+    expect(m).toContain("blair");
     expect(m).toContain("etag-a");
     expect(m).toContain("etag-b");
     expect(m).toMatch(/pull again/i);
   });
 
   it("distinguishes never-read, appeared-since, and deleted-since rather than one generic line", () => {
-    expect(describePushConflict("liz", undefined, "e")).toMatch(/never read it/);
-    expect(describePushConflict("liz", null, "e")).toMatch(/did not exist/);
-    expect(describePushConflict("liz", "e", null)).toMatch(/has been deleted/);
+    expect(describePushConflict("blair", undefined, "e")).toMatch(/never read it/);
+    expect(describePushConflict("blair", null, "e")).toMatch(/did not exist/);
+    expect(describePushConflict("blair", "e", null)).toMatch(/has been deleted/);
   });
 });

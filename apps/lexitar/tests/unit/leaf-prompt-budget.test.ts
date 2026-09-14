@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { BASE_SYSTEM_PROMPT, LEAF_REGEN_SPECS } from "../../src/lib/leaf-regen-registry";
 
 // W?? — 55df014 found treatmentAssessment's "INTERACTIONS WITH OTHER TREATMENTS" paragraph forcing
-// up to 3 re-scans of the full unscoped vault context (48 treatments for Pablo) per assessed item,
+// up to 3 re-scans of the full unscoped vault context (48 treatments for Alex) per assessed item,
 // which timed out a live Fish Oil dose edit against the 120s client deadline. treatmentAssessment has
 // no buildContext scoping (unlike its siblings), so its prompt size is the whole guard against that
 // class of regression — nothing else catches a paragraph like that being re-added. Measured directly

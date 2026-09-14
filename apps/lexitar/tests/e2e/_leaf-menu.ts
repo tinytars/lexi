@@ -69,7 +69,7 @@ export async function clickLeafMenuItem(row: Locator, itemName: string | RegExp)
 
 // W78 — position is not a proxy for pin state, and every spec that used `.first()` as its stand-in
 // for "an unpinned example" was relying on one. Every leaf list sortPinnedFirst's, so the moment
-// Pablo's vault acquired a single pinned report (the 2026-08-26 reconcile), that record moved to
+// Alex's vault acquired a single pinned report (the 2026-08-26 reconcile), that record moved to
 // the top of Reports and seventeen tests went red at once: the menu on that row reads "Unpin", and
 // `clickLeafMenuItem` matches a menu item by exact accessible name, so it waited out the full
 // 30s timeout on a "Pin" that was never going to render. Select on the state the test depends on.

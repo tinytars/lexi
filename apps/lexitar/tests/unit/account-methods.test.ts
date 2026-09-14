@@ -35,7 +35,7 @@ import { createAccountMethods, type AccountMethodsDeps } from "@tinytars/frame/a
 const EXTRACTABLE = { extractable: true } as unknown as CryptoKey;
 const RESUMED = { extractable: false } as unknown as CryptoKey;
 
-const ACCOUNT = { id: "a1", email: "liz@example.com", emailConfirmed: true, displayName: "Liz", providerKind: null, unitSystem: "metric" as const };
+const ACCOUNT = { id: "a1", email: "blair@example.com", emailConfirmed: true, displayName: "Blair", providerKind: null, unitSystem: "metric" as const };
 const method = (m: string, isRecovery = false) => ({ method: m, createdAt: "2026-01-01", isRecovery });
 
 function harness(over: Partial<AccountMethodsDeps> = {}) {
@@ -158,8 +158,8 @@ describe("opening the panel", () => {
     const { account } = harness();
     account.editEmail = "typo@example.com";
     await account.openPanel();
-    expect(account.editEmail).toBe("liz@example.com");
-    expect(account.editDisplayName).toBe("Liz");
+    expect(account.editEmail).toBe("blair@example.com");
+    expect(account.editDisplayName).toBe("Blair");
     expect(account.open).toBe(true);
   });
 

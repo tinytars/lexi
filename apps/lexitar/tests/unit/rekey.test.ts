@@ -11,12 +11,12 @@ import type { Vault } from "../../src/lib/types";
 
 describe("namespacePairs", () => {
   it("maps every client-scoped key shape from the old id to the new", () => {
-    expect(namespacePairs("dev", "Pablo", "0b8c")).toEqual([
-      ["dev/data-pablo.enc", "dev/data-0b8c.enc"],
-      ["dev/chat-pablo.enc", "dev/chat-0b8c.enc"],
-      ["dev/raw/pablo/", "dev/raw/0b8c/"],
-      ["dev/text/pablo/", "dev/text/0b8c/"],
-      ["dev/processed/pablo/", "dev/processed/0b8c/"],
+    expect(namespacePairs("dev", "Alex", "0b8c")).toEqual([
+      ["dev/data-alex.enc", "dev/data-0b8c.enc"],
+      ["dev/chat-alex.enc", "dev/chat-0b8c.enc"],
+      ["dev/raw/alex/", "dev/raw/0b8c/"],
+      ["dev/text/alex/", "dev/text/0b8c/"],
+      ["dev/processed/alex/", "dev/processed/0b8c/"],
     ]);
   });
 
@@ -39,7 +39,7 @@ describe("namespacePairs", () => {
 
 describe("rekeyClient refuses a no-op", () => {
   it("rejects when old and new differ only by case, before touching R2", async () => {
-    await expect(rekeyClient("Pablo", "pablo", "dev")).rejects.toThrow(/old and new id are the same/);
+    await expect(rekeyClient("Alex", "alex", "dev")).rejects.toThrow(/old and new id are the same/);
   });
 });
 
@@ -49,29 +49,29 @@ describe("renameClientKey", () => {
   const vault = () =>
     ({
       clients: {
-        Pablo: { displayName: "Pablo", dob: "1980-01-01", gender: "male", watchlist: [], results: [{ id: "r1" }] },
-        Liz: { displayName: "Liz", dob: "1982-02-02", gender: "female", watchlist: [], results: [] },
+        Alex: { displayName: "Alex", dob: "1980-01-01", gender: "male", watchlist: [], results: [{ id: "r1" }] },
+        Blair: { displayName: "Blair", dob: "1982-02-02", gender: "female", watchlist: [], results: [] },
       },
     }) as unknown as Vault;
 
   it("renames the key, keeps the client object identical, and leaves the others alone", () => {
-    const out = renameClientKey(vault(), "Pablo", "834bc60d");
-    expect(Object.keys(out.clients)).toEqual(["834bc60d", "Liz"]); // order preserved
-    expect(out.clients["834bc60d"]).toEqual(vault().clients.Pablo);
-    expect(out.clients.Liz).toEqual(vault().clients.Liz);
+    const out = renameClientKey(vault(), "Alex", "834bc60d");
+    expect(Object.keys(out.clients)).toEqual(["834bc60d", "Blair"]); // order preserved
+    expect(out.clients["834bc60d"]).toEqual(vault().clients.Alex);
+    expect(out.clients.Blair).toEqual(vault().clients.Blair);
   });
 
   it("does not mutate the vault it was given", () => {
     const v = vault();
-    renameClientKey(v, "Pablo", "834bc60d");
-    expect(Object.keys(v.clients)).toEqual(["Pablo", "Liz"]);
+    renameClientKey(v, "Alex", "834bc60d");
+    expect(Object.keys(v.clients)).toEqual(["Alex", "Blair"]);
   });
 
   it("refuses when the old key is absent, naming what the vault actually holds", () => {
-    expect(() => renameClientKey(vault(), "pablo", "834bc60d")).toThrow(/"Pablo", "Liz"/);
+    expect(() => renameClientKey(vault(), "alex", "834bc60d")).toThrow(/"Alex", "Blair"/);
   });
 
   it("refuses to merge into an existing client rather than dropping its results", () => {
-    expect(() => renameClientKey(vault(), "Pablo", "Liz")).toThrow(/refusing to merge/);
+    expect(() => renameClientKey(vault(), "Alex", "Blair")).toThrow(/refusing to merge/);
   });
 });

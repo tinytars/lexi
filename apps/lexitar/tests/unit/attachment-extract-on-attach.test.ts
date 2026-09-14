@@ -29,19 +29,19 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe("attachFiles — reading a document at attach time", () => {
   it("stamps extraction metadata onto the attachment, and keeps the TEXT out of it", async () => {
-    const [a] = await attachFiles("Pablo", [pdf()]);
+    const [a] = await attachFiles("Alex", [pdf()]);
     expect(a.extracted).toEqual({ at: "2026-08-19T00:00:00Z", chars: 1234, kind: "Radiology report" });
     expect(JSON.stringify(a)).not.toContain("IMPRESSION");
     expect(hasExtractedText(a)).toBe(true);
   });
 
   it("reads a document exactly once per attach", async () => {
-    await attachFiles("pablo", [pdf("a.pdf"), pdf("b.pdf")]);
+    await attachFiles("alex", [pdf("a.pdf"), pdf("b.pdf")]);
     expect(extractDocument).toHaveBeenCalledTimes(2);
   });
 
   it("never tries to read an image", async () => {
-    const [a] = await attachFiles("pablo", [new File([new Uint8Array([1])], "rash.jpg", { type: "image/jpeg" })]);
+    const [a] = await attachFiles("alex", [new File([new Uint8Array([1])], "rash.jpg", { type: "image/jpeg" })]);
     expect(extractDocument).not.toHaveBeenCalled();
     expect(a.extracted).toBeUndefined();
     expect(hasExtractedText(a)).toBe(false);
@@ -49,14 +49,14 @@ describe("attachFiles — reading a document at attach time", () => {
 
   it("records a failed read instead of failing the attach — the file is already uploaded", async () => {
     extractDocument.mockRejectedValueOnce(new Error("The AI is busy right now — try again in a moment."));
-    const [a] = await attachFiles("pablo", [pdf()]);
+    const [a] = await attachFiles("alex", [pdf()]);
     expect(a.key).toMatch(/^[0-9a-f]{8}-report\.pdf$/);
     expect(a.extracted?.error).toMatch(/busy/);
     expect(hasExtractedText(a)).toBe(false);
   });
 
   it("skips extraction entirely when the caller opts out", async () => {
-    const [a] = await attachFiles("pablo", [pdf()], { extractDocuments: false });
+    const [a] = await attachFiles("alex", [pdf()], { extractDocuments: false });
     expect(extractDocument).not.toHaveBeenCalled();
     expect(a.extracted).toBeUndefined();
   });
@@ -65,24 +65,24 @@ describe("attachFiles — reading a document at attach time", () => {
 describe("attachFiles — the page cap", () => {
   it("refuses an over-long PDF BEFORE uploading or reading it", async () => {
     openPdf.mockResolvedValueOnce({ numPages: MAX_DOCUMENT_PAGES + 1 });
-    await expect(attachFiles("pablo", [pdf("huge.pdf")])).rejects.toThrow(new RegExp(`${MAX_DOCUMENT_PAGES + 1} pages`));
+    await expect(attachFiles("alex", [pdf("huge.pdf")])).rejects.toThrow(new RegExp(`${MAX_DOCUMENT_PAGES + 1} pages`));
     expect(fetch).not.toHaveBeenCalled();
     expect(extractDocument).not.toHaveBeenCalled();
   });
 
   it("accepts a PDF exactly at the cap", async () => {
     openPdf.mockResolvedValueOnce({ numPages: MAX_DOCUMENT_PAGES });
-    await expect(attachFiles("pablo", [pdf()])).resolves.toHaveLength(1);
+    await expect(attachFiles("alex", [pdf()])).resolves.toHaveLength(1);
   });
 
   it("lets a PDF pdfjs cannot open through — the reader may still manage it", async () => {
     openPdf.mockRejectedValueOnce(new Error("bad xref"));
-    const [a] = await attachFiles("pablo", [pdf()]);
+    const [a] = await attachFiles("alex", [pdf()]);
     expect(a.name).toBe("report.pdf");
   });
 
   it("does not page-count a non-PDF", async () => {
-    await attachFiles("pablo", [new File([new Uint8Array([1])], "n.txt", { type: "text/plain" })]);
+    await attachFiles("alex", [new File([new Uint8Array([1])], "n.txt", { type: "text/plain" })]);
     expect(openPdf).not.toHaveBeenCalled();
   });
 });
@@ -104,7 +104,7 @@ describe("attachFiles — the page cap must not consume the bytes it counts", ()
     }));
 
     const file = pdf();
-    const [a] = await attachFiles("pablo", [file]);
+    const [a] = await attachFiles("alex", [file]);
     expect(uploaded).toEqual([file.size]);
     expect(a.bytes).toBe(file.size);
   });

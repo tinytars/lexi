@@ -44,7 +44,7 @@ export function byPinnedThenConcern(markers: Marker[]): Marker[] {
 // open. The window is a per-chart ZOOM: it narrows each series (MarkerChart), never the set of
 // markers listed. A marker is in this list because the record contains it, and a health record does
 // not drop entries because the reader is looking at a shorter span — with the default window of one
-// year (App.svelte:176) that would have silently hidden 23 of Pablo's 372 markers on load, while the
+// year (App.svelte:176) that would have silently hidden 23 of Alex's 372 markers on load, while the
 // sidebar (which passed Infinity) went on listing every one of them.
 //
 // The parameter had been accepted and ignored since W63, which is worse than either answer: it read

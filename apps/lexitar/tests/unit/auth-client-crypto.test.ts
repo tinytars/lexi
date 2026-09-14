@@ -69,7 +69,7 @@ describe("signup puts nothing the server could read on the wire", () => {
 
   it("never sends the password itself, in any field", async () => {
     server();
-    await signupPassword("p@x.test", "Pablo", PASSWORD);
+    await signupPassword("p@x.test", "Alex", PASSWORD);
     const serialized = JSON.stringify(signupBody());
     expect(serialized).not.toContain(PASSWORD);
     // Nor a trivially reversible encoding of it.
@@ -78,7 +78,7 @@ describe("signup puts nothing the server could read on the wire", () => {
 
   it("sends an authHash that is not the password and is bound to the salt", async () => {
     server();
-    await signupPassword("p@x.test", "Pablo", PASSWORD);
+    await signupPassword("p@x.test", "Alex", PASSWORD);
     const b = signupBody();
     expect(b.authHash).not.toBe(PASSWORD);
     // Derivable from the password AND the salt the server was given — that pairing is what makes it
@@ -89,7 +89,7 @@ describe("signup puts nothing the server could read on the wire", () => {
 
   it("sends a private key the RIGHT password opens and the wrong one does not", async () => {
     server();
-    await signupPassword("p@x.test", "Pablo", PASSWORD);
+    await signupPassword("p@x.test", "Alex", PASSWORD);
     const b = signupBody();
     const salt = hexToBytes(b.kdfParams.salt);
 
@@ -102,7 +102,7 @@ describe("signup puts nothing the server could read on the wire", () => {
 
   it("sends the vault as ciphertext that opens only via the owner's envelope", async () => {
     server();
-    await signupPassword("p@x.test", "Pablo", PASSWORD);
+    await signupPassword("p@x.test", "Alex", PASSWORD);
     const b = signupBody();
 
     const blob = b64ToBytes(b.vaultBlob);
@@ -127,7 +127,7 @@ describe("signup puts nothing the server could read on the wire", () => {
     // signup that omitted it, or wrapped a different key, would look completely healthy until the day
     // it mattered.
     server();
-    await signupPassword("p@x.test", "Pablo", PASSWORD);
+    await signupPassword("p@x.test", "Alex", PASSWORD);
     const b = signupBody();
     expect(b.orgEnvelope).toBeTruthy();
 
@@ -155,7 +155,7 @@ describe("signup puts nothing the server could read on the wire", () => {
 
   it("asks for a real iteration count, not a placeholder", async () => {
     server();
-    await signupPassword("p@x.test", "Pablo", PASSWORD);
+    await signupPassword("p@x.test", "Alex", PASSWORD);
     expect(signupBody().kdfParams.iterations).toBeGreaterThanOrEqual(100_000);
   });
 });
@@ -165,7 +165,7 @@ describe("login derives from the salt the server hands back", () => {
 
   it("sends an authHash matching the one signup stored, and never the password", async () => {
     server();
-    await signupPassword("p@x.test", "Pablo", PASSWORD);
+    await signupPassword("p@x.test", "Alex", PASSWORD);
     const stored = signupBody();
 
     const kp = await generateAccountKeypair();
@@ -191,7 +191,7 @@ describe("login derives from the salt the server hands back", () => {
 
   it("a wrong password produces a different authHash — the server is never asked to compare secrets", async () => {
     server();
-    await signupPassword("p@x.test", "Pablo", PASSWORD);
+    await signupPassword("p@x.test", "Alex", PASSWORD);
     const stored = signupBody();
 
     server({

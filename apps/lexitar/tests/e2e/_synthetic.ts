@@ -9,7 +9,7 @@ export const E2E_CLINICIAN = { email: "e2e-clinician@local.invalid", password: "
 
 // W69 — sign in as THIS worker's own synthetic patient.
 //
-// The pilots (Pablo, Liz) are real people with real records, and every spec that mutates them is a
+// The pilots (Alex, Blair) are real people with real records, and every spec that mutates them is a
 // concurrent writer to the same vault — which is why `playwright.config.ts` pins `workers: 1`. A spec
 // that opts in here instead gets a patient nobody else is touching, and becomes safe to parallelise.
 //

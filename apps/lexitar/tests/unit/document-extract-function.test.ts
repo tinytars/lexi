@@ -23,7 +23,7 @@ function ownedDb() {
   // Both store prefixes, because these fixtures do not agree on one ("dev" here, "test" there) and the
   // ownership key is store-scoped.
   for (const store of ["dev", "test"]) {
-    for (const id of ["pablo", "liz", "acct-1"]) {
+    for (const id of ["alex", "blair", "acct-1"]) {
       db.own(`${store}/raw/${id}/%`, "acct-1");
       db.own(`${store}/text/${id}/%`, "acct-1");
       db.own(`${store}/chat-${id}.enc`, "acct-1");
@@ -81,7 +81,7 @@ async function call(
     request: new Request("http://local/api/document-extract", {
       method: "POST",
       headers,
-      body: JSON.stringify(opts.body ?? { id: "pablo", key: "ab12cd34-report.pdf", mediaType: "application/pdf" }),
+      body: JSON.stringify(opts.body ?? { id: "alex", key: "ab12cd34-report.pdf", mediaType: "application/pdf" }),
     }),
     env,
   });
@@ -106,7 +106,7 @@ describe("/api/document-extract guards", () => {
 
   it("400s on a path that could escape the id/key namespace", async () => {
     const env = makeEnv();
-    const res = await call(env, { auth: "valid", body: { id: "pablo", key: "../../etc/passwd" } });
+    const res = await call(env, { auth: "valid", body: { id: "alex", key: "../../etc/passwd" } });
     expect(res.status).toBe(400);
     expect((await res.json()).errorCode).toBe("bad_path");
     expect(create).not.toHaveBeenCalled();
@@ -114,7 +114,7 @@ describe("/api/document-extract guards", () => {
 
   it("415s a file type that is not readable as prose — a spreadsheet is a marker import", async () => {
     const env = makeEnv();
-    const res = await call(env, { auth: "valid", body: { id: "pablo", key: "ab12-labs.xlsx" } });
+    const res = await call(env, { auth: "valid", body: { id: "alex", key: "ab12-labs.xlsx" } });
     expect(res.status).toBe(415);
     expect((await res.json()).errorCode).toBe("unsupported_document");
     expect(create).not.toHaveBeenCalled();
@@ -130,7 +130,7 @@ describe("/api/document-extract guards", () => {
 
 describe("/api/document-extract reading", () => {
   it("reads a PDF once and stores the text as a sidecar", async () => {
-    const env = makeEnv({ "test/raw/pablo/ab12cd34-report.pdf": new Uint8Array([0x25, 0x50, 0x44, 0x46]) });
+    const env = makeEnv({ "test/raw/alex/ab12cd34-report.pdf": new Uint8Array([0x25, 0x50, 0x44, 0x46]) });
     const res = await call(env, { auth: "valid" });
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -138,11 +138,11 @@ describe("/api/document-extract reading", () => {
     expect(body.chars).toBe(READING.text.length);
     expect(body.cached).toBe(false);
     expect(create).toHaveBeenCalledTimes(1);
-    expect(env._store.has("test/text/pablo/ab12cd34-report.pdf.json")).toBe(true);
+    expect(env._store.has("test/text/alex/ab12cd34-report.pdf.json")).toBe(true);
   });
 
   it("sends the PDF as a native document block, not as text", async () => {
-    const env = makeEnv({ "test/raw/pablo/ab12cd34-report.pdf": new Uint8Array([0x25, 0x50, 0x44, 0x46]) });
+    const env = makeEnv({ "test/raw/alex/ab12cd34-report.pdf": new Uint8Array([0x25, 0x50, 0x44, 0x46]) });
     await call(env, { auth: "valid" });
     const content = create.mock.calls[0][0].messages[0].content;
     expect(Array.isArray(content)).toBe(true);
@@ -151,7 +151,7 @@ describe("/api/document-extract reading", () => {
   });
 
   it("serves a second request for the same content key from the sidecar, with NO model call", async () => {
-    const env = makeEnv({ "test/raw/pablo/ab12cd34-report.pdf": new Uint8Array([0x25, 0x50, 0x44, 0x46]) });
+    const env = makeEnv({ "test/raw/alex/ab12cd34-report.pdf": new Uint8Array([0x25, 0x50, 0x44, 0x46]) });
     await call(env, { auth: "valid" });
     create.mockClear();
     const res = await call(env, { auth: "valid" });
@@ -161,8 +161,8 @@ describe("/api/document-extract reading", () => {
   });
 
   it("reads a .txt attachment with no model call at all", async () => {
-    const env = makeEnv({ "test/raw/pablo/ab12-notes.txt": "protocol: 2.5mg weekly" });
-    const res = await call(env, { auth: "valid", body: { id: "pablo", key: "ab12-notes.txt", mediaType: "text/plain" } });
+    const env = makeEnv({ "test/raw/alex/ab12-notes.txt": "protocol: 2.5mg weekly" });
+    const res = await call(env, { auth: "valid", body: { id: "alex", key: "ab12-notes.txt", mediaType: "text/plain" } });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.text).toBe("protocol: 2.5mg weekly");
@@ -176,7 +176,7 @@ describe("/api/document-extract reading", () => {
       stop_reason: "end_turn",
       usage: {},
     });
-    const env = makeEnv({ "test/raw/pablo/ab12cd34-report.pdf": new Uint8Array([0x25]) });
+    const env = makeEnv({ "test/raw/alex/ab12cd34-report.pdf": new Uint8Array([0x25]) });
     const res = await call(env, { auth: "valid" });
     expect(res.status).toBe(422);
     expect((await res.json()).errorCode).toBe("invalid_extraction");
@@ -185,7 +185,7 @@ describe("/api/document-extract reading", () => {
   it("maps a credit exhaustion to 402, not to 422", async () => {
     // The shape classifyAnthropicError actually reads: status 400 + a "credit balance" message.
     create.mockRejectedValueOnce({ status: 400, type: "invalid_request_error", message: "Your credit balance is too low" });
-    const env = makeEnv({ "test/raw/pablo/ab12cd34-report.pdf": new Uint8Array([0x25]) });
+    const env = makeEnv({ "test/raw/alex/ab12cd34-report.pdf": new Uint8Array([0x25]) });
     const res = await call(env, { auth: "valid" });
     expect(res.status).toBe(402);
     expect((await res.json()).errorCode).toBe("insufficient_credit");
@@ -200,21 +200,21 @@ describe("GET /api/document-extract", () => {
   }
 
   it("returns the sidecar without ever calling the model", async () => {
-    const env = makeEnv({ "test/text/pablo/ab12-x.pdf.json": JSON.stringify({ ...READING, at: "now", chars: 3 }) });
-    const res = await get(env, "id=pablo&key=ab12-x.pdf");
+    const env = makeEnv({ "test/text/alex/ab12-x.pdf.json": JSON.stringify({ ...READING, at: "now", chars: 3 }) });
+    const res = await get(env, "id=alex&key=ab12-x.pdf");
     expect(res.status).toBe(200);
     expect((await res.json()).text).toBe(READING.text);
     expect(create).not.toHaveBeenCalled();
   });
 
   it("404s a document that has never been extracted, instead of extracting it as a side effect", async () => {
-    const env = makeEnv({ "test/raw/pablo/ab12-x.pdf": new Uint8Array([0x25]) });
-    expect((await get(env, "id=pablo&key=ab12-x.pdf")).status).toBe(404);
+    const env = makeEnv({ "test/raw/alex/ab12-x.pdf": new Uint8Array([0x25]) });
+    expect((await get(env, "id=alex&key=ab12-x.pdf")).status).toBe(404);
     expect(create).not.toHaveBeenCalled();
   });
 
   it("401s without a session", async () => {
     const env = makeEnv();
-    expect((await get(env, "id=pablo&key=x.pdf", false)).status).toBe(401);
+    expect((await get(env, "id=alex&key=x.pdf", false)).status).toBe(401);
   });
 });

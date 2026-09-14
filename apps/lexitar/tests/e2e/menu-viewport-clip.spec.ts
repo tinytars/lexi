@@ -36,7 +36,7 @@ test("chat '+' menu (composer sticky at the viewport bottom) opens fully inside 
 });
 
 test("a leaf row's ⋮ menu near the top of a scrolled page opens fully inside the viewport", async ({ page }) => {
-  await openAsProvider(page, "Pablo");
+  await openAsProvider(page, "Alex");
   await clickNav(page, "Treatment");
 
   const row = page.locator(".unified-treatment .leaf-card").filter({ has: page.locator(".leaf-menu-trigger") }).first();

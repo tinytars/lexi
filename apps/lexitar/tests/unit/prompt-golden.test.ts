@@ -37,7 +37,7 @@ describe("the chat prompt is what it was when someone last looked at it", () => 
   it("never carries a real patient's name", () => {
     // The fixture is generated from synthetic variants — a pilot name reaching it would be a PHI leak.
     for (const f of readdirSync(DIR).filter((n) => n.endsWith(".txt"))) {
-      expect(onDisk(f), f).not.toMatch(/\b(pablo|nancy|sekhar)\b/i);
+      expect(onDisk(f), f).not.toMatch(/\b(nancy|sekhar)\b/i);
     }
   });
 });

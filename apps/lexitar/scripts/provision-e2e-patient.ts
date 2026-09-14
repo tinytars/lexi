@@ -5,7 +5,7 @@
 // DEK, an encrypted blob, and envelopes wrapping that DEK to the principals allowed to open it.
 //
 // Nothing here needs a secret, which is the whole point:
-//   • the patient's password IS the slug (public, exactly like the pablo/liz pilots)
+//   • the patient's password IS the slug (public, exactly like the alex/blair pilots)
 //   • wrapDEKForPublicKey takes the recipient's PUBLIC jwk — the provider's is already sitting in
 //     migration 0002 in plaintext, so granting the provider access requires nothing private
 //   • no org envelope is written; ORG_KEY_PASSPHRASE is only ever needed to open the REAL pilots' blobs
@@ -102,7 +102,7 @@ export async function provisionPatient(seed: string, providerPublicKeyJwk: JsonW
   const SEED = seed;
   const slug = `e2e-${SEED}`;
   const email = `${slug}@local.invalid`;
-  const password = slug; // public, exactly like the pablo/liz pilots
+  const password = slug; // public, exactly like the alex/blair pilots
   const r2Key = `data-${slug}.enc`;
   const ids = idsFor(SEED);
 

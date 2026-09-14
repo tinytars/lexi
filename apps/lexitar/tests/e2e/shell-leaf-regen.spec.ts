@@ -39,7 +39,7 @@ test("a dose-only Treatment edit still fires treatmentGroups through the generic
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ result: { groups: [] } }) });
   });
 
-  await openAsProvider(page, "Liz");
+  await openAsProvider(page, "Blair");
   await clickNav(page, "Treatment");
   await gotoTreatmentBucket(page, "Ongoing");
   await editFirstDoseEntry(page);
@@ -62,9 +62,9 @@ test("a dose-only Treatment edit still fires treatmentGroups through the generic
 test("Treatment (Planned bucket): Add fires the aiOnPlan trigger; the mocked plan assessment merges into the read view, without double-posting (M66 P8)", async ({ page }) => {
   // deleteTreatment gates on a native confirm() — Playwright auto-dismisses that unless accepted,
   // which silently no-ops the cleanup Delete below and leaves this test's marker treatment in
-  // Pablo's real vault permanently. Must be registered before the Delete click fires the dialog.
+  // Alex's real vault permanently. Must be registered before the Delete click fires the dialog.
   page.on("dialog", (d) => d.accept());
-  await openAsProvider(page, "Liz");
+  await openAsProvider(page, "Blair");
   await clickNav(page, "Treatment");
 
   const marker = `M66 plan rx ${Date.now()}`;
@@ -124,7 +124,7 @@ test("Treatment (Planned bucket): Add fires the aiOnPlan trigger; the mocked pla
 });
 
 test("Treatment (Ongoing bucket): editing dose fires the treatmentAssessment trigger, without double-posting (M66 P8)", async ({ page }) => {
-  await openAsProvider(page, "Liz");
+  await openAsProvider(page, "Blair");
   await clickNav(page, "Treatment");
 
   const posted: { node?: string }[] = [];
@@ -180,7 +180,7 @@ test("Treatment (Ongoing bucket): editing dose fires the treatmentAssessment tri
 // absence assertion in a provider session.
 test("Treatment: adding a drug with no dose amount withholds the treatmentAssessment trigger; adding one fires it (M-dose-gates-assessment)", async ({ page }) => {
   page.on("dialog", (d) => d.accept());
-  await unlock(page, "Liz");
+  await unlock(page, "Blair");
   await clickNav(page, "Treatment");
 
   const posted: { node?: string }[] = [];
@@ -216,16 +216,16 @@ test("Treatment: adding a drug with no dose amount withholds the treatmentAssess
 });
 
 // W78 — this used to also assert that the mocked pros/cons/recommendation MERGED into the read-only
-// AI-grouped view, by borrowing an idea that already carried an AI take out of Pablo's vault. That
-// half is not expressible against either fixture any more, and is dropped rather than faked: Pablo's
+// AI-grouped view, by borrowing an idea that already carried an AI take out of Alex's vault. That
+// half is not expressible against either fixture any more, and is dropped rather than faked: Alex's
 // vault reads stale on markerLevels/aiFindings since the 2026-08-26 reconcile, so `regen()` skips
-// every leaf and NOTHING posts (measured: zero requests); and on Liz, where the regen does fire, the
+// every leaf and NOTHING posts (measured: zero requests); and on Blair, where the regen does fire, the
 // grouped view is built from the Finding's stored grouping, so an idea this test adds never enters
 // it (measured). Restoring it needs a fixture that is fresh AND holds a grouped, evaluated
 // hypothesis — which is W78's subject.
 test("Hypothesis: editing an idea fires the hypothesisEvaluation trigger scoped to that idea (M66 P8)", async ({ page }) => {
   page.on("dialog", (d) => d.accept());
-  await openAsProvider(page, "Liz");
+  await openAsProvider(page, "Blair");
   await clickNav(page, "Hypothesis");
 
   const intervention = `M66 P8 idea ${Date.now()}`;
@@ -306,7 +306,7 @@ function realGroup(body: { inputs?: { aiFindings?: { group: string }[] } }): str
 }
 
 test("Study: saving an existing entry fires the studyResults trigger; the mocked result merges into the AI column, without double-posting (M66 P8)", async ({ page }) => {
-  await openAsProvider(page, "Liz");
+  await openAsProvider(page, "Blair");
   await clickNav(page, "Study");
 
   // Any row (a named entry) that already shows an AI result. Scoped to the AI PERSONA, not to
@@ -376,7 +376,7 @@ test("Study: adding a brand-new entry scopes the studyResults trigger to just th
   page.on("dialog", (d) => d.accept());
   const marker = `M67 scoped-add ${Date.now()}`;
 
-  await openAsProvider(page, "Liz");
+  await openAsProvider(page, "Blair");
   await clickNav(page, "Study");
 
   const posted: { node?: string; targetLabels?: string[] }[] = [];
@@ -384,7 +384,7 @@ test("Study: adding a brand-new entry scopes the studyResults trigger to just th
     const body = route.request().postDataJSON() as { node?: string; targetLabels?: string[]; inputs?: { aiFindings?: { group: string }[] } };
     posted.push(body);
     if (body.node !== "studyResults") return route.fallback();
-    // Answering ONLY the row(s) named in targetLabels (never the rest of Pablo's real Study list)
+    // Answering ONLY the row(s) named in targetLabels (never the rest of Alex's real Study list)
     // proves the request is genuinely scoped — an unscoped mock would need to enumerate every row.
     const items = (body.targetLabels ?? []).map((study) => ({ study, result: "M67 mock scoped result", group: realGroup(body) }));
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ result: { items } }) });
@@ -417,7 +417,7 @@ test("Treatment: adding a brand-new entry scopes the treatmentAssessment trigger
   page.on("dialog", (d) => d.accept());
   const marker = `M68 scoped-add ${Date.now()}`;
 
-  await openAsProvider(page, "Liz");
+  await openAsProvider(page, "Blair");
   await clickNav(page, "Treatment");
 
   type LeafBody = {
@@ -467,7 +467,7 @@ test("Hypothesis: adding a brand-new idea scopes the hypothesisEvaluation trigge
   page.on("dialog", (d) => d.accept());
   const marker = `M68 scoped-idea ${Date.now()}`;
 
-  await openAsProvider(page, "Liz");
+  await openAsProvider(page, "Blair");
   await clickNav(page, "Hypothesis");
 
   const posted: { node?: string; targetLabels?: string[] }[] = [];
@@ -516,7 +516,7 @@ test("Hypothesis: adding a brand-new idea scopes the hypothesisEvaluation trigge
 // "Translating…" on screen forever with no reason anywhere — and a relay that answered 402 rendered
 // its raw JSON body instead of the credit sentence used everywhere else.
 test("Treatment: a Translate that fails states the reason inline, in red, and clears the busy label", async ({ page }) => {
-  await openAsProvider(page, "Liz");
+  await openAsProvider(page, "Blair");
   await clickNav(page, "Treatment");
 
   await page.route("**/api/leaf-regen", (route) =>
@@ -560,7 +560,7 @@ test("Treatment: a Translate that fails states the reason inline, in red, and cl
 // milestone added.
 test("Treatment (Planned bucket): re-extracting a unit change fires treatmentGroups; an unrelated entry-scope save does not", async ({ page }) => {
   page.on("dialog", (d) => d.accept());
-  await unlock(page, "Liz");
+  await unlock(page, "Blair");
   await clickNav(page, "Treatment");
 
   const posted: { node?: string }[] = [];

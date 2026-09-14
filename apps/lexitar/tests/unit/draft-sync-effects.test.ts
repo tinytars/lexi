@@ -44,9 +44,9 @@ describe("the effect actually runs", () => {
   it("rebuilds the draft when a new client arrives", () => {
     const h = harness(client());
     const calls = h.built.mock.calls.length;
-    h.set(client({ displayName: "Liz" }));
+    h.set(client({ displayName: "Blair" }));
     expect(h.built.mock.calls.length).toBeGreaterThan(calls);
-    expect(h.ds.draft!.displayName).toBe("Liz");
+    expect(h.ds.draft!.displayName).toBe("Blair");
   });
 });
 

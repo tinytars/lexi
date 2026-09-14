@@ -40,7 +40,7 @@ test("Exploration renders one leaf cell per item, and All spans every system", a
   // Exploration used to be one AI bubble per (system, modality) with items as bare <li>s — the only
   // section whose listed items were not leaves. Each item is its own LeafCard now, matching Study's
   // shape with the patient half absent.
-  await openAsProvider(page, "Pablo");
+  await openAsProvider(page, "Alex");
   await clickNav(page, "Exploration");
 
   const cards = page.locator(".tests-consider .leaf-card");
@@ -69,7 +69,7 @@ test("Exploration renders one leaf cell per item, and All spans every system", a
 test("Analysis lists its LexiTar turns as cells, with an All row over every block", async ({ page }) => {
   // Analysis was a static six-row nav table over blocks that rendered bare AI bubbles. Each block's
   // turns are leaf cells now, and the sidebar lists the items, not just the block headings.
-  await openAsProvider(page, "Pablo");
+  await openAsProvider(page, "Alex");
   await clickNav(page, "Analysis");
 
   const cards = page.locator(".analysis .leaf-card");
@@ -92,7 +92,7 @@ test("Analysis lists its LexiTar turns as cells, with an All row over every bloc
 });
 
 test("Recommended Markers lives under Notes, between Questions and Glossary, as turn cells", async ({ page }) => {
-  await openAsProvider(page, "Pablo");
+  await openAsProvider(page, "Alex");
   await clickNav(page, "Notes");
 
   // It is nested under Notes, in order — and no longer a flat top-level row.

@@ -47,7 +47,7 @@ describe("POST /api/log — client loop-event beacon (W39 Phase 3)", () => {
         attempt: 1,
         reasonCategory: "the patient's HbA1c of 8.2 suggests uncontrolled diabetes", // prose → must be dropped
         correction: "raw model prose about the patient", // unknown field → must never be echoed
-        client: { displayName: "Pablo" }, // PHI → must never be echoed
+        client: { displayName: "Alex" }, // PHI → must never be echoed
       },
     });
     const obj = written(env);

@@ -2,8 +2,7 @@
 
 The `/api/chat` Pages Function needs **two secrets** to work in production. Until both are set,
 the chat panel returns **`unauthorized`** (or `chat backend error`). This is the step-by-step
-runbook to set them. For the API itself see `API.md`; for the design see
-`docs/plans/04-w4-conversations.md`.
+runbook to set them. For the API itself see `API.md`.
 
 ## The secrets
 
@@ -12,7 +11,7 @@ runbook to set them. For the API itself see `API.md`; for the design see
 | `ANTHROPIC_API_KEY` | The key the Function uses to call Claude. | A **distinct** Anthropic key — separate budget from the CLI pipeline's key, so web chat can't drain the Finding's credits. |
 
 How auth works: `/api/chat` and `/api/raw` are gated by the `hd_session` cookie (`requireSession`),
-and `/api/raw` additionally authorises per record (`rawAccessFor`, W73) — authenticated is not
+and `/api/raw` additionally authorises per record (`rawAccessFor`) — authenticated is not
 authorised. Only `PROVIDER_TOKEN` and `VAULT_TOKEN` still reach `requireBearer`
 (`_lib/guard.ts:31`). (Full detail in `API.md` → Authentication.)
 
@@ -22,29 +21,29 @@ authorised. Only `PROVIDER_TOKEN` and `VAULT_TOKEN` still reach `requireBearer`
 > run them. `npm run allowlist` (`scripts/chat-allowlist.ts`) is **still needed** — it generates the
 > `VAULT_TOKEN` value, the one bearer allowlist a Function still checks (`vault/[id].ts:73,155`).
 
-### More secrets (W6 / W15 / W44)
+### More secrets
 
 Set the same way (`npx wrangler pages secret put <NAME>`), then redeploy (Step 4). The complete
 list of secret **names** also lives in `.dev.vars.example` (copy it to `.dev.vars` for local dev).
 
 | Secret | What it is |
 |---|---|
-| `VAULT_TOKEN` (W6) | Bearer allowlist for `PUT /api/vault` (the ops write path). |
-| `FINDING_ANTHROPIC_API_KEY` (W15) | A **distinct** Anthropic key for the money-spending Finding refresh, so it can't drain the chat key's budget. |
-| `RANGES_ANTHROPIC_API_KEY` (M59) | A **distinct** Anthropic key for the provider-only `/api/refresh-range` Ranges refresh, isolating its spend from the Finding/chat pools. |
-| `PROVIDER_TOKEN` (W15) | The distinct secret handed to a proven **clinician** that authorizes `/api/refresh-finding` (and `/api/refresh-range`, M59). |
-| `SESSION_SECRET` (W44) | HMAC-SHA256 signing key for the `hd_session` cookie (`functions/_lib/session.ts`). A long random value. |
-| `WEBAUTHN_RP_ID` / `WEBAUTHN_RP_NAME` / `WEBAUTHN_ORIGIN` (W44) | Passkey relying-party identity. In prod: the bare domain / app name / exact `https://…` origin. |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | **Deferred** (W44 §J) — only when Google OAuth ships. |
+| `VAULT_TOKEN` | Bearer allowlist for `PUT /api/vault` (the ops write path). |
+| `FINDING_ANTHROPIC_API_KEY` | A **distinct** Anthropic key for the money-spending Finding refresh, so it can't drain the chat key's budget. |
+| `RANGES_ANTHROPIC_API_KEY` | A **distinct** Anthropic key for the provider-only `/api/refresh-range` Ranges refresh, isolating its spend from the Finding/chat pools. |
+| `PROVIDER_TOKEN` | The distinct secret handed to a proven **clinician** that authorizes `/api/refresh-finding` (and `/api/refresh-range`). |
+| `SESSION_SECRET` | HMAC-SHA256 signing key for the `hd_session` cookie (`functions/_lib/session.ts`). A long random value. |
+| `WEBAUTHN_RP_ID` / `WEBAUTHN_RP_NAME` / `WEBAUTHN_ORIGIN` | Passkey relying-party identity. In prod: the bare domain / app name / exact `https://…` origin. |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | **Deferred** — only when Google OAuth ships. |
 
 ```bash
-# W44 example — set the session + passkey secrets, then redeploy:
+# Example — set the session + passkey secrets, then redeploy:
 npm run wrangler -- pages secret put SESSION_SECRET      # paste a long random value
 npm run wrangler -- pages secret put WEBAUTHN_RP_ID      # e.g. health-dash-aex.pages.dev
 npm run wrangler -- pages secret put WEBAUTHN_ORIGIN     # e.g. https://health-dash-aex.pages.dev
 ```
 
-## Per-environment secrets (W53 P2)
+## Per-environment secrets
 
 There are two deployed environments — `health-dash-dev` (branch `dev`) and `health-dash-main`
 (branch `main`) — and **they do not share a single secret**. Every var except `STORE_PREFIX` is
@@ -53,11 +52,11 @@ copied from dev's even if that were wanted; each was provisioned from its own so
 
 | Var | Where prod's value comes from |
 |---|---|
-| `ANTHROPIC_API_KEY`, `FINDING_ANTHROPIC_API_KEY`, `RANGES_ANTHROPIC_API_KEY` | `~/.claude/infra/cloud/credentials/anthropic.env`. **Known compromise:** all three currently hold the *same* key, so the budget isolation the code is designed for (`refresh-finding.ts:54`, `refresh-range.ts:89`) is not real on prod yet — a runaway Finding regeneration can drain the chat pool. Split into three keys when spend justifies it. |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_KEK` | `gcp-oauth.env` |
-| `GMAIL_SA_CLIENT_EMAIL`, `GMAIL_SA_PRIVATE_KEY` | `gmail-sa.lexitar.json` (`.client_email` / `.private_key`) |
+| `ANTHROPIC_API_KEY`, `FINDING_ANTHROPIC_API_KEY`, `RANGES_ANTHROPIC_API_KEY` | The operator's private credential store (outside this repo). **Known compromise:** all three currently hold the *same* key, so the budget isolation the code is designed for (`refresh-finding.ts:54`, `refresh-range.ts:89`) is not real on prod yet — a runaway Finding regeneration can drain the chat pool. Split into three keys when spend justifies it. |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_KEK` | The operator's private credential store |
+| `GMAIL_SA_CLIENT_EMAIL`, `GMAIL_SA_PRIVATE_KEY` | The operator's private credential store (a service-account JSON's `.client_email` / `.private_key`) |
 | `GMAIL_SENDER` | The impersonated Workspace mailbox; not derivable from the SA key |
-| `SESSION_SECRET`, `PROVIDER_TOKEN`, `VAULT_TOKEN` | **Minted fresh for prod** and recorded as `PROD_*` in `health-dash.env`. That file is the only copy — the API will never read them back. |
+| `SESSION_SECRET`, `PROVIDER_TOKEN`, `VAULT_TOKEN` | **Minted fresh for prod** and recorded in the operator's private credential store. That record is the only copy — the API will never read them back. |
 | `WEBAUTHN_RP_ID`, `WEBAUTHN_ORIGIN` | The **prod hostname**, `literacy.tinytars.foundation` / `https://literacy.tinytars.foundation` |
 | `WEBAUTHN_RP_NAME` | `LexiTar` (same on both) |
 | `STORE_PREFIX` | `wrangler.jsonc` on each branch — see below |
@@ -86,17 +85,17 @@ Verify an environment with `npm run doctor` (this branch's project) or `npm run 
 derives the required set from the code — every `env.FOO` in `functions/` — so a newly-introduced
 secret that was never provisioned on prod fails there rather than as a 500 on one route.
 
-> **Planned (W54):** these values should be visible and editable by an admin user in the admin
+> **Planned:** these values should be visible and editable by an admin user in the admin
 > console, not set in stone at provisioning time. Today every change is a `wrangler pages secret put`
 > plus a redeploy, and the only record of the minted values is one file on one laptop.
 
-## Per-deployment env var: `STORE_PREFIX` (W13d)
+## Per-deployment env var: `STORE_PREFIX`
 
 Not a secret — a plaintext Pages **environment variable** that namespaces every R2 key
 (`{STORE_PREFIX}/data-{id}.enc`, `{STORE_PREFIX}/raw/{id}/{file}`, `{STORE_PREFIX}/processed/...`)
 so concurrent branch deploys never collide within a bucket. It is committed **per-branch** in
 `wrangler.jsonc` `"vars"` (`dev` → `"dev"`, `main` → `"prod"`), so it binds on a normal deploy with
-no dashboard step. Since W53 it is the *second* line of defence, not the only one: dev and prod are
+no dashboard step. It is the *second* line of defence, not the only one: dev and prod are
 also physically separate buckets and databases (VAULT.md §8). The
 key-builder (`functions/_lib/store.ts` `storeKey`, mirrored by `scripts/vault-sync.ts`
 `resolveStore`) **throws on an empty prefix** rather than risk an unprefixed shared key.
@@ -107,7 +106,7 @@ After the first-time setup below, every new shell needs the same three things on
 environment. Once your deps are installed and you have a token, this is all it takes:
 
 ```bash
-cd apps/health-dash-web
+cd apps/lexitar
 eval "$(~/homebrew/bin/brew shellenv)"        # node/npm on PATH
 export NODE_EXTRA_CA_CERTS=/etc/ssl/cert.pem  # VPN/proxy cert fix — without it wrangler "fetch failed"
 export CLOUDFLARE_API_TOKEN=<your-token>      # auth (Cloudflare Pages: Edit)
@@ -121,10 +120,10 @@ token export is left.) First time through? Follow Step 0 onward.
 
 The manual env dance above is now wrapped so it reproduces on a fresh clone / new machine / CI:
 
-- **The Cloudflare token is NOT in this repo** — it lives in the plover-context repo
-  (`infra/cloud/credentials/cloudflare.env`, cloned to `~/.claude`), loaded by
-  `scripts/creds.sh`. On a machine without `~/.claude`, point `PLOVER_CREDENTIALS_DIR` at that
-  credentials dir. It's account-scoped, so it's on the **rotate-on-public** list in the repo `CLAUDE.md`.
+- **The Cloudflare token is NOT in this repo** — it lives in a local credentials directory
+  (`cloudflare.env`), loaded by `scripts/creds.sh`. Point `PLOVER_CREDENTIALS_DIR` at that
+  directory; it defaults to `~/.claude/infra/cloud/credentials`. It's account-scoped, so rotate it
+  if it is ever exposed.
 - **`scripts/wrangler.sh`** — run any wrangler command through it and PATH + `NODE_EXTRA_CA_CERTS` +
   the token are set for you: `npm run wrangler -- <args>` (e.g. `npm run wrangler -- whoami`). No more
   re-deriving the CA export or the token.
@@ -133,20 +132,20 @@ The manual env dance above is now wrapped so it reproduces on a fresh clone / ne
   first when something "just doesn't work."
 - **Deploy-time D1 migrations** — apply new migrations to remote D1 with
   **`npm run d1:migrate:remote`** (wraps `wrangler d1 migrations apply health-identity-dev --remote`);
-  local e2e uses `npm run d1:migrate:local`. This replaces the previously hand-run command (e.g.
-  applying `0003_support_audit.sql` at the W44 P4b deploy).
-  **Latest: `migrations/0009_recovery_grants.sql` (W73)** — applied to **both** databases 2026-08-25
+  local e2e uses `npm run d1:migrate:local`. This replaces a previously hand-run command.
+  **Latest: `migrations/0009_recovery_grants.sql`** — applied to **both** databases 2026-08-25
   (`health-identity-dev` and `health-identity-prod`).
 
   > Applying it to prod ahead of the code is deliberate and is the safe order: both objects are
-  > additive and nothing on `main` reads them yet, so when W73 promotes, the routes find the schema
-  > already there. The reverse order is what broke patient uploads on dev when 0008 landed.
+  > additive and nothing on `main` reads them yet, so when the promotion lands, the routes find the
+  > schema already there. The reverse order is what broke patient uploads on dev when 0008 landed.
   >
   > Note the mechanic, because it is not obvious: **wrangler resolves a database name against the
   > worktree's own `wrangler.jsonc`**, so `health-identity-prod` cannot be migrated from the `dev`
-  > worktree at all — it errors rather than guessing. Run it from `plover-code-main`. Until the
-  > promotion lands, that worktree does not yet contain the migration file, so copy it in, apply, and
-  > delete it; the real file arrives with the promotion and wrangler skips it by name. It adds `accounts.email_changed_at` and `recovery_grants`. Note
+  > worktree at all — it errors rather than guessing. Run it from a worktree checked out on `main`.
+  > Until the promotion lands, that worktree does not yet contain the migration file, so copy it in,
+  > apply, and delete it; the real file arrives with the promotion and wrangler skips it by name. It
+  > adds `accounts.email_changed_at` and `recovery_grants`. Note
   the companion step: **`npm run raw:backfill -- --confirm`** should run once per store, from the
   worktree that binds it. **Both are done (2026-08-26):** dev 106 of 107 attributed (the holdout belongs
   to a patient who revoked org recovery, so nothing can open their vault to resolve it); **prod 35 of 35,
@@ -156,7 +155,7 @@ The manual env dance above is now wrapped so it reproduces on a fresh clone / ne
   breakage — an unclaimed namespace is allowed by design (`functions/_lib/raw-owner.ts`) — it is simply
   readable by any authenticated account until something claims it.
 
-  Previously: `migrations/0008_account_erasure.sql` (W72) — needs applying to BOTH databases. It adds
+  Previously: `migrations/0008_account_erasure.sql` — needs applying to BOTH databases. It adds
   `accounts.deleted_at` and the `raw_objects` ownership table. Until it is applied, `POST
   /api/account/erase` fails on the first write and `/api/raw` PUT fails on the ownership insert, so
   this one is not optional on a deploy — unlike an additive column nothing reads yet.
@@ -172,7 +171,7 @@ not found." Likewise, a fresh terminal often doesn't have `node`/`npm` on PATH y
 first thing to fix.
 
 ```bash
-cd apps/health-dash-web                    # all commands run from here
+cd apps/lexitar                    # all commands run from here
 
 # 1. Put node/npm on PATH for this shell. On this machine Homebrew lives in ~/homebrew.
 #    Skipping this is why `node --version` prints "command not found".
@@ -246,7 +245,7 @@ npx wrangler pages secret put CHAT_TOKEN
 #   → paste the `npm run allowlist` line when prompted
 
 npx wrangler pages secret put RAW_TOKEN
-#   → paste the SAME `npm run allowlist` line (gates GET /api/raw; W13d)
+#   → paste the SAME `npm run allowlist` line (gates GET /api/raw)
 ```
 
 - `npx wrangler pages secret put` sets **production** secrets, which is what
@@ -282,7 +281,7 @@ curl -s -X POST https://health-dash-aex.pages.dev/api/chat \
 npx wrangler pages secret list      # both secrets should be listed (values hidden)
 ```
 
-## Account recovery (W44 P8b)
+## Account recovery
 
 Every account gets a **recovery code** at signup (shown once). If a user loses their password/passkey,
 the lock screen's **"Forgot password?"** takes an email + the recovery code and signs them back in
@@ -290,14 +289,14 @@ the lock screen's **"Forgot password?"** takes an email + the recovery code and 
 same scheme as password) and is **reusable** until regenerated. Users can **regenerate** it from
 **Account → Regenerate recovery code** (shown once).
 
-> **No account credential is recorded in this repo (W52, 2026-08-09).** A recovery code wraps the same
+> **No account credential is recorded in this repo (2026-08-09).** A recovery code wraps the same
 > account private key as the password does — so a documented code is a documented vault key, exactly the
 > hole the passwords were. The `recover-{slug}` codes this section used to tabulate, and the pilot
 > passwords they were provisioned with, were **rotated on 2026-08-09** to random 20-character secrets and
 > delivered out of band. `npm run vault:rotate` and `npm run vault:rotate -- --method recovery` re-check
 > that no account has drifted back onto a value this repo ever wrote down; both are clean as of that date.
-> Making a lost credential recoverable *without* writing one down is
-> [W55](../../docs/health-dash/plans/55-w55-password-recovery.md).
+> Making a lost credential recoverable *without* writing one down is what the recovery-code mechanism
+> above implements.
 
 `scripts/set-recovery-code.ts` still exists for provisioning a chosen code against a deployed env (it
 takes `EMAIL`/`PASSWORD`/`CODE` from the environment). Use it with a generated code, never a memorable
@@ -322,11 +321,11 @@ authorized.
 To rotate a key: re-run the same `npx wrangler pages secret put …` command with the new value,
 **then redeploy** — secrets only bind on a new build.
 
-## W6 — the vault R2 bucket & `VAULT_TOKEN` (one-time, for `/api/vault`)
+## The vault R2 bucket & `VAULT_TOKEN` (one-time, for `/api/vault`)
 
 `/api/vault/[id]` persists each per-client encrypted blob to an R2 bucket so edits survive from
 a phone without your laptop. The bucket binding rides `wrangler.jsonc` (already committed), but
-the bucket and write-secret are account actions you run once (from `apps/health-dash-web/`, with
+the bucket and write-secret are account actions you run once (from `apps/lexitar/`, with
 Step 0's PATH/CA/login in effect):
 
 ```
@@ -358,8 +357,8 @@ Explicit seeding is optional (first GET self-seeds); to pre-load anyway:
 `npx wrangler r2 object put health-vault/dev/data-<client-id>.enc --file records/public/data-<client-id>.enc`.
 
 **Re-run when a client slice is added:** (obsolete, CHAT_TOKEN is gone) re-run `npm run allowlist`, re-set
-`VAULT_TOKEN`, redeploy. **Follow-ups (separate steps):** wire the CLI pull/push sync (W6e) once
-the bucket is seeded, and enable Logpush → R2 retention (W8a, `API.md`).
+`VAULT_TOKEN`, redeploy. **Follow-ups (separate steps):** wire the CLI pull/push sync once
+the bucket is seeded, and enable Logpush → R2 retention (see `API.md`).
 
 ## Adding a new user (client) — end-to-end
 
@@ -392,14 +391,14 @@ the live deployment's logs:
 
 ```
 npx wrangler pages deployment tail --project-name health-dash-dev
-# vault save (W8d audit) → {"at":…,"route":"/api/vault","status":204,"id":"<client-id>","bytes":405312}
+# vault save (audit) → {"at":…,"route":"/api/vault","status":204,"id":"<client-id>","bytes":405312}
 # chat request         → {"at":…,"route":"/api/chat","status":200,"usage":{"input":…,"output":…}}
 # narrow it:  … | grep '/api/vault'
 ```
 
 The vault line is **id + byte-size only — never the encrypted blob, plaintext, passphrase, or
 bearer**. It's the disaster-recovery record for R2's last-write-wins overwrites. Durable
-retention beyond Cloudflare's short default window is the W8a follow-up (Logpush → R2).
+retention beyond Cloudflare's short default window is a follow-up item (Logpush → R2).
 
 > **Editing from the deployed site.** The deployed app is **read-write**: unlocking a client
 > shows **Edit**, and **Save** PUTs the re-encrypted blob to R2 via `/api/vault/{id}` (the write
@@ -413,9 +412,9 @@ retention beyond Cloudflare's short default window is the W8a follow-up (Logpush
 Local dev reads `.dev.vars` (gitignored) instead of Pages secrets — see `.dev.vars.example`:
 
 ```
-# apps/health-dash-web/.dev.vars
+# apps/lexitar/.dev.vars
 ANTHROPIC_API_KEY=sk-ant-...
-VAULT_TOKEN=<output of `npm run allowlist`>   # for /api/vault (W6)
+VAULT_TOKEN=<output of `npm run allowlist`>   # for /api/vault
 ```
 
 Then `npm run dev:functions` (build + `npx wrangler pages dev dist`) serves the Functions at
@@ -426,7 +425,7 @@ exercise R2 locally, add `--r2 VAULT`: `npx wrangler pages dev dist --r2 VAULT`.
 ## Letting Claude run wrangler headlessly (no terminal paste)
 
 Claude's shell does **not** inherit `CLOUDFLARE_API_TOKEN` (it's only in your interactive
-session). The token lives in the plover-context credentials repo, so `scripts/wrangler.sh` loads it
+session). The token lives in a local credentials directory, so `scripts/wrangler.sh` loads it
 automatically — every wrangler call Claude makes is just:
 
 ```
@@ -454,9 +453,9 @@ gitignored so it won't be committed.
 > objects, deploy) without a confirmation paste. That's the intent — but it's real authority.
 > Claude still won't push to a deploying branch or run destructive R2 ops without saying so.
 
-## wrangler command catalog (the W4/W6 ops we use)
+## wrangler command catalog (common ops we use)
 
-All from `apps/health-dash-web/`, with the env above exported.
+All from `apps/lexitar/`, with the env above exported.
 
 ```
 # Discovery
@@ -483,26 +482,25 @@ Contract checks can also be run with plain `curl` against the public domain
 `/api/*` routes, so Claude verifies prod directly (GET 200 / PUT 204 with the derived bearer /
 401 on a bad bearer). PUT the bytes a GET just returned to stay idempotent (no data change).
 
-## W44 identity/escrow ops (D1 migrations, DEK rotation, purging a test account)
+## Identity/escrow ops (D1 migrations, DEK rotation, purging a test account)
 
-The account/identity/escrow layer (W44) lives in **Cloudflare D1** (`health-identity-dev`), PHI stays in
+The account/identity/escrow layer lives in **Cloudflare D1** (`health-identity-dev`), PHI stays in
 R2-encrypted vaults. Ops details:
 
 - **D1 migrations.** `migrations/000{1..6}_*.sql`. Apply to prod with **`npm run d1:migrate:remote`**
   (local e2e uses `d1:migrate:local`; `scripts/e2e-serve.sh` runs it + wipes state each boot). `0002`
   seeds the pilots + the **org operational account** (`00000000-0000-4000-8000-000000000001`, its public
   key, and a per-vault org-recovery envelope). `0003` = support audit + `expires_at`. `0004` =
-  `vaults.rotation_pending`. `0006` = `vaults.org_recovery_revoked_at` (W55 P4). **After adding a
-  migration, run `d1:migrate:remote` at deploy** (it's a leftover checklist item in
-  `docs/health-dash/plans/44-…md`).
-- **Org-key decrypts are logged (W55 P4).** `vault:build`, `vault:verify`, `vault:restore`, and
+  `vaults.rotation_pending`. `0006` = `vaults.org_recovery_revoked_at`. **After adding a
+  migration, run `d1:migrate:remote` at deploy** — this is a standing checklist item, easy to forget.
+- **Org-key decrypts are logged.** `vault:build`, `vault:verify`, `vault:restore`, and
   `ingest --reconcile` each call `scripts/access-log.ts` (`recordOrgKeyUse` / `flushOrgKeyUses`) around
   every org-key decrypt, batching one `phi_access_events` INSERT over `wrangler.sh d1 execute --remote`
   when the script's `main` exits — so those four commands now need remote D1 access (the committed
   token) even for otherwise-offline runs. A flush failure is a hard error by design (a silent audit
   trail is the failure mode this closes). **`ORG_ACCESS_LOG=off`** is the documented escape hatch for
   genuinely offline work — it drops the buffered uses instead of flushing them.
-- **DEK rotation (P4c) is client-side.** Support revoke/expiry re-keys the vault in the browser
+- **DEK rotation is client-side.** Support revoke/expiry re-keys the vault in the browser
   (`/api/vault/principals` → re-wrap targets, `/api/vault/rotate` → atomic envelope swap). Expiry (patient
   offline) sets `rotation_pending`; the patient's next login completes it. **`reconcile` now reads a
   vault's DEK from the D1 org-recovery envelope** (`scripts/org-d1.ts`, via this wrapper) so it tracks a
@@ -513,7 +511,7 @@ R2-encrypted vaults. Ops details:
   new DEK opens the blob, old DEK fails, fresh login unwraps the new DEK); **then purge it (below)**.
 - **Provisioning (out-of-band).** Support account: `scripts/provision-support-account.ts` → SQL →
   `npm run wrangler -- d1 execute health-identity-dev --remote --file …` (prod support agent =
-  `support@local.invalid`; its password was rotated off the slug in W52 and is not recorded here).
+  `support@local.invalid`; its password was rotated off the slug and is not recorded here).
   Pilot recovery codes: `scripts/set-recovery-code.ts` (see
   §"Account recovery").
 - **Purging a throwaway/test account from prod** (delete children before the account row, then the R2

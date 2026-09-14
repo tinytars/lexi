@@ -61,8 +61,8 @@ describe("shouldResyncDraft", () => {
   });
 
   it("returns true for a totally different client (patient switch)", () => {
-    const prev = makeClient({ displayName: "Pablo" });
-    const next = makeClient({ displayName: "Liz" });
+    const prev = makeClient({ displayName: "Alex" });
+    const next = makeClient({ displayName: "Blair" });
     expect(shouldResyncDraft(prev, next)).toBe(true);
   });
 });

@@ -14,7 +14,7 @@ import { stubChatHistory, interceptVaultSave } from "./_stubs";
 // check the non-interactive `.pin-star.visible` status badge instead of the old button's own class.
 
 async function drillToStudy(page: Page) {
-  await page.locator(".roster-name", { hasText: "Pablo" }).click();
+  await page.locator(".roster-name", { hasText: "Alex" }).click();
   await page.waitForSelector('.sidebar .nav-item', { timeout: 10_000 });
   await clickNav(page, "Study");
   await page.waitForSelector(".study", { timeout: 10_000 });

@@ -2,17 +2,15 @@
 
 How patient data is stored, encrypted, read, written, and synced across the browser, the
 Cloudflare Pages Functions, R2, and the local CLI. This is the map; the operational runbooks live
-in `AUTH.md` (secrets/deploy) and `API.md` (endpoint contracts), and the milestone history in
-`~/.claude/planning/plover-code/docs/health-dash/plans/00-roadmap.md` (moved 2026-09-12). The W13
-data-store design + resume state is
-`~/.claude/planning/plover-code/apps/health-dash-web/docs/plans/13-w13-data-store.md`.
+in `AUTH.md` (secrets/deploy) and `API.md` (endpoint contracts).
 
 > **Passphrases are not stored in this repo.** `<vault-passphrase>` (the roster/slice passphrase,
-> env `PASSPHRASE`) and `<org-passphrase>` (env `ORG_KEY_PASSPHRASE`) live in the plover-context
-> repo at `infra/cloud/credentials/health-dash.env`. Source it before running any command below:
+> env `PASSPHRASE`) and `<org-passphrase>` (env `ORG_KEY_PASSPHRASE`) live in a local credentials
+> file (`health-dash.env`, not committed in this repo), loaded via `scripts/load-creds.ts`. Source it
+> before running any command below:
 > `set -a; . "${PLOVER_CREDENTIALS_DIR:-$HOME/.claude/infra/cloud/credentials}/health-dash.env"; set +a`.
 
-## 1. Data model — four layers under one umbrella (W13)
+## 1. Data model — four layers under one umbrella
 
 Everything lives under **`records/`**, split by the security boundary: `private/` (plaintext PHI,
 **never web-served**) and `public/` (the derived, still-encrypted, served layer; Vite's `publicDir`).
@@ -31,7 +29,7 @@ records/
 ```
 
 **The roster sits outside `public/` on purpose.** It has no browser consumer — the provider's patient
-list moved to `/api/providers/patients` at the W44 cutover — so serving it only published the one
+list moved to `/api/providers/patients` at the account-based-auth cutover — so serving it only published the one
 artifact that maps an opaque client id back to a patient's name, under the weakest crypto here
 (v1/PBKDF2, outside the envelope model). Being outside Vite's `publicDir` is the mechanism: it cannot
 be shipped by forgetting.
@@ -51,7 +49,7 @@ The four layers and how they relate:
 **Plaintext at rest is the source of truth** (owner decision; this is a private repo). The served
 `.enc` stays AES-GCM/browser-decrypted — the privacy model (server never sees plaintext; the only
 world-readable thing is ciphertext) depends on it. Tradeoff: cleartext PHI in git → a public-visibility
-flip requires **purging `records/private/` from history**, not just rotating keys (see project `CLAUDE.md`).
+flip requires **purging `records/private/` from history**, not just rotating keys.
 
 ### The served blobs stay world-readable (decided 2026-08-31)
 
@@ -77,9 +75,9 @@ served blob opens as the roster (G8), and every served blob is v2 (G10).
 
 ### Keys (recorded here per the private-repo secret policy)
 
-> **Account passwords are NOT recorded here (W52, 2026-08-09).** The password an account signs in
+> **Account passwords are NOT recorded here (2026-08-09).** The password an account signs in
 > with is *also* the KEK that unwraps its private key, hence the vault DEK — so writing one down here
-> would be writing down the decryption key. The W44 seeded values (each account's own slug) were
+> would be writing down the decryption key. The seeded values (each account's own slug) were
 > rotated to random 20-character secrets on 2026-08-09 and delivered out of band; they exist in no
 > file in either repo. `npm run vault:rotate` re-checks that no account has drifted back to a
 > guessable value, and is the tool that rotates one. See `BACKUP.md`.
@@ -91,7 +89,7 @@ served blob opens as the roster (G8), and every served blob is v2 (G10).
   served). Rotated onto it 2026-08-31 by `npm run roster:rotate`; `--check` is the standing audit.
 
   It previously shared `PASSPHRASE`, whose value is the **public provider slug** — four characters, and
-  classed as non-secret by `docs/cross-app/03-credential-consolidation.md:74`. One string doing both
+  classed as non-secret. One string doing both
   jobs was the real defect, and not because of the KDF: while a credential is also a public identifier,
   no textual scan can tell a disclosure from a legitimate mention, which is how a live provider login
   sat unnoticed inside the *credential-free* Playwright project (G8). The roster is the one artifact
@@ -100,30 +98,29 @@ served blob opens as the roster (G8), and every served blob is v2 (G10).
 
   **`PASSPHRASE` keeps one job: the migration-seeded provider login**, and it stays the slug because
   `migrations/0002` is applied history. That is scoped, not residual risk — the remote dev and prod D1s
-  were rotated off every seeded value in W52 (`npm run vault:rotate` confirms), so the seeded value now
+  were rotated off every seeded value (`npm run vault:rotate` confirms), so the seeded value now
   opens only the local, migration-built e2e database on a machine that already holds the records.
-- **W44 account login (the app now):** accounts sign in with an email + password. The password is the
+- **Account login (the app now):** accounts sign in with an email + password. The password is the
   KEK that unwraps the account's private key → the vault DEK, so it is held only by the account
   holder. Login emails minted by `scripts/migrate-accounts.ts` were `{slug}@local.invalid`; change one
   via `PATCH /api/account`.
-  - **Every vault now carries an org envelope by default (W55 P4, shipped).** An account that loses
+  - **Every vault now carries an org envelope by default (shipped).** An account that loses
     its password recovers via the org key unless the patient revoked it. What is not yet built is
     *user-triggered* recovery — a patient using a surviving credential (recovery code, passkey,
-    Google) to set a new password unaided — that's W55 Phases 1–3, still unbuilt. See
-    `docs/health-dash/plans/55-w55-password-recovery.md`.
-- **Org operational key (W44):** `records/org-key.json` holds a P-256 keypair whose private key is
+    Google) to set a new password unaided — still unbuilt.
+- **Org operational key:** `records/org-key.json` holds a P-256 keypair whose private key is
   wrapped under the org passphrase **`<org-passphrase>`** (env `ORG_KEY_PASSPHRASE`; generated by
-  `scripts/gen-org-key.ts`). Under the W44 v2 envelope model each vault is encrypted with a random DEK;
+  `scripts/gen-org-key.ts`). Under the v2 envelope model each vault is encrypted with a random DEK;
   the DEK is wrapped to this org public key (the org-recovery envelope) so the CLI/ops pipeline
   (`vault-build`/`reconcile`/`vault-verify`/`migrate`) can still unwrap it and keep this plaintext-truth
   model working, while patients/providers hold their own keys. Losing this passphrase ⇒ the org can no
-  longer operate on migrated vaults — treat it like `<vault-passphrase>`. See `docs/health-dash/plans/44-w44-*` §H.
-  (A fuller inventory + safeguard of every out-of-repo secret/config is the planned **P7** phase.)
+  longer operate on migrated vaults — treat it like `<vault-passphrase>`.
+  (A fuller inventory + safeguard of every out-of-repo secret/config is a planned follow-up.)
 
 **Names are labels, not identifiers (G1).** The client id — inside `vault.clients`, and as the slice
 filename, passphrase, directory and R2 key alike — is the **lowercased account id**, the same opaque
 value every signup has minted since `createFirstClient` shipped. The name survives only as
-`client.displayName` *inside* the ciphertext. The CLI still takes `--client Pablo`: `resolveClientId`
+`client.displayName` *inside* the ciphertext. The CLI still takes `--client Alex`: `resolveClientId`
 (`scripts/vault-io.ts`) folds a display name to its id once, at the boundary, so no runbook changed.
 The lowercasing in `/api/raw` and the Export download is now a no-op, kept for a vault predating G1.
 See `project_provider_roster_model`.
@@ -132,13 +129,13 @@ See `project_provider_roster_model`.
 
 Encryption/decryption happen **only in the browser and the local CLI — never on the server.**
 
-### Decision (2026-08-09, owner): org recovery envelope ON by default — **implemented (W55 P4)**
+### Decision (2026-08-09, owner): org recovery envelope ON by default — **implemented**
 
 Every vault carries a **DEK envelope wrapped to the org operational key**, minted by the patient's own
 client at signup. Four properties, all four load-bearing, and all four now shipped:
 
 1. **On by default** — not opt-in. A health record that evaporates on a forgotten password is a worse
-   patient outcome than the confidentiality risk the alternative buys, and W52's restore drill cannot
+   patient outcome than the confidentiality risk the alternative buys, and the restore drill cannot
    prove a backup opens for a vault nobody but the holder can decrypt. **Mint at signup, all three
    paths:** `functions/api/auth/password/signup.ts:143-149`, `functions/api/auth/passkey/register/verify.ts:158-164`,
    `functions/_lib/google.ts:131-133,155-161` (Google wraps server-side — it already generates the DEK
@@ -167,17 +164,17 @@ client at signup. Four properties, all four load-bearing, and all four now shipp
    `GET /api/account/access-events` (`functions/api/account/access-events.ts`), the first caller of
    `listAccessEventsForSubject`, rendered in the same Account modal block.
 
-**Why not the stricter line.** An earlier W52/W55 draft made escrow opt-in, on the reasoning that an
+**Why not the stricter line.** An earlier draft made escrow opt-in, on the reasoning that an
 operator who can decrypt is a backdoor. That over-read the requirement — the objection was to access
 *without permission*, and disclosed-plus-revocable is permission. It also ignored that this system
 already ships consent-gated privileged access (`functions/api/support/approve.ts`, with expiry and a
-re-key on exit), and it made W54's PHI migration runner unbuildable: a migration must decrypt, so
+re-key on exit), and it made a PHI migration runner unbuildable: a migration must decrypt, so
 "the org can never decrypt" meant "prod can never be migrated". The axis that matters is
 **disclosure, audit and revocability — not capability**.
 
 What is unchanged: the server still never decrypts **in the request path**, never sees a password, a
 KEK or a DEK, and moves only sealed blobs. The org key is an out-of-band operator credential
-(`ORG_KEY_PASSPHRASE`, plover-context repo), not something the Functions hold.
+(`ORG_KEY_PASSPHRASE`, a local credentials file), not something the Functions hold.
 `src/lib/crypto.ts`: AES-GCM-256, key from **PBKDF2-SHA256, 200k iterations**; blob layout is `"HD1"`
 magic (`0x48 0x44 0x31`) + version + 16-byte salt + 12-byte IV + ciphertext. The Functions only ever
 move **already-encrypted HD1 blobs** (vault) or **plaintext raw bytes** (raw originals) — never a key.
@@ -194,7 +191,7 @@ The browser proves "I can already unlock this vault" without sending the passphr
 **allowlist** of those hashes as Pages secrets and constant-time compares (`functions/_lib/guard.ts`):
 
 - `CHAT_TOKEN` — **deleted 2026-08-26**; `POST /api/chat` is gated by `hd_session`.
-- `VAULT_TOKEN` — gates `PUT /api/vault/{id}` (W6).
+- `VAULT_TOKEN` — gates `PUT /api/vault/{id}`.
 - `RAW_TOKEN` — **deleted 2026-08-26**; `/api/raw` is gated by `hd_session` + `rawAccessFor`. Raw originals are **plaintext PHI**, so unlike
   the open `.enc` GET this route is bearer-gated.
 
@@ -215,17 +212,17 @@ browser unlock(pass)
 
 ## 5. Write path — the `VaultSink` abstraction
 
-Editing (W5) re-encrypts in the browser and hands the blob to a `VaultSink` (`src/lib/vault-sink.ts`).
+Editing re-encrypts in the browser and hands the blob to a `VaultSink` (`src/lib/vault-sink.ts`).
 Selection is **build-time** (`vaultSink = import.meta.env.DEV ? localSink : r2Sink`):
 
 ```
 Edit -> Save -> saveVault(vault, id, pass, vaultSink, bearer)
   ├─ dev   localSink:  POST /__save-vault?id={id}   (Vite middleware → records/public/data-{id}.enc
-  │                                                   AND decrypts → records/private/{id}/vault.json, W13b)
+  │                                                   AND decrypts → records/private/{id}/vault.json)
   └─ prod  r2Sink:     PUT  /api/vault/{id}          (bearer-guarded → R2)
 ```
 
-The deployed app is **read-write** (W6): unlock → Edit → Save persists to R2 from a phone. Markers stay
+The deployed app is **read-write**: unlock → Edit → Save persists to R2 from a phone. Markers stay
 read-only (ingestion owns them). The dev save keeps the plaintext `vault.json` in sync so a dev web-edit
 can't drift from the served `.enc`.
 
@@ -241,14 +238,14 @@ can't drift from the served `.enc`.
 - **`PUT`** (bearer `VAULT_TOKEN`): validate HD1 (`400`), ≥ 32 bytes (`400`), ≤ 5 MB (`413`) →
   `env.VAULT.put(storeKey…)` → `204`. PHI-free audit line `{route:"/api/vault", status, id, bytes}`.
 
-**`functions/api/raw/[[path]].ts`** (W13d/h) — **`GET /api/raw/{id}/{file}`**, session-gated
-(`hd_session`; the `RAW_TOKEN` this line used to name is not read by the Function — corrected W71,
+**`functions/api/raw/[[path]].ts`** — **`GET /api/raw/{id}/{file}`**, session-gated
+(`hd_session`; the `RAW_TOKEN` this line used to name is not read by the Function — corrected,
 along with the authorisation gap recorded in `API.md`):
 `env.VAULT.get(storeKey(env, "raw", id.toLowerCase(), file))` → streams the plaintext original with a
 content-type by extension; `400` bad path, `404` miss, PHI-free log `{route:"/api/raw", status, id}`.
 Never decrypts (raw is stored unencrypted). **`DELETE /api/raw/{id}/{file}`**
-(W13h, same gate) expunges one raw object from R2 (`env.VAULT.delete(...)`) → `{deleted:true}`;
-idempotent. It's the web-delete shape for W15: the browser runs the pure `removeSource()`, `PUT`s the
+(same gate) expunges one raw object from R2 (`env.VAULT.delete(...)`) → `{deleted:true}`;
+idempotent. It's the web-delete shape: the browser runs the pure `removeSource()`, `PUT`s the
 re-encrypted vault, then `DELETE`s the raw object.
 
 Contracts + curl examples: `API.md`.
@@ -264,49 +261,48 @@ health-vault/
   {store}/                         per-deployment namespace (env.STORE_PREFIX; dev branch = "dev")
     data-{id}.enc                  vault ciphertext
     raw/{id}/{file}                originals (plaintext PHI) — session-gated via /api/raw
-    processed/{id}/{sha8}.json     extractions (lets a CLI pull web-extracted artifacts; W15 readiness)
+    processed/{id}/{sha8}.json     extractions (lets a CLI pull web-extracted artifacts)
 ```
 
 - `STORE_PREFIX` is a committed per-branch Pages var (`wrangler.jsonc` `"vars"`; this branch = `"dev"`,
   a future prod branch = `"prod"`). The key-builder **`functions/_lib/store.ts` `storeKey`** throws on
   an empty prefix (a missing one would silently merge two deploys' keys). `scripts/vault-sync.ts`
   `resolveStore` mirrors it CLI-side.
-- **CLI sync** (`scripts/vault-sync.ts`, W6e + W13d): `pull(id, store)` before a load, `push(id, store)`
+- **CLI sync** (`scripts/vault-sync.ts`): `pull(id, store)` before a load, `push(id, store)`
   after a write; a raw `--import` also `pushRaw`s the originals to `{store}/raw/{id}/`. Shells to
   `wrangler r2 object get/put --remote` with the machine's ambient `CLOUDFLARE_API_TOKEN`. `--no-sync`
   for offline. Without it, a CLI regen from a stale slice would clobber a phone edit.
-- **build/verify** (W13b): `npm run vault:build` encrypts plaintext → served `.enc`;
+- **build/verify**: `npm run vault:build` encrypts plaintext → served `.enc`;
   `npm run vault:verify` decrypts each `.enc` and deep-equals its `vault.json` — in the pre-push gate.
 
   **If `vault:verify` fails with `Unexpected end of JSON input`** on a `vault.json` that was fine a
   moment ago (not a hand-edit, not a `vault:build` you ran): that's an empty (0-byte) file, not
-  corrupted JSON — `npm run doctor` (`scripts/check-env.sh`, W47) checks for exactly this, fast, and
+  corrupted JSON — `npm run doctor` (`scripts/check-env.sh`) checks for exactly this, fast, and
   names the file. `git checkout -- records/private/{id}/vault.json` recovers it (it's a committed
   fixture). The only code that writes this file is `vite.config.ts`'s dev-only `/__save-vault`
-  middleware (§ below), which as of W47 writes atomically (temp file + rename) so a killed/crashed
+  middleware (§ below), which writes atomically (temp file + rename) so a killed/crashed
   write can no longer leave it partial — if it happens again anyway, the likely trigger is **another
   `npm run dev` running against this same checkout** (a second terminal, a second agent session, or a
   stray browser tab still POSTing to `/__save-vault`) racing with whatever else touched the file.
 
-  **W49 update:** the atomic-write fix above did *not* stop it — corruption was reproduced twice more
+  **Update:** the atomic-write fix above did *not* stop it — corruption was reproduced twice more
   afterward, with no `vite`/`wrangler`/`node` process running at inspection time, so the `/__save-vault`
   race is likely not the whole story. `scripts/vault-watch.sh` polls the fixtures and, the instant one
   drops in size, captures `lsof`/`ps`/`tmutil`/`log show` evidence to `.vault-watch/` (gitignored)
   before self-healing via `git checkout` — run it (`bash scripts/vault-watch.sh &`) if you're actively
   investigating a live occurrence. Read-only forensics so far point loosely at Time Machine/Spotlight
-  (`backupd`/`mds`/`mdworker` unusually active in the corruption window; not confirmed). Full writeup:
-  `docs/health-dash/plans/49-w49-vault-corruption-forensics.md`.
+  (`backupd`/`mds`/`mdworker` unusually active in the corruption window; not confirmed).
 
 **Reconciliation:** R2 (under `{store}`) is authoritative for the running app; `records/private/` is the
 durable, inspectable repo copy for that branch. A web edit writes only its deployment's `{store}`; the
 branch's repo plaintext goes stale until the next `vault:sync pull`.
 
-**Backups (W52):** because of that staleness, `records/private/` is *not* a user backup — a beta user's
+**Backups:** because of that staleness, `records/private/` is *not* a user backup — a beta user's
 vault exists only in R2. A nightly snapshot copies every `{store}/…` object plus a full D1 export into
 the separate `health-vault-backup` bucket, and a restore drill re-opens every vault from that snapshot
 alone. Runbook, layout, retention and the missed-run alarm: **`BACKUP.md`**.
 
-## 8. Environments — two stores, dev and prod (W53)
+## 8. Environments — two stores, dev and prod
 
 There are **two independent stores**, one per Pages project, and the split is enforced twice over:
 
@@ -349,7 +345,7 @@ the project, and — on prod — that previews are off. Secret *values* are unre
 API returns `secret_text` masked), so presence and shape are all it can prove; see AUTH.md §
 "Per-environment secrets" for the values that need a live test instead.
 
-## 9. Provenance & removability (invariant; cascade delete — W13h, SHIPPED)
+## 9. Provenance & removability (invariant; cascade delete — SHIPPED)
 
 Every derived datum is **source-attributable**: `SourceRecord.id` === each derived entry's `sourceId`
 (`MarkerResult.sourceId`, disease/comorbidity `sourceId`, `fromComparison` rows). No `SourceRecord`
@@ -369,11 +365,11 @@ matches), but the deleted data is gone, not flagged.
 `vault:verify` runs a per-client **provenance check** (`provenanceIssues`): fails the pre-push gate on a
 dangling `sourceId`, a tombstone that collides with a live source, or a `SourceRecord` missing its raw /
 processed file. Full-history expunge of a mis-ingested (wrong-patient) file needs a `git filter-repo`
-purge — see **`RECOVERY.md`**.
+purge.
 
-> **Key loss is only harmless for the pilot records committed here.** For accounts created since W44 the
-> browser holds the key and losing it is real; "recover from the plaintext at rest" does not apply to
-> them. `RECOVERY.md` has the ladder that does.
+> **Key loss is only harmless for the pilot records committed here.** For an account created through the
+> app, the browser holds the key and losing it is real; "recover from the plaintext at rest" does not
+> apply to them — `AUTH.md` has the ladder that does.
 
 ## 10. Key files
 
@@ -385,7 +381,7 @@ purge — see **`RECOVERY.md`**.
 | Vault Function (GET/PUT, store-prefixed) | `functions/api/vault/[id].ts` |
 | Raw Function (GET/DELETE, session-gated) | `functions/api/raw/[[path]].ts` |
 | Source removal cascade + provenance | `src/lib/report-merge.ts` (`removeSource`, `provenanceIssues`) |
-| Account recovery (locked-out user) + history purge | `RECOVERY.md` |
+| Account recovery (locked-out user) | `AUTH.md` |
 | R2 key builder (store prefix) | `functions/_lib/store.ts` |
 | Bearer guard / PHI-free log | `functions/_lib/guard.ts`, `functions/_lib/log.ts` |
 | Chat Function | `functions/api/chat.ts` |
@@ -398,4 +394,3 @@ purge — see **`RECOVERY.md`**.
 | Export tab "Imported files" download | `src/lib/ExportTab.svelte` |
 | Secrets / deploy / add-a-user runbook | `AUTH.md` |
 | Endpoint contracts | `API.md` |
-| W13 design + resume checklist | `~/.claude/planning/plover-code/apps/health-dash-web/docs/plans/13-w13-data-store.md` |

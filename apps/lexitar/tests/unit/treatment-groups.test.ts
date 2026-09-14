@@ -5,7 +5,7 @@ import type { Client } from "../../src/lib/types";
 
 function client(_extra: Partial<Client> = {}): Client {
   return {
-    displayName: "Pablo",
+    displayName: "Alex",
     dob: "1980-01-01",
     gender: "male",
     watchlist: [],

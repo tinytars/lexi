@@ -56,7 +56,7 @@ describe("GET /api/logs — provider-visible refresh audit read (W39 Phase 4)", 
   it("only lists the requested route's prefix, not the whole bucket", async () => {
     const env = makeEnv({
       [K("2026-07-05", 0)]: { at: "2026-07-05T09:00:00.000Z", route: "/api/refresh-finding", status: 200, event: "success" },
-      "dev/vault/pablo.enc": { at: "x", secret: true }, // a non-log object must never surface
+      "dev/vault/alex.enc": { at: "x", secret: true }, // a non-log object must never surface
     });
     const { entries } = await (await call(env, { auth: "Bearer provtok" })).json();
     expect(entries).toHaveLength(1);

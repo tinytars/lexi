@@ -45,7 +45,7 @@ test("clicking a nested child scrolls to that specific item and activates its pa
   const ongoingRow = page.locator(".sidebar .group-list .side-row", { has: page.locator(".sub-item", { hasText: "Ongoing" }) });
   await ongoingRow.locator(".chevron").click();
 
-  // W78 — whichever drug is listed first, not a named one. "Ezetimibe" was on Pablo's Ongoing list
+  // W78 — whichever drug is listed first, not a named one. "Ezetimibe" was on Alex's Ongoing list
   // when this was written and is not any more; which drugs a patient is on is the fixture's business,
   // and the property under test is that the child scrolls to ITS OWN item, whatever it is.
   const child = page.locator(".sidebar .group-children .sub-item").first();

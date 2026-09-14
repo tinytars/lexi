@@ -7,7 +7,7 @@ import type { Client } from "../../src/lib/types";
 // These tests are the record of that move: delete the merge check and one of them fails.
 const base = (over: Partial<Client> = {}) =>
   ({
-    displayName: "Pablo",
+    displayName: "Alex",
     results: [],
     watchlist: [],
     factors: { treatments: [] },

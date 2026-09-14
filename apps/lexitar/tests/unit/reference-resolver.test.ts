@@ -9,7 +9,7 @@ import type { Permalink } from "../../src/lib/permalink";
 
 function client(): Client {
   return {
-    displayName: "Pablo",
+    displayName: "Alex",
     dob: "1980-01-01",
     gender: "male",
     watchlist: ["Glucose"],
@@ -49,16 +49,16 @@ function client(): Client {
 }
 
 function vault(c: Client): Vault {
-  return { clients: { pablo: c } };
+  return { clients: { alex: c } };
 }
 
 function pl(overrides: Partial<Permalink>): Permalink {
-  return { client: "pablo", tab: "markers", ...overrides };
+  return { client: "alex", tab: "markers", ...overrides };
 }
 
 describe("resolveReference", () => {
   it("resolves a report anchor from client.sources", () => {
-    const r = resolveReference(vault(client()), "pablo", pl({ anchor: reportAnchor("src1") }));
+    const r = resolveReference(vault(client()), "alex", pl({ anchor: reportAnchor("src1") }));
     expect(r).toMatchObject({
       kind: "report",
       preview: { title: "Quest Labs 2026-01", subtitle: "2026-01-02", tag: "Lab" },
@@ -72,7 +72,7 @@ describe("resolveReference", () => {
   });
 
   it("resolves a diagnosis anchor nested under its report", () => {
-    const r = resolveReference(vault(client()), "pablo", pl({ anchor: diagnosisAnchor("src1", 0) }));
+    const r = resolveReference(vault(client()), "alex", pl({ anchor: diagnosisAnchor("src1", 0) }));
     expect(r).toMatchObject({
       kind: "diagnosis",
       preview: { title: "CAD", subtitle: "Quest Labs 2026-01", tag: "Diagnosis" },
@@ -81,7 +81,7 @@ describe("resolveReference", () => {
   });
 
   it("resolves a marker anchor from client.results", () => {
-    const r = resolveReference(vault(client()), "pablo", pl({ anchor: markerAnchor("LDL-C") }));
+    const r = resolveReference(vault(client()), "alex", pl({ anchor: markerAnchor("LDL-C") }));
     expect(r).toMatchObject({
       kind: "marker",
       preview: { title: "LDL-C", subtitle: "100 mg/dL (2026-01-01)", tag: "Marker" },
@@ -90,7 +90,7 @@ describe("resolveReference", () => {
   });
 
   it("resolves a ratio anchor via buildMarkerRatios", () => {
-    const r = resolveReference(vault(client()), "pablo", pl({ anchor: ratioAnchor("Triglyceride/HDL Ratio") }));
+    const r = resolveReference(vault(client()), "alex", pl({ anchor: ratioAnchor("Triglyceride/HDL Ratio") }));
     expect(r?.kind).toBe("ratio");
     expect(r?.preview.title).toBe("Triglyceride/HDL Ratio");
     expect(r?.preview.tag).toBe("Ratio");
@@ -98,7 +98,7 @@ describe("resolveReference", () => {
   });
 
   it("resolves a watchlist anchor from client.watchlist", () => {
-    const r = resolveReference(vault(client()), "pablo", pl({ anchor: watchAnchor("Glucose") }));
+    const r = resolveReference(vault(client()), "alex", pl({ anchor: watchAnchor("Glucose") }));
     expect(r).toMatchObject({
       kind: "watchlist",
       preview: { title: "Glucose", subtitle: "90 mg/dL (2026-01-01)", tag: "Watchlist" },
@@ -107,7 +107,7 @@ describe("resolveReference", () => {
   });
 
   it("resolves a treatment anchor via treatment-normalize", () => {
-    const r = resolveReference(vault(client()), "pablo", pl({ tab: "doctor", anchor: treatmentAnchor("Atorvastatin") }));
+    const r = resolveReference(vault(client()), "alex", pl({ tab: "doctor", anchor: treatmentAnchor("Atorvastatin") }));
     expect(r).toMatchObject({
       kind: "treatment",
       preview: { title: "Atorvastatin", subtitle: "10mg", tag: "Treatment" },
@@ -116,7 +116,7 @@ describe("resolveReference", () => {
   });
 
   it("resolves a study anchor from client.study.entries", () => {
-    const r = resolveReference(vault(client()), "pablo", pl({ tab: "ai", anchor: studyAnchor("Selection") }));
+    const r = resolveReference(vault(client()), "alex", pl({ tab: "ai", anchor: studyAnchor("Selection") }));
     expect(r).toMatchObject({
       kind: "study",
       preview: { title: "Selection", subtitle: "genetic risk", tag: "Study" },
@@ -125,7 +125,7 @@ describe("resolveReference", () => {
   });
 
   it("resolves an idea anchor from factors.decisions", () => {
-    const r = resolveReference(vault(client()), "pablo", pl({ tab: "ai", anchor: ideaAnchor("Try keto", "patient", 0) }));
+    const r = resolveReference(vault(client()), "alex", pl({ tab: "ai", anchor: ideaAnchor("Try keto", "patient", 0) }));
     expect(r).toMatchObject({
       kind: "idea",
       preview: { title: "Try keto", subtitle: "lower Tg", tag: "Idea" },
@@ -134,7 +134,7 @@ describe("resolveReference", () => {
   });
 
   it("resolves a group anchor from finding.treatmentGroups", () => {
-    const r = resolveReference(vault(client()), "pablo", pl({ tab: "ai", anchor: futureAnchor("Statins") }));
+    const r = resolveReference(vault(client()), "alex", pl({ tab: "ai", anchor: futureAnchor("Statins") }));
     expect(r).toMatchObject({
       kind: "group",
       preview: { title: "Statins", subtitle: "Cardiovascular", tag: "Hypothesis" },
@@ -144,14 +144,14 @@ describe("resolveReference", () => {
 
   it("resolves a condition anchor across allergies and family history", () => {
     const v = vault(client());
-    const allergy = resolveReference(v, "pablo", pl({ tab: "doctor", anchor: conditionAnchor("Penicillin") }));
+    const allergy = resolveReference(v, "alex", pl({ tab: "doctor", anchor: conditionAnchor("Penicillin") }));
     expect(allergy).toMatchObject({
       kind: "condition",
       preview: { title: "Penicillin", subtitle: "Hives", tag: "Allergy" },
       context: { allergen: "Penicillin", reaction: "Hives" },
     });
 
-    const family = resolveReference(v, "pablo", pl({ tab: "doctor", anchor: conditionAnchor("Father") }));
+    const family = resolveReference(v, "alex", pl({ tab: "doctor", anchor: conditionAnchor("Father") }));
     expect(family).toMatchObject({
       kind: "condition",
       preview: { title: "Father", subtitle: "Heart disease", tag: "Family History" },
@@ -160,48 +160,48 @@ describe("resolveReference", () => {
 
     // Symptoms (the generic Conditions list) was fully deprecated and removed — an anchor that
     // used to resolve there now falls through to unresolved.
-    const generic = resolveReference(v, "pablo", pl({ tab: "doctor", anchor: conditionAnchor("Hypertension") }));
+    const generic = resolveReference(v, "alex", pl({ tab: "doctor", anchor: conditionAnchor("Hypertension") }));
     expect(generic!.kind).toBe("unresolved");
   });
 
   it("returns wrong-patient without touching another client's vault data", () => {
-    const r = resolveReference(vault(client()), "pablo", pl({ client: "liz", anchor: markerAnchor("LDL-C") }));
+    const r = resolveReference(vault(client()), "alex", pl({ client: "blair", anchor: markerAnchor("LDL-C") }));
     expect(r).toEqual({
       kind: "wrong-patient",
-      permalink: pl({ client: "liz", anchor: markerAnchor("LDL-C") }),
+      permalink: pl({ client: "blair", anchor: markerAnchor("LDL-C") }),
       preview: { title: "Different patient", tag: "Blocked" },
       context: null,
     });
   });
 
   it("returns unresolved for a garbage anchor with a registered prefix", () => {
-    const r = resolveReference(vault(client()), "pablo", pl({ anchor: "chart-nonexistent-marker" }));
+    const r = resolveReference(vault(client()), "alex", pl({ anchor: "chart-nonexistent-marker" }));
     expect(r).toMatchObject({ kind: "unresolved", preview: { title: "Link not found", tag: "Unresolved" }, context: null });
   });
 
   it("returns unresolved for the corr- and dec- stub prefixes (no real data source / no real emitter)", () => {
-    const corr = resolveReference(vault(client()), "pablo", pl({ anchor: "corr-2026-01-01-some-event" }));
+    const corr = resolveReference(vault(client()), "alex", pl({ anchor: "corr-2026-01-01-some-event" }));
     expect(corr).toMatchObject({ kind: "unresolved", context: null });
 
-    const dec = resolveReference(vault(client()), "pablo", pl({ anchor: "dec-some-intervention" }));
+    const dec = resolveReference(vault(client()), "alex", pl({ anchor: "dec-some-intervention" }));
     expect(dec).toMatchObject({ kind: "unresolved", context: null });
   });
 
   it("resolves a whole-tab paste (no section, no anchor) to a section card with no context", () => {
-    const r = resolveReference(vault(client()), "pablo", { client: "pablo", tab: "ai" });
+    const r = resolveReference(vault(client()), "alex", { client: "alex", tab: "ai" });
     expect(r).toEqual({
       kind: "section",
-      permalink: { client: "pablo", tab: "ai" },
+      permalink: { client: "alex", tab: "ai" },
       preview: { title: "Investigator", tag: "View" },
       context: null,
     });
   });
 
   it("resolves a section-level paste (section, no anchor) to a section card with no context", () => {
-    const r = resolveReference(vault(client()), "pablo", { client: "pablo", tab: "doctor", section: "treatment" });
+    const r = resolveReference(vault(client()), "alex", { client: "alex", tab: "doctor", section: "treatment" });
     expect(r).toEqual({
       kind: "section",
-      permalink: { client: "pablo", tab: "doctor", section: "treatment" },
+      permalink: { client: "alex", tab: "doctor", section: "treatment" },
       preview: { title: "Treatment", tag: "View" },
       context: null,
     });

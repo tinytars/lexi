@@ -6,7 +6,7 @@ import type { Client } from "../../src/lib/types";
 // W68 — deleting a row used to leave the AI's turn about it in the Finding forever. No merge removes
 // an entry (mergeLabeledItems deliberately keeps an existing one with no returned counterpart, so a
 // scoped regen cannot wipe its siblings) and no caller pruned, so orphans only accumulated. Found by
-// running finding-invariants.ts against the live vault: two assessments for treatments Pablo had
+// running finding-invariants.ts against the live vault: two assessments for treatments Alex had
 // deleted, still on file.
 
 function client(): Client {

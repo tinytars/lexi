@@ -52,7 +52,7 @@ afterEach(() => {
 
 function client(): Client {
   return {
-    displayName: "Pablo",
+    displayName: "Alex",
     dob: "1980-01-01",
     gender: "male",
     watchlist: ["ApoB"],
@@ -113,7 +113,7 @@ describe("--dry-run makes no R2 write", () => {
 
   it("process-pending touches neither Anthropic nor R2, and leaves the queue intact", async () => {
     const c = withPending();
-    const { provisionalFiles } = await processPendingFor(c, "Pablo", "dev", usage(), true);
+    const { provisionalFiles } = await processPendingFor(c, "Alex", "dev", usage(), true);
 
     expect(calls).toEqual([]);
     expect(spawns).toEqual([]);
@@ -124,7 +124,7 @@ describe("--dry-run makes no R2 write", () => {
     expect((c as unknown as { pendingUploads: unknown[] }).pendingUploads).toHaveLength(1);
 
     // The control: the same fixture without the flag goes straight at R2 for the raw.
-    await processPendingFor(withPending(), "Pablo", "dev", usage(), false);
+    await processPendingFor(withPending(), "Alex", "dev", usage(), false);
     expect(spawns.join(" ")).toContain("wrangler");
   });
 });

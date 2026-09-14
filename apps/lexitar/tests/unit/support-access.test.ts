@@ -26,15 +26,15 @@ import { createVaultSession } from "@tinytars/frame/vault-session.svelte";
 
 const PROVIDER_KEY = { id: "support-agent" } as unknown as CryptoKey;
 
-const PATIENT = { ownerAccountId: "acct-liz", displayName: "Liz", email: "liz@example.com", expiresAt: null };
+const PATIENT = { ownerAccountId: "acct-blair", displayName: "Blair", email: "blair@example.com", expiresAt: null };
 const PROVIDER = { providerAccountId: "acct-dr", displayName: "Dr. Reyes", email: "dr@example.com" };
-const REQUEST = { linkId: "link-1", email: "liz@example.com", status: "invited" };
+const REQUEST = { linkId: "link-1", email: "blair@example.com", status: "invited" };
 const ENTRY: SupportEntry = {
-  ownerAccountId: "acct-liz",
-  displayName: "Liz",
-  email: "liz@example.com",
-  vaultId: "vault-liz",
-  r2Key: "vaults/vault-liz.enc",
+  ownerAccountId: "acct-blair",
+  displayName: "Blair",
+  email: "blair@example.com",
+  vaultId: "vault-blair",
+  r2Key: "vaults/vault-blair.enc",
   envelope: { wrappedDEK: "wrapped", ephemeralPublicKeyJwk: { kid: "eph" } as JsonWebKey },
 };
 
@@ -62,7 +62,7 @@ beforeEach(() => {
   auth.listSupportOwners.mockResolvedValue([PATIENT]);
   auth.listSupportProviders.mockResolvedValue([PROVIDER]);
   auth.listSupportRequests.mockResolvedValue([REQUEST]);
-  auth.getProviderRoster.mockResolvedValue([{ ownerAccountId: "acct-liz", displayName: "Liz", openable: false, pending: false }]);
+  auth.getProviderRoster.mockResolvedValue([{ ownerAccountId: "acct-blair", displayName: "Blair", openable: false, pending: false }]);
   auth.requestSupportAccess.mockResolvedValue(undefined);
   auth.cancelSupportRequest.mockResolvedValue(undefined);
   auth.enterSupportOwner.mockResolvedValue(ENTRY);
@@ -100,34 +100,34 @@ describe("asking a patient for access", () => {
 
   it("sends the trimmed address and clears the field so the ask is not repeatable by accident", async () => {
     const { support } = harness();
-    support.requestEmail = "  liz@example.com  ";
+    support.requestEmail = "  blair@example.com  ";
     await support.requestAccess();
-    expect(auth.requestSupportAccess).toHaveBeenCalledWith("liz@example.com");
+    expect(auth.requestSupportAccess).toHaveBeenCalledWith("blair@example.com");
     expect(support.requestEmail).toBe("");
   });
 
   it("keeps the typed address when the ask fails, so the retry is not a re-entry", async () => {
     auth.requestSupportAccess.mockRejectedValue(new Error("already invited"));
     const { support, host } = harness();
-    support.requestEmail = "liz@example.com";
+    support.requestEmail = "blair@example.com";
     await support.requestAccess();
     expect(host.error).toBe("already invited");
-    expect(support.requestEmail).toBe("liz@example.com");
+    expect(support.requestEmail).toBe("blair@example.com");
   });
 
   it("re-reads the drilled-into roster, so the row stops offering the button just pressed", async () => {
     const { support } = harness();
     await support.openProvider(PROVIDER as never);
     expect(support.providerView?.roster[0].pending).toBe(false);
-    auth.getProviderRoster.mockResolvedValue([{ ownerAccountId: "acct-liz", displayName: "Liz", openable: false, pending: true }]);
-    support.requestEmail = "liz@example.com";
+    auth.getProviderRoster.mockResolvedValue([{ ownerAccountId: "acct-blair", displayName: "Blair", openable: false, pending: true }]);
+    support.requestEmail = "blair@example.com";
     await support.requestAccess();
     expect(support.providerView?.roster[0].pending).toBe(true);
   });
 
   it("does not fetch a roster when none is drilled into", async () => {
     const { support } = harness();
-    support.requestEmail = "liz@example.com";
+    support.requestEmail = "blair@example.com";
     await support.requestAccess();
     expect(auth.getProviderRoster).not.toHaveBeenCalled();
   });
@@ -138,7 +138,7 @@ describe("cancelling a pending request", () => {
     const { support } = harness();
     await support.openProvider(PROVIDER as never);
     auth.listSupportRequests.mockResolvedValue([]);
-    auth.getProviderRoster.mockResolvedValue([{ ownerAccountId: "acct-liz", displayName: "Liz", openable: false, pending: false }]);
+    auth.getProviderRoster.mockResolvedValue([{ ownerAccountId: "acct-blair", displayName: "Blair", openable: false, pending: false }]);
     await support.cancelRequest("link-1");
     expect(auth.cancelSupportRequest).toHaveBeenCalledWith("link-1");
     expect(support.requests).toEqual([]);
@@ -176,15 +176,15 @@ describe("drilling into a clinician's roster", () => {
 describe("the audited drill-in", () => {
   it("hands App the envelope and the very key that was checked here", async () => {
     const { support, host } = harness();
-    await support.enterPatient("acct-liz");
-    expect(auth.enterSupportOwner).toHaveBeenCalledWith("acct-liz");
+    await support.enterPatient("acct-blair");
+    expect(auth.enterSupportOwner).toHaveBeenCalledWith("acct-blair");
     expect(host.opened).toEqual([{ entry: ENTRY, key: PROVIDER_KEY }]);
   });
 
   it("does not call the audited endpoint at all without a key to unwrap with", async () => {
     const { support, session, host } = harness();
     session.setProviderKey(null);
-    await support.enterPatient("acct-liz");
+    await support.enterPatient("acct-blair");
     // The audit log is the record of who looked at a patient. An access that cannot possibly be read
     // must not be written into it.
     expect(auth.enterSupportOwner).not.toHaveBeenCalled();
@@ -194,7 +194,7 @@ describe("the audited drill-in", () => {
   it("reports a denied drill-in rather than leaving the click looking unregistered", async () => {
     auth.enterSupportOwner.mockRejectedValue(new Error("access expired"));
     const { support, host } = harness();
-    await support.enterPatient("acct-liz");
+    await support.enterPatient("acct-blair");
     expect(host.error).toBe("access expired");
     expect(host.opened).toEqual([]);
   });
@@ -205,7 +205,7 @@ describe("signing out of the console", () => {
     const { support } = harness();
     await support.beginSession();
     await support.openProvider(PROVIDER as never);
-    support.requestEmail = "liz@example.com";
+    support.requestEmail = "blair@example.com";
 
     support.reset();
 

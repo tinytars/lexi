@@ -18,7 +18,7 @@ import { unlock, gotoTreatmentBucket, identifyTreatmentByText, addOngoingTreatme
 // the seven live in `_shell.ts`; a helper with one caller stayed with its caller.
 
 test("Patient → Treatment: unified temporal sets + the AI's per-treatment assessment (W31)", async ({ page }) => {
-  await unlock(page, "Pablo");
+  await unlock(page, "Alex");
   await clickNav(page, "Treatment");
   // Patient regimen (left) beside the AI's assessment (right), all under the one unified section.
   await expect(page.locator(".unified-treatment .persona-bubble.p-owner").first()).toBeVisible();
@@ -28,11 +28,11 @@ test("Patient → Treatment: unified temporal sets + the AI's per-treatment asse
   // which listed the same treatments with no dose history.)
   await expect(page.locator(".sidebar .group-list .sub-item", { hasText: "All" })).toHaveClass(/active/);
   await expect(page.locator(".unified-treatment")).toContainText("Tirzepatide");
-  // The Ongoing set carries the current regimen (Tirzepatide is one of Pablo's ongoing drugs).
+  // The Ongoing set carries the current regimen (Tirzepatide is one of Alex's ongoing drugs).
   await page.locator(".sidebar .group-list .sub-item", { hasText: "Ongoing" }).click();
   await expect(page.locator(".sidebar .group-list .sub-item", { hasText: "Ongoing" })).toHaveClass(/active/);
   await expect(page.locator(".unified-treatment")).toContainText("Tirzepatide");
-  // Pablo's migrated future-dated actions surface as the Planned set — only one bucket renders at
+  // Alex's migrated future-dated actions surface as the Planned set — only one bucket renders at
   // a time now, so select it from the sidebar's lower zone first.
   await page.locator(".sidebar .group-list .sub-item", { hasText: "Planned" }).click();
   await expect(page.locator(".sidebar .group-list .sub-item", { hasText: "Planned" })).toHaveClass(/active/);
@@ -44,7 +44,7 @@ test("Patient → Treatment: unified temporal sets + the AI's per-treatment asse
 // real clientId arrived. A page reload is the only way to exercise that boot race — a same-tab
 // click through `unlock`/`clickNav` never hits it.
 test("a selected Treatment submenu survives a page reload, not just the default (M111)", async ({ page }) => {
-  await unlock(page, "Pablo");
+  await unlock(page, "Alex");
   await clickNav(page, "Treatment");
   await page.locator(".sidebar .group-list .sub-item", { hasText: "Ongoing" }).click();
   await expect(page.locator(".sidebar .group-list .sub-item", { hasText: "Ongoing" })).toHaveClass(/active/);
@@ -56,7 +56,7 @@ test("a selected Treatment submenu survives a page reload, not just the default 
 });
 
 test("Patient (provider): Treatment edit opens the Add modal pre-filled; Reports carry a delete (W34/M66)", async ({ page }) => {
-  await openAsProvider(page, "Pablo");
+  await openAsProvider(page, "Alex");
 
   // M66 — Treatment default is a read view with a ✎ that opens the same Add modal, pre-filled —
   // no more in-context field reveal on the row itself.
@@ -86,7 +86,7 @@ test("Treatment: after Add/Save the page scrolls to and flashes the new item (M6
   page.on("dialog", (d) => d.accept());
   const marker = `M66 flash rx ${Date.now()}`;
 
-  await openAsProvider(page, "Pablo");
+  await openAsProvider(page, "Alex");
   await clickNav(page, "Treatment");
 
   await page.getByTitle("Add treatment").click();
@@ -113,7 +113,7 @@ test("Treatment: after Add/Save the page scrolls to and flashes the new item (M6
 // therefore needs BOTH a past and an ongoing row, or the assertion passes without the fix.
 test("Treatment: saving an edit from the Past view stays in Past, even when the drug is also ongoing", async ({ page }) => {
   page.on("dialog", (d) => d.accept());
-  await openAsProvider(page, "Pablo");
+  await openAsProvider(page, "Alex");
   await clickNav(page, "Treatment");
 
   const marker = `M-past-stay ${Date.now()}`;
@@ -149,7 +149,7 @@ test("Treatment: saving an edit from the Past view stays in Past, even when the 
 // happened, rather than just the one row that was edited.
 test("Treatment: setting Reason on one dose row fans it out to sibling rows of the same drug (M-reason-in-dose-editor)", async ({ page }) => {
   page.on("dialog", (d) => d.accept());
-  await openAsProvider(page, "Pablo");
+  await openAsProvider(page, "Alex");
   await clickNav(page, "Treatment");
 
   const marker = `M-reason-fanout ${Date.now()}`;

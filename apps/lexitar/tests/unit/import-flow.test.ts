@@ -10,7 +10,7 @@ import {
   classifyUpload,
 } from "../../src/lib/import-flow";
 
-const base = (): Client => ({ displayName: "Pablo", dob: "1980-01-01", gender: "male", watchlist: [], results: [] });
+const base = (): Client => ({ displayName: "Alex", dob: "1980-01-01", gender: "male", watchlist: [], results: [] });
 
 describe("pendingRawName", () => {
   it("is <sha8>-<sanitized name>, stripping unsafe chars", () => {
@@ -63,7 +63,7 @@ describe("foldSource", () => {
 
   it("folds parsed readings into a CLONE, mints the canonical name + SourceRecord", () => {
     const c = base();
-    const res = foldSource(c, "Pablo", "abcdef0123456789aa", "abcdef012345", { kind: "lab", rows }, "xlsx", "labs.xlsx", "2026-07-04T00:00:00Z");
+    const res = foldSource(c, "Alex", "abcdef0123456789aa", "abcdef012345", { kind: "lab", rows }, "xlsx", "labs.xlsx", "2026-07-04T00:00:00Z");
 
     expect(res.readingCount).toBe(2);
     expect(res.applied).toEqual({ added: 2, adopted: 0, updated: 0 });
@@ -73,7 +73,7 @@ describe("foldSource", () => {
 
     const rec = res.client.sources!.find((s) => s.id === "abcdef012345")!;
     expect(rec.kind).toBe("lab");
-    expect(rec.file).toBe(`records/private/pablo/raw/${res.storedFile}`);
+    expect(rec.file).toBe(`records/private/alex/raw/${res.storedFile}`);
     expect(rec.readingCount).toBe(2);
     expect(res.client.results.map((r) => r.marker).sort()).toEqual(["Creatinine", "Glucose"]);
 
@@ -85,7 +85,7 @@ describe("foldSource", () => {
   it("adopts a provenance-less reading already on file instead of duplicating it", () => {
     const c = base();
     c.results.push({ marker: "Glucose", group: "Chemistry Panel", source: "manual", date: "2026-07-04", value: 92, unit: "mg/dL" });
-    const res = foldSource(c, "Pablo", "sha", "id-1", { kind: "lab", rows }, "xlsx", "labs.xlsx", "2026-07-04T00:00:00Z");
+    const res = foldSource(c, "Alex", "sha", "id-1", { kind: "lab", rows }, "xlsx", "labs.xlsx", "2026-07-04T00:00:00Z");
     expect(res.applied.added).toBe(1); // Creatinine new
     expect(res.applied.adopted).toBe(1); // Glucose adopted (stamped sourceId)
     expect(res.client.results).toHaveLength(2);
@@ -105,7 +105,7 @@ describe("classifyUpload", () => {
 
   it("folds a recognized spreadsheet into a source", async () => {
     const file = new File([blobPanelBytes()], "labs.xlsx");
-    const res = await classifyUpload(base(), "Pablo", file);
+    const res = await classifyUpload(base(), "Alex", file);
     expect(res.status).toBe("source");
     if (res.status !== "source") throw new Error("expected source");
     expect(res.srcFold.readingCount).toBeGreaterThan(100);
@@ -114,7 +114,7 @@ describe("classifyUpload", () => {
 
   it("queues an unrecognized spreadsheet as a pending upload instead of throwing", async () => {
     const file = new File([new Uint8Array([1, 2, 3, 4])], "mystery.xlsx");
-    const res = await classifyUpload(base(), "Pablo", file);
+    const res = await classifyUpload(base(), "Alex", file);
     expect(res.status).toBe("pending");
     if (res.status !== "pending") throw new Error("expected pending");
     expect(res.pending.upload.originalName).toBe("mystery.xlsx");
@@ -124,13 +124,13 @@ describe("classifyUpload", () => {
   it("flags a byte-identical re-upload as a duplicate without re-parsing", async () => {
     const bytes = blobPanelBytes();
     const file1 = new File([bytes], "labs.xlsx");
-    const first = await classifyUpload(base(), "Pablo", file1);
+    const first = await classifyUpload(base(), "Alex", file1);
     if (first.status !== "source") throw new Error("expected source");
 
     const c = base();
     c.sources = first.srcFold.client.sources;
     const file2 = new File([bytes], "labs-again.xlsx");
-    const second = await classifyUpload(c, "Pablo", file2);
+    const second = await classifyUpload(c, "Alex", file2);
     expect(second).toEqual({ status: "duplicate", existingId: first.id, kind: "source" });
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -145,7 +145,7 @@ describe("classifyUpload", () => {
     };
     fetchMock.mockResolvedValue(new Response(JSON.stringify(report), { status: 200 }));
     const file = new File([new Uint8Array([1, 2, 3])], "echo.pdf");
-    const res = await classifyUpload(base(), "Pablo", file);
+    const res = await classifyUpload(base(), "Alex", file);
     expect(res.status).toBe("report");
     if (res.status !== "report") throw new Error("expected report");
     expect(res.fold.studyType).toBe("Transthoracic Echocardiogram");
@@ -155,7 +155,7 @@ describe("classifyUpload", () => {
   it("surfaces a failed /api/extract call as a status:error result, not a throw", async () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ error: "model unavailable" }), { status: 503 }));
     const file = new File([new Uint8Array([1, 2, 3])], "echo.pdf");
-    const res = await classifyUpload(base(), "Pablo", file);
+    const res = await classifyUpload(base(), "Alex", file);
     expect(res).toEqual({ status: "error", message: "model unavailable" });
   });
 });

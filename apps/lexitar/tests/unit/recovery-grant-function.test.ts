@@ -62,7 +62,7 @@ async function makePatient(email: string) {
   const e = await wrapDEKForPublicKey(dek, kp.publicKeyJwk);
   await putEnvelope(db, { vaultId, principalAccountId: id, wrappedDek: e.wrappedDEK, ephemeralPublicKeyJwk: e.ephemeralPublicKeyJwk, createdBy: id });
   // The real ciphertext, so a recovered key can be asked to open something.
-  const blob = await encryptVaultV2({ clients: { pablo: { note: "real record" } } } as never, dek);
+  const blob = await encryptVaultV2({ clients: { alex: { note: "real record" } } } as never, dek);
   return { id, email, vaultId, dek, kp, blob };
 }
 
@@ -235,7 +235,7 @@ describe("redeeming", () => {
     const priv = await unwrapPrivateKey(cred!.wrappedPrivateKey, await deriveKekFromPassword("brand-new", pwSalt));
     const stored = await getEnvelope(db, p.vaultId, p.id);
     const recoveredDek = await unwrapDEKWithPrivateKey(stored!.wrappedDek, stored!.ephemeralPublicKeyJwk as JsonWebKey, priv);
-    expect(await decryptVaultV2(p.blob, recoveredDek)).toEqual({ clients: { pablo: { note: "real record" } } });
+    expect(await decryptVaultV2(p.blob, recoveredDek)).toEqual({ clients: { alex: { note: "real record" } } });
   });
 
   it("clears the other credentials, which wrap a key nothing references any more", async () => {
