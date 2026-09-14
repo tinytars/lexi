@@ -1,0 +1,11 @@
+{
+  "wrappedDEK": "2F8WxZxisD8yvHQ70l58nVICbQi20rHBgXVloT/+XPussUTJOR/a4+GJVTDUBX8xGl8t7TC32KjJmi8A",
+  "ephemeralPublicKeyJwk": {
+    "key_ops": [],
+    "ext": true,
+    "kty": "EC",
+    "x": "syPy7KSwlwzUTXpGriqO4tKp8jAO-7GUF00FpbTI2S8",
+    "y": "bUlQkSANmBivBgvDwN3-Rr8BBIaS6yvAy3j8m2yaH98",
+    "crv": "P-256"
+  }
+}

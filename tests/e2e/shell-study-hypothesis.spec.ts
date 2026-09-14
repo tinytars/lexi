@@ -1,0 +1,251 @@
+import { test, expect } from "./_fixtures";
+import { openAsProvider } from "./_login";
+import { clickLeafMenuItem } from "./_leaf-menu";
+import { clickNav } from "./_nav";
+import { watchFlashes, expectFlashed } from "./_flash";
+import { gotoTreatmentBucket, editFirstDoseEntry } from "./_shell";
+import { validLeafPayload } from "./_leaf-payloads";
+
+// Study and Hypothesis: the two provider-only sections, and their in-place CRUD.
+//
+// M57/M66/M67 removed the outer Save button from both — every Add, Edit and Delete persists on its
+// own, which is what most of these assert. The stale-draft clobber test (M55/M56) belongs here
+// rather than with the leaf-regen triggers: what it protects is the DELETE, against a background
+// regen landing mid-edit.
+//
+// W74 — one of the seven files `shell-nav.spec.ts` became. It was 1437 lines and 53 tests, and
+// `--shard` partitions by FILE: whichever shard held it ran ~56 tests against a single workerd while
+// every other shard ran 19, which made it the gate's chronic red. Helpers shared by more than one of
+// the seven live in `_shell.ts`; a helper with one caller stayed with its caller.
+
+test("Investigator → Hypothesis shows weighed hypotheses (no committed Plan) with the AI's take (W20/W21/W23/W25)", async ({ page }) => {
+  await openAsProvider(page, "Pablo");
+  await clickNav(page, "Hypothesis");
+  await expect(page.locator(".future-treatment .leaf-card").first()).toBeVisible();
+  // Cardiovascular Risk (the default system) is where Pablo's lipid-lowering statin is recommended
+  // (AI side).
+  await expect(page.locator(".future-treatment")).toContainText("Rosuvastatin");
+  // W23: the committed Plan moved to Treatment Plan — its "Continue …" / "Start … (TBD)" actions
+  // no longer appear here (they'd otherwise duplicate the weighed hypotheses).
+  await expect(page.locator(".future-treatment")).not.toContainText("(TBD)");
+  // M76/Phase 4 — Hypothesis renders one body system at a time now; a patient hypothesis paired
+  // with the AI's take lives under a different system, so select it before asserting.
+  await page.locator(".sidebar .group-list .sub-item", { hasText: "Hormonal / Endocrine" }).click();
+  await expect(page.locator(".future-treatment .persona-bubble.p-owner").first()).toBeVisible();
+  await expect(page.locator(".future-treatment .persona-bubble.p-assistant").first()).toBeVisible();
+  // The AI's take on a patient hypothesis (pros/cons/alternatives/recommendation) is available inline.
+  // M91 — the per-topic block was extracted into HypothesisTopicCard.svelte (`.htc-*` classes).
+  await expect(page.locator(".future-treatment .htc-eval").first()).toBeVisible();
+});
+
+test("Investigator → Study is its own subsection with in-place CRUD, pairing pursued study with the AI result (W20/W34)", async ({ page }) => {
+  await openAsProvider(page, "Pablo");
+  // Study is its own sub-tab now (moved out of Analysis).
+  await clickNav(page, "Analysis");
+  await expect(page.locator(".analysis")).not.toContainText("Study Result");
+  await clickNav(page, "Study");
+  // The provider sees a read view (not a wall of inputs) with a Save bar and the AI result on the right.
+  await expect(page.locator(".study .study-editbar")).toBeVisible();
+  await expect(page.locator(".study .leaf-card").first()).toBeVisible();
+  await expect(page.locator(".study .persona-bubble.p-assistant").first()).toBeVisible();
+  // M67 — clicking the ✎ on a row reopens the shared Add/Edit modal, pre-filled (mirrors Treatment).
+  await expect(page.locator(".study .sr-input")).toHaveCount(0);
+  await clickLeafMenuItem(page.locator(".study .leaf-card").first(), "Edit");
+  await expect(page.locator(".study-modal .sr-input")).toBeVisible();
+});
+
+test("a Study delete survives a background /api/leaf-regen (treatmentGroups) landing mid-edit — stale-draft clobber fix (M55/M56)", async ({ page }) => {
+  page.on("dialog", (d) => d.accept()); // Study's delete confirm()
+  // Unique per run — avoids colliding with a prior (e.g. retried) run's persisted leftovers.
+  const marker = `M55 race-test ${Date.now()}`;
+
+  // Delay the background leaf-regen relay's response — valid content, just late — so there's an
+  // observable window where a queued local delete could get clobbered. M66 P5/P7 — treatmentGroups
+  // shares this one generic relay with 4 other nodes now (was its own /api/regroup); only that
+  // node's request is answered here, and any other falls through untouched.
+  //
+  // W76 — this was the suite's only `route.fetch()` pass-through, and on a runner with no Anthropic
+  // key it made the test VACUOUS: the relay answered anthropic_error, leaf-regen-queue settled it
+  // `failed`, and no result was ever merged — so the clobber path this test exists to guard was
+  // never reached. A valid 200 is what actually arms it. The payload comes from the shared builder,
+  // derived from this request's own inputs and checked against the real validateLeafResult by
+  // leaf-payloads.test.ts, so it cannot drift from the contract the way a hand-rolled one would.
+  let groupsRegen = 0;
+  await page.route("**/api/leaf-regen", async (route) => {
+    const body = route.request().postDataJSON() as { node?: string; inputs?: Record<string, unknown> };
+    if (body.node !== "treatmentGroups") return route.fallback();
+    groupsRegen++;
+    const result = validLeafPayload("treatmentGroups", body.inputs ?? {}, { text: "M55 stub group" });
+    await new Promise((r) => setTimeout(r, 800));
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ result }) });
+  });
+
+  // W78 — Liz. The window this test arms only exists if the dose edit actually leaves treatmentGroups
+  // stale and the regen fires; `regen()` skips a leaf whose computed ancestors are stale, and Pablo's
+  // vault has read stale on markerLevels/aiFindings since the 2026-08-26 reconcile, so nothing fired
+  // and the arming check below (rightly) failed rather than passing on nothing.
+  await openAsProvider(page, "Liz");
+
+  // Persist a genuine Study row first (so its later removal is an actual diff from baseline). M57 —
+  // Add is a modal now; its own Save persists immediately (no outer Save button exists for Study).
+  await clickNav(page, "Study");
+  await page.getByTitle("Add study").click();
+  await page.locator(".study-modal .topic-input").fill(marker);
+  await page.locator(".study-modal .btn.primary", { hasText: "Save" }).click();
+  await expect(page.locator(".study .saved")).toBeVisible({ timeout: 10_000 });
+
+  // Arm the background regroup (App.svelte:277-308): a dose-only edit leaves treatmentGroups the
+  // sole stale node, so persisting it (M66 — via the Edit modal's Save) fires the delayed
+  // /api/leaf-regen above. The value must differ from whatever's on record — Date.now() guarantees that.
+  await clickNav(page, "Treatment");
+  await gotoTreatmentBucket(page, "Ongoing");
+  await editFirstDoseEntry(page);
+  await page.locator(".tedit .field", { hasText: "Amount" }).locator("input").fill(String(Date.now()));
+  await page.locator(".tedit-actions .btn.primary", { hasText: "Save" }).click();
+  await expect(page.locator(".unified-treatment .saved")).toBeVisible({ timeout: 10_000 });
+
+  // While the regroup response is still in flight, delete the Study row. M56 — this now persists
+  // immediately on confirm(); no explicit Save click for this action at all.
+  await clickNav(page, "Study");
+  const row = page.locator(".study .leaf-card", { hasText: marker });
+  await clickLeafMenuItem(row, "Delete");
+  await expect(page.locator(".study")).not.toContainText(marker);
+
+  // Wait past the regroup delay — the vault reassigns here; the clobber bug (or a skipNextResync
+  // regression) would resurrect the row.
+  await page.waitForTimeout(1200);
+  // The arming check. Everything below passes just as well when no regen ever fired — which is the
+  // state this test sat in for months. If the dose edit stops leaving treatmentGroups stale, this
+  // fails loudly instead of the suite quietly going green on nothing.
+  expect(groupsRegen, "no treatmentGroups regen fired — the clobber window was never armed").toBeGreaterThan(0);
+  await expect(page.locator(".study")).not.toContainText(marker);
+
+  // Reload with NO Save click at all — the delete's own immediate persist is what's under test.
+  await page.reload();
+  await page.waitForSelector(".roster-list");
+  await page.click('.roster-name:has-text("Pablo")');
+  await page.waitForSelector(".sidebar .nav-item");
+  await clickNav(page, "Study");
+  await expect(page.locator(".study")).not.toContainText(marker);
+});
+
+test("Study has no outer Save button — Add (modal) and Delete both persist immediately (M57)", async ({ page }) => {
+  page.on("dialog", (d) => d.accept());
+  const marker = `M57 immediate-persist ${Date.now()}`;
+
+  await openAsProvider(page, "Pablo");
+  await clickNav(page, "Study");
+  await expect(page.locator(".study-editbar .btn.primary")).toHaveCount(0);
+
+  await page.getByTitle("Add study").click();
+  await page.locator(".study-modal .topic-input").fill(marker);
+  await watchFlashes(page);
+  await page.locator(".study-modal .btn.primary", { hasText: "Save" }).click();
+
+  const row = page.locator(".study .leaf-card", { hasText: marker });
+  const anchorId = await row.locator(".permalink-heading").first().getAttribute("id");
+  await expectFlashed(page, anchorId);
+  await expect(page.locator(".study .saved")).toBeVisible({ timeout: 10_000 });
+
+  await clickLeafMenuItem(row, "Delete");
+  await expect(page.locator(".study")).not.toContainText(marker);
+  await expect(page.locator(".study .saved")).toBeVisible({ timeout: 10_000 });
+
+  await page.reload();
+  await page.waitForSelector(".roster-list");
+  await page.click('.roster-name:has-text("Pablo")');
+  await page.waitForSelector(".sidebar .nav-item");
+  await clickNav(page, "Study");
+  await expect(page.locator(".study")).not.toContainText(marker);
+});
+
+test("editing a Study row persists immediately via the Edit modal, no outer Save needed (M57/M67)", async ({ page }) => {
+  page.on("dialog", (d) => d.accept());
+  const marker = `M57 edit-done ${Date.now()}`;
+  const edited = `M57 edited ${Date.now()}`;
+
+  await openAsProvider(page, "Pablo");
+  await clickNav(page, "Study");
+
+  await page.getByTitle("Add study").click();
+  await page.locator(".study-modal .topic-input").fill(marker);
+  await page.locator(".study-modal .btn.primary", { hasText: "Save" }).click();
+  await expect(page.locator(".study .saved")).toBeVisible({ timeout: 10_000 });
+
+  // M67 — Edit reopens the same Add modal, pre-filled; its own Save persists immediately.
+  const row = page.locator(".study .leaf-card", { hasText: marker });
+  await clickLeafMenuItem(row, "Edit");
+  await page.locator(".study-modal .topic-input").fill(edited);
+  await page.locator(".study-modal .btn.primary", { hasText: "Save" }).click();
+  await expect(page.locator(".study .saved")).toBeVisible({ timeout: 10_000 });
+
+  // Reload with no outer Save click ever — the modal's own Save is what's under test.
+  await page.reload();
+  await page.waitForSelector(".roster-list");
+  await page.click('.roster-name:has-text("Pablo")');
+  await page.waitForSelector(".sidebar .nav-item");
+  await clickNav(page, "Study");
+  await expect(page.locator(".study")).toContainText(edited);
+  await expect(page.locator(".study")).not.toContainText(marker);
+
+  // Clean up — delete the throwaway row so repeat runs don't accumulate. Delete is a direct row
+  // action now (mirrors Treatment/FutureTreatment), not gated behind opening Edit.
+  const editedRow = page.locator(".study .leaf-card", { hasText: edited });
+  await clickLeafMenuItem(editedRow, "Delete");
+  await expect(page.locator(".study")).not.toContainText(edited);
+});
+
+test("Hypothesis has no outer Save button — Add (modal), modal-Edit, and Delete all persist immediately (M66)", async ({ page }) => {
+  page.on("dialog", (d) => d.accept());
+  const marker = `M57 idea ${Date.now()}`;
+  const edited = `M57 idea edited ${Date.now()}`;
+
+  await openAsProvider(page, "Pablo");
+  await clickNav(page, "Hypothesis");
+  await expect(page.locator(".ft-editbar .btn.primary")).toHaveCount(0);
+
+  await page.getByTitle("Add idea").click();
+  await expect(page.locator(".modal-panel")).toHaveAttribute("aria-label", "Add idea");
+  await page.locator(".ft-modal .topic-input").fill(marker);
+  await watchFlashes(page);
+  await page.locator(".ft-modal .btn.primary", { hasText: "Save" }).click();
+
+  const addedRow = page.locator(".future-treatment .leaf-card", { hasText: marker });
+  const addedAnchorId = await addedRow.locator(".permalink-heading").first().getAttribute("id");
+  await expectFlashed(page, addedAnchorId);
+  await expect(page.locator(".future-treatment .saved")).toBeVisible({ timeout: 10_000 });
+
+  // M66 — ✎ opens the same Add modal, pre-filled, instead of an in-place Done-to-save row.
+  const row = page.locator(".future-treatment .leaf-card", { hasText: marker });
+  await clickLeafMenuItem(row, "Edit");
+  await expect(page.locator(".modal-panel")).toHaveAttribute("aria-label", "Edit idea");
+  await expect(page.locator(".ft-modal .topic-input")).toHaveValue(marker);
+  await page.locator(".ft-modal .topic-input").fill(edited);
+  await watchFlashes(page);
+  await page.locator(".ft-modal .btn.primary", { hasText: "Save" }).click();
+
+  const editedRowLive = page.locator(".future-treatment .leaf-card", { hasText: edited });
+  const editedAnchorId = await editedRowLive.locator(".permalink-heading").first().getAttribute("id");
+  await expectFlashed(page, editedAnchorId);
+  await expect(page.locator(".future-treatment .saved")).toBeVisible({ timeout: 10_000 });
+
+  await page.reload();
+  await page.waitForSelector(".roster-list");
+  await page.click('.roster-name:has-text("Pablo")');
+  await page.waitForSelector(".sidebar .nav-item");
+  await clickNav(page, "Hypothesis");
+  await expect(page.locator(".future-treatment")).toContainText(edited);
+  await expect(page.locator(".future-treatment")).not.toContainText(marker);
+
+  // Delete persists immediately too — it's a direct row action now, no Edit-open step first.
+  const editedRow = page.locator(".future-treatment .leaf-card", { hasText: edited });
+  await clickLeafMenuItem(editedRow, "Delete");
+  await expect(page.locator(".future-treatment")).not.toContainText(edited);
+
+  await page.reload();
+  await page.waitForSelector(".roster-list");
+  await page.click('.roster-name:has-text("Pablo")');
+  await page.waitForSelector(".sidebar .nav-item");
+  await clickNav(page, "Hypothesis");
+  await expect(page.locator(".future-treatment")).not.toContainText(edited);
+});

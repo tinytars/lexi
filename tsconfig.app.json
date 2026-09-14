@@ -1,0 +1,84 @@
+{
+  "extends": "@tsconfig/svelte/tsconfig.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+    "target": "es2023",
+    "module": "esnext",
+    "types": ["svelte", "vite/client"],
+    "noEmit": true,
+    /**
+     * Typecheck JS in `.svelte` and `.js` files by default.
+     * Disable checkJs if you'd like to use dynamic types in JS.
+     * Note that setting allowJs false does not prevent the use
+     * of JS in `.svelte` files.
+     */
+    "allowJs": true,
+    "checkJs": true,
+    "moduleDetection": "force",
+    "paths": {
+      "@tars/brand": ["../../packages/brand/index.ts"],
+      "@pablotech/neuro-pil": ["../../brain/neuro-pil/index.ts"],
+      "@pablotech/neuro-pil/hash-web": ["../../brain/neuro-pil/hash-web.ts"],
+      "@pablotech/akesi-pil": ["../../brain/akesi-pil/index.ts"],
+      "@pablotech/akesi-pil/types": ["../../brain/akesi-pil/types.ts"],
+      "@pablotech/akesi-pil/treatment-normalize": ["../../brain/akesi-pil/treatment-normalize.ts"],
+      "@pablotech/akesi-pil/treatment-bucket": ["../../brain/akesi-pil/treatment-bucket.ts"],
+      "@pablotech/akesi-pil/treatment-product": ["../../brain/akesi-pil/treatment-product.ts"],
+      "@pablotech/akesi-pil/treatment-timing-rules": ["../../brain/akesi-pil/treatment-timing-rules.ts"],
+      "@pablotech/akesi-pil/marker-deltas": ["../../brain/akesi-pil/marker-deltas.ts"],
+      "@pablotech/akesi-pil/unit-systems": ["../../brain/akesi-pil/unit-systems.ts"],
+      "@pablotech/akesi-pil/dates": ["../../brain/akesi-pil/dates.ts"],
+      "@pablotech/akesi-pil/ranges": ["../../brain/akesi-pil/ranges.ts"],
+      "@pablotech/akesi-pil/ranges-prompt": ["../../brain/akesi-pil/ranges-prompt.ts"],
+      "@pablotech/akesi-pil/item-registry": ["../../brain/akesi-pil/item-registry.ts"],
+      "@pablotech/akesi-pil/report-title": ["../../brain/akesi-pil/report-title.ts"],
+      "@pablotech/akesi-pil/imaging-catalog": ["../../brain/akesi-pil/imaging-catalog.ts"],
+      "@pablotech/akesi-pil/system-groups": ["../../brain/akesi-pil/system-groups.ts"],
+      "@pablotech/akesi-pil/factors-edit": ["../../brain/akesi-pil/factors-edit.ts"],
+      "@pablotech/akesi-pil/report-extract": ["../../brain/akesi-pil/report-extract.ts"],
+      "@pablotech/akesi-pil/report-merge": ["../../brain/akesi-pil/report-merge.ts"],
+      "@pablotech/akesi-pil/document-model": ["../../brain/akesi-pil/document-model.ts"],
+      "@pablotech/akesi-pil/document-read": ["../../brain/akesi-pil/document-read.ts"],
+      "@pablotech/akesi-pil/ingest-core": ["../../brain/akesi-pil/ingest-core.ts"],
+      "@pablotech/akesi-pil/pdf-node": ["../../brain/akesi-pil/parsers-report.ts"],
+      "@pablotech/akesi-pil/marker-groups-prompt": ["../../brain/akesi-pil/marker-groups-prompt.ts"],
+      "@pablotech/akesi-pil/treatment-infer": ["../../brain/akesi-pil/treatment-infer.ts"],
+      "@pablotech/akesi-pil/finding-generate": ["../../brain/akesi-pil/finding-generate.ts"],
+      "@pablotech/akesi-pil/finding-assemble": ["../../brain/akesi-pil/finding-assemble.ts"],
+      "@pablotech/akesi-pil/finding-regroup": ["../../brain/akesi-pil/finding-regroup.ts"],
+      "@pablotech/akesi-pil/pinned-queries": ["../../brain/akesi-pil/pinned-queries.ts"],
+      "@pablotech/akesi-pil/section-labels": ["../../brain/akesi-pil/section-labels.ts"]
+    }
+  },
+  // W63 — functions/ (every Pages Function, i.e. all of prod's API surface) was checked by NOTHING:
+  // not this config, not `build` (vite bundles src/ only), not vitest (transpile-only). It belongs
+  // to svelte-check rather than tsconfig.node.json because it imports types from src/ modules that
+  // reach .svelte files, which only svelte-check can resolve. scripts/ went the other way — see
+  // tsconfig.node.json.
+  //
+  // W64 — tests/** is IN. It surfaced 149 errors and two of them were real bugs, not fixture noise:
+  // FindingAIResponse declared `basis` as the array form alone while validate() accepted (and the
+  // vault stores) the object form, so assembleFinding threw on a shape the validator waved through;
+  // and leaf-actions' `attach` was being handed a callback where it takes an AttachTarget. The rest
+  // were fixtures asserting against types they did not match — id-less entries, a Worker env missing
+  // half its bindings, TS 5.7's generic Uint8Array. Fixed rather than cast: `npm test` still passes.
+  "include": [
+    "src/**/*.ts", "src/**/*.js", "src/**/*.svelte",
+    "functions/**/*.ts", "tests/**/*.ts",
+    "../../packages/brand/index.ts", "../../brain/neuro-pil/index.ts", "../../brain/neuro-pil/hash-web.ts",
+    "../../brain/akesi-pil/index.ts", "../../brain/akesi-pil/types.ts",
+    "../../brain/akesi-pil/treatment-normalize.ts", "../../brain/akesi-pil/treatment-bucket.ts",
+    "../../brain/akesi-pil/treatment-product.ts", "../../brain/akesi-pil/treatment-timing-rules.ts",
+    "../../brain/akesi-pil/marker-deltas.ts", "../../brain/akesi-pil/unit-systems.ts",
+    "../../brain/akesi-pil/dates.ts", "../../brain/akesi-pil/ranges.ts", "../../brain/akesi-pil/ranges-prompt.ts",
+    "../../brain/akesi-pil/item-registry.ts", "../../brain/akesi-pil/report-title.ts",
+    "../../brain/akesi-pil/imaging-catalog.ts", "../../brain/akesi-pil/system-groups.ts",
+    "../../brain/akesi-pil/factors-edit.ts", "../../brain/akesi-pil/report-extract.ts",
+    "../../brain/akesi-pil/report-merge.ts", "../../brain/akesi-pil/document-model.ts",
+    "../../brain/akesi-pil/document-read.ts", "../../brain/akesi-pil/ingest-core.ts",
+    "../../brain/akesi-pil/parsers-report.ts", "../../brain/akesi-pil/marker-groups-prompt.ts",
+    "../../brain/akesi-pil/treatment-infer.ts", "../../brain/akesi-pil/finding-generate.ts",
+    "../../brain/akesi-pil/finding-assemble.ts", "../../brain/akesi-pil/finding-regroup.ts",
+    "../../brain/akesi-pil/pinned-queries.ts", "../../brain/akesi-pil/section-labels.ts"
+  ]
+}

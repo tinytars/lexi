@@ -1,0 +1,16 @@
+{
+  "publicKeyJwk": {
+    "key_ops": [],
+    "ext": true,
+    "kty": "EC",
+    "x": "GIngafJH7mS5RBOlbpYqec1-ftN0k4-uuzlCF6FPOrE",
+    "y": "OG92zKmmLVIWqZ5DojHGdJNKziA4Ur-wKmwqK7g5Zco",
+    "crv": "P-256"
+  },
+  "wrappedPrivateKey": "WmDej0RQdYQxyyjAzkYdAMfJJZB39+nK/y1MmvWb133MxqudIwSuIAZCFaSOt/UrxATMd6e2A+oRGRMGvkBwEozBbB4iexUlscvmOw3M0lvnF9LXsgTlFGiiAyO2JnOw1NHt+Ky3vSWugHCdWEirWoTckWwpc3tq3YW67FmD/YFLb/rO0JfDIcRh71bb6zAMSlEUT8t9SJ40AMYn8Zu0UJZgca3Jow==",
+  "kdfParams": {
+    "salt": "f54fdfb7a84cb832b32b0223302f35eb",
+    "iterations": 200000
+  },
+  "createdAt": "2026-07-07T11:13:51.684Z"
+}
