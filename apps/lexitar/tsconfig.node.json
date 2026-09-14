@@ -1,0 +1,42 @@
+{
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.node.tsbuildinfo",
+    "target": "es2023",
+    // DOM for the WebCrypto types (Crypto/CryptoKey/JsonWebKey) used by @tinytars/vault/crypto,
+    // which the ops scripts import and run under Node's WebCrypto globals (node ≥20). Without it tsc
+    // can't resolve those types even though they exist at runtime.
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "esnext",
+    // vite/client for the `?url` import suffix in src/lib/pdf-render.ts, which scripts/ reaches
+    // through the ingest PDF path — a Vite-only module specifier plain tsc cannot resolve without it.
+    "types": ["node", "vite/client"],
+    "skipLibCheck": true,
+
+    /* Bundler mode */
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+
+    /* Linting */
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true,
+
+    // W63 — the ops CLI imports the shared knowledge-graph package by its workspace alias, exactly
+    // as tsconfig.app.json does for src/. Without these, every scripts/ importer of it resolved to
+    // nothing — which was invisible while scripts/ was outside `include` at all.
+    "paths": {
+      "@pablotech/neuro-pil": ["../../brain/neuro-pil/index.ts"],
+      "@pablotech/neuro-pil/hash-node": ["../../brain/neuro-pil/hash-node.ts"],
+      "@pablotech/akesi-pil": ["../../brain/akesi-pil/index.ts"]
+    }
+  },
+  // W63 — was ["vite.config.ts"], one file. scripts/ (45 files, ingest.ts among them) was
+  // type-checked by nothing: not `check`, not `build` (vite bundles src/ only), not vitest
+  // (transpile-only). src/**/* stays with svelte-check in tsconfig.app.json, which is the only
+  // checker that can resolve a .svelte import.
+  "include": ["vite.config.ts", "scripts/**/*.ts", "../../brain/neuro-pil/*.ts", "../../brain/akesi-pil/*.ts"]
+}

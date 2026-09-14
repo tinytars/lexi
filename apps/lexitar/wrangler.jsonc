@@ -1,0 +1,16 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "health-dash-dev",
+  "compatibility_date": "2026-05-26",
+  "compatibility_flags": ["nodejs_compat"],
+  "pages_build_output_dir": "./dist",
+  "r2_buckets": [{ "binding": "VAULT", "bucket_name": "health-vault" }],
+  "d1_databases": [
+    // W44 P0: non-PHI identity/relationship/CRM store. Created 2026-07-07 (region ENAM).
+    { "binding": "DB", "database_name": "health-identity-dev", "database_id": "7adf9a65-de24-4393-a6c2-fe6c31fb1b2c" }
+  ],
+  // W13d: per-deployment R2 namespace. This branch (health-dashboard) deploys as "dev";
+  // a future main/prod branch sets "prod". Every R2 key is built via storeKey(env, …),
+  // which throws if this is unset — so two branch deploys never share keys.
+  "vars": { "STORE_PREFIX": "dev" }
+}

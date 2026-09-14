@@ -1,0 +1,84 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# wrangler local dev / miniflare R2 simulation state
+.wrangler
+
+# Local Pages Functions secrets (mirror the prod Pages secrets; never committed)
+.dev.vars
+
+# Cloudflare API token / account id are NOT committed here — they live in the plover-context repo
+# (infra/cloud/credentials/cloudflare.env), loaded via scripts/creds.sh. Ignore any local copy.
+.cloudflare.env
+
+# Test artifacts
+test-results
+playwright-report
+
+# Local extraction cache (derived from committed PDFs; makes dry-run→apply
+# deterministic within a session). Plaintext, so never committed.
+.cache/
+
+
+# Stray raw client data / plaintext intermediates ANYWHERE ELSE stay out of git.
+*.xlsx
+*.xls
+*.csv
+data.json
+vault.json
+plaintext*
+
+# W13: all patient data lives under the records/ umbrella and IS tracked (PRIVATE repo —
+# plaintext at rest by design; see VAULT.md / RECOVERY.md). records/private/ holds plaintext
+# PHI (raw/ originals, processed/ extractions, vault.json); records/public/ holds the derived,
+# encrypted, served .enc (Vite publicDir). The negation re-includes these past the global
+# plaintext bans above. If the repo ever goes public, purge records/private/ from history.
+!records/
+!records/**
+
+# ...but never the temp files atomic writes rename from (scripts/atomic-write.ts, vite.config.ts).
+# A write interrupted between writeFile and rename leaves one behind holding a full copy of a vault,
+# and because records/** is force-included above it would otherwise show up as a stageable untracked
+# file — i.e. committable plaintext PHI under a name nobody recognises. Found exactly that on
+# 2026-08-11: liz/vault.json.tmp-81353-… , 347122 bytes of real PHI, untracked and not ignored.
+records/**/*.tmp-*
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# W49 — vault-corruption forensics watcher (scripts/vault-watch.sh). Incident logs and heartbeat
+# state; never committed. The canary lives inside records/private/ (same volume/directory as the
+# real vault fixtures it's compared against) and needs its own override past the blanket
+# `!records/**` re-inclusion above, or it'd get swept back in as trackable.
+.vault-watch/
+records/private/.vault-watch-canary
+
+# W52 — scheduled-snapshot run logs (scripts/snapshot-cron.sh). Machine-local operational output;
+# the snapshots themselves live in the health-vault-backup R2 bucket, never in git.
+.snapshot/
+coverage/
+
+# scripts/export-finding-dag-vault.ts (`npm run dag:push`) default output — an Obsidian-openable
+# projection of FINDING_DAG, brand-neutral (PRODUCT_NAME is written as a {{PRODUCT_NAME}} token).
+# Regenerated locally; never committed here — the real destination is clinical-vault
+# (`npm run dag:push -- --out <path>`, see ~/.claude/CLAUDE.md).
+.finding-dag-vault/

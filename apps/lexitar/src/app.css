@@ -1,0 +1,55 @@
+html, body, #app {
+  min-height: 100dvh;
+}
+* {
+  box-sizing: border-box;
+}
+/* M73 Phase 2 — every leaf's ".btn"/".btn.add" is duplicated per-component with no shared
+   min-height; one global rule here (instead of touching 8 files) brings all of them up to the
+   app's 44px touch-target convention on phone widths without changing desktop sizing. */
+@media (max-width: 640px) {
+  /* M100 — below-16px inputs trigger iOS Safari's zoom-on-focus; one shared floor instead of
+     touching the ~10 files with their own smaller font-size. */
+  input, select, textarea { font-size: 16px; }
+}
+.leaf-empty { color: var(--muted); font-size: 0.88rem; }
+/* M101 — shared source of truth for the row-level "no AI take yet"-style message duplicated
+   (identical rule body) across 8 leaf editors; same precedent as .leaf-empty above. */
+.leaf-row-empty { color: var(--muted); font-style: italic; font-size: 0.85rem; align-self: center; margin: 0; }
+/* M98 Phase 3 — shared shell for the "edit/add" modal wrappers duplicated across every leaf
+   editor; component styles keep their own class name (e2e selects by it) but not the rule body. */
+.az-modal, .fh-modal, .sy-modal, .nt-modal, .study-modal, .ft-modal, .cr-edit-modal, .tedit { display: flex; flex-direction: column; gap: 0.7rem; min-width: 0; padding: 0.2rem; }
+
+/* W62 — six rule bodies that were duplicated 50 times across 17 components, hoisted on the same
+   precedent as .az-modal above: each component keeps its own class name (e2e selects by it), the
+   rule body lives once. Verified exact-match before hoisting — a component whose rule differed
+   keeps its local copy, and a scoped rule still wins over these by Svelte's added specificity. */
+
+/* The column a list of turn cells sits in (4 copies, 4 names, one body). */
+.turn-list, .gl-list, .qd-list, .tc-list { display: flex; flex-direction: column; gap: 0.7rem; }
+
+/* W64 — the rest of the leaf-editor chrome, each body verified identical across its copies before
+   hoisting (the two that were NOT identical are called out below). Same rule as above: the
+   component keeps its class name, only the body moves.
+
+   Measured, not assumed: the editbar bodies differed between Study, Allergies and the other six,
+   and all three render the ✓ saved indicator at the same place — every one of these bars holds a
+   single child, and `justify-content: space-between` aligns a lone child to the START. The variants
+   were therefore never a visual difference; they are hoisted because eight copies drift, not
+   because this fixes anything. */
+.az-editbar, .cr-editbar, .fh-editbar, .ft-editbar, .nt-editbar, .pz-editbar, .study-editbar, .ut-editbar {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  margin-bottom: 0.75rem; padding-bottom: 0.6rem;
+}
+/* NOT hoisted, deliberately: the text-input and focus-ring bodies are duplicated 4x and 8x, but
+   each copy is a BARE element selector (`input, select { … }`) scoped to its component. Lifting
+   those here would style every input in the app, and Svelte's scoping keeps the local copies
+   winning regardless — so the hoist would be both wrong and dead. They stay local; the one real
+   drift among them (UnifiedTreatment at 1rem/7px against 0.95rem/6px) was converged in place. */
+
+/* A block of one section, spaced from the next (4 copies + 4 of its :last-child twin). */
+.az-block, .fh-block, .pz-block, .an-block { margin-bottom: 2.25rem; }
+.az-block:last-child, .fh-block:last-child, .pz-block:last-child, .an-block:last-child { margin-bottom: 0; }
+
+/* The edit-modal title row (7 copies under 7 names). */
+.az-title, .ce-title, .fh-title, .fte-title, .nte-title, .pz-title, .ut-edit-title { display: flex; align-items: baseline; gap: 0.75rem; }

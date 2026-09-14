@@ -1,0 +1,8 @@
+# G1 — Pages serves these with `s-maxage=604800` by default, so when the rename took
+# `data-pablo.enc` out of the build, Cloudflare's edge kept answering the old name with real
+# ciphertext for the rest of that week: the deployment was clean and the leaking URL was not.
+# Revalidation makes a blob that leaves the tree stop being served with it. Nothing loses a cache
+# that matters — the app reads /api/vault/{id}, and these are only the seed path's fallback
+# (functions/api/vault/[id].ts).
+/data*
+  Cache-Control: public, max-age=0, must-revalidate
