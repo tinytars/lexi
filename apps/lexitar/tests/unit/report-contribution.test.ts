@@ -160,15 +160,15 @@ describe("a report's stated prior, checked against what the vault already holds"
   });
 });
 
-// The parity this module was extracted to guarantee is a property of its CALL SITES: it holds only
-// while both of them get their diseases and marker rows from reportContribution() and hand them to
-// applyReportContribution(). A behavioural test of this function cannot see one of them drifting
-// back to hand-rolling the mapping — a source assertion can, and that is the failure that reintroduces
-// the CLI/browser divergence this replaced.
-describe("one implementation, both callers", () => {
+// The parity this module was extracted to guarantee is a property of its CALL SITE: a behavioural
+// test of this function cannot see it drifting back to hand-rolling the mapping — a source
+// assertion can, and that is the failure that reintroduces the CLI/browser divergence this
+// replaced. The CLI ingest caller (scripts/commands/sources.ts) touches raw patient data and
+// never entered this repo — it stays in the PHI carve-out; the browser fold is this repo's only
+// caller.
+describe("the implementation is not hand-rolled at its call site", () => {
   it.each([
     ["src/lib/import-flow.ts", "the browser fold"],
-    ["scripts/commands/sources.ts", "the CLI ingest"],
   ])("%s (%s) folds via reportContribution's own output", (path) => {
     const src = readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
     expect(src).toMatch(/reportContribution\(/);

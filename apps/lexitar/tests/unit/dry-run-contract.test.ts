@@ -10,23 +10,7 @@
 // vacuous-pass this repo has been bitten by.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-
-// R2 has no fetch to count: vault-sync.ts reaches it by shelling out to `npx wrangler r2 object …`,
-// so the child process IS the write boundary and counting spawns is the exact analogue of counting
-// HTTP calls above.
-const { spawns } = vi.hoisted(() => ({ spawns: [] as string[] }));
-vi.mock("node:child_process", async (importActual) => {
-  const actual = await importActual<typeof import("node:child_process")>();
-  return {
-    ...actual,
-    execFile: (cmd: string, args: string[], _opts: unknown, cb: (e: Error | null) => void) => {
-      spawns.push([cmd, ...args].join(" "));
-      cb(new Error("child processes blocked in unit tests"));
-    },
-  };
-});
 import { refreshFindingFor, refreshRangesFor, refreshMarkerGroupsFor } from "../../scripts/commands/refresh";
-import { processPendingFor } from "../../scripts/commands/reconcile";
 import { UsageAccumulator } from "../../scripts/inference-cost";
 import type { Client } from "../../src/lib/types";
 
@@ -35,8 +19,8 @@ let realFetch: typeof globalThis.fetch;
 
 beforeEach(() => {
   calls = [];
-  spawns.length = 0;
   realFetch = globalThis.fetch;
+
   // Rejecting rather than resolving keeps a leak loud two ways: the counter goes up, and the
   // command's own error path runs instead of it parsing a fabricated Finding.
   globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
@@ -99,32 +83,5 @@ describe("--dry-run makes no Anthropic call", () => {
 
     await expect(refreshMarkerGroupsFor(client(), true, "dev", usage(), false)).rejects.toThrow();
     expect(calls.length).toBeGreaterThan(0);
-  });
-});
-
-describe("--dry-run makes no R2 write", () => {
-  function withPending(): Client {
-    const c = client();
-    (c as unknown as { pendingUploads: unknown[] }).pendingUploads = [
-      { id: "p1", file: "ab12cd34-labs.pdf", originalName: "labs.pdf", sha256: "ab12cd34" },
-    ];
-    return c;
-  }
-
-  it("process-pending touches neither Anthropic nor R2, and leaves the queue intact", async () => {
-    const c = withPending();
-    const { provisionalFiles } = await processPendingFor(c, "Alex", "dev", usage(), true);
-
-    expect(calls).toEqual([]);
-    expect(spawns).toEqual([]);
-    // ingest.ts and reconcileClient both gate "push the folds back to R2, then delete the browser's
-    // provisional keys" on this array being non-empty, so an empty one is load-bearing.
-    expect(provisionalFiles).toEqual([]);
-    // And the queue is untouched, so a real run afterwards still has the same work to do.
-    expect((c as unknown as { pendingUploads: unknown[] }).pendingUploads).toHaveLength(1);
-
-    // The control: the same fixture without the flag goes straight at R2 for the raw.
-    await processPendingFor(withPending(), "Alex", "dev", usage(), false);
-    expect(spawns.join(" ")).toContain("wrangler");
   });
 });

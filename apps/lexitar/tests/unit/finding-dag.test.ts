@@ -162,7 +162,7 @@ describe("per-node input hashing (W15b)", () => {
 });
 
 describe("generated DAG mermaid (W15b drift guard)", () => {
-  it("the block checked into 15-finding-dag.md equals the generator output", () => {
+  it("the block checked into finding-dag.md equals the generator output", () => {
     const doc = readFileSync(docPath(), "utf8");
     expect(extractDagBlock(doc), "run `npm run dag:mermaid` to regenerate").toBe(renderMermaid());
   });

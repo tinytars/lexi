@@ -63,7 +63,7 @@ describe("the app can announce", () => {
   it("the hidden regions use a recipe that keeps them in the accessibility tree", () => {
     // display:none / visibility:hidden would remove them from the a11y tree too, which is the classic
     // way to ship a live region that announces nothing. .sr-only lives in @tinytars/frame's theme now.
-    const theme = read("../../packages/app-frame/theme.css");
+    const theme = read("../../packages/frame/theme.css");
     const srOnly = theme.match(/\.sr-only\s*\{[\s\S]*?\}/);
     expect(srOnly).toBeTruthy();
     expect(srOnly![0]).not.toMatch(/display:\s*none|visibility:\s*hidden/);

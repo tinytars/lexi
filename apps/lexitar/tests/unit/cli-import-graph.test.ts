@@ -17,10 +17,10 @@ import { fileURLToPath } from "node:url";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const FROM_CLAUSE = /(?:import|export)[^;]*?\bfrom\s*["']([^"']+)["']/g;
 
-// 06 Phase A step 13 moved a chunk of the clinical layer into brain/akesi-pil, reached from the CLI
+// 06 Phase A step 13 moved a chunk of the clinical layer into @pablotech/akesi, reached from the CLI
 // only via the bare "@pablotech/akesi/..." specifier. Without this, the walk would stop dead at the
 // package boundary and never see whether anything past it calls a relative fetch.
-const AKESI_PIL_ROOT = resolve(ROOT, "..", "..", "brain", "akesi-pil");
+const AKESI_PIL_ROOT = resolve(ROOT, "..", "..", "node_modules", "@pablotech", "akesi");
 const AKESI_PIL_EXPORTS: Record<string, string> = JSON.parse(
   readFileSync(join(AKESI_PIL_ROOT, "package.json"), "utf8"),
 ).exports;

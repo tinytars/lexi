@@ -107,10 +107,10 @@ function propsOf(src: string): { declared: string[]; bound: string[]; pairs: { p
   return null;
 }
 
-// doc 13 has been moving generic components into packages/app-frame — this guard's bug class
+// doc 13 has been moving generic components into packages/frame — this guard's bug class
 // (a declared prop silently dropped, or bound but never read) applies there exactly as much as
 // it does in src/, so the glob follows the components rather than staying pinned to their old home.
-const FILES = [...svelteFiles(resolve("src")), ...svelteFiles(resolve("../../packages/app-frame"))];
+const FILES = [...svelteFiles(resolve("src")), ...svelteFiles(resolve("../../packages/frame"))];
 
 describe("every declared prop is destructured", () => {
   it("finds components to check (guards the glob itself)", () => {

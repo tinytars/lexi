@@ -12,7 +12,6 @@
     "vault:restore": "tsx scripts/vault-restore.ts",
     "vault:snapshot:check": "tsx scripts/vault-snapshot-check.ts",
     "vault:rotate": "tsx scripts/rotate-pilot-credentials.ts",
-    "roster:rotate": "tsx scripts/rotate-roster-pass.ts",
     "dag:mermaid": "tsx scripts/gen-dag-mermaid.ts",
     "dag:push": "tsx scripts/export-finding-dag-vault.ts",
     "dag:pull": "tsx scripts/import-finding-dag-vault.ts",

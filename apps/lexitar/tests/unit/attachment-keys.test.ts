@@ -31,7 +31,7 @@ const att = (key: string): Attachment => ({ key, name: key, mediaType: "image/pn
  * appears here the moment it is declared, whether or not anyone remembered attachmentKeysOf.
  */
 function attachmentBearingTypes(): string[] {
-  const src = readFileSync(join(ROOT, "../../brain/akesi-pil/types.ts"), "utf8");
+  const src = readFileSync(join(ROOT, "../../node_modules/@pablotech/akesi/types.ts"), "utf8");
   const out: string[] = [];
   let current = "";
   for (const line of src.split("\n")) {

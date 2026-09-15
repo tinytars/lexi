@@ -13,11 +13,11 @@ const FORBIDDEN = ["finding-generate.ts", "finding-assemble.ts", "finding-dag.ts
 
 const FROM_CLAUSE = /(?:import|export)[^;]*?\bfrom\s*["']([^"']+)["']/g;
 
-// 06 Phase A step 13 moved finding-generate.ts and finding-assemble.ts into brain/akesi-pil, reached
+// 06 Phase A step 13 moved finding-generate.ts and finding-assemble.ts into @pablotech/akesi, reached
 // from the app only via the bare "@pablotech/akesi/..." specifier. Without this, the walk would stop
 // dead at the package boundary — every edge past it invisible, including the ones this test exists
 // to forbid — and pass whether or not they're still there.
-const AKESI_PIL_ROOT = resolve(ROOT, "..", "..", "brain", "akesi-pil");
+const AKESI_PIL_ROOT = resolve(ROOT, "..", "..", "node_modules", "@pablotech", "akesi");
 const AKESI_PIL_EXPORTS: Record<string, string> = JSON.parse(
   readFileSync(join(AKESI_PIL_ROOT, "package.json"), "utf8"),
 ).exports;

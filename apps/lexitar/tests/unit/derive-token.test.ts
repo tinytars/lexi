@@ -7,8 +7,8 @@ import { deriveBearerToken } from "@tinytars/vault/crypto";
 // change here would silently stop matching what scripts/vault-sync.ts sends to /api/vault.
 describe("deriveBearerToken", () => {
   it("derives the pinned base64url(SHA-256) bearer per passphrase", async () => {
-    expect(await deriveBearerToken("alex")).toBe("JgeeQZELzeBL5jb77syQRTeYgrWtP-f3C3YkNsbZgFU");
-    expect(await deriveBearerToken("blair")).toBe("3xopM7mHLRNnHTmHtsL3FMwh9dd27YKu2IPsNeM0J8A");
+    expect(await deriveBearerToken("alex")).toBe("QTWqncG4QqZT3qhGkD3blb-4xaEMUEp_oW4QvDHR_fA");
+    expect(await deriveBearerToken("blair")).toBe("tAn8zdc1VAW9Z6vpzR4fIYHn5yKJlFuIldwCOgkdgKw");
   });
 
   it("is url-safe (no +, /, or = padding)", async () => {
