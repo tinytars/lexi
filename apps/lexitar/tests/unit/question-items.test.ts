@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { questionGroups, questionItems } from "../../src/lib/question-items";
 import { questionsSidebarGroups } from "../../src/lib/questions-sidebar-groups";
 import { questionsSearchLeaves } from "../../src/lib/search-index";
-import { itemRecordId } from "@pablotech/akesi-pil/item-registry";
+import { itemRecordId } from "@pablotech/akesi/item-registry";
 import type { Client } from "../../src/lib/types";
 
 // W63 — the questions derivation existed three times. Two copies were verbatim identical; the

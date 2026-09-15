@@ -8,7 +8,7 @@
 
 import { writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { sha256hex12 } from "@pablotech/neuro-pil/hash-node";
+import { sha256hex12 } from "@pablotech/neuro/hash-node";
 import { brainSourceFor, brainKeys } from "../src/lib/brain-source";
 
 export function brainVersions(): Record<string, string> {

@@ -47,6 +47,15 @@ plaintext*
 !records/
 !records/**
 
+# 2026-09-15: this repo is public. The two real accounts' seed blobs that were committed here
+# (data-7de3dfed....enc, data-834bc60d....enc + .dek.enc sidecars) are pulled per owner decision —
+# real per-account ciphertext has no reason to sit in a public git history even encrypted at rest.
+# A new account's blob now reaches R2 directly (see functions/api/vault/[id].ts's PUT path);
+# the "seed from the committed static asset" fallback in that file's GET handler still exists in
+# code but has nothing to fall back to here anymore.
+records/public/data-*.enc
+records/public/data-*.dek.enc
+
 # ...but never the temp files atomic writes rename from (scripts/atomic-write.ts, vite.config.ts).
 # A write interrupted between writeFile and rename leaves one behind holding a full copy of a vault,
 # and because records/** is force-included above it would otherwise show up as a stageable untracked

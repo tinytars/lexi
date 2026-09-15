@@ -22,7 +22,7 @@
 import "./load-creds";
 import { appendFile } from "node:fs/promises";
 import Anthropic from "@anthropic-ai/sdk";
-import { compareBrains } from "@pablotech/neuro-pil/compare";
+import { compareBrains } from "@pablotech/neuro/compare";
 import {
   CASES,
   CENSORED,
@@ -35,7 +35,7 @@ import {
   wilson,
   withReplicates,
   type RetryOutcome,
-} from "@pablotech/akesi-pil/benchmarks/retry-corrections";
+} from "@pablotech/akesi/benchmarks/retry-corrections";
 import { MODELS, WEAKEST_MODEL } from "./inference-config";
 
 const REGIMES = {

@@ -6,16 +6,16 @@
 // validators / FindingAIResponse) so ingest, first-look-synthesis, and the tests are untouched.
 import Anthropic from "@anthropic-ai/sdk";
 import type { Client, ClientFinding, InferenceMode } from "../src/lib/types";
-import { generateFindingResponse, populatedNoteEntries } from "@pablotech/akesi-pil/finding-generate";
-import { assembleFinding } from "@pablotech/akesi-pil/finding-assemble";
+import { generateFindingResponse, populatedNoteEntries } from "@pablotech/akesi/finding-generate";
+import { assembleFinding } from "@pablotech/akesi/finding-assemble";
 import { CORE_BRAIN } from "../src/lib/finding-config";
 import { BRAIN_VERSIONS } from "../src/lib/brain-versions";
 import { findingInputsHashOf, nodeHashesOf } from "./factors";
 import { MODELS } from "./inference-config";
 import type { UsageAccumulator } from "./inference-cost";
 
-export { buildUserMessage, SYSTEM_PROMPT } from "@pablotech/akesi-pil/finding-generate";
-export { validateFindingResponse, validateFindingWithInputs, type FindingAIResponse } from "@pablotech/akesi-pil/finding-assemble";
+export { buildUserMessage, SYSTEM_PROMPT } from "@pablotech/akesi/finding-generate";
+export { validateFindingResponse, validateFindingWithInputs, type FindingAIResponse } from "@pablotech/akesi/finding-assemble";
 
 let cachedClient: Anthropic | null = null;
 function anthropic(): Anthropic {

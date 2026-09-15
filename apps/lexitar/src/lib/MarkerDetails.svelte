@@ -1,8 +1,8 @@
 <script lang="ts">
   import type { Client, MarkerResult } from "./types";
-  import { resolveRange } from "@pablotech/akesi-pil/ranges";
+  import { resolveRange } from "@pablotech/akesi/ranges";
   import { displayScaleFor, fmtNum, type UnitSystem } from "./units";
-  import { normalizeSeries } from "@pablotech/akesi-pil/unit-systems";
+  import { normalizeSeries } from "@pablotech/akesi/unit-systems";
   import MarkerSummary from "./MarkerSummary.svelte";
 
   // M85 Phase 9 — extracted verbatim from MarkerChart.svelte's inline `.info-panel` so it can

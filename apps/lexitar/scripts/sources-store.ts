@@ -12,7 +12,7 @@ export {
   storedName,
   findSourceBySha,
   upsertSourceRecord,
-} from "@pablotech/akesi-pil/ingest-core";
+} from "@pablotech/akesi/ingest-core";
 
 export function hashSource(bytes: Uint8Array): { sha256: string; id: string } {
   const sha256 = createHash("sha256").update(bytes).digest("hex");

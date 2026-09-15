@@ -1,6 +1,6 @@
 import type { Client } from "./types";
 import { shouldResyncDraft } from "./client-resync";
-import { normalizeClientDraft } from "@pablotech/akesi-pil/factors-edit";
+import { normalizeClientDraft } from "@pablotech/akesi/factors-edit";
 
 export interface DraftSync {
   readonly draft: Client;

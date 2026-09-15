@@ -17,7 +17,7 @@ import "./load-creds";
 import Anthropic from "@anthropic-ai/sdk";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { readDocument } from "@pablotech/akesi-pil/document-read";
+import { readDocument } from "@pablotech/akesi/document-read";
 import { EXTRACT_MODEL } from "../src/lib/extract-config";
 
 // Byte-identical to the Function's bytesToBase64 (chunked: a spread overflows the call stack).

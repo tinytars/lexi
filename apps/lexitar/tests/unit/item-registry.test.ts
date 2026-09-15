@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { itemRecordId, isItemPinned, isPinnedItem, toggleItemPin, pinnedItems } from "@pablotech/akesi-pil/item-registry";
+import { itemRecordId, isItemPinned, isPinnedItem, toggleItemPin, pinnedItems } from "@pablotech/akesi/item-registry";
 import { togglePinnedIn, isPinnedIn, removeFrom } from "../../src/lib/vault-item-ops";
-import { pinnedQueries, pinnedQueryLines, pinnedQueryBlock } from "@pablotech/akesi-pil/pinned-queries";
+import { pinnedQueries, pinnedQueryLines, pinnedQueryBlock } from "@pablotech/akesi/pinned-queries";
 import { findingInputsCanonicalString } from "../../src/lib/factors-hash";
 import { SECTION_LABEL } from "../../src/lib/report-sections";
 import type { Client } from "../../src/lib/types";
@@ -13,7 +13,7 @@ function client(over: Partial<Client> = {}): Client {
   } as Client;
 }
 
-describe("@pablotech/akesi-pil/item-registry", () => {
+describe("@pablotech/akesi/item-registry", () => {
   it("mints a record on the first pin and deletes it again on unpin", () => {
     const id = itemRecordId("question", "Could this be early kidney disease?");
     const pinned = toggleItemPin(client(), id);

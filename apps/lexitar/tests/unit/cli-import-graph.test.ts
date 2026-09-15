@@ -18,7 +18,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const FROM_CLAUSE = /(?:import|export)[^;]*?\bfrom\s*["']([^"']+)["']/g;
 
 // 06 Phase A step 13 moved a chunk of the clinical layer into brain/akesi-pil, reached from the CLI
-// only via the bare "@pablotech/akesi-pil/..." specifier. Without this, the walk would stop dead at the
+// only via the bare "@pablotech/akesi/..." specifier. Without this, the walk would stop dead at the
 // package boundary and never see whether anything past it calls a relative fetch.
 const AKESI_PIL_ROOT = resolve(ROOT, "..", "..", "brain", "akesi-pil");
 const AKESI_PIL_EXPORTS: Record<string, string> = JSON.parse(
@@ -26,8 +26,8 @@ const AKESI_PIL_EXPORTS: Record<string, string> = JSON.parse(
 ).exports;
 
 function resolveSpecifier(specifier: string, fromFile: string): string | undefined {
-  if (specifier === "@pablotech/akesi-pil" || specifier.startsWith("@pablotech/akesi-pil/")) {
-    const subpath = specifier === "@pablotech/akesi-pil" ? "." : `.${specifier.slice("@pablotech/akesi-pil".length)}`;
+  if (specifier === "@pablotech/akesi" || specifier.startsWith("@pablotech/akesi/")) {
+    const subpath = specifier === "@pablotech/akesi" ? "." : `.${specifier.slice("@pablotech/akesi".length)}`;
     const target = AKESI_PIL_EXPORTS[subpath];
     return target ? resolve(AKESI_PIL_ROOT, target) : undefined;
   }

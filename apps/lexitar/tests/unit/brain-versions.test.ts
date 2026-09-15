@@ -7,7 +7,7 @@
 // where the truth is "unknown".
 
 import { describe, it, expect } from "vitest";
-import { sha256hex12 } from "@pablotech/neuro-pil/hash-node";
+import { sha256hex12 } from "@pablotech/neuro/hash-node";
 import { brainSourceFor, brainKeys, CORE_BRAIN, CHAT_BRAIN } from "../../src/lib/brain-source";
 import { BRAIN_VERSIONS } from "../../src/lib/brain-versions";
 import { brainVersions, renderModule } from "../../scripts/gen-brain-versions";

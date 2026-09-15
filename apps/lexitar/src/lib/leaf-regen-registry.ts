@@ -11,10 +11,10 @@
 import type { Client, ClientFinding, FindingDecisionEntry, TreatmentItem } from "./types";
 import { dagNode } from "./finding-dag";
 import { BRAIN_VERSIONS } from "./brain-versions";
-import { CURRENT_DOSE_RULE, CO_MENTION_RULE, BUCKET_DOSE_RULE, STANDARD_DOSING_RULE } from "@pablotech/akesi-pil/treatment-timing-rules";
-import { treatmentsOf } from "@pablotech/akesi-pil/treatment-normalize";
-import { bucketOf, todayISODate, treatmentLabel, type Bucket } from "@pablotech/akesi-pil/treatment-bucket";
-import { describeProfile, markerLevelBlocks, populatedNoteEntries } from "@pablotech/akesi-pil/finding-generate";
+import { CURRENT_DOSE_RULE, CO_MENTION_RULE, BUCKET_DOSE_RULE, STANDARD_DOSING_RULE } from "@pablotech/akesi/treatment-timing-rules";
+import { treatmentsOf } from "@pablotech/akesi/treatment-normalize";
+import { bucketOf, todayISODate, treatmentLabel, type Bucket } from "@pablotech/akesi/treatment-bucket";
+import { describeProfile, markerLevelBlocks, populatedNoteEntries } from "@pablotech/akesi/finding-generate";
 import { dailyTotalsByName } from "./treatment-conclusion";
 import {
   buildRegroupInputs,
@@ -24,7 +24,7 @@ import {
   resolveRegroup,
   type RegroupInputs,
   type RegroupResponse,
-} from "@pablotech/akesi-pil/finding-regroup";
+} from "@pablotech/akesi/finding-regroup";
 
 // One entry per DAG input key any leaf-regen node will need. Each accessor reuses the exact source
 // (or, for markerLevels/patientAssessment, the exact prompt-builder logic) the monolith already uses

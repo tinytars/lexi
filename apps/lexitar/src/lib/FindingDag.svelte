@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { isStamped } from "@pablotech/neuro-pil";
+  import { isStamped } from "@pablotech/neuro";
   import { FINDING_DAG, upstreamOf, downstreamOf, dagNode, type NodeKind } from "./finding-dag";
   import { staleNodes } from "./staleness";
   import type { Client } from "./types";

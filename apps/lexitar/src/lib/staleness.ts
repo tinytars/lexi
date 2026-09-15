@@ -1,6 +1,6 @@
 import type { Client } from "./types";
-import { driftedKeys, isStamped } from "@pablotech/neuro-pil";
-import { sha256hex12 } from "@pablotech/neuro-pil/hash-web";
+import { driftedKeys, isStamped } from "@pablotech/neuro";
+import { sha256hex12 } from "@pablotech/neuro/hash-web";
 import { findingInputsCanonicalString } from "./factors-hash";
 import { nodeInputCanonical } from "./node-input-hash";
 import { canonicalGenerations, restampKeys } from "./stamp-migration";

@@ -4,8 +4,8 @@ import type { Client } from "../../src/lib/types";
 // Keep the real (separately-tested) extractJson so the parse boundary is exercised for real; stub
 // only validation + assembly + the SubtleCrypto hashes so we can drive the classification loop
 // deterministically without a full valid Finding.
-vi.mock("@pablotech/akesi-pil/finding-assemble", async (orig) => {
-  const actual = (await orig()) as typeof import("@pablotech/akesi-pil/finding-assemble");
+vi.mock("@pablotech/akesi/finding-assemble", async (orig) => {
+  const actual = (await orig()) as typeof import("@pablotech/akesi/finding-assemble");
   return {
     ...actual,
     validateFindingWithInputs: vi.fn(),
@@ -16,11 +16,11 @@ vi.mock("../../src/lib/staleness", () => ({
   findingInputsHash: async () => "ih",
   nodeHashes: async () => ({}),
 }));
-vi.mock("@pablotech/akesi-pil/finding-generate", () => ({ plannedLabels: () => [], populatedNoteEntries: () => [] }));
+vi.mock("@pablotech/akesi/finding-generate", () => ({ plannedLabels: () => [], populatedNoteEntries: () => [] }));
 
-import { FINDING_PORTION_KEYS } from "@pablotech/akesi-pil/finding-assemble";
+import { FINDING_PORTION_KEYS } from "@pablotech/akesi/finding-assemble";
 import { refreshFinding, type RefreshProgress, type RefreshEvent } from "../../src/lib/refresh-client";
-import { validateFindingWithInputs } from "@pablotech/akesi-pil/finding-assemble";
+import { validateFindingWithInputs } from "@pablotech/akesi/finding-assemble";
 
 const CLIENT = { displayName: "P", dob: "1980-01-01", gender: "male", watchlist: [], results: [] } as unknown as Client;
 

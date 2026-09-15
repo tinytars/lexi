@@ -1,4 +1,4 @@
-import type { Zones } from "@pablotech/akesi-pil/ranges";
+import type { Zones } from "@pablotech/akesi/ranges";
 
 export interface BandFloors {
   danger: number;

@@ -4,7 +4,7 @@
   import HeadingAnchor from "./HeadingAnchor.svelte";
   import { healthMarkersAnchor, healthMarkersGroupAnchor } from "./anchor";
   import { recommendedMarkerGroups } from "./recommended-markers-sidebar-groups";
-  import { itemRecordId } from "@pablotech/akesi-pil/item-registry";
+  import { itemRecordId } from "@pablotech/akesi/item-registry";
   import { cellPin, type PinItem } from "./body-pin";
   import { filterByLeaf } from "@tinytars/frame/group-filter";
 

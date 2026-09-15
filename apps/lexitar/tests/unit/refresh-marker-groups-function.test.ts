@@ -11,7 +11,7 @@ vi.mock("@anthropic-ai/sdk", () => ({
 }));
 
 import { onRequestPost } from "../../functions/api/refresh-marker-groups";
-import { markerGroupsHashOf } from "@pablotech/akesi-pil/marker-groups-prompt";
+import { markerGroupsHashOf } from "@pablotech/akesi/marker-groups-prompt";
 import { fakeSessionDb } from "./_session-db";
 
 const ENV = { PROVIDER_TOKEN: "provtok", ANTHROPIC_API_KEY: "k", SESSION_SECRET: "test-secret",

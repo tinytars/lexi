@@ -2,9 +2,9 @@ import { describe, it, expect } from "vitest";
 import {
   safeProductUrl, cleanIngredients, cleanLinks, formatIngredient, hasProductData, productCanonical,
   administrationUnitChanged,
-} from "@pablotech/akesi-pil/treatment-product";
+} from "@pablotech/akesi/treatment-product";
 import { treatmentCanonical } from "../../src/lib/factors-hash";
-import { collapseByName, formatDose, treatmentLabel, matchPlanAssessment, matchOngoingAssessment, renameAssessmentItems } from "@pablotech/akesi-pil/treatment-bucket";
+import { collapseByName, formatDose, treatmentLabel, matchPlanAssessment, matchOngoingAssessment, renameAssessmentItems } from "@pablotech/akesi/treatment-bucket";
 import type { Administration, Client, TreatmentItem } from "../../src/lib/types";
 
 const t = (over: Partial<TreatmentItem> = {}): TreatmentItem =>

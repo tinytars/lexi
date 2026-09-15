@@ -3,7 +3,7 @@
   import ExplorationCell from "./ExplorationCell.svelte";
   import type { PinItem } from "./body-pin";
   import { buildExplorationRows } from "./exploration-rows";
-  import { groupBySystem } from "@pablotech/akesi-pil/system-groups";
+  import { groupBySystem } from "@pablotech/akesi/system-groups";
   import { explorationAnchor, findByAnchor } from "./anchor";
   import { filterByGroup } from "@tinytars/frame/group-filter";
   import { ALL_GROUP_KEY } from "./sidebar-labels";

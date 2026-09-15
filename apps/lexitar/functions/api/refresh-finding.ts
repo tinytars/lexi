@@ -2,9 +2,9 @@ import Anthropic from "@anthropic-ai/sdk";
 import { requireBearer } from "../_lib/guard";
 import { logRequest } from "../_lib/log";
 import { auditor } from "../_lib/audit";
-import { buildUserMessage, SYSTEM_PROMPT, correctionSuffix } from "@pablotech/akesi-pil/finding-generate";
+import { buildUserMessage, SYSTEM_PROMPT, correctionSuffix } from "@pablotech/akesi/finding-generate";
 import { FINDING_MODEL } from "../../src/lib/finding-config";
-import { findingRequestParams } from "@pablotech/akesi-pil/finding-generate";
+import { findingRequestParams } from "@pablotech/akesi/finding-generate";
 
 // W15/3b.2 — provider-only web Finding refresh. Gated on PROVIDER_TOKEN (the distinct secret from
 // /api/provider-token). A Finding call runs minutes, so we STREAM Opus text to the browser

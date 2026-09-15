@@ -1,8 +1,8 @@
 import type { Attachment, Client } from "./types";
-import { treatmentsOf } from "@pablotech/akesi-pil/treatment-normalize";
-import { productCanonical } from "@pablotech/akesi-pil/treatment-product";
-import { pinnedQueryLines } from "@pablotech/akesi-pil/pinned-queries";
-import { stableStringify } from "@pablotech/neuro-pil";
+import { treatmentsOf } from "@pablotech/akesi/treatment-normalize";
+import { productCanonical } from "@pablotech/akesi/treatment-product";
+import { pinnedQueryLines } from "@pablotech/akesi/pinned-queries";
+import { stableStringify } from "@pablotech/neuro";
 
 /**
  * W75 — the attachments on a row, as a canonical suffix.
@@ -104,7 +104,7 @@ export function noteCanonical(c: Client): string[] | undefined {
   return notes.length ? notes : undefined;
 }
 
-// W61 — moved to @pablotech/neuro-pil (neuro-pil/canonical.ts) so the Node CLI, the browser, and any
+// W61 — moved to @pablotech/neuro (neuro-pil/canonical.ts) so the Node CLI, the browser, and any
 // future vault's staleness tooling share one implementation. Re-exported here (imported above) so
 // this file's ~6 existing importers don't need to change. See
 // docs/health-dash/plans/61-w61-graph-brain-extraction.md.

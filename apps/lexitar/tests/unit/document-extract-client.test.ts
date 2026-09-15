@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { documentTextsFor, isExtractableDocument, isPdfAttachment, extractedMetadata } from "../../src/lib/document-extract-client";
-import { MAX_DOCUMENT_CHARS, MAX_DOCUMENTS_TOTAL_CHARS } from "@pablotech/akesi-pil/document-read";
+import { MAX_DOCUMENT_CHARS, MAX_DOCUMENTS_TOTAL_CHARS } from "@pablotech/akesi/document-read";
 import type { Attachment } from "../../src/lib/types";
 
 const att = (name: string, mediaType: string): Attachment => ({ key: `k-${name}`, name, mediaType, bytes: 1, addedAt: "" });

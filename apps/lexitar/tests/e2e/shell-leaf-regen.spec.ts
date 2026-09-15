@@ -4,7 +4,7 @@ import { openAsProvider } from "./_login";
 import { clickLeafMenuItem } from "./_leaf-menu";
 import { clickNav } from "./_nav";
 import { unlock, gotoTreatmentBucket, identifyTreatmentByText, addOngoingTreatment, editFirstDoseEntry } from "./_shell";
-import { treatmentLabel } from "@pablotech/akesi-pil/treatment-bucket";
+import { treatmentLabel } from "@pablotech/akesi/treatment-bucket";
 
 // The /api/leaf-regen relay, from the UI side (M66 P8, M68).
 //

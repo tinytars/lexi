@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { computeBandedScale, DEFAULT_BAND_FLOORS } from "../../src/lib/chart-scale";
-import { computeZones } from "@pablotech/akesi-pil/ranges";
+import { computeZones } from "@pablotech/akesi/ranges";
 
 const PLOT_TOP = 8;
 const PLOT_H = 74;

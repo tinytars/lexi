@@ -6,7 +6,7 @@
 
 import { randomUUID } from "node:crypto";
 import type { Client, ClientFactors, LegacyFactors } from "../../src/lib/types";
-import { normalizeTreatments } from "@pablotech/akesi-pil/treatment-normalize";
+import { normalizeTreatments } from "@pablotech/akesi/treatment-normalize";
 import { findingInputsHashOf, nodeHashesOf } from "../factors";
 
 // W31 — one-time fold of the legacy medications/supplements/plan arrays into the unified

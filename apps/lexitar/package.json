@@ -57,6 +57,8 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",
+    "@pablotech/akesi": "^0.1.43",
+    "@pablotech/neuro": "^0.1.43",
     "@simplewebauthn/browser": "^13.3.0",
     "@simplewebauthn/server": "^13.3.2",
     "@tinytars/frame": "^0.1.5",

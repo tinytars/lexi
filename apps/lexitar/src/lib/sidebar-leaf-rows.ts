@@ -7,7 +7,7 @@ import { rowAnchors, studyAnchor, noteAnchor, reportAnchor } from "./anchor";
 import { sortPinnedFirst } from "./pin-sort";
 import type { SidebarLeafRow, SidebarGroupRow } from "@tinytars/frame/sidebar-rows";
 import { ALL_GROUP_LABEL, ALL_GROUP_KEY } from "./sidebar-labels";
-import { reportTitleOf, reportDateOf, REPORT_KIND_LABEL } from "@pablotech/akesi-pil/report-title";
+import { reportTitleOf, reportDateOf, REPORT_KIND_LABEL } from "@pablotech/akesi/report-title";
 import { questionsSidebarGroups } from "./questions-sidebar-groups";
 import { glossarySidebarGroups } from "./glossary-sidebar-groups";
 import { recommendedMarkersSidebarGroups } from "./recommended-markers-sidebar-groups";

@@ -6,7 +6,7 @@
 // sits under the same brain-version stamp (brain-source.ts), so editing this text without
 // regenerating the map is a test failure rather than a silent re-attribution.
 
-import type { UnitSystem } from "@pablotech/akesi-pil/unit-systems";
+import type { UnitSystem } from "@pablotech/akesi/unit-systems";
 
 export function chatSystemPrompt(today: string, unitSystem: UnitSystem): string {
   const sys = unitSystem === "imperial"

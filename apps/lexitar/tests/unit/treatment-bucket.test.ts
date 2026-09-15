@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { bucketOf, collapseByName, treatmentLabel, treatmentMeta, groupByName, dateGaps, formatDose, matchOngoingAssessment } from "@pablotech/akesi-pil/treatment-bucket";
+import { bucketOf, collapseByName, treatmentLabel, treatmentMeta, groupByName, dateGaps, formatDose, matchOngoingAssessment } from "@pablotech/akesi/treatment-bucket";
 import { treatmentSidebarBuckets } from "../../src/lib/treatment-sidebar";
 import type { Client, TreatmentItem } from "../../src/lib/types";
 

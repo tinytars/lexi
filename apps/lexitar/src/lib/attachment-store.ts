@@ -3,11 +3,11 @@
 // contract (functions/api/raw/[[path]].ts). Keys mirror PendingUpload.file (types.ts):
 // "<sha8>-<safeName>" under raw/{id}/. GET is not wrapped here — the UI builds attachmentUrl()
 // directly for <img src>/download links.
-import { hashSourceWeb } from "@pablotech/akesi-pil/ingest-core";
+import { hashSourceWeb } from "@pablotech/akesi/ingest-core";
 import { compressImage } from "./image-compress";
 import { bytesToBase64 } from "./extract-client";
 import { openPdf } from "@tinytars/frame/pdf-render";
-import { MAX_DOCUMENT_PAGES } from "@pablotech/akesi-pil/document-read";
+import { MAX_DOCUMENT_PAGES } from "@pablotech/akesi/document-read";
 import { extractDocument, extractedMetadata, isExtractableDocument, isPdfAttachment } from "./document-extract-client";
 import { normalizeClientId } from "./client-id";
 import type { Attachment } from "./types";

@@ -15,7 +15,7 @@
   import SidebarLeafList from "@tinytars/frame/SidebarLeafList.svelte";
   import type { SidebarGroupRow, SidebarLeafRow } from "@tinytars/frame/sidebar-rows";
   import { markerSidebarGroups, markerGroupsPending } from "./marker-sidebar-groups";
-  import { todayISODate } from "@pablotech/akesi-pil/treatment-bucket";
+  import { todayISODate } from "@pablotech/akesi/treatment-bucket";
   import { treatmentSidebarBuckets, type TreatmentSidebarBucket } from "./treatment-sidebar";
   import { hypothesisSidebarGroups, hypothesisGroupsPending } from "./hypothesis-sidebar-groups";
   import { explorationSidebarGroups, explorationGroupsPending } from "./exploration-sidebar-groups";
@@ -30,7 +30,7 @@
   import { analysisSidebarGroups } from "./analysis-items";
   import type { LeafMenuItem } from "@tinytars/frame/menu-items";
   import { capabilitiesFor, capabilitiesForRow, type RowCapabilities, type RowKind } from "./sidebar-row-capabilities";
-import { pinnedQueries } from "@pablotech/akesi-pil/pinned-queries";
+import { pinnedQueries } from "@pablotech/akesi/pinned-queries";
   import type { SidebarItemKind } from "./vault-item-ops";
   import { PRODUCT_NAME } from "./brand";
 

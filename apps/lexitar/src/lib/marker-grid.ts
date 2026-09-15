@@ -3,7 +3,7 @@
 // sections with status. Moved verbatim from App.svelte during the W11 restructure.
 
 import type { Client, MarkerResult } from "./types";
-import { concernRank, currentZoneStatus, resolveRange, type ZoneStatus } from "@pablotech/akesi-pil/ranges";
+import { concernRank, currentZoneStatus, resolveRange, type ZoneStatus } from "@pablotech/akesi/ranges";
 import { sortPinnedFirst } from "./pin-sort";
 
 export type Marker = {

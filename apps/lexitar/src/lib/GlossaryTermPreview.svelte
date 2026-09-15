@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Client } from "./types";
   import AiTurnCard from "./AiTurnCard.svelte";
-  import { itemRecordId } from "@pablotech/akesi-pil/item-registry";
+  import { itemRecordId } from "@pablotech/akesi/item-registry";
   import { cellPin, type PinItem } from "./body-pin";
 
   // One glossary term as a leaf cell — the twin of QuestionPreview, converted for the same reason

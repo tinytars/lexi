@@ -9,16 +9,16 @@ import type {
   Client, Vault, AllergyEntry, FamilyHistoryEntry, DecisionEntry, MarkerResult,
 } from "./types";
 import { type Permalink, sectionLabel } from "./permalink";
-import { reportDateOf, REPORT_KIND_LABEL } from "@pablotech/akesi-pil/report-title";
+import { reportDateOf, REPORT_KIND_LABEL } from "@pablotech/akesi/report-title";
 import {
   reportAnchor, diagnosisAnchor, markerAnchor, watchAnchor, ratioAnchor,
   treatmentAnchor, studyAnchor, futureAnchor, ideaAnchor, rowAnchors,
 } from "./anchor";
 import { buildMarkerRatios } from "./marker-ratios";
 import { sortPinnedFirst } from "./pin-sort";
-import { treatmentsOf } from "@pablotech/akesi-pil/treatment-normalize";
-import { collapseByName, formatDose } from "@pablotech/akesi-pil/treatment-bucket";
-import { resolveRange } from "@pablotech/akesi-pil/ranges";
+import { treatmentsOf } from "@pablotech/akesi/treatment-normalize";
+import { collapseByName, formatDose } from "@pablotech/akesi/treatment-bucket";
+import { resolveRange } from "@pablotech/akesi/ranges";
 
 export type ReferenceKind =
   | "report" | "diagnosis" | "marker" | "ratio" | "watchlist" | "treatment"

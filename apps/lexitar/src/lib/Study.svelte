@@ -19,7 +19,7 @@
   import { studyAnchor } from "./anchor";
   import StudyRow from "./StudyRow.svelte";
   import { buildStudyPairs } from "./study-pairs";
-  import { groupBySystem } from "@pablotech/akesi-pil/system-groups";
+  import { groupBySystem } from "@pablotech/akesi/system-groups";
   import { createDraftSync, createPersistNow } from "./draft-sync.svelte";
   import type { Permalink } from "./permalink";
   import { sortPinnedFirst } from "./pin-sort";

@@ -6,7 +6,7 @@
 
 import type { Client } from "./types";
 import { buildHypothesisGroups } from "./treatment-groups";
-import { systemAnalysisEstablished, systemOrder } from "@pablotech/akesi-pil/system-groups";
+import { systemAnalysisEstablished, systemOrder } from "@pablotech/akesi/system-groups";
 import { ideaLeaf } from "./sidebar-leaf-mappers";
 import type { SidebarLeafRow } from "@tinytars/frame/sidebar-rows";
 import { sortPinnedFirst } from "./pin-sort";

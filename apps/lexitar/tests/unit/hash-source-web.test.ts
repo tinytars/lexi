@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { hashSource } from "../../scripts/sources-store";
-import { hashSourceWeb } from "@pablotech/akesi-pil/ingest-core";
+import { hashSourceWeb } from "@pablotech/akesi/ingest-core";
 
 const bytes = (s: string) => new TextEncoder().encode(s);
 

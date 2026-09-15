@@ -6,7 +6,7 @@
 // fix), asserted explicitly by the test for this module rather than left implicit.
 
 import type { Administration, Attachment, TreatmentItem } from "./types";
-import { administrationUnitChanged } from "@pablotech/akesi-pil/treatment-product";
+import { administrationUnitChanged } from "@pablotech/akesi/treatment-product";
 
 export interface MedicineFanoutFields {
   name: string;

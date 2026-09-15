@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { mergeLeafResult } from "../../src/lib/leaf-regen-registry";
-import { SYSTEM_PROMPT, buildUserMessage } from "@pablotech/akesi-pil/finding-generate";
+import { SYSTEM_PROMPT, buildUserMessage } from "@pablotech/akesi/finding-generate";
 import { LEAF_REGEN_SPECS } from "../../src/lib/leaf-regen-registry";
 import type { Client } from "../../src/lib/types";
 

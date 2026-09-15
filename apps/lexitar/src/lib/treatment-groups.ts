@@ -5,9 +5,9 @@
 // (a pre-W21 Finding) — the signal for FutureTreatment to fall back to its heuristic.
 
 import type { Client, TreatmentGroup } from "./types";
-import { treatmentsOf } from "@pablotech/akesi-pil/treatment-normalize";
-import { bucketOf, treatmentLabel, todayISODate } from "@pablotech/akesi-pil/treatment-bucket";
-import { systemOrder, UNCATEGORIZED } from "@pablotech/akesi-pil/system-groups";
+import { treatmentsOf } from "@pablotech/akesi/treatment-normalize";
+import { bucketOf, treatmentLabel, todayISODate } from "@pablotech/akesi/treatment-bucket";
+import { systemOrder, UNCATEGORIZED } from "@pablotech/akesi/system-groups";
 import { sortPinnedFirst } from "./pin-sort";
 
 export interface ResolvedPatientItem {

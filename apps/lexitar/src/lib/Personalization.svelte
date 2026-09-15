@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Client, ClientFactors, LegacyFactors } from "./types";
-  import { PREGNANCY_VALUES, ATHLETIC_VALUES, SMOKING_VALUES } from "@pablotech/akesi-pil/factors-edit";
-  import { normalizeTreatments } from "@pablotech/akesi-pil/treatment-normalize";
+  import { PREGNANCY_VALUES, ATHLETIC_VALUES, SMOKING_VALUES } from "@pablotech/akesi/factors-edit";
+  import { normalizeTreatments } from "@pablotech/akesi/treatment-normalize";
   import { createDraftSync, createPersistNow } from "./draft-sync.svelte";
   import DictateButton from "@tinytars/frame/DictateButton.svelte";
   import Field from "@tinytars/frame/Field.svelte";

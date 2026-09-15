@@ -3,8 +3,8 @@
 // client.markerGroups + saves the vault). Available to the account owner (same-origin session
 // cookie, no providerToken) and any granted provider (providerToken set).
 import type { Client, MarkerGrouping } from "./types";
-import { distinctMarkerNames, markerGroupsHashOf } from "@pablotech/akesi-pil/marker-groups-prompt";
-import { systemOrder } from "@pablotech/akesi-pil/system-groups";
+import { distinctMarkerNames, markerGroupsHashOf } from "@pablotech/akesi/marker-groups-prompt";
+import { systemOrder } from "@pablotech/akesi/system-groups";
 
 const SENTINEL = "[[REFRESH_ERROR]]";
 

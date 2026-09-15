@@ -2,8 +2,8 @@
   import { statusWord, chartLabel as buildChartLabel } from "./marker-status";
   import type { Client, MarkerResult, NoteAttachment } from "./types";
   import { describeAiError } from "./ai-error";
-  import type { MarkerDelta, DeltaChange } from "@pablotech/akesi-pil/marker-deltas";
-  import { resolveRange } from "@pablotech/akesi-pil/ranges";
+  import type { MarkerDelta, DeltaChange } from "@pablotech/akesi/marker-deltas";
+  import { resolveRange } from "@pablotech/akesi/ranges";
   import { chartGeometry } from "./marker-chart-geometry";
   import HeadingAnchor from "./HeadingAnchor.svelte";
   import { PRODUCT_NAME } from "./brand";
@@ -14,7 +14,7 @@
   import MarkerDetails from "./MarkerDetails.svelte";
   import MarkerSummary from "./MarkerSummary.svelte";
   import { fmtNum, type UnitSystem } from "./units";
-  import { normalizeSeries } from "@pablotech/akesi-pil/unit-systems";
+  import { normalizeSeries } from "@pablotech/akesi/unit-systems";
   import type { Permalink } from "./permalink";
 
   interface Props {

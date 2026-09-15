@@ -7,7 +7,7 @@
 import type { Client } from "./types";
 import type { SidebarGroupRow } from "@tinytars/frame/sidebar-rows";
 import { ALL_GROUP_LABEL, ALL_GROUP_KEY } from "./sidebar-labels";
-import { groupBySystem } from "@pablotech/akesi-pil/system-groups";
+import { groupBySystem } from "@pablotech/akesi/system-groups";
 import { reportSidebarRows } from "./sidebar-leaf-rows";
 import { systemGroupRows } from "./sidebar-system-rows";
 

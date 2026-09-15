@@ -11,10 +11,10 @@
 // what it does in December without waiting for December. The SVG stays in the component.
 
 import type { MarkerResult, PersonalizedRange } from "./types";
-import { computeZones } from "@pablotech/akesi-pil/ranges";
+import { computeZones } from "@pablotech/akesi/ranges";
 import { computeBandedScale } from "./chart-scale";
 import { displayScaleFor, fmtNum, type UnitSystem } from "./units";
-import { toCanonical, canonicalUnit } from "@pablotech/akesi-pil/unit-systems";
+import { toCanonical, canonicalUnit } from "@pablotech/akesi/unit-systems";
 
 export interface Padding {
   top: number;

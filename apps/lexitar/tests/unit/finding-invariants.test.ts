@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { assembledFindingViolations } from "../../src/lib/finding-invariants";
 import { mergeLeafResult } from "../../src/lib/leaf-regen-registry";
-import { BASIS_KEYS } from "@pablotech/akesi-pil/finding-assemble";
+import { BASIS_KEYS } from "@pablotech/akesi/finding-assemble";
 import type { Client } from "../../src/lib/types";
 
 // The load-bearing test in this file is the FIRST one: a realistic assembled Finding must produce zero

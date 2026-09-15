@@ -1,5 +1,5 @@
 import type { DecisionEntry, DiseaseEntry, StudyEntry, TreatmentItem, TreatmentKind } from "../src/lib/types";
-import { normalizeDate } from "@pablotech/akesi-pil/treatment-normalize";
+import { normalizeDate } from "@pablotech/akesi/treatment-normalize";
 
 const TREATMENT_KINDS: TreatmentKind[] = ["drug", "supplement", "behavior"];
 

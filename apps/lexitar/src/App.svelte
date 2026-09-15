@@ -51,7 +51,7 @@
   import ImportTab from "./lib/ImportTab.svelte";
   import { classifyUpload } from "./lib/import-flow";
   import { togglePinnedIn, renameIn, removeFrom, labelOf, type SidebarItemKind } from "./lib/vault-item-ops";
-  import { pinnedQueries } from "@pablotech/akesi-pil/pinned-queries";
+  import { pinnedQueries } from "@pablotech/akesi/pinned-queries";
   import Onboarding, { type OnboardingField } from "@tinytars/frame/Onboarding.svelte";
   import AccountMenu from "@tinytars/frame/AccountMenu.svelte";
   import LoginScreen from "@tinytars/frame/LoginScreen.svelte";
@@ -65,7 +65,7 @@
   import { sidebarActionFor } from "./lib/sidebar-actions";
   import LeafActionMenu from "@tinytars/frame/LeafActionMenu.svelte";
   import type { LeafMenuItem } from "@tinytars/frame/menu-items";
-  import { systemOrder } from "@pablotech/akesi-pil/system-groups";
+  import { systemOrder } from "@pablotech/akesi/system-groups";
   import { refreshFindingWithLeaves, logRefreshEvent, fetchRefreshLog, type RefreshProgress } from "./lib/refresh-client";
   import type { RefreshStage } from "./lib/finding-refresh";
   import { refreshMarkerGroups } from "./lib/marker-groups-client";

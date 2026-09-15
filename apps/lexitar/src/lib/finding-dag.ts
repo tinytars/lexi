@@ -4,13 +4,13 @@
 // vault from whatever this file currently holds.
 
 import { PRODUCT_NAME } from "./brand";
-import { defineDag, type DagNode, type NodeKind } from "@pablotech/neuro-pil";
+import { defineDag, type DagNode, type NodeKind } from "@pablotech/neuro";
 
 export type { DagNode, NodeKind };
 
 // Extends the shared, domain-free DagNode with clinical-reasoning prompt text pulled from
 // clinical-vault's `## Reasoning` sections. Kept local to this app — never added to
-// @pablotech/neuro-pil, which must stay domain-free.
+// @pablotech/neuro, which must stay domain-free.
 export interface FindingDagNode extends DagNode {
   reasoning?: string;
 }

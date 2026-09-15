@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { mergeInferredFields } from "../../src/lib/treatment-infer-merge";
-import type { ProposedTreatment } from "@pablotech/akesi-pil/treatment-infer";
+import type { ProposedTreatment } from "@pablotech/akesi/treatment-infer";
 
 function result(overrides: Partial<ProposedTreatment> = {}): ProposedTreatment {
   return { name: "Metformin", kind: "drug", ...overrides };

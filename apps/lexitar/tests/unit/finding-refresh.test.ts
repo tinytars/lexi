@@ -103,7 +103,7 @@ describe("orchestrateRefresh", () => {
 // These assert the OUTCOME (what a reader of the vault would find), not the mechanism.
 
 import { carryForwardLeafSections, leafOwnedSections } from "../../src/lib/finding-refresh";
-import { driftedKeys } from "@pablotech/neuro-pil";
+import { driftedKeys } from "@pablotech/neuro";
 
 /** A core response as assembleFinding really returns one: the leaf sections empty or absent. */
 const coreOnly = (nodeHashes: Record<string, string> = {}) =>

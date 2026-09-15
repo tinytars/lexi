@@ -1,8 +1,8 @@
 <script lang="ts" module>
   import type { Client, Attachment } from "./types";
-  import { collapseByName, assessmentFor, treatmentMeta, treatmentLabel, todayISODate, BUCKET_LABEL, type Bucket } from "@pablotech/akesi-pil/treatment-bucket";
+  import { collapseByName, assessmentFor, treatmentMeta, treatmentLabel, todayISODate, BUCKET_LABEL, type Bucket } from "@pablotech/akesi/treatment-bucket";
   import { partitionByBucket } from "./treatment-sidebar";
-  import { treatmentsOf } from "@pablotech/akesi-pil/treatment-normalize";
+  import { treatmentsOf } from "@pablotech/akesi/treatment-normalize";
   import { planActionSystems } from "./treatment-groups";
   import { attachmentsOf, attachmentUrl } from "./attachment-store";
 

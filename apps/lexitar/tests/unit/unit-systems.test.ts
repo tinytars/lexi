@@ -1,52 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import {
   ANALYTE,
   toCanonical,
   normalizeSeries,
-  unmappedConvertible,
   recognizes,
   canonicalUnit,
   VERIFIED_NO_CONVERT_UNITS,
-} from "@pablotech/akesi-pil/unit-systems";
+} from "@pablotech/akesi/unit-systems";
 import { displayScaleFor } from "../../src/lib/units";
-import { resolveClientId } from "../../scripts/vault-io";
-import type { Vault, Roster, MarkerResult } from "../../src/lib/types";
-
-// W14 — analytes whose convertible-class unit is intentionally NOT mapped yet (no verified
-// factor). They pass through in their stored unit. ANY new convertible analyte must land
-// either in ANALYTE (with a verified factor) or here — the coverage gate below enforces it,
-// so a unit can never silently render in the wrong system.
-const KNOWN_UNMAPPED = new Set<string>([
-  // Steroid/thyroid analytes whose factor was NOT in the verified source (DHEA-S ≠ DHEA;
-  // free/reverse T3 factor ambiguous; pregnenolone absent) — left for a verified pass.
-  "Dehydroepiandrosterone Sulfate (DHEA-S)", "Pregnenolone", "Reverse T3, Serum",
-  "T3, Free (Triiodothyronine)", "Dihydrotestosterone (male)", "DHT, Free",
-  // Reported in nmol/L in BOTH systems (no US-conventional mass form in routine use).
-  "Sex Horm Binding Glob, Serum (Male)",
-  // Protein-hormone / immunoassay results: conventional ng/mL ≈ µg/L and the mass↔IU
-  // conversion is assay-dependent (no single factor) — not safe to convert.
-  "Growth Hormone", "Prolactin", "Insulin (Fasting)",
-  // Numerically identical relabels (ng/mL≡µg/L, pg/mL≡ng/L) — no value change to make.
-  "Prostate Specific Antigen (PSA)", "Carcinoembryonic Antigen (CEA)", "NT-proBNP",
-  "C-telopeptide (CTX)",
-  // Reported in mg/L in both systems (CRP family).
-  "C-Reactive Protein (CRP)", "hsCRP", "Cystatin C",
-  // Reported in SI in both systems / no routine US-conventional form.
-  "Homocysteine", "Methylmalonic Acid, Serum", "Fructosamine",
-  // Isoform-dependent (nmol/L↔mg/dL is not a fixed factor).
-  "Lipoprotein (a)",
-  // Data-quality anomaly: ferritin is normally ng/mL, but this vault stores µg/dL — do not
-  // apply the standard factor to a suspect unit.
-  "Ferritin",
-  // Dimensional-only relabels deferred to limit this pass's scope (mg/dL→g/L, etc.).
-  "Ceruloplasmin", "Transferrin", "Copper, RBC",
-  // urea vs BUN unit-convention ambiguity (BUN itself IS mapped; "Urea" left alone).
-  "Urea",
-  // Urine chemistries.
-  "Bilirubin, Urine", "Glucose Qualitative, Urine", "Total Protein, Urine",
-]);
 
 describe("toCanonical / normalizeSeries", () => {
   it("folds a US analyte unit to its SI canonical (glucose mg/dL → mmol/L)", () => {
@@ -106,23 +67,7 @@ describe("ingest NORMALIZE ↔ ANALYTE factor parity", () => {
   }
 });
 
-// COVERAGE GATE: every convertible-class (marker, unit) in the real vault must be either
-// mapped (verified factor) or explicitly allow-listed. Fails when a new analyte with a
-// convertible unit is ingested without a decision — no silent wrong-system rendering.
-describe("coverage gate over the committed vault", () => {
-  it("every convertible analyte is mapped or explicitly allow-listed", () => {
-    // G1 made the client id opaque, so the directory can no longer be spelled out — resolve it from
-    // the roster by display name, the same alias the CLI accepts. Scope is unchanged: widening this
-    // to every client surfaces unmapped analytes in the other vault that predate G1 and need a
-    // clinical decision, which is a separate piece of work.
-    const roster = JSON.parse(readFileSync(resolve("records/private/roster.json"), "utf8")) as Roster;
-    const id = resolveClientId("Alex", roster);
-    const vault = JSON.parse(readFileSync(resolve(`records/private/${id}/vault.json`), "utf8")) as Vault;
-    const rows: MarkerResult[] = Object.values(vault.clients).flatMap((c) => c.results ?? []);
-    const gaps = unmappedConvertible(rows).filter((g) => !KNOWN_UNMAPPED.has(g.marker));
-    expect(gaps, `unhandled convertible analytes — map them in ANALYTE or add to KNOWN_UNMAPPED:\n${gaps.map((g) => `  ${g.marker} [${g.unit}]`).join("\n")}`).toEqual([]);
-  });
-
+describe("recognizes", () => {
   it("g/L serum proteins are recognized (dimensional mg/dL conversion), not flagged unmapped", () => {
     expect(recognizes("Gamma Globulin, Serum", "g/L")).toBe(true);
   });

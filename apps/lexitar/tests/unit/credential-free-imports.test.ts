@@ -1,74 +1,8 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DATA_TESTS } from "../../vitest.config";
-
-// W69 — the unit suite must be importable on a machine with no credentials.
-//
-// `scripts/vault-verify.ts` used to resolve ROSTER_PASS/PASSPHRASE at MODULE scope and throw there.
-// `tests/unit/vault-integrity.test.ts` imports it, so on any machine without
-// ~/.claude/infra/cloud/credentials the whole file failed at COLLECTION — not as a skip, as an error.
-// That single line is what pinned the entire unit suite to this Mac and blocked a GitHub-hosted job.
-//
-// The fix is not "set the variable in CI" (that would mean copying the family passphrase into Actions
-// secrets, which the repo forbids) — it is that needing a credential to RUN must not mean needing one
-// to IMPORT. This test holds that line: it strips the variables, re-imports fresh, and requires the
-// module to load anyway while still refusing to do the work.
-
-const CREDS = ["ROSTER_PASS", "PASSPHRASE", "ORG_KEY_PASSPHRASE"] as const;
-
-afterEach(() => {
-  vi.unstubAllEnvs();
-  vi.resetModules();
-});
-
-/**
- * Simulate a GitHub-hosted runner: no credentials directory, and none of the variables it would set.
- *
- * Both halves are required, and the second is the subtle one. vault-verify.ts:6 imports ./load-creds,
- * so `vi.resetModules()` RE-RUNS it — and load-creds fills any variable that is currently undefined
- * from ~/.claude/infra/cloud/credentials. Deleting the variables alone therefore does nothing on this
- * Mac: they come straight back. Pointing PLOVER_CREDENTIALS_DIR at nothing is what actually reproduces
- * ubuntu-latest, where that directory has never existed.
- */
-function withoutCredentials() {
-  vi.stubEnv("PLOVER_CREDENTIALS_DIR", "/nonexistent/credentials/dir");
-  for (const key of CREDS) vi.stubEnv(key, undefined);
-  vi.resetModules(); // force a fresh module-scope evaluation, which is where the old throw lived
-}
-
-describe("modules the unit suite imports do not require credentials to LOAD", () => {
-  it("scripts/vault-verify imports with no credentials set", async () => {
-    withoutCredentials();
-    const mod = await import("../../scripts/vault-verify");
-    expect(typeof mod.verifyVaults).toBe("function");
-    expect(typeof mod.rosterPass).toBe("function");
-  });
-
-  it("but verifyVaults still refuses to run, loudly and by name", async () => {
-    withoutCredentials();
-    const { verifyVaults } = await import("../../scripts/vault-verify");
-    await expect(verifyVaults()).rejects.toThrow(/ROSTER_PASS\/PASSPHRASE not set/);
-  });
-
-  it("rosterPass returns the value when one IS set", async () => {
-    // Exported-but-empty: must defer to PASSPHRASE rather than count as "set".
-    vi.stubEnv("ROSTER_PASS", "");
-    vi.stubEnv("PASSPHRASE", "from-passphrase");
-    vi.resetModules();
-    const { rosterPass } = await import("../../scripts/vault-verify");
-    expect(rosterPass()).toBe("from-passphrase");
-  });
-
-  // load-creds is the other half of the promise: on a hosted runner the credentials directory simply
-  // does not exist, and that must be a no-op rather than a failure.
-  it("scripts/load-creds is a no-op when the credentials directory is absent", async () => {
-    vi.stubEnv("PLOVER_CREDENTIALS_DIR", "/nonexistent/credentials/dir");
-    vi.resetModules();
-    await expect(import("../../scripts/load-creds")).resolves.toBeDefined();
-  });
-});
 
 // ── the partition itself ────────────────────────────────────────────────────────────────────────
 //

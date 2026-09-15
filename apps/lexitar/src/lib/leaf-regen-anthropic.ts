@@ -9,7 +9,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { LEAF_REGEN_SPECS, validateLeafResult, BASE_SYSTEM_PROMPT } from "./leaf-regen-registry";
 import { REGROUP_MODEL } from "./regroup-config";
 import { LEAF_REGEN_MAX_TOKENS } from "./leaf-regen-config";
-import { documentsPromptBlock, type DocumentText } from "@pablotech/akesi-pil/document-read";
+import { documentsPromptBlock, type DocumentText } from "@pablotech/akesi/document-read";
 
 // The SDK's own image media-type union. An attachment whose compression was skipped (the HEIC
 // gotcha in attachment-store.ts) carries a mediaType the API cannot accept, and this used to be an

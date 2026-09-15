@@ -15,7 +15,7 @@
 // This re-stamps the nodes that the new edge — and only the new edge — moved, so nobody is spuriously
 // stale. A node that was ALREADY stale for a real reason is left stale: marking stale prose fresh is
 // the one thing this must never do (see LEAF_REGENERABLE's comment in scripts/factors.ts).
-import { canonicalFor, canonicalMap, defineDag } from "@pablotech/neuro-pil";
+import { canonicalFor, canonicalMap, defineDag } from "@pablotech/neuro";
 import { FINDING_DAG, findingDag } from "./finding-dag";
 import { INPUT_SLICES } from "./node-input-hash";
 import type { Client } from "./types";

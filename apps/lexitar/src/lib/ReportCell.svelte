@@ -1,7 +1,7 @@
 <script lang="ts" module>
   import type { Client, SourceRecord, DiseaseEntry } from "./types";
   import { sortPinnedFirst } from "./pin-sort";
-  import { reportDateOf } from "@pablotech/akesi-pil/report-title";
+  import { reportDateOf } from "@pablotech/akesi/report-title";
 
   export interface ReportView { source: SourceRecord; diagnoses: DiseaseEntry[] }
 
@@ -23,8 +23,8 @@
   import PdfThumbnail from "@tinytars/frame/PdfThumbnail.svelte";
   import type { LeafMenuItem } from "@tinytars/frame/menu-items";
   import { reportAnchor, diagnosisAnchor } from "./anchor";
-  import { reportTitleOf, reportDateOf as dateOf, REPORT_KIND_LABEL } from "@pablotech/akesi-pil/report-title";
-  import { formatDay } from "@pablotech/akesi-pil/dates";
+  import { reportTitleOf, reportDateOf as dateOf, REPORT_KIND_LABEL } from "@pablotech/akesi/report-title";
+  import { formatDay } from "@pablotech/akesi/dates";
   import { PRODUCT_NAME } from "./brand";
   import { onlyIndexed } from "@tinytars/frame/filter";
 

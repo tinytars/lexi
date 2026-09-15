@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { assessmentFor, matchOngoingAssessment } from "@pablotech/akesi-pil/treatment-bucket";
+import { assessmentFor, matchOngoingAssessment } from "@pablotech/akesi/treatment-bucket";
 import { partitionByBucket } from "../../src/lib/treatment-sidebar";
 import type { Client, TreatmentItem } from "../../src/lib/types";
 
@@ -153,7 +153,7 @@ describe("treatmentAssessment merge, per (drug, phase)", () => {
 });
 
 import { leafContextFor } from "../../src/lib/leaf-regen-registry";
-import { todayISODate } from "@pablotech/akesi-pil/treatment-bucket";
+import { todayISODate } from "@pablotech/akesi/treatment-bucket";
 
 describe("the leaf context carries Today", () => {
   // The rules were unanswerable without it. CURRENT_DOSE_RULE defines the current dose as "the row

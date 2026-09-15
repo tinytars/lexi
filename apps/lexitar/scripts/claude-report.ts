@@ -6,7 +6,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { Client, InferenceMode } from "../src/lib/types";
 import { MODELS } from "./inference-config";
 import type { UsageAccumulator } from "./inference-cost";
-import { proposeFromReport as proposeFromReportCore } from "@pablotech/akesi-pil/report-extract";
+import { proposeFromReport as proposeFromReportCore } from "@pablotech/akesi/report-extract";
 
 export {
   REPORT_SCHEMA,
@@ -17,9 +17,9 @@ export {
   type ProposedComorbidity,
   type ProposedMarkerEntry,
   type ProposedPriorComparison,
-} from "@pablotech/akesi-pil/report-extract";
+} from "@pablotech/akesi/report-extract";
 
-import type { ProposedReport } from "@pablotech/akesi-pil/report-extract";
+import type { ProposedReport } from "@pablotech/akesi/report-extract";
 
 let cachedClient: Anthropic | null = null;
 function anthropic(): Anthropic {

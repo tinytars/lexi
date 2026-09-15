@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { resolvePatientRef, resolveAiRef, resolveTreatmentGroups, buildHypothesisGroups } from "../../src/lib/treatment-groups";
-import { UNCATEGORIZED } from "@pablotech/akesi-pil/system-groups";
+import { UNCATEGORIZED } from "@pablotech/akesi/system-groups";
 import type { Client } from "../../src/lib/types";
 
 function client(_extra: Partial<Client> = {}): Client {

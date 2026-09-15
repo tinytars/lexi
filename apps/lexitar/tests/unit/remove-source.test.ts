@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { removeSource, provenanceIssues, upsertSourceRecord } from "@pablotech/akesi-pil/ingest-core";
+import { removeSource, provenanceIssues, upsertSourceRecord } from "@pablotech/akesi/ingest-core";
 import { isFindingStale, findingInputsHash } from "../../src/lib/staleness";
 import type { Client, MarkerResult, SourceRecord, ClientFinding, TreatmentItem } from "../../src/lib/types";
 

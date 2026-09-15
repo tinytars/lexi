@@ -11,7 +11,7 @@ import { visionAttachmentsFor, documentAttachmentsFor } from "./finding-vision";
 import { fetchAttachmentBase64, MAX_VISION_ATTACHMENTS } from "./attachment-store";
 import { documentTextsFor } from "./document-extract-client";
 import { MAX_LEAF_DOCUMENTS } from "./leaf-regen-config";
-import type { DocumentText } from "@pablotech/akesi-pil/document-read";
+import type { DocumentText } from "@pablotech/akesi/document-read";
 import { AiError, withDeadline } from "./ai-error";
 import { LEAF_REGEN_DEADLINE_MS } from "./leaf-regen-config";
 

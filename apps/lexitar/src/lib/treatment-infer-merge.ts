@@ -3,7 +3,7 @@
 // error handling, and pendingImages bookkeeping stay in the component.
 
 import type { TreatmentItem } from "./types";
-import type { ProposedTreatment } from "@pablotech/akesi-pil/treatment-infer";
+import type { ProposedTreatment } from "@pablotech/akesi/treatment-infer";
 
 export function mergeInferredFields(
   result: ProposedTreatment,

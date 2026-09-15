@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Client } from "../../src/lib/types";
-import { markerGroupsHashOf } from "@pablotech/akesi-pil/marker-groups-prompt";
+import { markerGroupsHashOf } from "@pablotech/akesi/marker-groups-prompt";
 import { refreshMarkerGroups } from "../../src/lib/marker-groups-client";
 
 const SYSTEMS = ["Cardiovascular Risk"];

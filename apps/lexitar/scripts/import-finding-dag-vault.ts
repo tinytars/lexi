@@ -1,8 +1,8 @@
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { dagFromFiles, parseVaultNode } from "@pablotech/neuro-pil/markdown";
-import { validate } from "@pablotech/neuro-pil";
-import type { Dag, DagNode } from "@pablotech/neuro-pil";
+import { dagFromFiles, parseVaultNode } from "@pablotech/neuro/markdown";
+import { validate } from "@pablotech/neuro";
+import type { Dag, DagNode } from "@pablotech/neuro";
 
 // The pull direction of the clinical-vault relationship: reads a vault of expert-editable markdown
 // notes (e.g. ~/PabloTech/clinical-vault/finding-dag) and regenerates
@@ -13,7 +13,7 @@ import type { Dag, DagNode } from "@pablotech/neuro-pil";
 //
 // Vault edits get full structural authority (add/remove/rewire nodes, not just prose) precisely
 // because this refuses to regenerate on a lint failure: an expert can point an input at a key that no
-// longer exists, orphan a node, or introduce a cycle, and @pablotech/neuro-pil's validate() (the same
+// longer exists, orphan a node, or introduce a cycle, and @pablotech/neuro's validate() (the same
 // check brain/neuro-pil/cli.ts's `lint` subcommand runs) catches it here before it ever reaches the
 // app.
 
@@ -35,7 +35,7 @@ function parseArgs(argv: string[]): Args {
 }
 
 // Mirrors brain/neuro-pil/cli.ts's walkVault exactly (recursive *.md/*.neuro-pil.yml collection,
-// skipping dotfiles/node_modules) rather than importing it: cli.ts isn't part of @pablotech/neuro-pil's
+// skipping dotfiles/node_modules) rather than importing it: cli.ts isn't part of @pablotech/neuro's
 // package exports (see its package.json `exports` map), and adding one there is a neuro-pil change
 // this plumbing is deliberately meant not to require.
 function walkVault(dir: string): Record<string, string> {
@@ -55,7 +55,7 @@ function walkVault(dir: string): Record<string, string> {
 const REASONING_HEADING = /^## Reasoning\s*$/m;
 
 // Extracts a vault note's `## Reasoning` section (heading to the next `##` heading or EOF) from
-// its raw markdown. Handled here, not in @pablotech/neuro-pil: `reasoning` is domain-specific
+// its raw markdown. Handled here, not in @pablotech/neuro: `reasoning` is domain-specific
 // clinical content the public, domain-free engine must never parse or know the shape of.
 export function extractReasoning(text: string): string | undefined {
   const start = text.search(REASONING_HEADING);
@@ -101,13 +101,13 @@ function renderModule(dag: Dag, reasoningByKey: Map<string, string>): string {
 // vault from whatever this file currently holds.
 
 import { PRODUCT_NAME } from "./brand";
-import { defineDag, type DagNode, type NodeKind } from "@pablotech/neuro-pil";
+import { defineDag, type DagNode, type NodeKind } from "@pablotech/neuro";
 
 export type { DagNode, NodeKind };
 
 // Extends the shared, domain-free DagNode with clinical-reasoning prompt text pulled from
 // clinical-vault's \`## Reasoning\` sections. Kept local to this app — never added to
-// @pablotech/neuro-pil, which must stay domain-free.
+// @pablotech/neuro, which must stay domain-free.
 export interface FindingDagNode extends DagNode {
   reasoning?: string;
 }

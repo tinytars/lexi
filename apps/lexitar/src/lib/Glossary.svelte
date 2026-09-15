@@ -3,7 +3,7 @@
   import GlossaryTermPreview from "./GlossaryTermPreview.svelte";
   import type { PinItem } from "./body-pin";
   import { termAnchor } from "./anchor";
-  import { systemOrder, UNCATEGORIZED } from "@pablotech/akesi-pil/system-groups";
+  import { systemOrder, UNCATEGORIZED } from "@pablotech/akesi/system-groups";
   import { filterByGroup } from "@tinytars/frame/group-filter";
   import { ALL_GROUP_KEY } from "./sidebar-labels";
 

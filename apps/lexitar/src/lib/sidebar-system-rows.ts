@@ -15,7 +15,7 @@
 // decision, since its All row already reaches an untagged report), how a row maps to a leaf, and
 // Markers' `title` tooltip. Nothing else.
 import type { SidebarGroupRow, SidebarLeafRow } from "@tinytars/frame/sidebar-rows";
-import { UNCATEGORIZED } from "@pablotech/akesi-pil/system-groups";
+import { UNCATEGORIZED } from "@pablotech/akesi/system-groups";
 import { ALL_GROUP_KEY, ALL_GROUP_LABEL } from "./sidebar-labels";
 
 /** The label an Uncategorized row shows. The KEY keeps UNCATEGORIZED's own value — that string is

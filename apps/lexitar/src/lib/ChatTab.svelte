@@ -17,7 +17,7 @@
   // so capping a chat attach at four was the image tier leaking into a surface that isn't one.
   import { MAX_ATTACHMENTS, fetchAttachmentBase64, attachFiles, attachmentUrl } from "./attachment-store";
   import { documentTextsFor } from "./document-extract-client";
-  import { documentsPromptBlock } from "@pablotech/akesi-pil/document-read";
+  import { documentsPromptBlock } from "@pablotech/akesi/document-read";
   import { DEFAULT_ATTACH_ACCEPT } from "@tinytars/frame/attach-controller";
   import DictateButton from "@tinytars/frame/DictateButton.svelte";
   import AttachmentStrip from "@tinytars/frame/AttachmentStrip.svelte";

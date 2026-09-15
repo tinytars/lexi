@@ -2,7 +2,7 @@
   import AiTurnCard from "./AiTurnCard.svelte";
   import type { Client } from "./types";
   import type { ExplorationTuple } from "./exploration-rows";
-  import { itemRecordId } from "@pablotech/akesi-pil/item-registry";
+  import { itemRecordId } from "@pablotech/akesi/item-registry";
   import { cellPin, type PinItem } from "./body-pin";
 
   // One exploration item as a leaf cell. The shape itself lives in AiTurnCard, shared with Analysis.

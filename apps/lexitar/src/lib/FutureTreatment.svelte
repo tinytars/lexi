@@ -13,7 +13,7 @@
   import { futureAnchor, ideaAnchor, findByAnchor } from "./anchor";
   import HypothesisTopicCard, { buildHypothesisEvalMap } from "./HypothesisTopicCard.svelte";
   import { buildHypothesisGroups } from "./treatment-groups";
-  import { systemAnalysisEstablished } from "@pablotech/akesi-pil/system-groups";
+  import { systemAnalysisEstablished } from "@pablotech/akesi/system-groups";
   import { createDraftSync, createPersistNow } from "./draft-sync.svelte";
   import type { Permalink } from "./permalink";
   import LeafActionMenu from "@tinytars/frame/LeafActionMenu.svelte";

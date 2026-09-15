@@ -2,13 +2,7 @@ import { defineConfig, type Plugin } from 'vite'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
 import { writeFile, mkdir, readFile, rename } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
-// This file is loaded by Node directly (Vite 8 no longer esbuild-bundles the config first), and
-// Node refuses to type-strip a .ts file under node_modules — @tinytars/vault ships raw .ts source
-// with no compiled dist, so the npm specifier throws ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING
-// here specifically. Everywhere else in the app (Vite's own esbuild pipeline, tsx-run scripts,
-// wrangler's Functions bundler) resolves the real @tinytars/vault package fine; only this one
-// config-time import needs the monorepo source directly.
-import { decryptVault } from '../../packages/security/crypto'
+import { decryptVault } from '@tinytars/vault/crypto'
 
 // W47 — write-to-temp-then-rename so a save-vault write is never observably partial. A plain
 // writeFile(path, data) opens the destination in truncate mode ('w') and THEN streams the
@@ -113,40 +107,6 @@ export default defineConfig({
       // (avoids the "TS in node_modules isn't transpiled" workspace pitfall).
       '@tars/brand': fileURLToPath(new URL('../../packages/brand/index.ts', import.meta.url)),
       '@tars/styles': fileURLToPath(new URL('../../packages/styles', import.meta.url)),
-      // The more specific subpath alias MUST come before the bare package alias below — Vite's alias
-      // matching is prefix-based and first-match-wins, so '@pablotech/neuro-pil' alone would otherwise
-      // match '@pablotech/neuro-pil/hash-web' too and mis-resolve it to '<index.ts>/hash-web'.
-      '@pablotech/neuro-pil/hash-web': fileURLToPath(new URL('../../brain/neuro-pil/hash-web.ts', import.meta.url)),
-      '@pablotech/neuro-pil': fileURLToPath(new URL('../../brain/neuro-pil/index.ts', import.meta.url)),
-      '@pablotech/akesi-pil/types': fileURLToPath(new URL('../../brain/akesi-pil/types.ts', import.meta.url)),
-      '@pablotech/akesi-pil/treatment-normalize': fileURLToPath(new URL('../../brain/akesi-pil/treatment-normalize.ts', import.meta.url)),
-      '@pablotech/akesi-pil/treatment-bucket': fileURLToPath(new URL('../../brain/akesi-pil/treatment-bucket.ts', import.meta.url)),
-      '@pablotech/akesi-pil/treatment-product': fileURLToPath(new URL('../../brain/akesi-pil/treatment-product.ts', import.meta.url)),
-      '@pablotech/akesi-pil/treatment-timing-rules': fileURLToPath(new URL('../../brain/akesi-pil/treatment-timing-rules.ts', import.meta.url)),
-      '@pablotech/akesi-pil/marker-deltas': fileURLToPath(new URL('../../brain/akesi-pil/marker-deltas.ts', import.meta.url)),
-      '@pablotech/akesi-pil/unit-systems': fileURLToPath(new URL('../../brain/akesi-pil/unit-systems.ts', import.meta.url)),
-      '@pablotech/akesi-pil/dates': fileURLToPath(new URL('../../brain/akesi-pil/dates.ts', import.meta.url)),
-      '@pablotech/akesi-pil/ranges': fileURLToPath(new URL('../../brain/akesi-pil/ranges.ts', import.meta.url)),
-      '@pablotech/akesi-pil/ranges-prompt': fileURLToPath(new URL('../../brain/akesi-pil/ranges-prompt.ts', import.meta.url)),
-      '@pablotech/akesi-pil/item-registry': fileURLToPath(new URL('../../brain/akesi-pil/item-registry.ts', import.meta.url)),
-      '@pablotech/akesi-pil/report-title': fileURLToPath(new URL('../../brain/akesi-pil/report-title.ts', import.meta.url)),
-      '@pablotech/akesi-pil/imaging-catalog': fileURLToPath(new URL('../../brain/akesi-pil/imaging-catalog.ts', import.meta.url)),
-      '@pablotech/akesi-pil/system-groups': fileURLToPath(new URL('../../brain/akesi-pil/system-groups.ts', import.meta.url)),
-      '@pablotech/akesi-pil/factors-edit': fileURLToPath(new URL('../../brain/akesi-pil/factors-edit.ts', import.meta.url)),
-      '@pablotech/akesi-pil/report-extract': fileURLToPath(new URL('../../brain/akesi-pil/report-extract.ts', import.meta.url)),
-      '@pablotech/akesi-pil/report-merge': fileURLToPath(new URL('../../brain/akesi-pil/report-merge.ts', import.meta.url)),
-      '@pablotech/akesi-pil/document-model': fileURLToPath(new URL('../../brain/akesi-pil/document-model.ts', import.meta.url)),
-      '@pablotech/akesi-pil/document-read': fileURLToPath(new URL('../../brain/akesi-pil/document-read.ts', import.meta.url)),
-      '@pablotech/akesi-pil/ingest-core': fileURLToPath(new URL('../../brain/akesi-pil/ingest-core.ts', import.meta.url)),
-      '@pablotech/akesi-pil/pdf-node': fileURLToPath(new URL('../../brain/akesi-pil/parsers-report.ts', import.meta.url)),
-      '@pablotech/akesi-pil/marker-groups-prompt': fileURLToPath(new URL('../../brain/akesi-pil/marker-groups-prompt.ts', import.meta.url)),
-      '@pablotech/akesi-pil/treatment-infer': fileURLToPath(new URL('../../brain/akesi-pil/treatment-infer.ts', import.meta.url)),
-      '@pablotech/akesi-pil/finding-generate': fileURLToPath(new URL('../../brain/akesi-pil/finding-generate.ts', import.meta.url)),
-      '@pablotech/akesi-pil/finding-assemble': fileURLToPath(new URL('../../brain/akesi-pil/finding-assemble.ts', import.meta.url)),
-      '@pablotech/akesi-pil/finding-regroup': fileURLToPath(new URL('../../brain/akesi-pil/finding-regroup.ts', import.meta.url)),
-      '@pablotech/akesi-pil/pinned-queries': fileURLToPath(new URL('../../brain/akesi-pil/pinned-queries.ts', import.meta.url)),
-      '@pablotech/akesi-pil/section-labels': fileURLToPath(new URL('../../brain/akesi-pil/section-labels.ts', import.meta.url)),
-      '@pablotech/akesi-pil': fileURLToPath(new URL('../../brain/akesi-pil/index.ts', import.meta.url)),
     },
   },
 })

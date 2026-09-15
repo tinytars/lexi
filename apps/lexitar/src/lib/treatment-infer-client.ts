@@ -10,7 +10,7 @@
 import { bytesToBase64 } from "./extract-client";
 import { AiError, withDeadline } from "./ai-error";
 import { LEAF_REGEN_DEADLINE_MS } from "./leaf-regen-config";
-import type { ProposedTreatment } from "@pablotech/akesi-pil/treatment-infer";
+import type { ProposedTreatment } from "@pablotech/akesi/treatment-infer";
 
 export interface TreatmentInferInput {
   images?: { bytes: Uint8Array; mediaType: "image/jpeg" | "image/png" }[];

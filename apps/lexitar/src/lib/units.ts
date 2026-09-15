@@ -1,6 +1,6 @@
 // Display-layer unit formatting + conversion. The conversion registry (US/SI per-analyte
 // + physical) lives in ./unit-systems; this module is the display surface over it.
-import { ANALYTE, PHYSICAL_TO_IMPERIAL, PHYSICAL_NO_CONVERT, canonicalUnit, type UnitSystem } from "@pablotech/akesi-pil/unit-systems";
+import { ANALYTE, PHYSICAL_TO_IMPERIAL, PHYSICAL_NO_CONVERT, canonicalUnit, type UnitSystem } from "@pablotech/akesi/unit-systems";
 
 export type { UnitSystem };
 

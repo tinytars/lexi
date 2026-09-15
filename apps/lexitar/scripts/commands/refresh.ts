@@ -18,8 +18,8 @@ import { REGROUP_MODEL } from "../../src/lib/regroup-config";
 import { nodeHashesOf, planFindingRefresh } from "../factors";
 import { mergeCriticalRatios } from "../../src/lib/marker-ratios";
 import { recommendedNamesFromFinding } from "../../src/lib/finding-render";
-import { markerGroupsHashOf, distinctMarkerNames } from "@pablotech/akesi-pil/marker-groups-prompt";
-import { systemAnalysisEstablished, systemOrder } from "@pablotech/akesi-pil/system-groups";
+import { markerGroupsHashOf, distinctMarkerNames } from "@pablotech/akesi/marker-groups-prompt";
+import { systemAnalysisEstablished, systemOrder } from "@pablotech/akesi/system-groups";
 
 // The ONE way the CLI regenerates a leaf, used by both the selective path and the full refresh's
 // orchestrator. Runs on REGROUP_MODEL (the leaf tier) — the same model, prompt, tool schema and

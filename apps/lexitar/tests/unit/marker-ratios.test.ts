@@ -6,7 +6,7 @@ import {
   mergeCriticalRatios,
   isRatioMarkerName,
 } from "../../src/lib/marker-ratios";
-import { currentZoneStatus } from "@pablotech/akesi-pil/ranges";
+import { currentZoneStatus } from "@pablotech/akesi/ranges";
 import type { Client, CriticalRatio, MarkerResult } from "../../src/lib/types";
 
 function r(marker: string, date: string, value: number, unit = "mg/dL"): MarkerResult {

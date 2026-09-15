@@ -12,7 +12,7 @@ vi.mock("../../src/lib/document-extract-client", async (importOriginal) => ({
 }));
 
 import { attachFiles, hasExtractedText } from "../../src/lib/attachment-store";
-import { MAX_DOCUMENT_PAGES } from "@pablotech/akesi-pil/document-read";
+import { MAX_DOCUMENT_PAGES } from "@pablotech/akesi/document-read";
 
 const pdf = (name = "report.pdf") => new File([new Uint8Array([0x25, 0x50, 0x44, 0x46])], name, { type: "application/pdf" });
 

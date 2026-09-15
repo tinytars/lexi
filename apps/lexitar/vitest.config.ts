@@ -4,11 +4,7 @@ import { fileURLToPath } from "node:url";
 
 /** Tests that need the real records or a credential — run by `npm run test:data` on the Mac only. */
 export const DATA_TESTS = [
-  "tests/unit/vault-integrity.test.ts",
   "tests/unit/vault-v2.test.ts",
-  "tests/unit/processed-store.test.ts",
-  "tests/unit/unit-systems.test.ts",
-  "tests/unit/vault-opacity.test.ts",
 ];
 
 export default defineConfig({

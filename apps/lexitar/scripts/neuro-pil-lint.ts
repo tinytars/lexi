@@ -1,4 +1,4 @@
-import { validate, sliceParity } from "@pablotech/neuro-pil";
+import { validate, sliceParity } from "@pablotech/neuro";
 import { findingDag } from "../src/lib/finding-dag";
 import { INPUT_SLICES } from "../src/lib/node-input-hash";
 

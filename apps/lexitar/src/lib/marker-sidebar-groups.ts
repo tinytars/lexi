@@ -5,7 +5,7 @@
 import type { Client } from "./types";
 import { buildMarkerRatios } from "./marker-ratios";
 import { flatMarkers, markerSystemIndex, type Marker } from "./marker-grid";
-import { groupBySystem, systemAnalysisEstablished } from "@pablotech/akesi-pil/system-groups";
+import { groupBySystem, systemAnalysisEstablished } from "@pablotech/akesi/system-groups";
 import { markerLevelLeaf, markerRatioLeaf } from "./sidebar-leaf-mappers";
 import type { SidebarLeafRow } from "@tinytars/frame/sidebar-rows";
 import { ALL_GROUP_LABEL, ALL_GROUP_KEY } from "./sidebar-labels";

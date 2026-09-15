@@ -11,7 +11,7 @@
 // accumulator. Everything else is one implementation.
 import type Anthropic from "@anthropic-ai/sdk";
 import type { Client } from "./types";
-import { SYSTEM_PROMPT, GROUPS_SCHEMA, contextBlock, type GroupsAIResponse } from "@pablotech/akesi-pil/marker-groups-prompt";
+import { SYSTEM_PROMPT, GROUPS_SCHEMA, contextBlock, type GroupsAIResponse } from "@pablotech/akesi/marker-groups-prompt";
 
 /** The full marker set echoes hundreds of names back; this truncates at 2048. */
 export const MARKER_GROUPS_MAX_TOKENS = 8192;

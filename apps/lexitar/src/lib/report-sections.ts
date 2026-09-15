@@ -7,7 +7,7 @@
 import type { Client } from "./types";
 import { dcSlices } from "./doctor-conversation";
 import { PRODUCT_NAME } from "./brand";
-import { SECTION_LABEL } from "@pablotech/akesi-pil/section-labels";
+import { SECTION_LABEL } from "@pablotech/akesi/section-labels";
 
 export interface SectionMeta {
   key: string;
@@ -126,7 +126,7 @@ export const DOCTOR_SECTIONS: SectionMeta[] = [
 // imported source documents).
 export const LABS_SECTIONS: SectionMeta[] = [
   { key: "markers", label: SECTION_LABEL.markers, icon: "📊", kind: "markers", blurb: "Your lab and measurement results over time, grouped by body system, each shown against your personal healthy range." },
-  { key: "healthReports", label: SECTION_LABEL.healthReports, icon: "📄", kind: "healthReports", blurb: `Your hospital reports, each with the doctor's diagnosis and a plain-language ${PRODUCT_NAME} summary of the details.` },
+  { key: "healthReports", label: SECTION_LABEL.clinicalReports, icon: "📄", kind: "healthReports", blurb: `Your hospital reports, each with the doctor's diagnosis and a plain-language ${PRODUCT_NAME} summary of the details.` },
 ];
 
 // The Appointment tab. Notes (M63 — a free-text scratchpad, leftmost), then Questions (for the
@@ -178,4 +178,4 @@ export const ALL_SECTIONS: SectionMeta[] = [...PATIENT_SECTIONS, ...AI_SECTIONS]
 // can read it without pulling in @tars/brand). Re-exported here so existing importers of this
 // module are untouched. These strings reach the LLM prompt and the staleness hash, so a second
 // spelling would not be cosmetic — every SectionMeta.label above is sourced from the same table.
-export { SECTION_LABEL } from "@pablotech/akesi-pil/section-labels";
+export { SECTION_LABEL } from "@pablotech/akesi/section-labels";

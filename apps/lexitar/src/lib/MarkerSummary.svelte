@@ -1,8 +1,8 @@
 <script lang="ts">
   import type { Client, MarkerResult } from "./types";
-  import { resolveRange } from "@pablotech/akesi-pil/ranges";
+  import { resolveRange } from "@pablotech/akesi/ranges";
   import { displayScaleFor, fmtNum, fmtRange, type UnitSystem } from "./units";
-  import { normalizeSeries, toCanonical } from "@pablotech/akesi-pil/unit-systems";
+  import { normalizeSeries, toCanonical } from "@pablotech/akesi/unit-systems";
   import { PRODUCT_NAME } from "./brand";
 
   // M86 Phase 4 — extracted from MarkerDetails.svelte's meaning/range block. Recomputes

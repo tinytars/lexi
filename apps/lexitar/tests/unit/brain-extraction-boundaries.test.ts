@@ -34,7 +34,7 @@ describe("the clinical layer does not reach into the UI", () => {
     }
     // It is allowed — required, even — to import both the UI and the clinical half.
     expect(importsOf(sidebar).some((i) => UI_MODULES.test(i))).toBe(true);
-    expect(importsOf(sidebar)).toContain("@pablotech/akesi-pil/treatment-bucket");
+    expect(importsOf(sidebar)).toContain("@pablotech/akesi/treatment-bucket");
   });
 
   // The other direction: the clinical modules 06 moved must not have acquired a UI import either.

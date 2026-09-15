@@ -3,12 +3,12 @@
 // narrative) but trimmed to what a follow-on question needs — not the whole Client.
 // Reuses markerDeltas (W2) so on-screen deltas and chat deltas can't disagree.
 
-import { ageYears } from "@pablotech/akesi-pil/ranges";
+import { ageYears } from "@pablotech/akesi/ranges";
 import type { Client, DiseaseEntry } from "./types";
-import { markerDeltas, type DeltaChange } from "@pablotech/akesi-pil/marker-deltas";
+import { markerDeltas, type DeltaChange } from "@pablotech/akesi/marker-deltas";
 import { convertForDisplay, displayScaleFor, type UnitSystem } from "./units";
-import { treatmentsOf } from "@pablotech/akesi-pil/treatment-normalize";
-import { bucketOf, collapseByName, groupByName, todayISODate, formatDose } from "@pablotech/akesi-pil/treatment-bucket";
+import { treatmentsOf } from "@pablotech/akesi/treatment-normalize";
+import { bucketOf, collapseByName, groupByName, todayISODate, formatDose } from "@pablotech/akesi/treatment-bucket";
 import { dailyTotalsByName, type IngredientTotal } from "./treatment-conclusion";
 import type { ReferenceKind } from "./reference-resolver";
 

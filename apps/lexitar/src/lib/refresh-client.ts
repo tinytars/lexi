@@ -12,11 +12,11 @@ import {
   assembleFinding,
   FINDING_PORTION_KEYS,
   type FindingAIResponse,
-} from "@pablotech/akesi-pil/finding-assemble";
+} from "@pablotech/akesi/finding-assemble";
 import { findingInputsHash, nodeHashes } from "./staleness";
 import { FINDING_MODEL, CORE_BRAIN } from "./finding-config";
 import { BRAIN_VERSIONS } from "./brain-versions";
-import { plannedLabels, populatedNoteEntries } from "@pablotech/akesi-pil/finding-generate";
+import { plannedLabels, populatedNoteEntries } from "@pablotech/akesi/finding-generate";
 
 const SENTINEL = "[[REFRESH_ERROR]]";
 // W39: 3, not 6. Worst case is 3 full Opus generations, and only a *validation* miss burns a retry —

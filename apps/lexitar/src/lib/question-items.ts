@@ -13,9 +13,9 @@
 // nowhere.
 import type { Client } from "./types";
 import { questionAnchor } from "./anchor";
-import { systemOrder } from "@pablotech/akesi-pil/system-groups";
+import { systemOrder } from "@pablotech/akesi/system-groups";
 import { dcSlices } from "./doctor-conversation";
-import { isPinnedItem } from "@pablotech/akesi-pil/item-registry";
+import { isPinnedItem } from "@pablotech/akesi/item-registry";
 import { sortPinnedFirst } from "./pin-sort";
 
 export interface QuestionItem {

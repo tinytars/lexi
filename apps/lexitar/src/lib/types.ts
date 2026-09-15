@@ -1,6 +1,6 @@
-export * from "@pablotech/akesi-pil/types";
+export * from "@pablotech/akesi/types";
 
-import type { Client } from "@pablotech/akesi-pil/types";
+import type { Client } from "@pablotech/akesi/types";
 
 export interface Vault {
   clients: Record<string, Client>;

@@ -10,7 +10,7 @@
 // Pure means unit-testable without a vault, a DEK or a component, which is the point: these touch
 // user-entered patient data, where "never lose it" is the standing rule.
 import type { AllergyEntry, Client, DecisionEntry, FamilyHistoryEntry, NoteEntry, StudyEntry, TreatmentItem } from "./types";
-import { toggleItemPin, isItemPinned } from "@pablotech/akesi-pil/item-registry";
+import { toggleItemPin, isItemPinned } from "@pablotech/akesi/item-registry";
 import { labelSubject } from "./leaf-regen-registry";
 import { entityForSidebarKind } from "./entity-kinds";
 

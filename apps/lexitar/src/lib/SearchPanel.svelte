@@ -1,13 +1,13 @@
 <script lang="ts">
   import type { SearchableLeaf } from "./search-index";
   import { sectionLabel } from "./permalink";
-  import type { UnitSystem } from "@pablotech/akesi-pil/unit-systems";
+  import type { UnitSystem } from "@pablotech/akesi/unit-systems";
   import type { Client } from "./types";
   import MarkerChart from "./MarkerChart.svelte";
   import { flatMarkers } from "./marker-grid";
   import { buildMarkerRatios } from "./marker-ratios";
-  import { deltaForSeries } from "@pablotech/akesi-pil/marker-deltas";
-  import { currentZoneStatus } from "@pablotech/akesi-pil/ranges";
+  import { deltaForSeries } from "@pablotech/akesi/marker-deltas";
+  import { currentZoneStatus } from "@pablotech/akesi/ranges";
   import ExplorationCell from "./ExplorationCell.svelte";
   import { buildExplorationRows } from "./exploration-rows";
   import PersonaBubble from "@tinytars/frame/PersonaBubble.svelte";

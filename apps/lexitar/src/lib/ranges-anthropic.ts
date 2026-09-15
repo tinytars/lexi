@@ -28,7 +28,7 @@ import {
   RANGE_SCHEMA,
   validate,
   type RangeAIResponse,
-} from "@pablotech/akesi-pil/ranges-prompt";
+} from "@pablotech/akesi/ranges-prompt";
 import { isRatioMarkerName } from "./marker-ratios";
 
 export const RANGES_MAX_TOKENS = 1024;

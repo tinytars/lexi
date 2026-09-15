@@ -9,7 +9,7 @@ import type { TreatmentItem } from "./types";
 import { markerAnchor, ratioAnchor, treatmentAnchor, ideaAnchor, explorationItemAnchor, questionAnchor, termAnchor, threadAnchor } from "./anchor";
 import type { Thread } from "./chat-threads";
 import type { SidebarLeafRow } from "@tinytars/frame/sidebar-rows";
-import { itemRecordId } from "@pablotech/akesi-pil/item-registry";
+import { itemRecordId } from "@pablotech/akesi/item-registry";
 
 // The Assistant's threads, so Chat's sidebar list is built the same way every other section's is.
 // `domId` is set here and nowhere else: a thread row exists ONLY in the sidebar, so it owns its own

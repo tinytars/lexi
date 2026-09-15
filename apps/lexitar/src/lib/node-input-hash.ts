@@ -1,7 +1,7 @@
 import type { Client } from "./types";
-import { canonicalFor } from "@pablotech/neuro-pil";
+import { canonicalFor } from "@pablotech/neuro";
 import { findingDag } from "./finding-dag";
-import { pinnedQueryLines } from "@pablotech/akesi-pil/pinned-queries";
+import { pinnedQueryLines } from "@pablotech/akesi/pinned-queries";
 import { attachmentsCanonical, noteCanonical, studyCanonical, treatmentCanonical } from "./factors-hash";
 
 // W15b — per-node staleness. One slice per DAG *input* node: the exact raw datum that node owns.
@@ -77,7 +77,7 @@ export const INPUT_SLICES: Record<string, (c: Client) => unknown> = {
 
 // Canonical string of the raw inputs a single DAG node depends on (its source closure). Shared by the
 // Node CLI (nodeHashesOf, stamped at generation) and the browser (staleNodes) so both hash identically.
-// W61 — the closure walk + stableStringify combination moved to @pablotech/neuro-pil's canonicalFor();
+// W61 — the closure walk + stableStringify combination moved to @pablotech/neuro's canonicalFor();
 // INPUT_SLICES (what gets normalized) stays here, since it's irreducibly clinical.
 export function nodeInputCanonical(client: Client, nodeKey: string): string {
   return canonicalFor(findingDag, client, INPUT_SLICES, nodeKey);

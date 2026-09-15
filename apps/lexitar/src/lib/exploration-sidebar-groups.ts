@@ -3,10 +3,10 @@
 // sidebar and TestsToConsider.svelte agree on both the set of groups and their counts.
 
 import type { Client } from "./types";
-import { systemAnalysisEstablished, systemOrder } from "@pablotech/akesi-pil/system-groups";
+import { systemAnalysisEstablished, systemOrder } from "@pablotech/akesi/system-groups";
 import { buildExplorationRows } from "./exploration-rows";
 import { explorationItemLeaf } from "./sidebar-leaf-mappers";
-import { isPinnedItem } from "@pablotech/akesi-pil/item-registry";
+import { isPinnedItem } from "@pablotech/akesi/item-registry";
 import { sortPinnedFirst } from "./pin-sort";
 import { systemRowsFromMap } from "./sidebar-system-rows";
 import type { SidebarLeafRow } from "@tinytars/frame/sidebar-rows";

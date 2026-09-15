@@ -1,13 +1,13 @@
 import { randomUUID } from "node:crypto";
-import { sha256hex12 as hash12 } from "@pablotech/neuro-pil/hash-node";
-import { driftedKeys, isStamped } from "@pablotech/neuro-pil";
+import { sha256hex12 as hash12 } from "@pablotech/neuro/hash-node";
+import { driftedKeys, isStamped } from "@pablotech/neuro";
 import type { Client, ClientFactors, DecisionEntry, StudyEntry, TreatmentItem } from "../src/lib/types";
 import { factorsCanonicalString, findingInputsCanonicalString } from "../src/lib/factors-hash";
 import { nodeInputCanonical } from "../src/lib/node-input-hash";
 import { findingDag } from "../src/lib/finding-dag";
 import { LEAF_REGEN_SPECS } from "../src/lib/leaf-regen-registry";
-import { capFirst, PREGNANCY_VALUES, ATHLETIC_VALUES, SMOKING_VALUES } from "@pablotech/akesi-pil/factors-edit";
-import { endOfMonth } from "@pablotech/akesi-pil/dates";
+import { capFirst, PREGNANCY_VALUES, ATHLETIC_VALUES, SMOKING_VALUES } from "@pablotech/akesi/factors-edit";
+import { endOfMonth } from "@pablotech/akesi/dates";
 
 export { capFirst };
 
@@ -181,7 +181,7 @@ export function clearTreatments(client: Client): void {
 
 // Disease mutations moved to src/lib/factors-edit.ts (pure, browser/Function-importable for
 // the report-fold + future web ingest); re-exported here so the CLI's import path is unchanged.
-export { addDisease, removeDiseasesBySourceId, removeDisease, clearDiseases } from "@pablotech/akesi-pil/factors-edit";
+export { addDisease, removeDiseasesBySourceId, removeDisease, clearDiseases } from "@pablotech/akesi/factors-edit";
 
 export function addDecision(client: Client, item: Omit<DecisionEntry, "id" | "pinned">): void {
   client.factors ??= {};

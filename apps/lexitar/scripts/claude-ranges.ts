@@ -15,7 +15,7 @@ export {
   validate,
   IMPERIAL_CONVERTS,
   type RangeAIResponse,
-} from "@pablotech/akesi-pil/ranges-prompt";
+} from "@pablotech/akesi/ranges-prompt";
 
 let cachedClient: Anthropic | null = null;
 function anthropic(): Anthropic {

@@ -6,7 +6,7 @@ import { logRequest } from "../_lib/log";
 import { classifyAnthropicError } from "../_lib/anthropic-errors";
 import { storeKey } from "../_lib/store";
 import { rawAccessFor, type RawAccess } from "../_lib/raw-owner";
-import { readDocument, DOCUMENT_READ_FAILURE, type DocumentReading, type StoredExtraction } from "@pablotech/akesi-pil/document-read";
+import { readDocument, DOCUMENT_READ_FAILURE, type DocumentReading, type StoredExtraction } from "@pablotech/akesi/document-read";
 import { EXTRACT_MODEL } from "../../src/lib/extract-config";
 
 // Read one ALREADY-UPLOADED attachment as text, and cache the result forever.

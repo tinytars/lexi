@@ -8,7 +8,7 @@
 // denominator, dated at the later of the two component readings.
 
 import type { Client, CriticalRatio, MarkerResult, PersonalizedRange } from "./types";
-import { resolveRange } from "@pablotech/akesi-pil/ranges";
+import { resolveRange } from "@pablotech/akesi/ranges";
 
 export function quarterKey(date: string): string {
   const [y, m] = date.split("-");

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { addTreatment, addDisease, addDecision } from "../../scripts/factors";
-import { normalizeClientDraft } from "@pablotech/akesi-pil/factors-edit";
+import { normalizeClientDraft } from "@pablotech/akesi/factors-edit";
 import { nodeInputCanonical } from "../../src/lib/node-input-hash";
 import type { Client } from "../../src/lib/types";
 

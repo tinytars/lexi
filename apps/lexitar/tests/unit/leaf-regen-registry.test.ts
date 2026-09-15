@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { LEAF_REGEN_SPECS, mergeLabeledItems, labelSubject, buildLeafContext } from "../../src/lib/leaf-regen-registry";
-import { CURRENT_DOSE_RULE, CO_MENTION_RULE, BUCKET_DOSE_RULE, STANDARD_DOSING_RULE } from "@pablotech/akesi-pil/treatment-timing-rules";
-import { SYSTEM_PROMPT } from "@pablotech/akesi-pil/finding-generate";
-import type { RegroupInputs, RegroupResponse } from "@pablotech/akesi-pil/finding-regroup";
+import { CURRENT_DOSE_RULE, CO_MENTION_RULE, BUCKET_DOSE_RULE, STANDARD_DOSING_RULE } from "@pablotech/akesi/treatment-timing-rules";
+import { SYSTEM_PROMPT } from "@pablotech/akesi/finding-generate";
+import type { RegroupInputs, RegroupResponse } from "@pablotech/akesi/finding-regroup";
 import type { Client } from "../../src/lib/types";
 
 function ai(intervention: string, purpose = "") {

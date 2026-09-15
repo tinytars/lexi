@@ -2,7 +2,7 @@
 // POSTs it (+ the minimized patient) to the stateless /api/extract relay, which
 // returns the validated ProposedReport. Holds no passphrase and does no persistence;
 // the caller folds the result into the decrypted vault and saves.
-import type { ProposedReport, ReportPatient } from "@pablotech/akesi-pil/report-extract";
+import type { ProposedReport, ReportPatient } from "@pablotech/akesi/report-extract";
 
 // Chunked base64 — String.fromCharCode(...bytes) overflows the call stack on a
 // multi-MB PDF, so encode in 32 KB windows.

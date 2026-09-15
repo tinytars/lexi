@@ -4,10 +4,10 @@ import { requireBearer } from "../_lib/guard";
 import { requireSession } from "../_lib/session";
 import { logRequest } from "../_lib/log";
 import { auditor } from "../_lib/audit";
-import { distinctMarkerNames, markerGroupsHashOf, runMarkerGroupingPasses } from "@pablotech/akesi-pil/marker-groups-prompt";
+import { distinctMarkerNames, markerGroupsHashOf, runMarkerGroupingPasses } from "@pablotech/akesi/marker-groups-prompt";
 import { runGroupingPass } from "../../src/lib/marker-groups-anthropic";
 import { MARKER_GROUPS_MODEL } from "../../src/lib/marker-groups-config";
-import { systemOrder } from "@pablotech/akesi-pil/system-groups";
+import { systemOrder } from "@pablotech/akesi/system-groups";
 import type { Client, MarkerGrouping } from "../../src/lib/types";
 
 // M95 — web-triggered marker->body-system classification for zero-knowledge (self-service)

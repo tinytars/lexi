@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { isStamped, validate, sliceParity } from "@pablotech/neuro-pil";
+import { isStamped, validate, sliceParity } from "@pablotech/neuro";
 import { FINDING_DAG, findingDag, upstreamOf, downstreamOf, dagNode } from "../../src/lib/finding-dag";
 import { nodeInputCanonical, INPUT_SLICES } from "../../src/lib/node-input-hash";
 import { renderMermaid, extractDagBlock, docPath } from "../../scripts/gen-dag-mermaid";

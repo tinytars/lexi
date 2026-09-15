@@ -2,16 +2,16 @@
   import type { Vault, Client, MarkerResult, NoteAttachment } from "./types";
   import Button from "@tinytars/frame/Button.svelte";
   import { ALL_GROUP_KEY } from "./sidebar-labels";
-  import { currentZoneStatus, resolveRange } from "@pablotech/akesi-pil/ranges";
+  import { currentZoneStatus, resolveRange } from "@pablotech/akesi/ranges";
   import type { UnitSystem } from "./units";
   import MarkerChart from "./MarkerChart.svelte";
   import { markerAnchor, ratioAnchor, findByAnchor } from "./anchor";
-  import { deltaForSeries } from "@pablotech/akesi-pil/marker-deltas";
+  import { deltaForSeries } from "@pablotech/akesi/marker-deltas";
   import { buildMarkerRatios } from "./marker-ratios";
   import { groupsOnly, byPinnedThenConcern, concernThenName, countGroups, flatMarkers, markerSystemIndex, type GroupSection } from "./marker-grid";
   import { sortPinnedFirst } from "./pin-sort";
   import { resolveGroup } from "@tinytars/frame/group-filter";
-  import { groupBySystem, systemAnalysisEstablished, systemOrder, UNCATEGORIZED } from "@pablotech/akesi-pil/system-groups";
+  import { groupBySystem, systemAnalysisEstablished, systemOrder, UNCATEGORIZED } from "@pablotech/akesi/system-groups";
   import PendingGrouping from "./PendingGrouping.svelte";
   import type { Permalink } from "./permalink";
 

@@ -11,8 +11,8 @@ import type { Client, TreatmentItem } from "./types";
 import { treatmentLeaf, medicineNameLeaf } from "./sidebar-leaf-mappers";
 import type { SidebarLeafRow } from "@tinytars/frame/sidebar-rows";
 import { ALL_GROUP_LABEL } from "./sidebar-labels";
-import { treatmentsOf } from "@pablotech/akesi-pil/treatment-normalize";
-import { bucketOf, groupByName, type Bucket } from "@pablotech/akesi-pil/treatment-bucket";
+import { treatmentsOf } from "@pablotech/akesi/treatment-normalize";
+import { bucketOf, groupByName, type Bucket } from "@pablotech/akesi/treatment-bucket";
 import { sortPinnedFirst } from "./pin-sort";
 
 export interface TreatmentSidebarBucket {

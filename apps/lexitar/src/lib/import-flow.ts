@@ -3,7 +3,7 @@
 // report-merge folds + the provenance registry). Does no network and no crypto — the
 // caller (ImportTab) hashes, extracts, PUTs the raw, and saves the vault around this.
 import type { Client, SourceRecord, PendingUpload, MarkerResult } from "./types";
-import type { ProposedReport, ReportPatient } from "@pablotech/akesi-pil/report-extract";
+import type { ProposedReport, ReportPatient } from "@pablotech/akesi/report-extract";
 import { reportContribution, type ReportContribution } from "./report-contribution";
 import {
   applyReportContribution,
@@ -13,8 +13,8 @@ import {
   upsertSourceRecord,
   hashSourceWeb,
   findSourceBySha,
-} from "@pablotech/akesi-pil/ingest-core";
-import { applySourceReadings, type ApplyResult } from "@pablotech/akesi-pil/report-merge";
+} from "@pablotech/akesi/ingest-core";
+import { applySourceReadings, type ApplyResult } from "@pablotech/akesi/report-merge";
 import { EXTRACT_MODEL } from "./extract-config";
 import { extractReport, type ExtractError } from "./extract-client";
 import { parseRawFile } from "./parse-raw";

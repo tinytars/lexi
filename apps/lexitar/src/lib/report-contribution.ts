@@ -4,8 +4,8 @@
 // client (for the prior-comparison cross-check); returns everything the caller
 // needs to fold (applyReportContribution) and to log/preview identically.
 import type { Client, MarkerResult } from "./types";
-import { canonicalImagingMarker, isKnownImagingMarker } from "@pablotech/akesi-pil/imaging-catalog";
-import type { ProposedReport } from "@pablotech/akesi-pil/report-extract";
+import { canonicalImagingMarker, isKnownImagingMarker } from "@pablotech/akesi/imaging-catalog";
+import type { ProposedReport } from "@pablotech/akesi/report-extract";
 
 // Extracted items below this confidence are still ingested, but surfaced for the
 // operator/user to review rather than silently trusted.

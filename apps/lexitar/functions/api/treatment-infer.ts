@@ -3,7 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { requireSession } from "../_lib/session";
 import { logRequest } from "../_lib/log";
 import { classifyAnthropicError } from "../_lib/anthropic-errors";
-import { inferTreatment } from "@pablotech/akesi-pil/treatment-infer";
+import { inferTreatment } from "@pablotech/akesi/treatment-infer";
 import {
   TREATMENT_IMAGE_MODEL,
   TREATMENT_TEXT_MODEL,

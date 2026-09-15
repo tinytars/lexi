@@ -4,7 +4,7 @@
 // administration + turn 3's patient dose) — no LLM call, so it can never hallucinate a number.
 // Refuses to answer rather than guess when the inputs don't support a real total.
 import type { Administration, DoseFrequency, Ingredient, TreatmentItem } from "./types";
-import { bucketOf, groupByName } from "@pablotech/akesi-pil/treatment-bucket";
+import { bucketOf, groupByName } from "@pablotech/akesi/treatment-bucket";
 
 export interface IngredientTotal {
   name: string;

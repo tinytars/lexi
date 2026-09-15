@@ -7,7 +7,7 @@ import type { Client } from "./types";
 import type { SidebarGroupRow, SidebarLeafRow } from "@tinytars/frame/sidebar-rows";
 import { ALL_GROUP_LABEL, ALL_GROUP_KEY } from "./sidebar-labels";
 import { healthMarkersGroupAnchor } from "./anchor";
-import { isPinnedItem, itemRecordId } from "@pablotech/akesi-pil/item-registry";
+import { isPinnedItem, itemRecordId } from "@pablotech/akesi/item-registry";
 import { sortPinnedFirst } from "./pin-sort";
 
 export interface RecommendedMarkerGroup {

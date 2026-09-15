@@ -2,14 +2,14 @@
   import type { Client, SourceRecord, DiseaseEntry, NoteAttachment } from "./types";
   import PersonaBubble, { type BubbleAction } from "@tinytars/frame/PersonaBubble.svelte";
   import LeafCard from "@tinytars/frame/LeafCard.svelte";
-  import { removeSource, updateSource, type SourceEditPatch } from "@pablotech/akesi-pil/report-merge";
+  import { removeSource, updateSource, type SourceEditPatch } from "@pablotech/akesi/report-merge";
   import HeadingAnchor from "./HeadingAnchor.svelte";
   import { reportAnchor, findByAnchor } from "./anchor";
   import { reportSystemLookup } from "./report-sidebar-groups";
-  import { reportTitleOf, reportDateOf, REPORT_KIND_LABEL } from "@pablotech/akesi-pil/report-title";
+  import { reportTitleOf, reportDateOf, REPORT_KIND_LABEL } from "@pablotech/akesi/report-title";
   import { filterByGroup } from "@tinytars/frame/group-filter";
   import { ALL_GROUP_KEY } from "./sidebar-labels";
-  import { formatDay } from "@pablotech/akesi-pil/dates";
+  import { formatDay } from "@pablotech/akesi/dates";
   import { createDraftSync, createPersistNow } from "./draft-sync.svelte";
   import Modal from "@tinytars/frame/Modal.svelte";
   import Button from "@tinytars/frame/Button.svelte";

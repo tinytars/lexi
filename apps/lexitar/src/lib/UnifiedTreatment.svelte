@@ -1,9 +1,9 @@
 <script lang="ts">
   import { tick } from "svelte";
   import { describeAiError } from "./ai-error";
-  import { renameAssessmentItems, assessmentFor } from "@pablotech/akesi-pil/treatment-bucket";
+  import { renameAssessmentItems, assessmentFor } from "@pablotech/akesi/treatment-bucket";
   import { partitionByBucket } from "./treatment-sidebar";
-  import { formatIngredient, hasProductData } from "@pablotech/akesi-pil/treatment-product";
+  import { formatIngredient, hasProductData } from "@pablotech/akesi/treatment-product";
   import { computeConclusion, isConclusion, conclusionMessage, formatIngredientTotal } from "./treatment-conclusion";
   import type { Attachment, Client, ClientFactors, LegacyFactors, NoteAttachment, TreatmentItem } from "./types";
   import PersonaBubble, { type BubbleAction } from "@tinytars/frame/PersonaBubble.svelte";
@@ -12,13 +12,13 @@
   import PendingGrouping from "./PendingGrouping.svelte";
   import HeadingAnchor from "./HeadingAnchor.svelte";
   import { treatmentAnchor, findByAnchor } from "./anchor";
-  import { groupBySystem } from "@pablotech/akesi-pil/system-groups";
+  import { groupBySystem } from "@pablotech/akesi/system-groups";
   import { planActionSystems } from "./treatment-groups";
-  import { treatmentsOf, normalizeTreatments } from "@pablotech/akesi-pil/treatment-normalize";
+  import { treatmentsOf, normalizeTreatments } from "@pablotech/akesi/treatment-normalize";
   import { createDraftSync, createPersistNow } from "./draft-sync.svelte";
-  import { bucketOf, collapseByName, treatmentLabel, todayISODate, BUCKET_LABEL, groupByName, dateGaps, formatDose, type NamedTreatmentGroup } from "@pablotech/akesi-pil/treatment-bucket";
+  import { bucketOf, collapseByName, treatmentLabel, todayISODate, BUCKET_LABEL, groupByName, dateGaps, formatDose, type NamedTreatmentGroup } from "@pablotech/akesi/treatment-bucket";
   import { sortPinnedFirst } from "./pin-sort";
-  import { endOfMonth, formatDay, isCompleteDate } from "@pablotech/akesi-pil/dates";
+  import { endOfMonth, formatDay, isCompleteDate } from "@pablotech/akesi/dates";
   import Modal from "@tinytars/frame/Modal.svelte";
   import Button from "@tinytars/frame/Button.svelte";
   import Field from "@tinytars/frame/Field.svelte";

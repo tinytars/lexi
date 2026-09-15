@@ -7,7 +7,7 @@
 // leaf-regen-client.ts — the assessment is the deliverable; the document is an enhancement.
 import type { Attachment } from "./types";
 import { AiError, withDeadline } from "./ai-error";
-import { capDocuments, type DocumentText, type StoredExtraction } from "@pablotech/akesi-pil/document-read";
+import { capDocuments, type DocumentText, type StoredExtraction } from "@pablotech/akesi/document-read";
 import { normalizeClientId } from "./client-id";
 
 // A model call on a long PDF is slower than a leaf regen's own scoped call but bounded the same

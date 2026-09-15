@@ -29,11 +29,11 @@
 // record-and-continue — a violation is something to surface, not something to roll back.
 
 import type { Client, FindingDecisionEntry } from "./types";
-import { BASIS_KEYS } from "@pablotech/akesi-pil/finding-assemble";
+import { BASIS_KEYS } from "@pablotech/akesi/finding-assemble";
 import { labelSubject } from "./leaf-regen-registry";
 import { ENTITY_SPECS } from "./entity-kinds";
-import { treatmentsOf } from "@pablotech/akesi-pil/treatment-normalize";
-import { bucketOf, todayISODate, treatmentLabel, assessmentFor } from "@pablotech/akesi-pil/treatment-bucket";
+import { treatmentsOf } from "@pablotech/akesi/treatment-normalize";
+import { bucketOf, todayISODate, treatmentLabel, assessmentFor } from "@pablotech/akesi/treatment-bucket";
 
 /** Sections whose rows carry a body-system tag that must name a real disease group. */
 const GROUP_BEARING = [

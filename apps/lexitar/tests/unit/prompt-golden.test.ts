@@ -50,12 +50,12 @@ describe("the chat prompt is what it was when someone last looked at it", () => 
 // CLI, and left the browser path, which is the one patients use, on the old wording.
 describe("both refresh paths ask for a correction the same way", () => {
   it("is empty when nothing has been rejected", async () => {
-    const { correctionSuffix } = await import("@pablotech/akesi-pil/finding-generate");
+    const { correctionSuffix } = await import("@pablotech/akesi/finding-generate");
     expect(correctionSuffix([])).toBe("");
   });
 
   it("carries EVERY prior rejection, numbered", async () => {
-    const { correctionSuffix } = await import("@pablotech/akesi-pil/finding-generate");
+    const { correctionSuffix } = await import("@pablotech/akesi/finding-generate");
     const s = correctionSuffix(["duplicate marker group", "bad dataRequisition group", "doctorConversation label"]);
     expect(s).toContain("1. duplicate marker group");
     expect(s).toContain("2. bad dataRequisition group");
@@ -65,7 +65,7 @@ describe("both refresh paths ask for a correction the same way", () => {
 
   it("tells the model that fixing the last one alone is not enough", async () => {
     // The sentence that distinguishes this from the wording it replaced. Its absence is the bug.
-    const { correctionSuffix } = await import("@pablotech/akesi-pil/finding-generate");
+    const { correctionSuffix } = await import("@pablotech/akesi/finding-generate");
     expect(correctionSuffix(["a"])).toMatch(/ALL of the above at once/);
     expect(correctionSuffix(["a"])).toMatch(/reintroducing an earlier/);
     expect(correctionSuffix(["a"])).not.toMatch(/fix exactly this problem/);

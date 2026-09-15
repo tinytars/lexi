@@ -3,7 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { requireSession } from "../_lib/session";
 import { logRequest } from "../_lib/log";
 import { classifyAnthropicError } from "../_lib/anthropic-errors";
-import { proposeFromReport, type ReportPatient } from "@pablotech/akesi-pil/report-extract";
+import { proposeFromReport, type ReportPatient } from "@pablotech/akesi/report-extract";
 import { EXTRACT_MODEL } from "../../src/lib/extract-config";
 
 // W15/1 — extract an uploaded clinical report server-side. The browser can't hold

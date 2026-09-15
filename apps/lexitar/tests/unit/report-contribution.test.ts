@@ -8,7 +8,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { reportContribution, CONF_REVIEW } from "../../src/lib/report-contribution";
 import type { Client, MarkerResult } from "../../src/lib/types";
-import type { ProposedReport } from "@pablotech/akesi-pil/report-extract";
+import type { ProposedReport } from "@pablotech/akesi/report-extract";
 
 const SURE = 0.9;
 const UNSURE = CONF_REVIEW - 0.1;

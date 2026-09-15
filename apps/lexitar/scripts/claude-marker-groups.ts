@@ -1,9 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { Client, InferenceMode, MarkerGrouping } from "../src/lib/types";
-import { systemOrder } from "@pablotech/akesi-pil/system-groups";
+import { systemOrder } from "@pablotech/akesi/system-groups";
 import { MODELS } from "./inference-config";
 import type { UsageAccumulator } from "./inference-cost";
-import { distinctMarkerNames, markerGroupsHashOf, runMarkerGroupingPasses } from "@pablotech/akesi-pil/marker-groups-prompt";
+import { distinctMarkerNames, markerGroupsHashOf, runMarkerGroupingPasses } from "@pablotech/akesi/marker-groups-prompt";
 import { runGroupingPass } from "../src/lib/marker-groups-anthropic";
 
 // W26 — partition EVERY distinct marker a patient has (all sources) into the body

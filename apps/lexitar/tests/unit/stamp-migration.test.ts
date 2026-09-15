@@ -115,7 +115,7 @@ describe("canonicalizerRestamp (browser path)", () => {
   /** A client stamped the way a Finding from generation `gen` is. */
   async function stampedUnder(gen: number, c: Client = client()): Promise<Client> {
     const { legacy } = canonicalGenerations(c);
-    const { sha256hex12 } = await import("@pablotech/neuro-pil/hash-web");
+    const { sha256hex12 } = await import("@pablotech/neuro/hash-web");
     const stamped: Record<string, string> = {};
     for (const [k, v] of Object.entries(legacy[gen])) stamped[k] = await sha256hex12(v);
     return { ...c, finding: { nodeHashes: stamped } } as Client;

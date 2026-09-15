@@ -11,7 +11,7 @@ import { analysisAnchor } from "./anchor";
 import { ANALYSIS_NAV } from "./analysis-nav";
 import { ALL_GROUP_KEY, ALL_GROUP_LABEL } from "./sidebar-labels";
 import type { SidebarGroupRow, SidebarLeafRow } from "@tinytars/frame/sidebar-rows";
-import { isPinnedItem, itemRecordId } from "@pablotech/akesi-pil/item-registry";
+import { isPinnedItem, itemRecordId } from "@pablotech/akesi/item-registry";
 import { sortPinnedFirst } from "./pin-sort";
 
 export interface AnalysisItem {

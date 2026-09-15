@@ -4,7 +4,7 @@ import { logRequest } from "../_lib/log";
 import { classifyAnthropicError } from "../_lib/anthropic-errors";
 import { LEAF_REGEN_SPECS } from "../../src/lib/leaf-regen-registry";
 import { runLeafRegen } from "../../src/lib/leaf-regen-anthropic";
-import { capDocuments } from "@pablotech/akesi-pil/document-read";
+import { capDocuments } from "@pablotech/akesi/document-read";
 
 // A TRANSLATE relay, in the owner's vocabulary (2026-08-21): this fills in LexiTar's reply to ONE
 // turn. A user turn always gets its reply, so this is session-gated and nothing more — deliberately

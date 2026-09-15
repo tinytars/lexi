@@ -1,12 +1,12 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
-import { dagToFiles } from "@pablotech/neuro-pil/markdown";
+import { dagToFiles } from "@pablotech/neuro/markdown";
 import { findingDag, FINDING_DAG } from "../src/lib/finding-dag";
 import { PRODUCT_NAME } from "../src/lib/brand";
 
 // Writes FINDING_DAG out as an Obsidian-openable vault: one markdown note per node, via
-// @pablotech/neuro-pil's dagToFiles (brain/neuro-pil/markdown.ts). The engine is public
+// @pablotech/neuro's dagToFiles (brain/neuro-pil/markdown.ts). The engine is public
 // (alex-tech/pilos); this script's default output is not — docs/cross-app/06-open-source-akesi-pil.md
 // requires the public repo carry no LexiTar/product branding.
 //
@@ -35,7 +35,7 @@ export function outDir(): string {
   return DEFAULT_OUT_DIR;
 }
 
-// Appended, not handled by @pablotech/neuro-pil's dagToFiles: `reasoning` is domain-specific
+// Appended, not handled by @pablotech/neuro's dagToFiles: `reasoning` is domain-specific
 // clinical content the public, domain-free engine must never parse or know the shape of. Inverse of
 // import-finding-dag-vault.ts's extractReasoning.
 export function appendReasoning(content: string, reasoning: string | undefined): string {

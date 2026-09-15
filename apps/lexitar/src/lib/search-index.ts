@@ -1,4 +1,4 @@
-import { reportTitleOf, reportDateOf, REPORT_KIND_LABEL } from "@pablotech/akesi-pil/report-title";
+import { reportTitleOf, reportDateOf, REPORT_KIND_LABEL } from "@pablotech/akesi/report-title";
 import { analysisItems } from "./analysis-items";
 import { ANALYSIS_NAV } from "./analysis-nav";
 import type { Client } from "./types";
@@ -21,8 +21,8 @@ import { questionItems } from "./question-items";
 import { sortPinnedFirst } from "./pin-sort";
 import { flatMarkers } from "./marker-grid";
 import { buildMarkerRatios } from "./marker-ratios";
-import { treatmentsOf } from "@pablotech/akesi-pil/treatment-normalize";
-import { collapseByName, bucketOf, todayISODate, formatDose } from "@pablotech/akesi-pil/treatment-bucket";
+import { treatmentsOf } from "@pablotech/akesi/treatment-normalize";
+import { collapseByName, bucketOf, todayISODate, formatDose } from "@pablotech/akesi/treatment-bucket";
 import { buildHypothesisGroups } from "./treatment-groups";
 import { buildStudyPairs } from "./study-pairs";
 import { buildNotePairs } from "./note-pairs";

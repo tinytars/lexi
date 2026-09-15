@@ -4,7 +4,7 @@ import { extractReasoning } from "../../scripts/import-finding-dag-vault";
 
 // Round-trip coverage for the `## Reasoning` section: dag:push (appendReasoning) writes it into a
 // vault note, dag:pull (extractReasoning) reads it back out. Both live in apps/health-dash-web, not
-// @pablotech/neuro-pil — see import-finding-dag-vault.ts's header for why.
+// @pablotech/neuro — see import-finding-dag-vault.ts's header for why.
 
 describe("finding-dag vault ## Reasoning round-trip", () => {
   const NOTE = `---
