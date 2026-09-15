@@ -1,129 +1,149 @@
 # Architecture
 
 This is the contract, not a tour — see `README.md`'s **What it does** for the featureset summary
-an architect scans first. What follows is what a reader needs to adopt the package, write a new
-controller, or judge whether a change to an existing one is safe.
+an architect scans first. What follows is what a reader needs to trace a bug through the vault
+boundary, add a parser, or judge whether a change to the derived-reasoning pipeline is safe.
 
-`packages/frame` has one dependency shape, repeated across every controller: a plain factory
-function takes a `deps` object (thunks, callbacks, and imports from `@tinytars/vault`) and returns
-an object of getters and async methods backed by Svelte 5 runes. Nothing here reads a global store,
-and nothing here imports a specific host application's types.
+`apps/lexitar` is a consumer, not a from-scratch build: the reusable crypto/access-policy layer and
+the session-orchestration layer above it are both published packages, and this app is the
+domain-specific glue and UI on top of them.
 
 ```
-@tinytars/vault (crypto, auth-client, auth-recovery, auth-grants, auth-support, key-store, base64)
+@tinytars/vault      crypto, auth-client, auth-recovery, key-store, envelope-access, D1EnvelopeStore
    |
    v
-session/auth controllers (this package's *.svelte.ts factories)
+@tinytars/frame      session/auth controllers + screens (see packages/frame/ARCHITECTURE.md)
    |
    v
-screens + menu/panel components (this package's *.svelte files)
+apps/lexitar
+   Svelte UI (src/lib)          the Finding DAG, chat, markers, treatment, ingest, patient-record tabs
+   Pages Functions (functions/) app-specific glue: routing, policy, D1 schema, audit
+   ingest CLI (scripts/)        the deterministic side of turning a lab file into vault content
 ```
 
-## Session/auth controllers
+## The vault boundary, precisely stated
 
-Six factories, each composing one or more `@tinytars/vault` auth modules into a stateful,
-UI-ready surface. All six take their dependencies as thunks/callbacks rather than capturing
-values, which is what lets the same controller run unmodified against different host apps — see
-`CONTRIBUTING.md`'s "controller shape" section before adding a seventh.
+Encryption and decryption happen only in the browser and in the local CLI. `functions/` — the
+Cloudflare Pages backend — never decrypts in the request path and never sees a password, KEK, or
+DEK; it moves sealed HD1 blobs (the vault) and, separately, plaintext raw file bytes for source
+documents that are stored unencrypted by design. The mechanism is `@tinytars/vault`'s: a per-vault
+DEK encrypts the record, and the DEK is wrapped once per authorized principal via ECDH-ES — see
+`@tinytars/vault`'s own `ARCHITECTURE.md` for the byte layout and the full principal model (owner /
+org-recovery / grantee) that this app's `functions/_lib/identity-vault.ts` composes against.
 
-- **`vault-session.svelte.ts`** — the foundation the other five build on. `createVaultSession()`
-  holds an unlocked session's key material (`VaultEntry`, the DEK, the account keypair) as one
-  `$state` object, and re-exports `VaultEntry`/`VaultSession`/`openVault` from
-  `@tinytars/vault/vault-session` so a consumer never needs to import both packages for the same
-  type. Every other controller in this package depends on the session shape this one defines.
-- **`roster-session.svelte.ts`** — `createRosterSession(deps)`, the largest controller: cold-load
-  resume (via a `hd_resume` marker, `RESUME_MARKER`), owner/clinician/support routing, roster
-  load/remove, and patient drill-in. Imports `@tinytars/vault/key-store`, `/crypto`, `/base64`,
-  `/auth-client`, and `/auth-grants` — it's the one controller that touches nearly every vault
-  primitive, because it's the one responsible for deciding *which* session shape a caller ends up
-  in after authenticating.
-- **`vault-principals.svelte.ts`** — `createVaultPrincipals<V>(deps)`: lists and manages the
-  provider/support principals who hold access to a vault, and implements `rotateVaultKey()` — the
-  DEK re-key operation. Imports `@tinytars/vault/crypto`, `/base64`, `/auth-grants`,
-  `/auth-support`, and `/auth-recovery`, since rotation touches every kind of principal at once.
-- **`recovery-controller.svelte.ts`** — `createRecoveryController<P>(deps)`: the full recovery
-  ladder — issuing and regenerating recovery codes, redeeming them, and org-key revoke. Imports
-  `@tinytars/vault/auth-recovery` directly; this controller is a thin, stateful wrapper around
-  that module's functions plus the UI-facing state (pending/error/success) around each step.
-- **`support-access.svelte.ts`** — `createSupportAccess(deps)`: the support-agent console —
-  listing pending/active requests, requesting or cancelling access, and patient drill-in once
-  access is granted. Imports `@tinytars/vault/auth-support`.
-- **`account-methods.svelte.ts`** — `createAccountMethods(deps)`: account profile state,
-  login-method add/remove/list, the `ensureExtractableKey()` gate a method change needs before it
-  can re-wrap the account's private key, and the Google-link popup flow. Imports
-  `@tinytars/vault/auth-client` and `/auth-recovery`.
+The one thing worth stating exactly, because it's easy to overclaim: **the operator cannot silently
+decrypt a patient's vault, but the operator's decrypt capability is not zero — it's audited,
+disclosed at signup, and revocable by the patient, not eliminated.** Every account gets an
+org-recovery envelope by default, wrapped to an operational P-256 keypair kept out-of-band; a
+patient can revoke it (`DELETE /api/vault/recovery-envelope`), and every use is logged to
+`phi_access_events`, both server-side (grant/revoke) and CLI-side (`scripts/access-log.ts` around
+every org-key decrypt). A separate, narrower support-agent access path
+(`functions/api/support/approve.ts`) is consent-gated, expires, and re-keys on exit. The claim this
+app makes is "no undisclosed backdoor, every privileged read logged" — not "structurally
+impossible" — and the rest of the docs should never round that up.
 
-## Screens
+`functions/_lib/guard.ts` is the bearer-token half of the auth surface still in use (`VAULT_TOKEN`,
+for `PUT /api/vault/{id}`): a length-guarded, constant-time comparison against a comma-separated
+allowlist of secret values. Everything else (`/api/chat`, `/api/raw`) has moved to session-cookie
+auth (`hd_session`, HMAC-SHA256). `functions/_lib/step-up.ts` requires re-proving a current
+password before a new passkey or Google identity can be added to an account — closing the gap
+where a stolen session cookie could otherwise mint a permanent new credential — and where there's
+no password to challenge, the action proceeds but always emails a notification, which the code
+treats as the residual control, not a courtesy.
 
-- **`LoginScreen.svelte`** — the lock screen: sign-in, sign-up, and recovery-code redemption in
-  one component, driven by a caller-supplied `LoginRecovery` interface rather than a hardcoded
-  recovery flow, so a host can wire it to `recovery-controller.svelte.ts` or its own equivalent.
-- **`Onboarding.svelte`** — the first-run screen, with a caller-supplied `OnboardingField[]`
-  schema (`number`/`select` fields) rather than hardcoded questions — the same
-  domain-neutrality the rest of the package holds to. Imports `onMount` from `svelte`.
+## Ingest CLI (`scripts/`)
 
-## Menu and popover primitives
+One shared pipeline for every marker source, run via `npm run ingest -- --client <id> ...`:
 
-- **`anchored-menu.svelte.ts`** — the shared positioning engine behind every popover in this
-  package: `placeMenu()` is a pure function computing a fixed-position rect (flip/clamp against
-  viewport edges), and the `anchoredMenu` action wires it to a real element — portaling into
-  `<body>`, rAF-throttled reposition on scroll/resize, a keyboard focus trap, and focus restore on
-  close. `AccountMenu.svelte` and `LeafActionMenu.svelte` both use this action rather than
-  duplicating popover mechanics.
-- **`menu-registry.svelte.ts`** — a singleton `$state` registry answering one question: which
-  popover, if any, is currently open. This is what lets opening one menu close another without
-  either menu component needing a reference to its siblings.
-- **`menu-items.ts`** — the `LeafMenuItem` interface shared by menu-driven components. Plain
-  `.ts`, not `.svelte.ts` — it declares a shape, not reactive state, so it type-checks with `tsc`
-  alone and doesn't need `svelte-check`.
-- **`AccountMenu.svelte`** — the top-right account dropdown. Supports both an "owner" mode and a
-  "providerAccess" mode, and every string it displays is prop-overridable rather than hardcoded
-  copy, so a host can restyle its own vocabulary onto it. Uses `menu-registry.svelte.ts` and
-  `anchored-menu.svelte.ts`.
-- **`LeafActionMenu.svelte`** — the shared "⋮" per-row action menu, with an `openOnly()` helper
-  for the common "only one row's menu open at a time" case. Uses the same registry and anchoring
-  primitives as `AccountMenu.svelte`.
+```
+lab file → detect by extension → per-source parser → MarkerResult[] → dedup merge → vault.json → .enc
+```
 
-## File attachment
+Parsers are routed by file extension alone, never by content-sniffing (`src/lib/parsers/`):
+`.xlsx`/`.xls` goes to a blood-lab or scale/body-composition parser depending on sheet shape;
+`.pdf` goes to a DEXA parser that reads fixed `(x,y)` table coordinates via `pdfjs-dist` —
+deliberately brittle to template changes, not disguised as robust. A separate LLM-based path
+handles narrative radiology PDFs; it's a different code path from this deterministic
+extension-routing, not a fallback inside it.
 
-- **`attach-controller.ts`** — a singleton registry for an in-flight file picker, plus
-  `AttachMode` and `DEFAULT_ATTACH_ACCEPT = "*/*"`. Plain `.ts`: it holds a callback reference,
-  not Svelte state.
-- **`AttachPicker.svelte`** — a single hidden `<input type=file>` driven by that controller.
-  Imports `onMount` from `svelte`.
+Every parser emits the same `MarkerResult { marker, group, source, date, value, unit, ref? }`
+shape, with units canonicalized at parse time so a value from one lab is comparable to another's.
+Every source file is content-hashed to a `sourceId`; raw bytes and a pre-fold extraction artifact
+are kept alongside the vault under a matching, self-describing filename, and every derived reading
+carries that `sourceId` back to its origin. Removing a source is a real operation
+(`src/lib/report-merge.ts`'s `removeSource()`), not a soft flag: it drops what only that source
+contributed, re-attributes what a surviving source also supplies, and leaves a PHI-free tombstone
+behind — `vault:verify` enforces that no reading or tombstone ever points at a dropped source.
 
-## Generic panels
+## Svelte UI (`src/lib`)
 
-None of the four components below know anything about vaults, accounts, or health data — they
-take fully caller-supplied data and render it.
+Organized around one central derived-reasoning graph, not a flat page-per-feature layout:
 
-- **`LeafCard.svelte`** — the shared card shell and the `.rg-grid`/`.rg-col` global CSS classes
-  every grid-of-cards layout in a host app builds on. Imports `Snippet` from `svelte`'s type
-  exports for its slot content.
-- **`Diagnostics.svelte`** — a provider-only audit-log viewer, typed against a caller-supplied
-  `DiagnosticsLogEntry[]`.
-- **`ExportTab.svelte`** — a generic "export this record" panel, driven entirely by a
-  caller-supplied `ExportOption[]` — this package has no opinion on what an export option means or
-  produces.
-- **`VisibilitySettings.svelte`** — a generic feature-visibility toggle panel.
+- **The Finding DAG** (`finding-dag.ts`, the largest hand-written file in the app) is the
+  AI-generated reasoning layer: a node graph with its own staleness tracking
+  (`staleness.ts`/`stale-guard.ts`, driven by an inputs-hash scheme) and a generic
+  "regenerate one derived leaf via Anthropic" engine (`leaf-regen-registry.ts` and friends) that
+  markers, ranges, treatment reasoning, and marker-groups all ride on rather than each shipping
+  their own regeneration logic.
+- **Sidebar** (`Sidebar.svelte`, the largest Svelte file in the app) is a dispatch table over
+  roughly eight content domains — markers, exploration, hypotheses, glossary, questions, reports,
+  treatment, recommended-markers — each with its own `*-sidebar-groups.ts` module rather than one
+  shared branch of conditionals.
+- **Chat** is an in-app assistant layer (`chat-store.ts`, `chat-tools.ts`, `ChatTab.svelte`) with
+  its own thread/turn model, separate from the Finding DAG's own regeneration calls to Anthropic.
+- **Markers/ranges** (`MarkersTab.svelte`, `MarkerChart.svelte`) is the quantitative view over
+  ingest output — charts, per-marker detail, reference-range eligibility and generation.
+- **Treatment** (`UnifiedTreatment.svelte`, the single largest file in the app) reasons over
+  medications: inference, name-matching, dosage, and fanout across the marker/finding graph.
+- **Ingest UI** (`ImportTab.svelte`) is the browser-side counterpart to the CLI pipeline above —
+  the same extraction/attachment model, reachable without a terminal.
+- **Patient-record tabs** (allergies, family history, notes, study/imaging, personalization) are
+  each a self-contained model-plus-view pair, not a shared generic-record component — the domains
+  differ enough that a shared abstraction would cost more than the duplication it removes.
+- **Export/sharing** (`export.ts`, `permalink.ts`) and app chrome (`brand.ts`, disclaimers,
+  about/footer) round out the layer.
 
-## Domain-neutral utilities
+None of this reads or writes vault content through local crypto — it goes through
+`@tinytars/vault`'s exported functions (`crypto`, `vault-sink`, `auth-client`, `key-store`, and the
+rest), imported as a real npm dependency, the same way `functions/_lib/identity-vault.ts` does on
+the server.
 
-- **`brand.ts`** — the `LegalLink` type and `deriveLegalLinks()`. This is the domain-neutral half
-  of a brand split: a host app supplies its own legal-link URLs/labels, and this function derives
-  the rest of a consistent link set from them, without this package hardcoding any brand's actual
-  legal text.
+## Pages Functions backend (`functions/`)
+
+A REST-ish set of Cloudflare Pages Functions grouped by concern: account/session/credential
+management (`identity-accounts.ts`, `identity-credentials.ts`, `webauthn.ts`, `google.ts`,
+`session.ts`, `recovery.ts`, `erasure.ts`), vault/envelope movement (`identity-vault.ts`,
+`vault-principals.ts`, `store.ts`, `raw-owner.ts`), audit (`audit.ts`, `identity-audit.ts`,
+`log.ts`), and AI-backed endpoints (`chat.ts`, `refresh-finding.ts`, `refresh-range.ts`,
+`refresh-marker-groups.ts`, `leaf-regen.ts`, `treatment-infer.ts`, `extract.ts`,
+`document-extract.ts`) that call out to Anthropic but never touch a vault key. All of it composes
+`@tinytars/vault`'s `D1EnvelopeStore` and `resolveEnvelopeAccess` rather than reimplementing
+envelope CRUD or access resolution locally — `identity-vault.ts` is a thin re-export shim over the
+package for exactly that reason, keeping every existing import site unchanged while the actual
+logic lives upstream. The one function that stays local, `getEnvelope()`, composes the package's
+generic access resolver with this app's own policy: its `ORG_ACCOUNT_ID` and its provider-link
+rules.
+
+D1 (`health-identity-{dev,prod}`, two physically separate databases, not one shared database with a
+prefix) holds accounts, credentials, identities, public keys, vault envelopes, provider links, and
+the `phi_access_events` audit log; R2 holds only ciphertext. Both are environment-isolated, not
+just namespace-isolated, so a dev-environment bug cannot reach production data through a shared
+store.
 
 ## Two things worth reading before you adapt this
 
-**Controllers hold session state, never vault content.** Every controller's `Deps` interface takes
-the decrypted vault/record and the sink that persists it as caller-supplied values — this package
-orchestrates *who* can open a session and *how a session is entered and left*, and stops there. See
-`CONTRIBUTING.md`'s "what stays with the host" section.
+**The server never holds a key, but it does hold policy.** `functions/` decides *who* may read a
+given envelope (owner / org-recovery / provider link — `@tinytars/vault`'s three-principal model)
+and logs every privileged read — it does not, and structurally cannot, decrypt on anyone's behalf
+without their own key material. Conflating "the server enforces access" with "the server can read
+the data" is the single most common misreading of this design; they are different properties, and
+only the first one is true of `functions/`.
 
-**Nothing here is Svelte-framework-neutral, unlike `@tinytars/vault`.** Every controller is a
-`.svelte.ts` file using runes (`$state`/`$derived`), and every screen/panel is a `.svelte`
-component. `@tinytars/vault`'s functions are plain TypeScript with zero UI-framework coupling by
-design (see its own `ARCHITECTURE.md`); this package is the layer that deliberately gives that
-coupling up in exchange for a ready-to-mount UI. A non-Svelte host consumes `@tinytars/vault`
-directly and writes its own equivalent of this package, rather than adopting `@tinytars/frame`.
+**The Finding DAG's staleness model is what keeps AI-generated content from silently going stale.**
+A new field added to `client.factors`, a new marker, or a new source doesn't retroactively update a
+treatment conclusion or a Finding on its own — `factors-hash.ts`/`node-input-hash.ts` compute a
+hash of what a derived node actually depended on, and a mismatch is what `stale-guard.ts` surfaces
+as "this needs regeneration," not a background job silently rewriting content. A change that adds a
+new input to an existing derivation without updating its hash inputs will produce content that
+looks current but was computed from stale inputs — worth checking deliberately, never assumed safe
+by default.

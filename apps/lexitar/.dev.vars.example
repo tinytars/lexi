@@ -1,0 +1,49 @@
+# Local secrets for `wrangler pages dev` (copy to .dev.vars, which is gitignored).
+# These mirror the Pages secrets set in production via `wrangler pages secret put`.
+
+# /api/chat (W4): the distinct Anthropic key. The route itself is session-gated (hd_session);
+# its CHAT_TOKEN bearer allowlist was deleted from both Pages projects 2026-08-26.
+ANTHROPIC_API_KEY=sk-ant-...
+
+# /api/vault (W6): the vault-write bearer allowlist (`npm run allowlist` output). This is the
+# last consumer of that script — it shared a value with CHAT_TOKEN until that secret was deleted.
+VAULT_TOKEN=<comma-joined hashes from `npm run allowlist`>
+
+# Session cookies (W44 P2): HMAC-SHA256 signing key for functions/_lib/session.ts.
+# Set a long random value via `wrangler pages secret put SESSION_SECRET` — never commit
+# a real value here.
+SESSION_SECRET=<random-string>
+
+# Passkey auth (W44 P3): WebAuthn relying-party identity for functions/_lib/webauthn.ts.
+# RP_ID must be the bare domain (no scheme/port) the passkey is scoped to; ORIGIN must be the
+# exact scheme+host(+port) the browser sends. Local dev values match `wrangler pages dev`'s
+# default port below. Prod sets the real domain/origin via `wrangler pages secret put` (or vars,
+# since these aren't secret) — never point RP_ID/ORIGIN at a dev value in a deployed environment.
+WEBAUTHN_RP_ID=localhost
+WEBAUTHN_RP_NAME=LexiTar
+WEBAUTHN_ORIGIN=http://localhost:8788
+
+# Provider Finding refresh (W15/3b): a DISTINCT Anthropic key so the money-spending Finding
+# regeneration can't exhaust the chat key's budget (functions/api/refresh-finding.ts).
+FINDING_ANTHROPIC_API_KEY=sk-ant-...
+
+# Provider authorization token (W15/3b): the distinct secret handed to a proven clinician that
+# authorizes /api/refresh-finding (functions/api/provider-token.ts, log.ts, logs.ts). Rotates
+# independently of the vault/chat tokens. Also gates /api/refresh-range (M59).
+PROVIDER_TOKEN=<random-string>
+
+# Provider Ranges refresh (M59/Phase 2): a DISTINCT Anthropic key so the money-spending
+# single-marker Ranges regeneration can't exhaust the Finding/chat keys' budget
+# (functions/api/refresh-range.ts).
+RANGES_ANTHROPIC_API_KEY=sk-ant-...
+
+# Google OAuth (W45 §J). Provision a Web OAuth client in Google Cloud console; authorized redirect
+# URI must be <host>/api/auth/google/callback. GOOGLE_KEK is the SERVER-HELD key-encryption key that
+# wraps Google accounts' private keys (base64 of >=32 random bytes) — set it via
+# `wrangler pages secret put GOOGLE_KEK`; losing/rotating it locks every Google-only account out.
+# GOOGLE_CLIENT_ID=<from Google Cloud console>
+# GOOGLE_CLIENT_SECRET=<from Google Cloud console>
+# GOOGLE_KEK=<base64 of 32 random bytes, e.g. `openssl rand -base64 32`>
+
+# NOTE: the DB (D1), VAULT (R2), ASSETS (static) bindings and STORE_PREFIX var come from
+# wrangler.jsonc — NOT from .dev.vars. Only secrets belong here.

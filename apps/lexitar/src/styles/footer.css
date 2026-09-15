@@ -1,0 +1,38 @@
+/* Shared foundation footer, vendored from the pre-migration @tars/styles package. Both the Astro
+   (tinytars) and Svelte (this app) footer wrappers render this markup/classes so the footer looks
+   and behaves the same across apps. Depends on the --tt-* tokens in tokens.css; link hover uses
+   each app's --tt-footer-accent. */
+.tt-footer {
+  border-top: 1px solid var(--tt-border);
+  color: var(--tt-muted);
+  font-size: var(--tt-footer-font-size);
+  font-family: var(--tt-font-sans);
+  background: #fff;
+}
+
+.tt-footer__row {
+  max-width: var(--tt-footer-max);
+  margin: 0 auto;
+  padding: 1.25rem 1.25rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.tt-footer__links {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.tt-footer__links a {
+  color: var(--tt-muted);
+  text-decoration: none;
+}
+
+.tt-footer__links a:hover {
+  color: var(--tt-footer-accent);
+  text-decoration: underline;
+}

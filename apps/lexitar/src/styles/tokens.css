@@ -1,0 +1,17 @@
+/* Cross-app design primitives, vendored from the pre-migration @tars/styles package (which stays
+   in plover-code, still shared there with apps/tinytars — see the migration plan). Additive:
+   everything is namespaced --tt-* so importing this changes nothing until an app opts a property
+   in. Palettes stay app-local (tinytars navy/teal, health-dash blue) — these are the neutral,
+   brand-agnostic tokens the footer and other shared components consume. */
+:root {
+  --tt-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --tt-font-serif: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+
+  --tt-muted: #6b7280;
+  --tt-border: #e5e7eb;
+
+  --tt-footer-font-size: 0.85rem;
+  --tt-footer-max: 64rem;
+  /* Each app sets --tt-footer-accent to its own accent (link hover in the footer). */
+  --tt-footer-accent: currentColor;
+}

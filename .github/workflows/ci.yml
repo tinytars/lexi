@@ -20,6 +20,29 @@ jobs:
       - run: npm ci
       - run: npm run typecheck --workspace packages/frame
 
+  lexitar:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/lexitar
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+        working-directory: .
+      - run: npm run check
+      - run: npm run build
+      - run: npm run test
+      - run: npx playwright install --with-deps chromium
+      # "synthetic" is the credential-free, hostable e2e project (playwright.config.ts) — the
+      # other project, "pilots", exercises real seeded pilot-account data that deliberately never
+      # left the source monorepo (CHANGELOG.md's [Unreleased] entry) and has no home here.
+      - run: npx playwright test --project=synthetic
+
   release:
     needs: test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'

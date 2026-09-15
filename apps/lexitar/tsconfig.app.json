@@ -1,0 +1,35 @@
+{
+  "extends": "@tsconfig/svelte/tsconfig.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+    "target": "es2023",
+    "module": "esnext",
+    "types": ["svelte", "vite/client"],
+    "noEmit": true,
+    /**
+     * Typecheck JS in `.svelte` and `.js` files by default.
+     * Disable checkJs if you'd like to use dynamic types in JS.
+     * Note that setting allowJs false does not prevent the use
+     * of JS in `.svelte` files.
+     */
+    "allowJs": true,
+    "checkJs": true,
+    "moduleDetection": "force"
+  },
+  // W63 — functions/ (every Pages Function, i.e. all of prod's API surface) was checked by NOTHING:
+  // not this config, not `build` (vite bundles src/ only), not vitest (transpile-only). It belongs
+  // to svelte-check rather than tsconfig.node.json because it imports types from src/ modules that
+  // reach .svelte files, which only svelte-check can resolve. scripts/ went the other way — see
+  // tsconfig.node.json.
+  //
+  // W64 — tests/** is IN. It surfaced 149 errors and two of them were real bugs, not fixture noise:
+  // FindingAIResponse declared `basis` as the array form alone while validate() accepted (and the
+  // vault stores) the object form, so assembleFinding threw on a shape the validator waved through;
+  // and leaf-actions' `attach` was being handed a callback where it takes an AttachTarget. The rest
+  // were fixtures asserting against types they did not match — id-less entries, a Worker env missing
+  // half its bindings, TS 5.7's generic Uint8Array. Fixed rather than cast: `npm test` still passes.
+  "include": [
+    "src/**/*.ts", "src/**/*.js", "src/**/*.svelte",
+    "functions/**/*.ts", "tests/**/*.ts"
+  ]
+}

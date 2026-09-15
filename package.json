@@ -6,5 +6,8 @@
   "workspaces": [
     "packages/*",
     "apps/*"
-  ]
+  ],
+  "overrides": {
+    "@anthropic-ai/sdk": "^0.91.1"
+  }
 }
