@@ -1,6 +1,5 @@
 import { defineConfig } from "vitest/config";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
-import { fileURLToPath } from "node:url";
 
 /** Tests that need the real records or a credential — run by `npm run test:data` on the Mac only. */
 export const DATA_TESTS = [
@@ -28,12 +27,6 @@ export default defineConfig({
     // suite. Asking for the browser build is what makes them run; the jsdom environment on its own
     // is not enough, because the condition decides which Svelte runtime is imported.
     conditions: ["browser"],
-    alias: {
-      // Match vite.config.ts: resolve the cross-app packages to source so Vitest transforms
-      // the shared TS directly (a .ts package main under node_modules isn't transformed).
-      "@tars/brand": fileURLToPath(new URL("../../packages/brand/index.ts", import.meta.url)),
-      "@tars/styles": fileURLToPath(new URL("../../packages/styles", import.meta.url)),
-    },
   },
   test: {
     include: ["tests/unit/**/*.test.ts"],

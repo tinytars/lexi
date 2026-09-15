@@ -14,10 +14,7 @@
      */
     "allowJs": true,
     "checkJs": true,
-    "moduleDetection": "force",
-    "paths": {
-      "@tars/brand": ["../../packages/brand/index.ts"]
-    }
+    "moduleDetection": "force"
   },
   // W63 — functions/ (every Pages Function, i.e. all of prod's API surface) was checked by NOTHING:
   // not this config, not `build` (vite bundles src/ only), not vitest (transpile-only). It belongs
@@ -33,7 +30,6 @@
   // half its bindings, TS 5.7's generic Uint8Array. Fixed rather than cast: `npm test` still passes.
   "include": [
     "src/**/*.ts", "src/**/*.js", "src/**/*.svelte",
-    "functions/**/*.ts", "tests/**/*.ts",
-    "../../packages/brand/index.ts"
+    "functions/**/*.ts", "tests/**/*.ts"
   ]
 }

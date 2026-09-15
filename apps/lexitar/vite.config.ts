@@ -2,7 +2,6 @@ import { defineConfig, type Plugin } from 'vite'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
 import { writeFile, mkdir, readFile, rename } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
-import { decryptVault } from '@tinytars/vault/crypto'
 
 // W47 — write-to-temp-then-rename so a save-vault write is never observably partial. A plain
 // writeFile(path, data) opens the destination in truncate mode ('w') and THEN streams the
@@ -43,7 +42,14 @@ function saveVaultMiddleware(): Plugin {
             await atomicWriteFile(`${publicDir}/data-${id}.enc`, body);
             // W13b: keep the plaintext source of truth in sync so a dev web-edit doesn't
             // drift from the served .enc (the id is the passphrase). Best-effort.
+            //
+            // @tinytars/vault ships raw .ts with no compiled dist, and Node's native
+            // type-stripping refuses to load a .ts file under node_modules — so this import
+            // must stay dynamic and deferred to request time. A static top-level import of
+            // the same specifier makes `vite build` itself fail (the config file is loaded
+            // by the same Node loader), even though this whole branch is dev-only.
             try {
+              const { decryptVault } = await import('@tinytars/vault/crypto');
               const vault = await decryptVault(new Uint8Array(body), id);
               await mkdir(`${privateDir}/${id}`, { recursive: true });
               await atomicWriteFile(`${privateDir}/${id}/vault.json`, JSON.stringify(vault, null, 2) + '\n');
@@ -101,12 +107,4 @@ export default defineConfig({
   // contents still map to the dist root, so served URLs (/data-{id}.enc) are unchanged.
   publicDir: 'records/public',
   plugins: [svelte(), saveVaultMiddleware(), rawFileMiddleware()],
-  resolve: {
-    alias: {
-      // Cross-app packages resolved to source so Vite transpiles the shared TS/CSS directly
-      // (avoids the "TS in node_modules isn't transpiled" workspace pitfall).
-      '@tars/brand': fileURLToPath(new URL('../../packages/brand/index.ts', import.meta.url)),
-      '@tars/styles': fileURLToPath(new URL('../../packages/styles', import.meta.url)),
-    },
-  },
 })
