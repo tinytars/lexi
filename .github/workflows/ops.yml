@@ -1,0 +1,183 @@
+name: ops
+
+# The dispatch surface for lexitar's live vault operations — the R2/D1-native replacement for
+# plover-code's ops.yml, ported here now that scripts/r2-ops-cli.ts (refresh-finding,
+# refresh-ranges, refresh-marker-groups, process-pending, reconcile, sync-treatment-attachments)
+# and scripts/raw-backfill.ts / scripts/recovery-approve.ts read and write R2/D1 directly, with no
+# dependency on plover-code's local plaintext vault mirror.
+#
+# treatment-groups-backfill, treatment-photo-extract, and sync_pages_secret stay behind in
+# plover-code's ops.yml: the first two still read/write through vault-io.ts's local plaintext
+# mirror (not yet reimplemented against R2/D1), and the third pushes a Cloudflare Pages secret to
+# a project that still deploys from plover-code until the Pages repoint (migration plan Phase 6).
+#
+# A NEW OPERATIONAL FLOW IS AN ENTRY IN THIS FILE, NEVER A SECOND WORKFLOW — same discipline
+# plover-code's ops.yml documents, for the same reason (three near-identical workflows drifting
+# independently).
+
+on:
+  workflow_dispatch:
+    inputs:
+      op:
+        description: "Operation"
+        required: true
+        type: choice
+        options:
+          - refresh-finding
+          - refresh-ranges
+          - refresh-marker-groups
+          - process-pending
+          - reconcile
+          - sync-treatment-attachments
+          - raw-backfill
+          - recovery-approve
+      client:
+        description: "Client id (e.g. alex). Ignored by raw-backfill, which is store-wide. recovery-approve reads this as the patient's account email instead. Omit for reconcile to fan out across every deployed vault."
+        required: false
+        type: string
+      preview:
+        description: "No Anthropic call, no R2 write — print what the real run would do"
+        required: true
+        type: boolean
+        default: true
+      force:
+        description: "Regenerate even when the plan says nothing changed (refresh-finding, refresh-ranges, refresh-marker-groups)"
+        type: boolean
+        default: false
+      marker:
+        description: "refresh-ranges: one marker name, or `all` for every marker with readings"
+        type: string
+        default: ""
+      name:
+        description: "sync-treatment-attachments: optional treatment name filter (omit for every treatment)"
+        type: string
+        default: ""
+      extra_args:
+        description: "Escape hatch for uncurated CLI flags. Whitespace-split, each token shell-quoted."
+        type: string
+        default: ""
+      reason:
+        description: "Why this run is happening — echoed into the summary"
+        type: string
+        default: ""
+
+# vault-sync.ts's operator push re-reads the etag immediately before the write and cannot close the
+# window (no conditional option on `wrangler r2 object put`) — serializing per-client runs is what
+# keeps that race theoretical rather than likely. Never cancel in progress: a run killed mid-write
+# leaves the deployed vault in an inconsistent state.
+concurrency:
+  group: vault-${{ inputs.client }}
+  cancel-in-progress: false
+
+jobs:
+  op:
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.preview && 10 || fromJSON('{"refresh-finding":45,"refresh-ranges":30,"refresh-marker-groups":20,"process-pending":30,"reconcile":20,"sync-treatment-attachments":10,"raw-backfill":15,"recovery-approve":5}')[inputs.op] }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Resolve the command
+        id: plan
+        env:
+          # Every dispatcher-supplied value reaches the shell as an environment variable, never
+          # interpolated into the script text — `${{ inputs.client }}` spliced into a `run:` block
+          # is a script-injection hole; "$CLIENT" is not.
+          OP: ${{ inputs.op }}
+          CLIENT: ${{ inputs.client }}
+          PREVIEW: ${{ inputs.preview }}
+          FORCE: ${{ inputs.force }}
+          MARKER: ${{ inputs.marker }}
+          NAME: ${{ inputs.name }}
+          EXTRA: ${{ inputs.extra_args }}
+        run: |
+          set -euo pipefail
+          # In a shell step a `type: boolean` input renders as the literal text true/false.
+          preview=false; if [ "$PREVIEW" = "true" ]; then preview=true; fi
+          force="";      if [ "$FORCE" = "true" ]; then force="--force"; fi
+          note=""
+          exception=""
+
+          case "$OP" in
+            refresh-finding)
+              [ -n "$CLIENT" ] || { echo "refresh-finding needs a client id" >&2; exit 1; }
+              cmd="npm run r2-ops -- --refresh-finding --client $(printf %q "$CLIENT") $force"
+              # --dry-run carries the same no-Anthropic-call guarantee refresh-finding-preview.ts
+              # gave in plover-code (refresh.ts:44-50) — it prints the plan and returns.
+              if $preview; then cmd="$cmd --dry-run"; fi
+              ;;
+            refresh-ranges)
+              [ -n "$CLIENT" ] || { echo "refresh-ranges needs a client id" >&2; exit 1; }
+              case "$MARKER" in
+                "")    echo "refresh-ranges needs a marker name, or all" >&2; exit 1 ;;
+                all)   sel="--all-markers" ;;
+                *)     sel="--marker $(printf %q "$MARKER")" ;;
+              esac
+              cmd="npm run r2-ops -- --refresh-ranges --client $(printf %q "$CLIENT") $sel $force"
+              if $preview; then cmd="$cmd --dry-run"; fi
+              ;;
+            refresh-marker-groups)
+              [ -n "$CLIENT" ] || { echo "refresh-marker-groups needs a client id" >&2; exit 1; }
+              cmd="npm run r2-ops -- --refresh-marker-groups --client $(printf %q "$CLIENT") $force"
+              if $preview; then cmd="$cmd --dry-run"; fi
+              ;;
+            process-pending)
+              [ -n "$CLIENT" ] || { echo "process-pending needs a client id" >&2; exit 1; }
+              cmd="npm run r2-ops -- --process-pending --client $(printf %q "$CLIENT")"
+              if $preview; then cmd="$cmd --dry-run"; fi
+              ;;
+            reconcile)
+              if [ -n "$CLIENT" ]; then
+                cmd="npm run r2-ops -- --reconcile --client $(printf %q "$CLIENT")"
+              else
+                cmd="npm run r2-ops -- --reconcile"
+              fi
+              if $preview; then cmd="$cmd --dry-run"; fi
+              ;;
+            sync-treatment-attachments)
+              [ -n "$CLIENT" ] || { echo "sync-treatment-attachments needs a client id" >&2; exit 1; }
+              cmd="npm run r2-ops -- --sync-treatment-attachments --client $(printf %q "$CLIENT")"
+              if [ -n "$NAME" ]; then cmd="$cmd $(printf %q "$NAME")"; fi
+              if $preview; then cmd="$cmd --dry-run"; fi
+              ;;
+            raw-backfill)
+              # Store-wide against D1, not per-client; `client` only sets the concurrency key.
+              cmd="npx tsx scripts/raw-backfill.ts"
+              if ! $preview; then cmd="$cmd --confirm"; fi
+              ;;
+            recovery-approve)
+              [ -n "$CLIENT" ] || { echo "recovery-approve needs the patient's account email as client" >&2; exit 1; }
+              cmd="npm run recovery:approve -- --email $(printf %q "$CLIENT")"
+              if ! $preview; then cmd="$cmd --confirm"; fi
+              ;;
+            *) echo "unknown op: $OP" >&2; exit 1 ;;
+          esac
+
+          if [ -n "$EXTRA" ]; then
+            for tok in $EXTRA; do cmd="$cmd $(printf %q "$tok")"; done
+            note="Extra arguments were supplied; the preview contract holds only if they do not add a write flag."
+          fi
+
+          {
+            echo "cmd=$cmd"
+            echo "note=$note"
+            echo "exception=$exception"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: ./.github/actions/lexitar-op
+        with:
+          op: ${{ inputs.op }}
+          client: ${{ inputs.client }}
+          run: ${{ steps.plan.outputs.cmd }}
+          preview: ${{ inputs.preview }}
+          preview-note: ${{ steps.plan.outputs.note }}
+          preview-exception: ${{ steps.plan.outputs.exception }}
+          reason: ${{ inputs.reason }}
+          org-key-passphrase: ${{ secrets.ORG_KEY_PASSPHRASE }}
+          passphrase: ${{ secrets.PASSPHRASE }}
+          roster-pass: ${{ secrets.ROSTER_PASS }}
+          seed-passphrase: ${{ secrets.SEED_PASSPHRASE }}
+          cloudflare-api-token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          cloudflare-account-id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}

@@ -1,0 +1,100 @@
+name: lexitar operational run
+description: >
+  The shared body of every lexitar operational flow: node + install, run one command against
+  R2/D1 directly, summarise it. Unlike plover-code's health-dash-op (which this replaces for the
+  ops it can now dispatch), there is no local vault mirror to assert present and no git commit-back
+  step — every op here pulls from R2, mutates, and pushes back to R2/D1 itself.
+
+inputs:
+  op:
+    description: "Operation name, for the summary"
+    required: true
+  client:
+    description: "Client id the run targets"
+    required: true
+  run:
+    description: "Command to execute, from apps/lexitar"
+    required: true
+  preview:
+    description: "'true' when this run must not call Anthropic, write R2, or commit"
+    required: true
+  preview-exception:
+    description: "Set when this op's preview cannot honour the full contract — printed INSTEAD of the blanket claim"
+    default: ""
+  preview-note:
+    description: "Shown in the summary when this op has no real preview — say so rather than faking one"
+    required: false
+    default: ""
+  reason:
+    description: "Free text from the dispatcher, echoed into the summary"
+    required: false
+    default: ""
+  # Composite actions do not inherit `secrets`, so every one is passed explicitly by the caller.
+  org-key-passphrase: { required: true, description: "ORG_KEY_PASSPHRASE" }
+  passphrase: { required: true, description: "PASSPHRASE" }
+  roster-pass: { required: true, description: "ROSTER_PASS — the roster blob's own passphrase" }
+  seed-passphrase: { required: true, description: "SEED_PASSPHRASE" }
+  cloudflare-api-token: { required: true, description: "CLOUDFLARE_API_TOKEN" }
+  cloudflare-account-id: { required: true, description: "CLOUDFLARE_ACCOUNT_ID" }
+  anthropic-api-key: { required: true, description: "ANTHROPIC_API_KEY" }
+
+runs:
+  using: composite
+  steps:
+    # NOTE: checkout is the caller's job, not this action's — `uses: ./.github/actions/...` is
+    # resolved against the workspace, so the repo is already on disk by the time this runs.
+
+    - uses: actions/setup-node@v7
+      with:
+        node-version: 22
+
+    - name: Install (root workspaces cover both apps/lexitar and packages/frame)
+      shell: bash
+      run: npm ci
+
+    - name: Run the operation
+      shell: bash
+      working-directory: apps/lexitar
+      env:
+        ORG_KEY_PASSPHRASE: ${{ inputs.org-key-passphrase }}
+        PASSPHRASE: ${{ inputs.passphrase }}
+        ROSTER_PASS: ${{ inputs.roster-pass }}
+        SEED_PASSPHRASE: ${{ inputs.seed-passphrase }}
+        CLOUDFLARE_API_TOKEN: ${{ inputs.cloudflare-api-token }}
+        CLOUDFLARE_ACCOUNT_ID: ${{ inputs.cloudflare-account-id }}
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
+        OP_RUN: ${{ inputs.run }}
+      run: bash -eo pipefail -c "$OP_RUN"
+
+    # "Used as needed" means the run page answers what it did without anyone opening the log.
+    - name: Summarise the run
+      if: always()
+      shell: bash
+      env:
+        OP: ${{ inputs.op }}
+        CLIENT: ${{ inputs.client }}
+        PREVIEW: ${{ inputs.preview }}
+        NOTE: ${{ inputs.preview-note }}
+        EXCEPTION: ${{ inputs.preview-exception }}
+        REASON: ${{ inputs.reason }}
+        CMD: ${{ inputs.run }}
+      run: |
+        {
+          echo "### $OP — $CLIENT"
+          echo
+          if [ "$PREVIEW" = "true" ]; then
+            if [ -n "$EXCEPTION" ]; then
+              echo "**Preview run — partial.** $EXCEPTION"
+            else
+              echo "**Preview run.** No Anthropic call, no R2 write."
+            fi
+            if [ -n "$NOTE" ]; then echo; echo "> $NOTE"; fi
+          else
+            echo "**Real run.** This billed Anthropic and pushed to R2/D1."
+          fi
+          if [ -n "$REASON" ]; then echo; echo "Reason: $REASON"; fi
+          echo
+          echo '```'
+          echo "$CMD"
+          echo '```'
+        } >> "$GITHUB_STEP_SUMMARY"
