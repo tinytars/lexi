@@ -34,7 +34,8 @@
     "lint": "oxlint src functions scripts tests --deny-warnings",
     "brain:versions": "tsx scripts/gen-brain-versions.ts",
     "recovery:approve": "tsx scripts/recovery-approve.ts",
-    "raw:backfill": "tsx scripts/raw-backfill.ts"
+    "raw:backfill": "tsx scripts/raw-backfill.ts",
+    "r2-ops": "tsx scripts/r2-ops-cli.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
