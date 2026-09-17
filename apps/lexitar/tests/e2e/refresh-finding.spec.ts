@@ -1,29 +1,24 @@
 import { test, expect } from "./_fixtures";
-import type { Page } from "@playwright/test";
-import { openAsProvider, openPatient } from "./_login";
+import { openSyntheticAsProvider, openSynthetic } from "./_synthetic";
 
 // W15/3b.2 — provider-only Finding refresh wiring. The provider fetches PROVIDER_TOKEN on unlock,
 // sees a "Translate" button (W41), and clicking it streams from /api/refresh-finding with that
 // token. A patient's own session never sees the button. (The happy-path assembly is covered by the
 // finding unit tests + a live prod smoke; here we drive the wiring with a deterministic error stream.)
 
-async function providerInto(page: Page, patient: string) {
-  await openAsProvider(page, patient);
-}
-
 test("a patient's own session has no Translate control", async ({ page }) => {
   await page.route("**/api/provider-token", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ token: "t" }) }));
-  await openPatient(page);
+  await openSynthetic(page);
   await expect(page.getByRole("button", { name: /Translate/ })).toHaveCount(0);
 });
 
 test("the idle Translate button's tooltip shows the last successful translation time (W41)", async ({ page }) => {
   await page.route("**/api/provider-token", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ token: "provtok-123" }) }));
-  await providerInto(page, "Alex");
+  await openSyntheticAsProvider(page);
   await page.locator(".account-trigger").click();
   const item = page.getByRole("menuitem", { name: /Translate/ });
   await expect(item).toBeVisible();
-  // Alex's vault carries a generated Translation, so the hover reports when it last succeeded.
+  // The synthetic fixture's Finding carries a generated Translation, so the hover reports when it last succeeded.
   await expect(item).toHaveAttribute("title", /^Last translated .+ · Regenerate this patient's Translation/);
 });
 
@@ -40,7 +35,7 @@ test("provider clicks Translate → streams with the provider token → surfaces
     route.fulfill({ status: 200, contentType: "text/plain", body: "\n[[REFRESH_ERROR]] test generation failure" });
   });
 
-  await providerInto(page, "Alex");
+  await openSyntheticAsProvider(page);
   await page.locator(".account-trigger").click();
   const item = page.getByRole("menuitem", { name: /Translate/ });
   await expect(item).toBeVisible();
@@ -68,7 +63,7 @@ test("provider opens Diagnostics and sees the persisted refresh events with toke
     });
   });
 
-  await providerInto(page, "Alex");
+  await openSyntheticAsProvider(page);
   await page.locator(".account-trigger").click();
   await page.getByRole("menuitem", { name: "Diagnostics" }).click();
 
@@ -90,7 +85,7 @@ test("refresh shows a progress bar while generating, with no attempt/portion cou
     route.fulfill({ status: 200, contentType: "text/plain", body: '{"progression":{"latest":"","recent":"","overall":""}}' });
   });
 
-  await providerInto(page, "Alex");
+  await openSyntheticAsProvider(page);
   await page.locator(".account-trigger").click();
   await page.getByRole("menuitem", { name: /Translate/ }).click();
 
