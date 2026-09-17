@@ -205,6 +205,20 @@ export function syntheticClient(seed: string, opts: SyntheticClientOptions = {})
         { system: "Cardiovascular Risk", topic: `Lipid lowering ${tag}`, patient: [], ai: [`Bempedoic acid ${tag}`] },
         { system: "Metabolic Health", topic: `Glycemic control ${tag}`, patient: [`Berberine ${tag}`], ai: [] },
       ],
+      patternAntipattern: { pattern: `Pattern passage for ${tag}.`, antipattern: `Anti-pattern passage for ${tag}.` },
+      clinicalSynthesis: { adverse: `Adverse synthesis for ${tag}.`, favorable: `Favorable synthesis for ${tag}.` },
+      finalThoughts: `Final thoughts for ${tag}.`,
+      criticalRatios: [
+        {
+          name: `Triglycerides : HDL ${tag}`,
+          numerator: "Triglycerides",
+          denominator: "HDL Cholesterol",
+          unit: "",
+          meaning: `Ratio meaning for ${tag}.`,
+          generalExplanation: `General explanation for ${tag}.`,
+          explanation: `Personalized explanation for ${tag}.`,
+        },
+      ],
       generatedAt: "2026-06-01T00:00:00Z",
       inputsHash: `${seed}`.padEnd(12, "0"),
       // A present-but-empty map matches no real per-node hash (src/lib/staleness.ts's `nodeHashes()`
