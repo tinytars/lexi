@@ -45,7 +45,7 @@ describe("chat-threads", () => {
       { id: "t9", title: "newer", pinned: true, turns: [], seq: 9, lastActivityAt: 9 },
     ];
     const adopted = adoptThreads(restored);
-    expect(adopted).toBe(restored); // non-empty set is returned as-is
+    expect(adopted).toEqual(restored); // no duplicates: same threads, same order
     const fresh = newThread();
     expect(fresh.seq).toBeGreaterThan(9);
     expect(restored.some((t) => t.id === fresh.id)).toBe(false);
@@ -55,6 +55,18 @@ describe("chat-threads", () => {
     const adopted = adoptThreads([]);
     expect(adopted).toHaveLength(1);
     expect(adopted[0].turns).toEqual([]);
+  });
+
+  it("adoptThreads drops a duplicate id, keeping the last occurrence, and does not crash", () => {
+    const stale: Thread = { id: "t69", title: "stale copy", pinned: false, turns: [], seq: 5, lastActivityAt: 5 };
+    const fresh: Thread = { id: "t69", title: "current copy", pinned: false, turns: [], seq: 9, lastActivityAt: 9 };
+    const other: Thread = { id: "t70", title: "unrelated", pinned: false, turns: [], seq: 6, lastActivityAt: 6 };
+    const adopted = adoptThreads([stale, other, fresh]);
+    const ids = adopted.map((t) => t.id);
+    expect(ids).toEqual(["t69", "t70"]); // stale t69's slot kept, its value replaced by the later fresh t69
+    expect(adopted.find((t) => t.id === "t69")?.title).toBe("current copy");
+    const nextThread = newThread();
+    expect(nextThread.seq).toBeGreaterThan(9); // counter rebased off the surviving (higher) seq
   });
 
   it("sortThreads puts pinned first, then most-recent-first by lastActivityAt", () => {

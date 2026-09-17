@@ -78,9 +78,18 @@ export function seedNewThread(resolved: ResolvedReference): Thread {
 
 // Rebase the module counter onto a restored set so newThread() ids/seqs stay above every
 // hydrated thread. Returns the set to adopt (a fresh thread if the restored set is empty).
+//
+// Deduplicates by id, keeping the last occurrence: decrypted storage is external input, not a
+// value this module produced itself, and a real account has hit a blob carrying the same id
+// twice (root cause unconfirmed — plausibly an old concurrent-save race, now guarded at the
+// store layer by chat-store.ts's etag check, but that guard is no defense against data already
+// written before it existed). Every render keys threads by id ({#each ... (t.id)} in Sidebar,
+// row.turnIdx within one thread), so a silent duplicate is not cosmetic — it's an uncaught
+// each_key_duplicate crash on every future load of that account's chat tab.
 export function adoptThreads(threads: Thread[]): Thread[] {
-  for (const t of threads) counter = Math.max(counter, t.seq);
-  return threads.length > 0 ? threads : [newThread()];
+  const deduped = [...new Map(threads.map((t) => [t.id, t])).values()];
+  for (const t of deduped) counter = Math.max(counter, t.seq);
+  return deduped.length > 0 ? deduped : [newThread()];
 }
 
 // Pinned first, then most-recent-first (by lastActivityAt) within each group. Stable, pure.
