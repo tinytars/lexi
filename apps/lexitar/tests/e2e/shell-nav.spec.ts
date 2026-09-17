@@ -1,9 +1,9 @@
 import { test, expect } from "./_fixtures";
 import type { Page } from "@playwright/test";
-import { openAsProvider, loginAs, PILOTS } from "./_login";
+import { loginAs } from "./_login";
+import { openSynthetic, openSyntheticAsProvider, mySynthetic, E2E_CLINICIAN } from "./_synthetic";
 import { clickLeafMenuItem } from "./_leaf-menu";
 import { clickNav, setSidebarMode } from "./_nav";
-import { unlock } from "./_shell";
 
 // W11g/h: the primary navigation shell — hash deep-link / back-button, the on-screen Report, the
 // Import placeholder, and downloads. M82 Phase 3 flattened the old two-tier tab+accordion sidebar
@@ -32,13 +32,13 @@ async function navItemLabels(page: Page): Promise<string[]> {
 }
 
 test("Chat is the landing tab", async ({ page }) => {
-  await unlock(page, "Alex");
+  await openSynthetic(page);
   await expect(page.locator(".sidebar .nav-list .nav-item", { hasText: "Chat" })).toHaveClass(/active/);
   await expect(page.locator(".chat-tab textarea")).toBeVisible();
 });
 
 test("tabs switch and update the hash", async ({ page }) => {
-  await unlock(page, "Alex");
+  await openSynthetic(page);
   await clickNav(page, "Treatment");
   await expect(page.locator(".sidebar .nav-list .nav-item", { hasText: "Treatment" })).toHaveClass(/active/);
   await expect(page).toHaveURL(/#.*treatment/);
@@ -50,10 +50,11 @@ test("tabs switch and update the hash", async ({ page }) => {
 });
 
 test("deep-link to a tab via the hash", async ({ page }) => {
-  // Preserve the "#doctor" hash across login — loginAs() re-navs to "/" and would drop it.
+  // Preserve the "#doctor" hash across login — openSynthetic() re-navs to "/" and would drop it.
+  const who = mySynthetic();
   await page.goto("/#doctor", { waitUntil: "networkidle" });
-  await page.fill('input[type="email"]', PILOTS.alex.email);
-  await page.fill('input[type="password"]', PILOTS.alex.password);
+  await page.fill('input[type="email"]', who.email);
+  await page.fill('input[type="password"]', who.password);
   await page.click('button[type="submit"]');
   await page.waitForSelector(".sidebar .nav-item", { timeout: 10_000 });
   // M82 Phase 5 — the legacy "#doctor" tab hash now resolves via LEGACY_TAB_DEFAULT to the
@@ -63,7 +64,7 @@ test("deep-link to a tab via the hash", async ({ page }) => {
 });
 
 test("the browser back button returns to the previous tab", async ({ page }) => {
-  await unlock(page, "Alex");
+  await openSynthetic(page);
   await clickNav(page, "Treatment");
   await expect(page).toHaveURL(/#.*treatment/);
   await clickNav(page, "Chat");
@@ -74,7 +75,7 @@ test("the browser back button returns to the previous tab", async ({ page }) => 
 });
 
 test("Investigator → Analysis consolidates the analytical sections; Study/Hypothesis/Exploration sit beside it (W34/M80)", async ({ page }) => {
-  await openAsProvider(page, "Alex");
+  await openSyntheticAsProvider(page);
   // M83 — Investigator's rows only render once the sidebar's mode toggle is flipped.
   await setSidebarMode(page, "investigator");
   const subs = await navItemLabels(page);
@@ -111,8 +112,10 @@ test("Investigator → Analysis consolidates the analytical sections; Study/Hypo
   await expect(page.locator(".tests-consider")).toBeVisible();
 });
 
-test("Provider (fam4) can inspect the Translation DAG structure", async ({ page }) => {
-  await loginAs(page, PILOTS.provider.email, PILOTS.provider.password);
+test("Provider can inspect the Translation DAG structure", async ({ page }) => {
+  // The DAG is structural (FindingDag.svelte renders it with no client selected), so the e2e
+  // clinician shows the identical graph fam4 would — no need for the real provider account.
+  await loginAs(page, E2E_CLINICIAN.email, E2E_CLINICIAN.password);
   await expect(page.locator(".roster")).toBeVisible();
   await page.getByRole("button", { name: "Translation DAG" }).click();
   await expect(page.locator(".dag")).toBeVisible();
@@ -123,7 +126,7 @@ test("Provider (fam4) can inspect the Translation DAG structure", async ({ page 
 });
 
 test("Patient mode lists all patient-facing sections in one flat nav list, with no mode toggle for a no-override session (M65/M62/M82/M83)", async ({ page }) => {
-  await unlock(page, "Alex");
+  await openSynthetic(page);
   // Notes leads, then Treatment above Markers. Questions and Glossary are no longer flat rows —
   // they nest inside Notes' own lower zone (All / Questions / Glossary), the same way Allergies and
   // Family nest under Profile. Symptoms was fully removed (W49).
@@ -147,7 +150,7 @@ test("Patient mode lists all patient-facing sections in one flat nav list, with 
 });
 
 test("the Critical Ratios tab is retired (W30 — ratios live on the Markers charts)", async ({ page }) => {
-  await unlock(page, "Alex");
+  await openSynthetic(page);
   await expect(page.locator(".sidebar .nav-list .nav-item", { hasText: "Critical Ratios" })).toHaveCount(0);
   // The old hash must not strand the app on a blank screen. `.critical-ratios` was the retired
   // component's own class — asserting its absence was true by deletion and said nothing about what
@@ -157,7 +160,7 @@ test("the Critical Ratios tab is retired (W30 — ratios live on the Markers cha
 });
 
 test("the About link opens the report introduction overlay", async ({ page }) => {
-  await unlock(page, "Alex");
+  await openSynthetic(page);
   // M78 Phase 9 — About moved off the header into the account menu (sidebar bottom); its items
   // are role="menuitem", not role="button".
   await page.click(".account-trigger");
@@ -170,7 +173,7 @@ test("the About link opens the report introduction overlay", async ({ page }) =>
 });
 
 test("Import is reachable via the top-right kebab; the flat nav list has no mode toggle for a patient with no Investigator overrides", async ({ page }) => {
-  await unlock(page, "Alex");
+  await openSynthetic(page);
   // W46/M104 — Search leads (Search → Chat → Notes → Questions → ...). M83 —
   // Investigator (ex-AI Thoughts) rows live behind the Patient/Investigator mode toggle,
   // provider-only; a patient session with no visibility overrides never gets the toggle at all,
@@ -189,7 +192,7 @@ test("Import is reachable via the top-right kebab; the flat nav list has no mode
 
 // Questions and Glossary moved under Notes; their old permalinks are still live links.
 test("a #docInference permalink lands on Notes with Questions selected", async ({ page }) => {
-  await openAsProvider(page, "Alex");
+  await openSyntheticAsProvider(page);
   // Build the hash from the client segment rather than string-replacing the last one: the hash may
   // carry no section at all, in which case a blind replace eats the client id.
   await page.evaluate(() => {
