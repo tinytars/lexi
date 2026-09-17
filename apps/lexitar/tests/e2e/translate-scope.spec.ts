@@ -1,6 +1,6 @@
 import { test, expect } from "./_fixtures";
 import type { Page } from "@playwright/test";
-import { openPatient, PILOTS } from "./_login";
+import { openSynthetic } from "./_synthetic";
 import { clickNav } from "./_nav";
 import { stubVaultSave } from "./_stubs";
 
@@ -31,11 +31,11 @@ test("a patient's own note gets its Translate", async ({ page }) => {
   await stubVaultSave(page);
   const posted = recordTranslates(page);
 
-  // W78 — Blair, for the same reason notes.spec.ts moved: this asserts a patient's note DOES get a
-  // Translate, and `regen()` legitimately skips a leaf whose computed ancestors are stale. Alex's
-  // committed vault reads stale on markerLevels/aiFindings, so this would fail for a reason that
-  // has nothing to do with the providerToken gate it exists to guard.
-  await openPatient(page, PILOTS.blair);
+  // A synthetic patient, not a real pilot: this asserts a patient's note DOES get a Translate, and
+  // `regen()` legitimately skips a leaf whose computed ancestors are stale. The real pilots' vaults
+  // read stale on markerLevels/aiFindings, which would fail this test for a reason that has nothing
+  // to do with the providerToken gate it exists to guard; the synthetic Finding ships fully computed.
+  await openSynthetic(page);
   await clickNav(page, "Notes");
   await page.getByTitle("Add note").click();
   await page.locator(".nt-modal .note-input").fill(`W62 patient translate ${Date.now()}`);
@@ -51,11 +51,11 @@ test("merely opening the app fires no Translate at all", async ({ page }) => {
   await stubVaultSave(page);
   const posted = recordTranslates(page);
 
-  // Blair here too, and not merely for symmetry: on Alex's stale vault every node is skipped
-  // upstream, so "nothing fired" would hold even if the gate below were removed entirely. Blair's
-  // fixture is fresh enough for a Translate to be possible, which is what makes its absence mean
-  // something.
-  await openPatient(page, PILOTS.blair);
+  // A synthetic patient here too, and not merely for symmetry: on a stale vault every node is
+  // skipped upstream, so "nothing fired" would hold even if the gate below were removed entirely.
+  // The synthetic fixture is fresh enough for a Translate to be possible, which is what makes its
+  // absence mean something.
+  await openSynthetic(page);
   await clickNav(page, "Notes");
   await page.waitForTimeout(2500);
 

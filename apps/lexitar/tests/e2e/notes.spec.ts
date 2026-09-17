@@ -1,14 +1,14 @@
 import { test, expect } from "./_fixtures";
 import type { Page } from "@playwright/test";
-import { openAsProvider } from "./_login";
+import { openSyntheticAsProvider, mySynthetic } from "./_synthetic";
 import { clickLeafMenuItem } from "./_leaf-menu";
 import { clickNav } from "./_nav";
 import { validLeafPayload } from "./_leaf-payloads";
 
 // M63 — Notes: a reorderable single-textbox CRUD, leftmost in the Appointment tab.
 
-async function openNotes(page: Page, patient: string) {
-  await openAsProvider(page, patient);
+async function openNotes(page: Page) {
+  await openSyntheticAsProvider(page);
   await clickNav(page, "Notes");
   await page.waitForSelector(".notes", { timeout: 10_000 });
 }
@@ -17,8 +17,9 @@ test("modal-Add, modal-Edit, and Delete all persist immediately (M66)", async ({
   page.on("dialog", (d) => d.accept());
   const marker = `M63 note ${Date.now()}`;
   const edited = `M63 note edited ${Date.now()}`;
+  const patientName = mySynthetic().name;
 
-  await openNotes(page, "Alex");
+  await openNotes(page);
 
   await page.getByTitle("Add note").click();
   await expect(page.locator(".modal-panel")).toHaveAttribute("aria-label", "Add note");
@@ -38,7 +39,7 @@ test("modal-Add, modal-Edit, and Delete all persist immediately (M66)", async ({
 
   await page.reload();
   await page.waitForSelector(".roster-list");
-  await page.click('.roster-name:has-text("Alex")');
+  await page.click(`.roster-name:has-text("${patientName}")`);
   await page.waitForSelector('.sidebar .nav-item');
   await clickNav(page, "Notes");
   await expect(page.locator(".notes")).toContainText(edited);
@@ -71,11 +72,11 @@ test("noteResults answers land on their own note regardless of the order they co
   // Deterministic from the note's own text, so a mismatch names the note that actually got the answer.
   const echoOf = (text: string) => `echo<<${text}>>`;
 
-  // W78 — Blair, not Alex. The subject here is answer-to-note PAIRING, and it needs the regen to
-  // fire at all: `regen()` skips a leaf whose computed ancestors are stale, and Alex's committed
-  // vault has read stale on markerLevels/aiFindings since the 2026-08-26 reconcile, so every note
-  // saved here got silence and the pairing was never exercised. Blair's fixture is fresh on both.
-  await openNotes(page, "Blair");
+  // The subject here is answer-to-note PAIRING, and it needs the regen to fire at all: `regen()`
+  // skips a leaf whose computed ancestors are stale. A synthetic patient's Finding ships fully
+  // computed (nodeHashes unset, so nothing reads as needing recompute — see synthetic-patient.ts),
+  // unlike the real pilots' committed vaults, so the pairing is always exercised here.
+  await openNotes(page);
 
   const posted: { node?: string; inputs?: { pursuedNotes?: { id: string; text: string }[] } }[] = [];
   await page.route("**/api/leaf-regen", async (route) => {

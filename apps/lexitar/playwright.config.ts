@@ -21,11 +21,14 @@ export const SYNTHETIC_SPECS = [
   "google.spec.ts",
   "menu-exclusivity.spec.ts",
   "modal-dirty.spec.ts",
+  "notes.spec.ts",
   "onboarding.spec.ts",
   "passkey.spec.ts",
+  "providers-access.spec.ts",
   "providers-support.spec.ts",
   "recovery.spec.ts",
   "synthetic-patient.spec.ts",
+  "translate-scope.spec.ts",
 ];
 
 export default defineConfig({
