@@ -1,6 +1,6 @@
 import { test, expect } from "./_fixtures";
 import type { Page } from "@playwright/test";
-import { openAsProvider } from "./_login";
+import { openSyntheticAsProvider, mySynthetic } from "./_synthetic";
 import { clickLeafMenuItem } from "./_leaf-menu";
 import { watchFlashes, expectFlashed } from "./_flash";
 import { clickNav, clickProfileSub } from "./_nav";
@@ -11,22 +11,22 @@ import { stubVaultSave } from "./_stubs";
 // button exists anymore), so the second test below now edits-and-reverts Notes for real rather
 // than exercising a no-op UI state.
 
-async function openPersonalization(page: Page, patient: string) {
-  await openAsProvider(page, patient);
+async function openPersonalization(page: Page) {
+  await openSyntheticAsProvider(page);
   await clickNav(page, "Profile");
   await page.waitForSelector(".personalization", { timeout: 10_000 });
 }
 
 // M65 — Allergies and Family are new Patient subsections, right of Profile.
 // W48 — nested under Profile now (Bio/Allergies/Family), reachable only via clickProfileSub.
-async function openAllergies(page: Page, patient: string) {
-  await openAsProvider(page, patient);
+async function openAllergies(page: Page) {
+  await openSyntheticAsProvider(page);
   await clickProfileSub(page, "Allergies");
   await page.waitForSelector(".allergies", { timeout: 10_000 });
 }
 
-async function openFamily(page: Page, patient: string) {
-  await openAsProvider(page, patient);
+async function openFamily(page: Page) {
+  await openSyntheticAsProvider(page);
   await clickProfileSub(page, "Family");
   await page.waitForSelector(".family", { timeout: 10_000 });
 }
@@ -35,7 +35,7 @@ test("Personalization is a single basic-details block (no sub-tabs, no Close/Dis
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
 
-  await openPersonalization(page, "Alex");
+  await openPersonalization(page);
 
   // A single block (W20 moved Diagnosed Diseases → Clinical Reports; W30 retired the Watchlist
   // block; W33 moved Treatments CRUD to Profile → Treatment; M65 retired Correlations, folding
@@ -57,7 +57,8 @@ test("Personalization is a single basic-details block (no sub-tabs, no Close/Dis
 });
 
 test("editing Goal persists immediately on blur, no Save button needed (M57)", async ({ page }) => {
-  await openPersonalization(page, "Alex");
+  const who = mySynthetic();
+  await openPersonalization(page);
 
   // M64 retired the separate Notes scalar field this test used to target; Goal exercises the
   // identical blur-persist behavior and still exists.
@@ -75,14 +76,14 @@ test("editing Goal persists immediately on blur, no Save button needed (M57)", a
   // Reload with no Save click ever — the blur's own immediate persist is what's under test.
   await page.reload();
   await page.waitForSelector(".roster-list");
-  await page.click('.roster-name:has-text("Alex")');
+  await page.click(`.roster-name:has-text("${who.name}")`);
   await clickNav(page, "Profile");
   const reloadedGoal = page
     .locator(".personalization label.field", { has: page.getByText("Goal", { exact: true }) })
     .locator("textarea");
   await expect(reloadedGoal).toHaveValue(marker);
 
-  // Restore the original value so this test doesn't leave garbage in Alex's real profile.
+  // Restore the original value so this test doesn't leave garbage in the synthetic profile.
   await reloadedGoal.fill(original);
   await reloadedGoal.blur();
   await expect(page.locator(".personalization .saved")).toBeVisible({ timeout: 10_000 });
@@ -90,10 +91,11 @@ test("editing Goal persists immediately on blur, no Save button needed (M57)", a
 
 test("Allergies: modal-Add, modal-Edit, and Delete all persist immediately (M66)", async ({ page }) => {
   page.on("dialog", (d) => d.accept());
+  const who = mySynthetic();
   const marker = `M65 allergen ${Date.now()}`;
   const edited = `M65 allergen edited ${Date.now()}`;
 
-  await openAllergies(page, "Alex");
+  await openAllergies(page);
 
   await page.locator('.side-row-action[aria-label="Add allergy"]').click();
   await expect(page.locator(".modal-panel")).toHaveAttribute("aria-label", "Add allergy");
@@ -122,7 +124,7 @@ test("Allergies: modal-Add, modal-Edit, and Delete all persist immediately (M66)
 
   await page.reload();
   await page.waitForSelector(".roster-list");
-  await page.click('.roster-name:has-text("Alex")');
+  await page.click(`.roster-name:has-text("${who.name}")`);
   await clickProfileSub(page, "Allergies");
   await expect(page.locator(".allergies")).toContainText(edited);
   await expect(page.locator(".allergies")).not.toContainText(marker);
@@ -134,10 +136,11 @@ test("Allergies: modal-Add, modal-Edit, and Delete all persist immediately (M66)
 
 test("Family: modal-Add, modal-Edit, and Delete all persist immediately (M66)", async ({ page }) => {
   page.on("dialog", (d) => d.accept());
+  const who = mySynthetic();
   const marker = `M65 family ${Date.now()}`;
   const edited = `M65 family edited ${Date.now()}`;
 
-  await openFamily(page, "Alex");
+  await openFamily(page);
 
   await page.locator('.side-row-action[aria-label="Add family history"]').click();
   await expect(page.locator(".modal-panel")).toHaveAttribute("aria-label", "Add family history");
@@ -167,7 +170,7 @@ test("Family: modal-Add, modal-Edit, and Delete all persist immediately (M66)", 
 
   await page.reload();
   await page.waitForSelector(".roster-list");
-  await page.click('.roster-name:has-text("Alex")');
+  await page.click(`.roster-name:has-text("${who.name}")`);
   await clickProfileSub(page, "Family");
   await expect(page.locator(".family")).toContainText(edited);
   await expect(page.locator(".family")).not.toContainText(marker);
@@ -178,7 +181,7 @@ test("Family: modal-Add, modal-Edit, and Delete all persist immediately (M66)", 
 });
 
 test("Allergies and Family: the sidebar '+' row action opens the Add modal (M77 P5)", async ({ page }) => {
-  await openAllergies(page, "Alex");
+  await openAllergies(page);
   await page.locator('.side-row-action[aria-label="Add allergy"]').click();
   await expect(page.locator(".modal-panel")).toHaveAttribute("aria-label", "Add allergy");
   await page.locator(".az-modal .btn", { hasText: "Cancel" }).click();
@@ -196,15 +199,15 @@ test("Allergies and Family: the sidebar '+' row action opens the Add modal (M77 
 // one clicked and Edit overwrote a different one — silent loss of patient-entered data. The tests
 // above never pinned anything, which is exactly why it survived.
 //
-// Vault writes are stubbed: this exercises the in-memory dispatch, and the shared Alex fixture
-// must not carry three throwaway relations into every later spec.
+// Vault writes are stubbed: this exercises the in-memory dispatch, and this worker's synthetic
+// fixture must not carry three throwaway relations into every later spec.
 test("Family: Delete and Edit act on the row you clicked, not the one at that index", async ({ page }) => {
   page.on("dialog", (d) => d.accept());
   await stubVaultSave(page);
   const alpha = `W63 alpha ${Date.now()}`;
   const beta = `W63 beta ${Date.now()}`;
 
-  await openFamily(page, "Alex");
+  await openFamily(page);
   for (const relation of [alpha, beta]) {
     await page.locator('.side-row-action[aria-label="Add family history"]').click();
     await page.locator(".fh-modal input[type=text]").first().fill(relation);
@@ -249,7 +252,7 @@ test("Family: Delete and Edit act on the row you clicked, not the one at that in
 test("Family: each row's permalink id stays its own once something is pinned", async ({ page }) => {
   await stubVaultSave(page);
   const relation = `W63 anchor ${Date.now()}`;
-  await openFamily(page, "Alex");
+  await openFamily(page);
 
   await page.locator('.side-row-action[aria-label="Add family history"]').click();
   await page.locator(".fh-modal input[type=text]").first().fill(relation);
@@ -282,10 +285,11 @@ test("Allergies: a pin survives a reload on the row that was clicked", async ({ 
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("dialog", (d) => d.accept());
+  const who = mySynthetic();
   const first = `W64 alpha ${Date.now()}`;
   const second = `W64 beta ${Date.now()}`;
 
-  await openAllergies(page, "Alex");
+  await openAllergies(page);
   for (const allergen of [first, second]) {
     await page.locator('.side-row-action[aria-label="Add allergy"]').click();
     await page.locator(".az-modal input[type=text]").first().fill(allergen);
@@ -299,7 +303,7 @@ test("Allergies: a pin survives a reload on the row that was clicked", async ({ 
 
   await page.reload();
   await page.waitForSelector(".roster-list");
-  await page.click('.roster-name:has-text("Alex")');
+  await page.click(`.roster-name:has-text("${who.name}")`);
   await clickProfileSub(page, "Allergies");
 
   const pinnedRow = page.locator(".allergies .leaf-card", { hasText: second });
@@ -308,7 +312,7 @@ test("Allergies: a pin survives a reload on the row that was clicked", async ({ 
     .not.toHaveClass(/visible/);
   expect(errors, "persistNow must not throw on a just-added entry").toEqual([]);
 
-  // Leave the shared Alex fixture as we found it.
+  // Leave the synthetic fixture as we found it.
   for (const allergen of [first, second]) {
     await clickLeafMenuItem(page.locator(".allergies .leaf-card", { hasText: allergen }), "Delete");
     await expect(page.locator(".allergies")).not.toContainText(allergen);

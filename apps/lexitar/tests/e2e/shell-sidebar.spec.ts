@@ -1,7 +1,6 @@
 import { test, expect } from "./_fixtures";
-import { openAsProvider, hashOf } from "./_login";
+import { openSyntheticAsProvider, openSynthetic, syntheticClientId } from "./_synthetic";
 import { clickNav, setSidebarMode } from "./_nav";
-import { unlock } from "./_shell";
 
 // The sidebar's own chrome on desktop (M75): the icon rail, the per-row + action, the blurb
 // tooltips, and what print does to it.
@@ -25,12 +24,12 @@ import { unlock } from "./_shell";
 // should survive an unrelated delete under single-modal editing, and how to test it.
 
 test("Chat's sidebar row carries its blurb as a native tooltip (W37/M77)", async ({ page }) => {
-  await openAsProvider(page, "Alex");
+  await openSyntheticAsProvider(page);
   await expect(page.locator(".sidebar .nav-list .nav-item", { hasText: "Chat" })).toHaveAttribute("title", /Ask about your health data/);
 });
 
 test("each subsection's sidebar row carries its blurb as a native tooltip (W37/M77)", async ({ page }) => {
-  await openAsProvider(page, "Alex");
+  await openSyntheticAsProvider(page);
   // Treatment (Patient group's leftmost, default-active since M65) shows a subsection blurb.
   await expect(page.locator(".sidebar .nav-list .nav-item", { hasText: "Treatment" })).toHaveAttribute("title", /planned, ongoing, or stopped/);
   // Markers (Labs group) carries its own — M62 moved Markers to the Labs tab.
@@ -41,7 +40,8 @@ test("each subsection's sidebar row carries its blurb as a native tooltip (W37/M
 // (navigate + auto-open that section's existing Add flow).
 test.describe("sidebar (M75)", () => {
   test("collapses to an icon rail and back on desktop", async ({ page }) => {
-    await unlock(page, "Alex");
+    const myHash = () => `#${syntheticClientId(test.info().parallelIndex)}`;
+    await openSynthetic(page);
     await expect(page.locator(".sidebar")).not.toHaveClass(/rail/);
     await clickNav(page, "Markers"); // navigate away from Chat first, so the Chat row's click is a real navigation
     await page.locator(".sidebar-collapse").click();
@@ -56,7 +56,7 @@ test.describe("sidebar (M75)", () => {
     const chatButton = navList.locator(".nav-item").nth(1);
     await expect(chatButton.locator(".side-icon")).toBeVisible();
     await chatButton.click();
-    await expect(page).toHaveURL(new RegExp(`${hashOf.Alex}/chat`));
+    await expect(page).toHaveURL(new RegExp(`${myHash()}/chat`));
     await page.locator(".sidebar-collapse").click();
     await expect(page.locator(".sidebar")).not.toHaveClass(/rail/);
   });
@@ -66,7 +66,7 @@ test.describe("sidebar (M75)", () => {
   // parent-tab-then-child-section interaction; App.svelte's lastSectionByTab was removed in Phase 4.
 
   test("the + action on Chat starts a new chat", async ({ page }) => {
-    await unlock(page, "Alex");
+    await openSynthetic(page);
     await clickNav(page, "Markers"); // navigate away from Chat first (Questions is nested in Notes now)
     // Scoped to the sidebar action button — an untitled thread's own sidebar row
     // defaults to the same "New chat" title text and would otherwise collide.
@@ -76,14 +76,14 @@ test.describe("sidebar (M75)", () => {
   });
 
   test("the + action on a sub-section navigates there and opens its Add modal", async ({ page }) => {
-    await unlock(page, "Alex");
+    await openSynthetic(page);
     await page.getByTitle("Add note").click();
     await expect(page).toHaveURL(/#.*notes/);
     await expect(page.getByRole("dialog")).toBeVisible();
   });
 
   test("Markers/Reports' + opens the Import modal (M84)", async ({ page }) => {
-    await unlock(page, "Alex");
+    await openSynthetic(page);
     await page.getByTitle("Import spreadsheet").click();
     await expect(page).toHaveURL(/#.*markers/);
     await expect(page.locator(".import-tab")).toContainText("Drop a health report");
@@ -94,7 +94,7 @@ test.describe("sidebar (M75)", () => {
   });
 
   test("sections with no add action show no + icon", async ({ page }) => {
-    await unlock(page, "Alex");
+    await openSynthetic(page);
     // Scoped to Questions/Glossary's own rows, not the whole sidebar — Chat's always-visible
     // top-level "New chat" action lives outside the flat list and would otherwise false-positive.
     const questionsRow = page.locator(".sidebar .nav-list .side-row").filter({ has: page.locator(".nav-item", { hasText: "Questions" }) });
@@ -104,7 +104,7 @@ test.describe("sidebar (M75)", () => {
   });
 
   test("Investigator → Analysis has no + icon, but its sibling Study/Hypothesis sub-sections do", async ({ page }) => {
-    await openAsProvider(page, "Alex");
+    await openSyntheticAsProvider(page);
     // M83 — Investigator's rows only render once the sidebar's mode toggle is flipped.
     await setSidebarMode(page, "investigator");
     const analysisRow = page.locator(".sidebar .nav-list .side-row").filter({ has: page.locator(".nav-item", { hasText: "Analysis" }) });
@@ -114,7 +114,7 @@ test.describe("sidebar (M75)", () => {
   });
 
   test("print hides the sidebar", async ({ page }) => {
-    await unlock(page, "Alex");
+    await openSynthetic(page);
     await page.emulateMedia({ media: "print" });
     await expect(page.locator(".sidebar")).not.toBeVisible();
   });
@@ -122,7 +122,7 @@ test.describe("sidebar (M75)", () => {
 
 // Chat's thread list gains the same collapsible All row every other section has.
 test("Chat's All row collapses and re-expands the thread list", async ({ page }) => {
-  await openAsProvider(page, "Alex");
+  await openSyntheticAsProvider(page);
   await page.locator(".sidebar .nav-item", { hasText: "Chat" }).first().click();
   const chevron = page.locator('.sidebar .group-list [aria-label="Collapse All"]');
   await expect(chevron).toBeVisible();
