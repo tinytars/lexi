@@ -196,12 +196,25 @@ export function syntheticClient(seed: string, opts: SyntheticClientOptions = {})
             alternatives: [`AI alternative one ${tag}`, `AI alternative two ${tag}`],
             recommendation: `AI intervention recommendation for ${tag}.`,
           },
+          // Second AI idea on the same topic — search-records.spec.ts's hypothesis test needs a
+          // sibling idea to prove a search hit scopes the preview to just the matched one.
+          {
+            intervention: `Rosuvastatin ${tag}`,
+            purpose: "LDL lowering",
+            pros: [`AI pro three ${tag}`, `AI pro four ${tag}`],
+            cons: [`AI con three ${tag}`, `AI con four ${tag}`],
+            alternatives: [`AI alternative three ${tag}`, `AI alternative four ${tag}`],
+            recommendation: `Second AI intervention recommendation for ${tag}.`,
+          },
         ],
       },
       doctorConversation: [
         ...GROUPS.map((group) => ({ group, questions: [`Doctor question about ${group} for ${tag}?`] })),
         { group: `Berberine ${tag}`, questions: [`Doctor question about berberine for ${tag}?`] },
+        // The AI tail must match decisions.ai's order exactly (finding-invariants.ts's band-structure
+        // check) — Bempedoic acid then Rosuvastatin.
         { group: `Bempedoic acid ${tag}`, questions: [`Doctor question about bempedoic acid for ${tag}?`] },
+        { group: `Rosuvastatin ${tag}`, questions: [`Doctor question about rosuvastatin for ${tag}?`] },
       ],
       definitions: [
         { term: `Apolipoprotein B ${tag}`, definition: `Glossary definition for ${tag}.`, group: "Cardiovascular Risk" },
@@ -213,12 +226,22 @@ export function syntheticClient(seed: string, opts: SyntheticClientOptions = {})
           markers: [{ name: `Lp(a) ${tag}`, rationale: `Recommended marker rationale for ${group} — ${tag}.` }],
         })),
       },
-      dataRequisition: [{ type: "Blood", group: "Cardiovascular Risk", items: [`Lipoprotein(a) ${tag}`] }],
+      dataRequisition: [
+        { type: "Blood", group: "Cardiovascular Risk", items: [`Lipoprotein(a) ${tag}`] },
+        // Three items, one of which mentions an echocardiogram — search-records.spec.ts's
+        // multi-item exploration-cell test needs a modality group with siblings so it can assert
+        // the search preview scopes to just the matched item, not the whole cell.
+        {
+          type: "Scan / Imaging",
+          group: "Cardiovascular Risk",
+          items: [`Coronary calcium score ${tag}`, `Repeat echocardiogram ${tag}`, `Aortic imaging ${tag}`],
+        },
+      ],
       // Without this, resolveTreatmentGroups returns null, buildHypothesisGroups returns null, and the
       // Future Treatment section — both the patient's ideas and the AI's — vanishes from the search
       // index entirely. A real Finding always carries it (W21).
       treatmentGroups: [
-        { system: "Cardiovascular Risk", topic: `Lipid lowering ${tag}`, patient: [], ai: [`Bempedoic acid ${tag}`] },
+        { system: "Cardiovascular Risk", topic: `Lipid lowering ${tag}`, patient: [], ai: [`Bempedoic acid ${tag}`, `Rosuvastatin ${tag}`] },
         { system: "Metabolic Health", topic: `Glycemic control ${tag}`, patient: [`Berberine ${tag}`], ai: [] },
       ],
       patternAntipattern: { pattern: `Pattern passage for ${tag}.`, antipattern: `Anti-pattern passage for ${tag}.` },
