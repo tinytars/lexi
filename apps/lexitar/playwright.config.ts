@@ -24,8 +24,12 @@ export const SYNTHETIC_SPECS = [
   "chat-from-leaf.spec.ts",
   "chat-reference-cards.spec.ts",
   "cover-render.spec.ts",
+  "css-hoist.spec.ts",
+  "editor-roundtrip.spec.ts",
+  "footer.spec.ts",
   "google.spec.ts",
   "menu-exclusivity.spec.ts",
+  "menu-viewport-clip.spec.ts",
   "modal-dirty.spec.ts",
   "notes.spec.ts",
   "onboarding.spec.ts",
@@ -33,8 +37,10 @@ export const SYNTHETIC_SPECS = [
   "providers-access.spec.ts",
   "providers-support.spec.ts",
   "recovery.spec.ts",
+  "smoke.spec.ts",
   "synthetic-patient.spec.ts",
   "translate-scope.spec.ts",
+  "visibility.spec.ts",
 ];
 
 export default defineConfig({

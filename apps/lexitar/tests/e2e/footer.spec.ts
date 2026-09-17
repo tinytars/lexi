@@ -1,6 +1,7 @@
 import { test, expect } from "./_fixtures";
 import type { Page } from "@playwright/test";
-import { openPatient, loginAs, PILOTS } from "./_login";
+import { loginAs } from "./_login";
+import { E2E_CLINICIAN, openSynthetic } from "./_synthetic";
 
 // W40 Phase 2 — the compliance footer (501(c)(3)/EIN + legal links) renders on every state via the
 // shared shell: the lock screen (pre-unlock) and the authenticated app.
@@ -33,12 +34,12 @@ test("footer renders on the lock screen (before unlock)", async ({ page }) => {
 });
 
 test("footer renders on the provider roster screen", async ({ page }) => {
-  await loginAs(page, PILOTS.provider.email, PILOTS.provider.password);
+  await loginAs(page, E2E_CLINICIAN.email, E2E_CLINICIAN.password);
   await expect(page.locator("main.roster")).toBeVisible();
   await expectChrome(page);
 });
 
 test("footer renders in the authenticated app", async ({ page }) => {
-  await openPatient(page);
+  await openSynthetic(page);
   await expectChrome(page);
 });
