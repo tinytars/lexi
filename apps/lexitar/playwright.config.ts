@@ -55,6 +55,8 @@ export const SYNTHETIC_SPECS = [
   "shell-phone.spec.ts",
   "shell-reports.spec.ts",
   "shell-sidebar.spec.ts",
+  "shell-study-hypothesis.spec.ts",
+  "shell-treatment-capture.spec.ts",
   "shell-treatment.spec.ts",
   "sidebar-group-expand.spec.ts",
   "sidebar-group-filter.spec.ts",
