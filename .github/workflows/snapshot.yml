@@ -1,0 +1,80 @@
+name: snapshot
+
+# The daily R2->R2 backup of the live vault, ported from plover-code's snapshot.yml now that
+# apps/lexitar (not apps/health-dash-web) is what reads and writes health-vault/health-identity-*.
+# scripts/snapshot-cron.sh stays the by-hand and recovery path; this is the scheduled path, and the
+# two do not share a mechanism, same as before the port.
+
+on:
+  schedule:
+    # 03:15 UTC, unchanged from plover-code's schedule. GitHub only fires schedules from the
+    # DEFAULT branch, so this stanza is live only once it reaches main.
+    - cron: "15 3 * * *"
+  workflow_dispatch:
+    inputs:
+      store:
+        description: "Which store to snapshot"
+        required: true
+        type: choice
+        options: [prod, dev]
+        default: prod
+      keep:
+        description: "Retention window (snapshots kept)"
+        type: string
+        default: "30"
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      # Both stores on the schedule; exactly one on a dispatch. `fromJSON` because a matrix cannot
+      # take a conditional list any other way.
+      matrix:
+        store: ${{ github.event_name == 'schedule' && fromJSON('["prod","dev"]') || fromJSON(format('["{0}"]', inputs.store)) }}
+      fail-fast: false
+    env:
+      # The store is chosen explicitly rather than read from this branch's wrangler.jsonc
+      # (vault-sync.ts prefers STORE_PREFIX over it). A schedule fires from main, so inferring the
+      # store from the checkout would silently mean "prod only, forever".
+      STORE_PREFIX: ${{ matrix.store }}
+      ORG_KEY_PASSPHRASE: ${{ secrets.ORG_KEY_PASSPHRASE }}
+      PASSPHRASE: ${{ secrets.PASSPHRASE }}
+      ROSTER_PASS: ${{ secrets.ROSTER_PASS }}
+      SEED_PASSPHRASE: ${{ secrets.SEED_PASSPHRASE }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    # The run ends in a retention prune that lists snapshots and then deletes what it listed, so two
+    # overlapping runs let the second be deleted by a decision the first made before it existed.
+    # Never cancel-in-progress: cancelling mid-prune is the failure this guards against.
+    concurrency:
+      group: snapshot-${{ matrix.store }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Install (root workspaces cover apps/lexitar)
+        run: npm ci
+
+      - name: Snapshot ${{ matrix.store }}
+        working-directory: apps/lexitar
+        run: npm run vault:snapshot -- --keep "${{ inputs.keep || '30' }}"
+
+      # Asked separately from the run above, exactly as snapshot-cron.sh does: this is the check
+      # that catches a job which exited 0 having written nothing. It is the alarm, and a hosted
+      # runner cannot send a macOS notification, so the alarm here is the job going red. Do not
+      # soften it with continue-on-error.
+      - name: A fresh snapshot really exists
+        working-directory: apps/lexitar
+        run: npm run vault:snapshot:check
+
+      - name: Note the independent check
+        if: failure()
+        run: echo "Backup alarm for ${{ matrix.store }}. \`npm run vault:snapshot:check\` re-asks locally." >> "$GITHUB_STEP_SUMMARY"
