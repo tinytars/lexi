@@ -73,13 +73,17 @@ for (const index of [0, 1]) {
     // memory instead of the server, which renders sooner and lost that race six times in six. The
     // flake was always here; the fixture only made it honest.
     const missing: string[] = [];
-    page.on("response", (r) => { if (r.status() === 404) missing.push(new URL(r.url()).pathname); });
+    const failed: string[] = [];
+    page.on("response", (r) => {
+      if (r.status() === 404) missing.push(new URL(r.url()).pathname);
+      if (r.status() >= 400 && r.status() !== 404) failed.push(`${r.status()} ${new URL(r.url()).pathname}`);
+    });
     page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
     page.on("console", (m) => {
       if (m.type() !== "error") return;
       const isBlobMiss = /Failed to load resource/.test(m.text())
         && missing.length > 0 && missing.every((p) => p.startsWith("/api/raw/"));
-      if (!isBlobMiss) errors.push(`console.error: ${m.text()}`);
+      if (!isBlobMiss) errors.push(`console.error: ${m.text()} [non-404 failures: ${failed.join(", ") || "none"}]`);
     });
 
     await openProvider(page, index);
