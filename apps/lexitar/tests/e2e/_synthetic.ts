@@ -7,6 +7,12 @@ import { syntheticTag, SYNTHETIC_WORKER_COUNT, FRESH_SEED } from "../fixtures/sy
 // family passphrase and whose roster is asserted exactly by cover-render.spec.ts.
 export const E2E_CLINICIAN = { email: "e2e-clinician@local.invalid", password: "e2e-clinician" };
 
+// The e2e-only support agent (provider_kind='support'), provisioned by
+// scripts/provision-support-account.ts and re-seeded (RESET=1) on every scripts/e2e-serve.sh boot.
+// LOCAL-only, like E2E_CLINICIAN above — it has no vault of its own and grants nobody anything until
+// a spec asks for it, so it was never a "pilot" by this file's own definition even before it lived here.
+export const E2E_SUPPORT = { email: "support@local.invalid", password: "support", name: "Support Agent" };
+
 // W69 — sign in as THIS worker's own synthetic patient.
 //
 // The pilots (Alex, Blair) are real people with real records, and every spec that mutates them is a

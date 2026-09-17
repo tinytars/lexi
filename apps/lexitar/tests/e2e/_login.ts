@@ -37,8 +37,6 @@ export const PILOTS = {
       return providerPassword();
     },
   },
-  // W44 P4b — a support agent + a pending request against Blair, seeded LOCAL-only by seed-support-e2e.sql.
-  support: { email: "support@local.invalid", name: "Support Agent" },
 };
 
 export async function loginAs(page: Page, email: string, password: string) {

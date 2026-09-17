@@ -1,6 +1,6 @@
 import { test, expect } from "./_fixtures";
-import { loginAs, PILOTS, ownerSignOut } from "./_login";
-import { E2E_CLINICIAN } from "./_synthetic";
+import { loginAs, ownerSignOut } from "./_login";
+import { E2E_CLINICIAN, E2E_SUPPORT } from "./_synthetic";
 
 // W50 — support→provider roster access, end to end and re-runnable (cleans up the grant it creates):
 // the support agent requests access to the provider by email; the provider logs in, sees the pending
@@ -11,7 +11,7 @@ import { E2E_CLINICIAN } from "./_synthetic";
 // (provision-support-account.ts), so nothing here reaches for a real pilot.
 test("support requests a provider's roster, provider approves, support views it (records gated)", async ({ page }) => {
   // 1) support console → request access to the provider by email.
-  await loginAs(page, PILOTS.support.email, "support");
+  await loginAs(page, E2E_SUPPORT.email, E2E_SUPPORT.password);
   await expect(page.locator(".account-trigger")).toBeVisible();
   await page.fill(".access-add input", E2E_CLINICIAN.email);
   await page.click('.access-add button:has-text("Request access")');
@@ -22,14 +22,14 @@ test("support requests a provider's roster, provider approves, support views it 
   await loginAs(page, E2E_CLINICIAN.email, E2E_CLINICIAN.password);
   const pending = page.locator(".access-pending", { hasText: "Support access requests" });
   await expect(pending).toBeVisible();
-  await expect(pending).toContainText(PILOTS.support.name);
+  await expect(pending).toContainText(E2E_SUPPORT.name);
   await pending.locator(".access-approve").click();
   const granted = page.locator(".access-pending", { hasText: "Support agents with roster access" });
-  await expect(granted).toContainText(PILOTS.support.name);
+  await expect(granted).toContainText(E2E_SUPPORT.name);
   await ownerSignOut(page);
 
   // 3) support logs in → provider appears under Providers → open roster → patients present, not openable.
-  await loginAs(page, PILOTS.support.email, "support");
+  await loginAs(page, E2E_SUPPORT.email, E2E_SUPPORT.password);
   await page.click('.roster-name:has-text("E2E Clinician")');
   await expect(page.locator(".sub")).toContainText("Roster of");
   await expect(page.locator(".roster-name-disabled").first()).toBeVisible(); // record not openable (no patient consent)
