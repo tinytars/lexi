@@ -59,12 +59,31 @@ function results(seed: string): Client["results"] {
   );
 }
 
+/** Worker `i` gets patient `e2e-w{i}` — see tests/e2e/_synthetic.ts. Shared with provisioning so the
+ * roster size has one definition instead of two independent hardcoded 4s. */
+export const SYNTHETIC_WORKER_COUNT = 4;
+
+/** The dedicated seed for the one synthetic patient whose Finding reads as stale on every node. */
+export const FRESH_SEED = "fresh";
+
+export interface SyntheticClientOptions {
+  /**
+   * Stamp `finding.nodeHashes` as an object that matches nothing this content could ever hash to,
+   * so every DAG node reads as drifted (see src/lib/staleness.ts's `staleNodes`) and a leaf regen is
+   * never gated. The default (omitted) leaves `nodeHashes` unset, which is the OTHER real shape a
+   * Finding takes — `staleNodes` short-circuits to empty in that case — so a leaf regen is always
+   * gated. Most specs want that: it is what makes the synthetic default safe to drill into from the
+   * provider roster without an unprompted background sweep firing real leaf-regen calls on load.
+   */
+  fresh?: boolean;
+}
+
 /**
  * A synthetic patient whose every visible string carries `seed`.
  *
  * `seed` is short and human-readable (e.g. "w0"), because it shows up in assertion failures.
  */
-export function syntheticClient(seed: string): Client {
+export function syntheticClient(seed: string, opts: SyntheticClientOptions = {}): Client {
   const tag = syntheticTag(seed);
   return {
     displayName: `Synthetic ${tag}`,
@@ -188,13 +207,17 @@ export function syntheticClient(seed: string): Client {
       ],
       generatedAt: "2026-06-01T00:00:00Z",
       inputsHash: `${seed}`.padEnd(12, "0"),
+      // A present-but-empty map matches no real per-node hash (src/lib/staleness.ts's `nodeHashes()`
+      // always produces a 12-hex-char string), so every DAG node reads as drifted from it — the
+      // opposite of leaving this field unset, which staleNodes() short-circuits to "nothing stale".
+      ...(opts.fresh ? { nodeHashes: {} } : {}),
     },
   };
 }
 
 /** The vault blob shape the app stores: one client, keyed by its slug. */
-export function syntheticVault(seed: string): Vault {
-  return { clients: { [seed]: syntheticClient(seed) } };
+export function syntheticVault(seed: string, opts: SyntheticClientOptions = {}): Vault {
+  return { clients: { [seed]: syntheticClient(seed, opts) } };
 }
 
 /** Worker `i` gets patient `e2e-w{i}` — see tests/e2e/_synthetic.ts. */

@@ -29,7 +29,13 @@ import {
   wrapDEKForPublicKey,
   encryptVaultV2,
 } from "@tinytars/vault/crypto";
-import { syntheticVault, syntheticTag } from "../tests/fixtures/synthetic-patient";
+import {
+  syntheticVault,
+  syntheticTag,
+  SYNTHETIC_WORKER_COUNT,
+  FRESH_SEED,
+  type SyntheticClientOptions,
+} from "../tests/fixtures/synthetic-patient";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const APP = resolve(here, "..");
@@ -68,10 +74,12 @@ async function sha256Base64Url(s: string): Promise<string> {
  * Deterministic ids per seed, so re-provisioning replaces rather than accumulates.
  *
  * Shaped like a UUID because the columns are compared against real ones; `w0` -> `...0`, and the
- * digits are taken from the seed so two workers can never collide.
+ * digits are taken from the seed so two workers can never collide. `FRESH_SEED` carries no digit at
+ * all, so it gets a fixed high suffix reserved for it — safe as long as the worker count stays under
+ * that reservation (SYNTHETIC_WORKER_COUNT is 4 today).
  */
 function idsFor(seed: string): { account: string; vault: string; link: string; identity: string } {
-  const n = seed.replace(/\D/g, "").padStart(2, "0").slice(-2);
+  const n = seed === FRESH_SEED ? "99" : seed.replace(/\D/g, "").padStart(2, "0").slice(-2);
   return {
     account: `e2e0a${n}0-0000-4000-8000-0000000000${n}`,
     vault: `e2e0v${n}0-0000-4000-8000-0000000000${n}`,
@@ -97,7 +105,11 @@ export interface ProvisionedPatient {
  * being trusted. A wrapped DEK that does not open is indistinguishable from one that does until a
  * browser tries to log in, at which point it surfaces as an opaque "cannot unwrap DEK".
  */
-export async function provisionPatient(seed: string, providerPublicKeyJwk: JsonWebKey): Promise<ProvisionedPatient> {
+export async function provisionPatient(
+  seed: string,
+  providerPublicKeyJwk: JsonWebKey,
+  opts: SyntheticClientOptions = {},
+): Promise<ProvisionedPatient> {
   const now = "2026-07-07T00:00:00Z";
   const SEED = seed;
   const slug = `e2e-${SEED}`;
@@ -117,7 +129,7 @@ export async function provisionPatient(seed: string, providerPublicKeyJwk: JsonW
   // 2 — the vault: a fresh DEK, the synthetic content encrypted under it, and one envelope per
   // principal who may open it (the patient, and the clinician who drills in from the roster).
   const dek = await generateDEK();
-  const blob = await encryptVaultV2(syntheticVault(slug), dek);
+  const blob = await encryptVaultV2(syntheticVault(slug, opts), dek);
   const ownerEnvelope = await wrapDEKForPublicKey(dek, publicKeyJwk);
   // The clinician's key is PASSED IN, not read from a migration: that account is minted fresh on each
   // boot, so its keypair only exists within the run that created it. Provisioning the whole synthetic
@@ -190,11 +202,12 @@ export async function provisionWorld(count: number): Promise<{ sql: string[]; pa
   const provider = await provisionProvider();
   const patients: ProvisionedPatient[] = [];
   for (let i = 0; i < count; i++) patients.push(await provisionPatient(`w${i}`, provider.publicKeyJwk));
+  patients.push(await provisionPatient(FRESH_SEED, provider.publicKeyJwk, { fresh: true }));
   return { sql: [...provider.sql, ...patients.flatMap((p) => p.sql)], patients };
 }
 
 async function main(): Promise<void> {
-  const count = Number(process.env.E2E_WORKERS ?? 4);
+  const count = Number(process.env.E2E_WORKERS ?? SYNTHETIC_WORKER_COUNT);
   const { sql: lines, patients } = await provisionWorld(count);
   // The blob goes where the Function looks for it. functions/api/vault/[id].ts:131 fetches
   // /data-{id}.enc from ASSETS on an R2 miss and self-seeds local R2 from it, so dist/ is enough.

@@ -103,6 +103,9 @@ npx wrangler d1 execute "$D1_NAME" --local --persist-to "$STATE" --file "$STATE/
 #
 # Named failures: `set -e` would otherwise abort the server here and surface as a webServer timeout —
 # all 216 specs failing with nothing pointing at the seeding step that actually broke.
+#
+# The default below must match SYNTHETIC_WORKER_COUNT in tests/fixtures/synthetic-patient.ts — a
+# shell script can't import that constant, so this is the one place the two are kept in sync by hand.
 E2E_WORKERS="${E2E_WORKERS:-4}"
 E2E_WORKERS="$E2E_WORKERS" OUT=dist npx tsx scripts/provision-e2e-patient.ts > "$STATE/e2e-world.sql" \
   || { echo "e2e-serve: FAILED to build the synthetic patients (provision-e2e-patient.ts)" >&2; exit 1; }

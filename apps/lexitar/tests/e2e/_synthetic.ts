@@ -1,6 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { loginAs } from "./_login";
-import { syntheticTag } from "../fixtures/synthetic-patient";
+import { syntheticTag, SYNTHETIC_WORKER_COUNT, FRESH_SEED } from "../fixtures/synthetic-patient";
 
 // The e2e-only clinician minted alongside the synthetic patients. Mirrors E2E_PROVIDER in
 // scripts/provision-e2e-patient.ts — deliberately NOT the pilots' fam4, whose password is the real
@@ -27,9 +27,6 @@ export const E2E_CLINICIAN = { email: "e2e-clinician@local.invalid", password: "
 /** The slug for a worker's patient — must match scripts/provision-e2e-patient.ts. */
 export const syntheticSlug = (workerIndex: number): string => `e2e-w${workerIndex}`;
 
-/** The display name the roster shows. Derived from the SEED the provisioner passes, which is the slug. */
-export const syntheticName = (workerIndex: number): string => `Synthetic ${syntheticTag(syntheticSlug(workerIndex))}`;
-
 interface Synthetic {
   slug: string;
   name: string;
@@ -38,33 +35,65 @@ interface Synthetic {
   password: string;
 }
 
-/** This worker's patient. Reads `parallelIndex`, so it is correct at any `workers` setting. */
-export function mySynthetic(): Synthetic {
-  const i = test.info().parallelIndex;
-  const slug = syntheticSlug(i);
-  return { slug, name: syntheticName(i), tag: syntheticTag(slug), email: `${slug}@local.invalid`, password: slug };
+function syntheticFor(slug: string): Synthetic {
+  return { slug, name: `Synthetic ${syntheticTag(slug)}`, tag: syntheticTag(slug), email: `${slug}@local.invalid`, password: slug };
 }
 
-/** Sign in as this worker's synthetic patient and wait for the app shell. */
-export async function openSynthetic(page: Page): Promise<Synthetic> {
-  const who = mySynthetic();
+/** An explicit worker's patient — for a spec that needs two synthetic patients open at once, where
+ * neither one can be "whichever worker happens to run this file". */
+export function syntheticAt(index: number): Synthetic {
+  return syntheticFor(syntheticSlug(index));
+}
+
+/** This worker's patient. Reads `parallelIndex`, so it is correct at any `workers` setting. */
+export function mySynthetic(): Synthetic {
+  return syntheticAt(test.info().parallelIndex);
+}
+
+/** The one synthetic patient provisioned fresh — see FRESH_SEED in tests/fixtures/synthetic-patient.ts. */
+export function freshSynthetic(): Synthetic {
+  return syntheticFor(`e2e-${FRESH_SEED}`);
+}
+
+async function openAsPatient(page: Page, who: Synthetic): Promise<Synthetic> {
   await loginAs(page, who.email, who.password);
   await page.waitForSelector(".sidebar .nav-item");
   return who;
 }
 
 /**
- * Sign in as the e2e clinician and drill into this worker's synthetic patient from the roster.
+ * Sign in as the e2e clinician and drill into `who` from the roster.
  *
  * Its own account, not fam4 — so this needs no secret and cannot disturb the pilots' roster.
  */
-export async function openSyntheticAsProvider(page: Page): Promise<Synthetic> {
-  const who = mySynthetic();
+async function signInAsClinicianOnto(page: Page, who: Synthetic): Promise<Synthetic> {
   await loginAs(page, E2E_CLINICIAN.email, E2E_CLINICIAN.password);
   await page.click(`.roster-name:has-text("${who.name}")`);
   await page.waitForSelector(".sidebar .nav-item");
   return who;
 }
+
+/** Sign in as an explicit worker's synthetic patient — see syntheticAt(). */
+export const openSyntheticAt = (page: Page, index: number): Promise<Synthetic> => openAsPatient(page, syntheticAt(index));
+
+/** Sign in as this worker's synthetic patient and wait for the app shell. */
+export const openSynthetic = (page: Page): Promise<Synthetic> => openSyntheticAt(page, test.info().parallelIndex);
+
+/** Sign in as the e2e clinician and drill into an explicit worker's synthetic patient — see syntheticAt(). */
+export const openSyntheticAsProviderAt = (page: Page, index: number): Promise<Synthetic> => signInAsClinicianOnto(page, syntheticAt(index));
+
+export const openSyntheticAsProvider = (page: Page): Promise<Synthetic> => openSyntheticAsProviderAt(page, test.info().parallelIndex);
+
+/** Sign in as the dedicated "fresh" synthetic patient — the one whose Finding reads as stale on every node. */
+export const openFreshSynthetic = (page: Page): Promise<Synthetic> => openAsPatient(page, freshSynthetic());
+
+export const openFreshSyntheticAsProvider = (page: Page): Promise<Synthetic> => signInAsClinicianOnto(page, freshSynthetic());
+
+/** Every synthetic patient's roster display name — the per-worker roster plus the dedicated fresh one. */
+export const ALL_SYNTHETIC_NAMES: string[] = [
+  ...Array.from({ length: SYNTHETIC_WORKER_COUNT }, (_, i) => syntheticAt(i).name),
+  freshSynthetic().name,
+];
 
 /**
  * Assert the page really is showing THIS worker's patient — the cross-worker-leak canary.
