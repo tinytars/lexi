@@ -1,5 +1,5 @@
 import { test, expect } from "./_fixtures";
-import { openAsProvider, openPatient } from "./_login";
+import { openSyntheticAsProvider, openSynthetic } from "./_synthetic";
 import { clickNav } from "./_nav";
 import { openAllRow } from "./_sidebar-group";
 
@@ -9,7 +9,7 @@ import { openAllRow } from "./_sidebar-group";
 // This half: each section's own row shape — what All spans, and what has no Uncategorized.
 
 test("Reports has no Uncategorized row; untagged reports live under All", async ({ page }) => {
-  await openPatient(page);
+  await openSynthetic(page);
   await clickNav(page, "Reports");
   const labels = await page.locator(".sidebar .group-list .sub-item").allInnerTexts();
   // innerText collapses the space before the count, so this reads "All(9)".
@@ -21,7 +21,7 @@ test("Chat's All row is clickable and marks itself active, exactly like every ot
   // Chat's All row was rendered with activeKey={null} and a no-op onSelect, so it alone never took
   // the active state clicking a group row gives everywhere else. Same props as every other section
   // now — activeGroup + onSelectGroup.
-  await openPatient(page);
+  await openSynthetic(page);
 
   async function clickAllAndExpectActive() {
     const all = page.locator(".sidebar .group-list .side-row").first().locator(".sub-item");
@@ -40,7 +40,7 @@ test("Exploration renders one leaf cell per item, and All spans every system", a
   // Exploration used to be one AI bubble per (system, modality) with items as bare <li>s — the only
   // section whose listed items were not leaves. Each item is its own LeafCard now, matching Study's
   // shape with the patient half absent.
-  await openAsProvider(page, "Alex");
+  await openSyntheticAsProvider(page);
   await clickNav(page, "Exploration");
 
   const cards = page.locator(".tests-consider .leaf-card");
@@ -69,7 +69,7 @@ test("Exploration renders one leaf cell per item, and All spans every system", a
 test("Analysis lists its LexiTar turns as cells, with an All row over every block", async ({ page }) => {
   // Analysis was a static six-row nav table over blocks that rendered bare AI bubbles. Each block's
   // turns are leaf cells now, and the sidebar lists the items, not just the block headings.
-  await openAsProvider(page, "Alex");
+  await openSyntheticAsProvider(page);
   await clickNav(page, "Analysis");
 
   const cards = page.locator(".analysis .leaf-card");
@@ -92,7 +92,7 @@ test("Analysis lists its LexiTar turns as cells, with an All row over every bloc
 });
 
 test("Recommended Markers lives under Notes, between Questions and Glossary, as turn cells", async ({ page }) => {
-  await openAsProvider(page, "Alex");
+  await openSyntheticAsProvider(page);
   await clickNav(page, "Notes");
 
   // It is nested under Notes, in order — and no longer a flat top-level row.

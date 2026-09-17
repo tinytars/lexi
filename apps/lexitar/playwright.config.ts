@@ -47,10 +47,14 @@ export const SYNTHETIC_SPECS = [
   "search-pin.spec.ts",
   "session-resume.spec.ts",
   "sidebar-group-expand.spec.ts",
+  "sidebar-group-filter.spec.ts",
+  "sidebar-group-rows.spec.ts",
+  "sidebar-group-sections.spec.ts",
   "smoke.spec.ts",
   "support-provider-roster.spec.ts",
   "synthetic-patient.spec.ts",
   "translate-scope.spec.ts",
+  "turn-cell-parity.spec.ts",
   "visibility.spec.ts",
 ];
 

@@ -1,5 +1,5 @@
 import { test, expect } from "./_fixtures";
-import { openAsProvider, openPatient } from "./_login";
+import { openSyntheticAsProvider, openSynthetic, mySynthetic } from "./_synthetic";
 import { clickNav } from "./_nav";
 import { openAllRow } from "./_sidebar-group";
 import { openLeafMenu } from "./_leaf-menu";
@@ -11,7 +11,7 @@ import { interceptVaultSave } from "./_stubs";
 // This half: what a leaf row carries — the pin star, the shared row actions, inline rename.
 
 test("Chat's All row is metrically identical to every other section's", async ({ page }) => {
-  await openPatient(page);
+  await openSynthetic(page);
 
   async function groupMetrics() {
     const label = page.locator(".sidebar .group-list .sub-item").first();
@@ -40,7 +40,7 @@ test("Chat's All row is metrically identical to every other section's", async ({
 });
 
 test("a thread row carries the pin star and the shared row actions, like every other leaf row", async ({ page }) => {
-  await openPatient(page);
+  await openSynthetic(page);
   await clickNav(page, "Chat");
   const row = page.locator(".sidebar .leaf-list .side-row").first();
   await expect(row).toBeVisible();
@@ -65,7 +65,7 @@ test("a thread row carries the pin star and the shared row actions, like every o
 // still must hold is the narrower rule the old test was really protecting: a menu never offers an
 // action the section cannot perform. Markers pins and does NOT rename or delete.
 test("a Markers row offers Pin, and only Pin", async ({ page }) => {
-  await openPatient(page);
+  await openSynthetic(page);
   await clickNav(page, "Markers");
   const chevron = page.locator('.sidebar .group-list .chevron[aria-label^="Expand"]').first();
   await chevron.click();
@@ -84,7 +84,7 @@ test("a Markers row offers Pin, and only Pin", async ({ page }) => {
 test("Notes' sidebar rows carry the pin menu, and a pin shows its star and holds the pinned prefix", async ({ page }) => {
   // The reported gap: rows that CAN be pinned showed neither a ★ nor any menu, because the actions
   // were only wired for Chat. Every section with a vault record behind its rows has them now.
-  await openPatient(page);
+  await openSynthetic(page);
   await clickNav(page, "Notes");
 
   const rows = page.locator(".sidebar .group-children .leaf-list .side-row");
@@ -140,7 +140,7 @@ async function expectPinnedPrefix(page: import("@playwright/test").Page) {
 }
 
 test("Notes offers Pin but no Rename — free text has no title field to rename", async ({ page }) => {
-  await openPatient(page);
+  await openSynthetic(page);
   await clickNav(page, "Notes");
   const note = page.locator(".sidebar .group-children .leaf-list .side-row").first();
   await note.locator(".pin-slot").hover();
@@ -161,7 +161,7 @@ test("Notes offers Pin but no Rename — free text has no title field to rename"
 // The name also claimed more than the body checked: there was no reload, so nothing about
 // persistence was exercised. There is one now.
 test("Study offers inline Rename from the sidebar row, and it persists", async ({ page }) => {
-  await openAsProvider(page, "Alex");
+  await openSyntheticAsProvider(page);
   await clickNav(page, "Study");
 
   const rows = () => page.locator(".sidebar .group-children .leaf-list .side-row");
@@ -191,7 +191,7 @@ test("Study offers inline Rename from the sidebar row, and it persists", async (
     // fails, so it is really reading back what was saved.
     await page.reload();
     await page.waitForSelector(".roster-list");
-    await page.click('.roster-name:has-text("Alex")');
+    await page.locator(".roster-name", { hasText: mySynthetic().name }).click();
     await clickNav(page, "Study");
     await expect(page.locator(".sidebar .group-children .leaf-list .sub-item", { hasText: renamed })).toBeVisible();
   } finally {
@@ -221,7 +221,7 @@ test("Hypothesis has an All row spanning every system, and its patient ideas pin
   // Two gaps the owner caught: Hypothesis had no All row at all, and its rows are keyed
   // positionally (topic+side+index, which is what the anchor needs) so a pin addressed an id
   // matching no record and silently did nothing.
-  await openAsProvider(page, "Alex");
+  await openSyntheticAsProvider(page);
   await clickNav(page, "Hypothesis");
   const rows = await openAllRow(page);
 
@@ -251,7 +251,7 @@ test("Hypothesis has an All row spanning every system, and its patient ideas pin
   await expect.poll(wasCaptured, { timeout: 10_000 }).toBe(true);
   await page.reload({ waitUntil: "networkidle" });
   await page.waitForSelector(".roster-list", { timeout: 15_000 });
-  await page.locator(".roster-name", { hasText: "Alex" }).click();
+  await page.locator(".roster-name", { hasText: mySynthetic().name }).click();
   await page.waitForSelector(".sidebar .nav-item", { timeout: 10_000 });
   await clickNav(page, "Hypothesis");
   await openAllRow(page);

@@ -1,5 +1,5 @@
 import { test, expect } from "./_fixtures";
-import { openAsProvider, openPatient } from "./_login";
+import { openSyntheticAsProvider, openSynthetic } from "./_synthetic";
 import { clickNav } from "./_nav";
 
 // Split out of sidebar-group-expand.spec.ts (W76): a hosted 2-vCPU/7-GB runner kills workerd
@@ -11,7 +11,7 @@ test("selecting a submenu FILTERS the body to that group, in every section", asy
   // The reported bug: some submenus scrolled instead of filtering. Analysis took no group at all
   // (all six blocks stayed on screen); Hypothesis and Exploration fell back to the first system
   // when the selected one was empty, so the click looked ignored or showed the wrong cells.
-  await openAsProvider(page, "Alex");
+  await openSyntheticAsProvider(page);
 
   // Analysis: picking one block shows only that block.
   await clickNav(page, "Analysis");
@@ -46,7 +46,7 @@ test("selecting a submenu FILTERS the body to that group, in every section", asy
 // filtering. See how Planned filters as an example. The same missing under Analysis." Both sections
 // list their CELLS as child rows, so a child click has to narrow the page, not just scroll to it.
 test("a child row under Notes > Markers filters to that one system", async ({ page }) => {
-  await openPatient(page);
+  await openSynthetic(page);
   await clickNav(page, "Notes");
   const collapseAll = page.getByRole("button", { name: /^Collapse All/ });
   if (await collapseAll.count()) await collapseAll.first().click();
@@ -67,7 +67,7 @@ test("a child row under Notes > Markers filters to that one system", async ({ pa
 });
 
 test("a child row under Analysis filters to that one turn", async ({ page }) => {
-  await openAsProvider(page, "Alex");
+  await openSyntheticAsProvider(page);
   await clickNav(page, "Analysis");
   expect(await page.locator(".analysis .leaf-card").count()).toBeGreaterThan(1);
 
@@ -86,7 +86,7 @@ test("a child row under Analysis filters to that one turn", async ({ page }) => 
 // Picking the group back means "show the whole group" — otherwise a child click would be a one-way
 // door with no way back to the full list.
 test("selecting the group again clears the child filter", async ({ page }) => {
-  await openAsProvider(page, "Alex");
+  await openSyntheticAsProvider(page);
   await clickNav(page, "Analysis");
   const all = await page.locator(".analysis .leaf-card").count();
 
@@ -103,7 +103,7 @@ test("selecting the group again clears the child filter", async ({ page }) => {
 // `filteredDecisions` only sorted by pin — it never filtered, despite the name. A DecisionEntry has
 // no system of its own, so the AI's grouping is what supplies one.
 test("a Hypothesis idea appears under its own system and under All, not everywhere", async ({ page }) => {
-  await openAsProvider(page, "Alex");
+  await openSyntheticAsProvider(page);
   await clickNav(page, "Hypothesis");
 
   const rows = page.locator(".group-list .sub-item");
@@ -116,7 +116,7 @@ test("a Hypothesis idea appears under its own system and under All, not everywhe
   await rows.filter({ hasText: "All" }).first().click();
   const all = await titlesNow();
   // A patient idea renders with its intervention as the title (not upper-cased like an AI topic).
-  const idea = all.find((t) => /Pregnenolone/i.test(t));
+  const idea = all.find((t) => /Berberine/i.test(t));
   expect(idea, "expected a patient idea under All").toBeTruthy();
 
   // It must appear under exactly one body system, not all of them.
@@ -124,7 +124,7 @@ test("a Hypothesis idea appears under its own system and under All, not everywhe
   const n = await rows.count();
   for (let i = 1; i < n; i++) {
     await rows.nth(i).click();
-    if ((await titlesNow()).some((t) => /Pregnenolone/i.test(t))) seenIn++;
+    if ((await titlesNow()).some((t) => /Berberine/i.test(t))) seenIn++;
   }
   expect(seenIn).toBe(1);
 });

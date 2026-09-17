@@ -174,6 +174,7 @@ export function syntheticClient(seed: string, opts: SyntheticClientOptions = {})
         { item: `Rosuvastatin ${tag}`, assessment: `Ongoing assessment for ${tag}.`, group: "Cardiovascular Risk", phase: "ongoing" },
         { item: `Metformin ${tag}`, assessment: `Past assessment for ${tag}.`, group: "Metabolic Health", phase: "past" },
       ],
+      planAssessment: `Overall plan assessment for ${tag}.`,
       planAssessmentRows: [{ action: `Ezetimibe ${tag}`, assessment: `Planned assessment for ${tag}.` }],
       decisions: {
         patient: [
