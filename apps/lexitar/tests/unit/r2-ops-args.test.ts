@@ -91,4 +91,43 @@ describe("parseR2OpsArgs", () => {
   it("every thrown usage error includes the usage text", () => {
     expect(() => parseR2OpsArgs([])).toThrow(usage());
   });
+
+  it("parses --treatment-groups-backfill with --client", () => {
+    const out = parseR2OpsArgs(["--treatment-groups-backfill", "--client", "alex"]);
+    expect(out).toMatchObject({ op: "treatment-groups-backfill", client: "alex" });
+  });
+
+  it("parses --treatment-photo-extract with --name, --id, and repeated --key", () => {
+    const out = parseR2OpsArgs([
+      "--treatment-photo-extract",
+      "--client",
+      "alex",
+      "--name",
+      "Fish Oil",
+      "--id",
+      "row_1",
+      "--key",
+      "raw/a.jpg",
+      "--key",
+      "raw/b.png",
+    ]);
+    expect(out).toMatchObject({
+      op: "treatment-photo-extract",
+      name: "Fish Oil",
+      rowId: "row_1",
+      keys: ["raw/a.jpg", "raw/b.png"],
+    });
+  });
+
+  it("requires --name for --treatment-photo-extract", () => {
+    expect(() => parseR2OpsArgs(["--treatment-photo-extract", "--client", "alex", "--key", "raw/a.jpg"])).toThrow(
+      /--treatment-photo-extract needs --name/,
+    );
+  });
+
+  it("requires at least one --key for --treatment-photo-extract", () => {
+    expect(() => parseR2OpsArgs(["--treatment-photo-extract", "--client", "alex", "--name", "Fish Oil"])).toThrow(
+      /--treatment-photo-extract needs at least one --key/,
+    );
+  });
 });
