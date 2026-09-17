@@ -1,6 +1,6 @@
 import { test, expect } from "./_fixtures";
 import type { Page } from "@playwright/test";
-import { openSynthetic } from "./_synthetic";
+import { openSynthetic, openFreshSynthetic } from "./_synthetic";
 import { clickNav } from "./_nav";
 import { stubVaultSave } from "./_stubs";
 
@@ -32,10 +32,10 @@ test("a patient's own note gets its Translate", async ({ page }) => {
   const posted = recordTranslates(page);
 
   // A synthetic patient, not a real pilot: this asserts a patient's note DOES get a Translate, and
-  // `regen()` legitimately skips a leaf whose computed ancestors are stale. The real pilots' vaults
-  // read stale on markerLevels/aiFindings, which would fail this test for a reason that has nothing
-  // to do with the providerToken gate it exists to guard; the synthetic Finding ships fully computed.
-  await openSynthetic(page);
+  // `regen()` skips any leaf that isn't in the stale set. A DEFAULT synthetic patient has
+  // `nodeHashes` unset, which makes staleNodes() return an empty set — nothing regens at all. The
+  // fresh synthetic patient sets `nodeHashes: {}`, so noteResults reads as drifted and can fire.
+  await openFreshSynthetic(page);
   await clickNav(page, "Notes");
   await page.getByTitle("Add note").click();
   await page.locator(".nt-modal .note-input").fill(`W62 patient translate ${Date.now()}`);
@@ -51,10 +51,11 @@ test("merely opening the app fires no Translate at all", async ({ page }) => {
   await stubVaultSave(page);
   const posted = recordTranslates(page);
 
-  // A synthetic patient here too, and not merely for symmetry: on a stale vault every node is
-  // skipped upstream, so "nothing fired" would hold even if the gate below were removed entirely.
-  // The synthetic fixture is fresh enough for a Translate to be possible, which is what makes its
-  // absence mean something.
+  // A default (non-fresh) synthetic patient here, deliberately not the fresh one: its `nodeHashes`
+  // is unset, so nothing reads as stale and no leaf could regen even if the gate below were removed
+  // — a weaker assertion than the fresh case would give. That's fine for THIS test, which only
+  // claims that opening the app requests nothing on its own; it isn't the one proving a Translate
+  // is possible at all (the previous test, on the fresh patient, is).
   await openSynthetic(page);
   await clickNav(page, "Notes");
   await page.waitForTimeout(2500);

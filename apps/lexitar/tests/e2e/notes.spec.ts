@@ -1,14 +1,14 @@
 import { test, expect } from "./_fixtures";
 import type { Page } from "@playwright/test";
-import { openSyntheticAsProvider, mySynthetic } from "./_synthetic";
+import { openSyntheticAsProvider, openFreshSyntheticAsProvider, mySynthetic } from "./_synthetic";
 import { clickLeafMenuItem } from "./_leaf-menu";
 import { clickNav } from "./_nav";
 import { validLeafPayload } from "./_leaf-payloads";
 
 // M63 — Notes: a reorderable single-textbox CRUD, leftmost in the Appointment tab.
 
-async function openNotes(page: Page) {
-  await openSyntheticAsProvider(page);
+async function openNotes(page: Page, opts: { fresh?: boolean } = {}) {
+  await (opts.fresh ? openFreshSyntheticAsProvider(page) : openSyntheticAsProvider(page));
   await clickNav(page, "Notes");
   await page.waitForSelector(".notes", { timeout: 10_000 });
 }
@@ -73,10 +73,11 @@ test("noteResults answers land on their own note regardless of the order they co
   const echoOf = (text: string) => `echo<<${text}>>`;
 
   // The subject here is answer-to-note PAIRING, and it needs the regen to fire at all: `regen()`
-  // skips a leaf whose computed ancestors are stale. A synthetic patient's Finding ships fully
-  // computed (nodeHashes unset, so nothing reads as needing recompute — see synthetic-patient.ts),
-  // unlike the real pilots' committed vaults, so the pairing is always exercised here.
-  await openNotes(page);
+  // skips a leaf that isn't in the stale set (leaf-regen-queue.svelte.ts), and a default synthetic
+  // patient has `nodeHashes` unset, which makes staleNodes() return an EMPTY set — nothing regens.
+  // The fresh synthetic patient sets `nodeHashes: {}`, so every tracked node (including
+  // `noteResults`) reads as drifted and the regen this test is actually about gets to fire.
+  await openNotes(page, { fresh: true });
 
   const posted: { node?: string; inputs?: { pursuedNotes?: { id: string; text: string }[] } }[] = [];
   await page.route("**/api/leaf-regen", async (route) => {

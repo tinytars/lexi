@@ -1,5 +1,3 @@
-import { LEAF_REGEN_SPECS } from "../../src/lib/leaf-regen-registry";
-
 // One place that knows what a VALID /api/leaf-regen response looks like.
 //
 // W68 — five spec files hand-rolled these payloads, and each had to be patched every time the contract
@@ -17,6 +15,19 @@ type Inputs = Record<string, unknown>;
 type Rows = { id: string }[];
 
 const rowsOf = (inputs: Inputs, key: string): Rows => (inputs[key] as Rows) ?? [];
+
+/** Every node this file knows how to build a payload for — kept in sync with the switch below. */
+const KNOWN_NODES = [
+  "noteResults",
+  "allergyResults",
+  "familyResults",
+  "diseaseResults",
+  "studyResults",
+  "treatmentAssessment",
+  "hypothesisEvaluation",
+  "aiOnPlan",
+  "treatmentGroups",
+];
 
 /** A body-system tag the Finding actually has — every group-bearing node's merge checks this. */
 function groupOf(inputs: Inputs): string {
@@ -106,6 +117,6 @@ export function validLeafPayload(
       };
     }
     default:
-      throw new Error(`_leaf-payloads: no builder for "${node}" (specs: ${Object.keys(LEAF_REGEN_SPECS).join(", ")})`);
+      throw new Error(`_leaf-payloads: no builder for "${node}" (specs: ${KNOWN_NODES.join(", ")})`);
   }
 }
