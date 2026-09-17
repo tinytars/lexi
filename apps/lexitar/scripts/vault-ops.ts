@@ -1,9 +1,10 @@
-// R2/D1-native vault mutation primitive, shared by the six ops that used to run against
+// R2/D1-native vault mutation primitive, shared by the eight ops that used to run against
 // plover-code's records/private/ plaintext mirror (refresh-finding, refresh-ranges,
-// refresh-marker-groups, sync-treatment-attachments, process-pending, reconcile — see
-// docs/OPS-REIMPLEMENTATION.md). Generalizes rekey-vault.ts's own pull -> decrypt -> mutate ->
-// encrypt -> push -> read-back-verify cycle, this repo's only other full deployed-vault write,
-// so each op composes against one proven shape instead of re-deriving it six times.
+// refresh-marker-groups, sync-treatment-attachments, process-pending, reconcile,
+// treatment-groups-backfill, treatment-photo-extract — see scripts/commands/r2-ops.ts).
+// Generalizes rekey-vault.ts's own pull -> decrypt -> mutate -> encrypt -> push ->
+// read-back-verify cycle, this repo's only other full deployed-vault write, so each op composes
+// against one proven shape instead of re-deriving it eight times.
 //
 // No CAS guard on the write: putObject (vault-sync.ts) has no conditional-write option to give
 // one, and ops.yml's `concurrency: vault-{client}, cancel-in-progress: false` is what actually

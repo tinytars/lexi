@@ -2,14 +2,14 @@ name: ops
 
 # The dispatch surface for lexitar's live vault operations — the R2/D1-native replacement for
 # plover-code's ops.yml, ported here now that scripts/r2-ops-cli.ts (refresh-finding,
-# refresh-ranges, refresh-marker-groups, process-pending, reconcile, sync-treatment-attachments)
-# and scripts/raw-backfill.ts / scripts/recovery-approve.ts read and write R2/D1 directly, with no
-# dependency on plover-code's local plaintext vault mirror.
+# refresh-ranges, refresh-marker-groups, process-pending, reconcile, sync-treatment-attachments,
+# treatment-groups-backfill, treatment-photo-extract) and scripts/raw-backfill.ts /
+# scripts/recovery-approve.ts read and write R2/D1 directly, with no dependency on plover-code's
+# local plaintext vault mirror.
 #
-# treatment-groups-backfill, treatment-photo-extract, and sync_pages_secret stay behind in
-# plover-code's ops.yml: the first two still read/write through vault-io.ts's local plaintext
-# mirror (not yet reimplemented against R2/D1), and the third pushes a Cloudflare Pages secret to
-# a project that still deploys from plover-code until the Pages repoint (migration plan Phase 6).
+# sync_pages_secret alone stays behind in plover-code's ops.yml: it pushes a Cloudflare Pages
+# secret to a project that still deploys from plover-code until the Pages repoint (migration plan
+# Phase 6).
 #
 # A NEW OPERATIONAL FLOW IS AN ENTRY IN THIS FILE, NEVER A SECOND WORKFLOW — same discipline
 # plover-code's ops.yml documents, for the same reason (three near-identical workflows drifting
@@ -29,6 +29,8 @@ on:
           - process-pending
           - reconcile
           - sync-treatment-attachments
+          - treatment-groups-backfill
+          - treatment-photo-extract
           - raw-backfill
           - recovery-approve
       client:
@@ -49,7 +51,7 @@ on:
         type: string
         default: ""
       name:
-        description: "sync-treatment-attachments: optional treatment name filter (omit for every treatment)"
+        description: "sync-treatment-attachments: optional treatment name filter (omit for every treatment). treatment-photo-extract: required treatment name to patch."
         type: string
         default: ""
       extra_args:
@@ -72,7 +74,7 @@ concurrency:
 jobs:
   op:
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ inputs.preview && 10 || fromJSON('{"refresh-finding":45,"refresh-ranges":30,"refresh-marker-groups":20,"process-pending":30,"reconcile":20,"sync-treatment-attachments":10,"raw-backfill":15,"recovery-approve":5}')[inputs.op] }}
+    timeout-minutes: ${{ inputs.preview && 10 || fromJSON('{"refresh-finding":45,"refresh-ranges":30,"refresh-marker-groups":20,"process-pending":30,"reconcile":20,"sync-treatment-attachments":10,"treatment-groups-backfill":30,"treatment-photo-extract":10,"raw-backfill":15,"recovery-approve":5}')[inputs.op] }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -139,6 +141,18 @@ jobs:
               [ -n "$CLIENT" ] || { echo "sync-treatment-attachments needs a client id" >&2; exit 1; }
               cmd="npm run r2-ops -- --sync-treatment-attachments --client $(printf %q "$CLIENT")"
               if [ -n "$NAME" ]; then cmd="$cmd $(printf %q "$NAME")"; fi
+              if $preview; then cmd="$cmd --dry-run"; fi
+              ;;
+            treatment-groups-backfill)
+              [ -n "$CLIENT" ] || { echo "treatment-groups-backfill needs a client id" >&2; exit 1; }
+              cmd="npm run r2-ops -- --treatment-groups-backfill --client $(printf %q "$CLIENT")"
+              if $preview; then cmd="$cmd --dry-run"; fi
+              ;;
+            treatment-photo-extract)
+              [ -n "$CLIENT" ] || { echo "treatment-photo-extract needs a client id" >&2; exit 1; }
+              [ -n "$NAME" ] || { echo "treatment-photo-extract needs a treatment name (name input)" >&2; exit 1; }
+              cmd="npm run r2-ops -- --treatment-photo-extract --client $(printf %q "$CLIENT") --name $(printf %q "$NAME")"
+              # --id/--key have no menu entry — pass via extra_args, e.g. "--key raw/abc.jpg --key raw/def.jpg --id row_123"
               if $preview; then cmd="$cmd --dry-run"; fi
               ;;
             raw-backfill)

@@ -5,17 +5,29 @@
 // vault-ops.ts's pull/mutate/push cycle around logic this repo already has and the browser/Pages
 // Functions path already exercises: refresh.ts's three regen functions, factors.ts's treatment-
 // attachment reconciliation, and import-flow.ts's report/source fold functions.
+//
+// treatment-groups-backfill and treatment-photo-extract joined the same way later — both were
+// one-off plover-code CLI scripts against the local plaintext mirror, now reimplemented against
+// R2/D1 directly below.
 
-import type { Client, InferenceMode, PendingUpload } from "../../src/lib/types";
+import Anthropic from "@anthropic-ai/sdk";
+import type { Client, InferenceMode, PendingUpload, TreatmentItem } from "../../src/lib/types";
 import { UsageAccumulator } from "../inference-cost";
 import { recordOrgKeyUse } from "../access-log";
 import { getObject, r2RawKeyFor, LIVE_BUCKET } from "../vault-sync";
 import { withDeployedClient, listDeployedVaultIds } from "../vault-ops";
 import { refreshFindingFor, refreshRangesFor, refreshMarkerGroupsFor, type RefreshRangesOptions } from "./refresh";
-import { reconcileTreatmentAttachments } from "../factors";
+import { reconcileTreatmentAttachments, nodeHashesOf } from "../factors";
 import { foldReport, foldSource } from "../../src/lib/import-flow";
 import { proposeFromReport } from "../claude-report";
 import { parseRawFile } from "../../src/lib/parse-raw";
+import { staleNodes } from "../../src/lib/staleness";
+import { leafContextFor, mergeLeafResult } from "../../src/lib/leaf-regen-registry";
+import { runLeafRegen } from "../../src/lib/leaf-regen-anthropic";
+import { REGROUP_MODEL } from "../../src/lib/regroup-config";
+import { TREATMENT_IMAGE_MODEL, TREATMENT_INFER_MAX_TOKENS } from "../../src/lib/treatment-infer-config";
+import { inferTreatment, type ProposedTreatment } from "@pablotech/akesi/treatment-infer";
+import { administrationUnitChanged } from "@pablotech/akesi/treatment-product";
 
 export interface OpArgs {
   vaultId: string;
@@ -154,4 +166,149 @@ export async function opReconcile(args: ReconcileArgs, usage: UsageAccumulator):
     clients.push({ vaultId: id, result: out.value });
   }
   return { clients };
+}
+
+// Same six DAG leaf nodes leaf-regen-queue.svelte.ts's browser-side background sweep watches
+// (src/lib/leaf-regen-queue.svelte.ts:25-32) — duplicated rather than imported because that file
+// pulls in Svelte runes and the browser fetch-based leaf-regen-client.ts, neither of which belongs
+// in a Node CLI script.
+const SWEEPABLE_LEAF_NODES = [
+  "treatmentGroups",
+  "hypothesisEvaluation",
+  "aiOnPlan",
+  "treatmentAssessment",
+  "studyResults",
+  "noteResults",
+] as const;
+
+export function staleLeafNodes(stale: ReadonlySet<string>): string[] {
+  return SWEEPABLE_LEAF_NODES.filter((node) => stale.has(node));
+}
+
+// Continue-on-failure per node, unlike refresh.ts's runLeaf (which throws and lets its caller
+// abort the whole regen): a backfill sweep must keep nodes already filled earlier in the same run
+// rather than losing them to one bad node's uncaught throw.
+async function regenerateLeaf(client: Client, node: string, usage: UsageAccumulator): Promise<void> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set. Required to regenerate the Finding.");
+  const result = await runLeafRegen({ apiKey, node, inputs: leafContextFor(node, client) });
+  if (result.kind === "empty") return;
+  usage.record(REGROUP_MODEL, { input_tokens: result.usage.input, output_tokens: result.usage.output });
+  if (result.kind !== "ok") throw new Error(`${node}: ${result.kind}`);
+  const next = mergeLeafResult(client, node, result.result);
+  Object.assign(client, next);
+  // mergeLeafResult stamps finding.basis/promptVersions but not nodeHashes — without this, staleNodes()
+  // would still flag the node we just backfilled, causing a redundant re-run on the very next sweep.
+  client.finding!.nodeHashes = { ...client.finding!.nodeHashes, [node]: nodeHashesOf(client)[node] };
+}
+
+export interface BackfillResult {
+  nodes: string[]; // regenerated (real run) or stale-and-would-regenerate (dry run) leaf nodes
+  failures: { node: string; message: string }[];
+}
+
+export async function opTreatmentGroupsBackfill(args: OpArgs, usage: UsageAccumulator) {
+  return run(args.vaultId, args.store, args.dryRun, "ingest:treatment-groups-backfill", async (client) => {
+    if (!client.finding) throw new Error(`${args.vaultId}: no Finding yet — run --refresh-finding first.`);
+    const nodes = staleLeafNodes(await staleNodes(client));
+    const result: BackfillResult = { nodes: [], failures: [] };
+    if (args.dryRun) {
+      result.nodes = nodes;
+      return result;
+    }
+    for (const node of nodes) {
+      try {
+        await regenerateLeaf(client, node, usage);
+        result.nodes.push(node);
+      } catch (e) {
+        result.failures.push({ node, message: (e as Error).message });
+      }
+    }
+    return result;
+  });
+}
+
+export function selectTreatmentRows(treatments: TreatmentItem[], name: string, rowId?: string): TreatmentItem[] {
+  const target = name.trim().toLowerCase();
+  const byName = treatments.filter((t) => t.name.trim().toLowerCase() === target);
+  return rowId ? byName.filter((t) => t.id === rowId) : byName;
+}
+
+// The old CLI script's exact medicine-scope patch: every dose row sharing the treatment's name
+// gets the same label facts, and doseUnit only relabels when the extraction's administration unit
+// actually changed — the one thing that unlocks computeConclusion's Daily total for a legacy row.
+// Deliberately NOT reused from treatment-infer-merge.ts/treatment-medicine-fanout.ts: both assume a
+// full-form replace (overwrite name/kind, unconditionally relabel doseUnit, null out images) that
+// would clobber fields this narrower photo-only patch never touches.
+export function applyPhotoExtractPatch(
+  rows: TreatmentItem[],
+  proposed: ProposedTreatment,
+  now: () => string = () => new Date().toISOString(),
+): void {
+  const relabelUnit = administrationUnitChanged(rows[0].administration, proposed.administration)
+    ? proposed.administration!.unit
+    : null;
+  const extractedAt = now();
+  for (const row of rows) {
+    row.description = proposed.description;
+    row.maker = proposed.maker;
+    row.ingredients = proposed.ingredients ? [...proposed.ingredients] : undefined;
+    row.links = proposed.links ? [...proposed.links] : undefined;
+    row.administration = proposed.administration ? { ...proposed.administration } : undefined;
+    row.extracted = { via: "photo", at: extractedAt };
+    row.rawCaptureAttachmentKeys = (row.attachments ?? []).map((a) => a.key);
+    if (relabelUnit != null) row.doseUnit = relabelUnit;
+  }
+}
+
+// Duplicated rather than imported from src/lib/extract-client.ts (document-read-check.ts does the
+// same): that module also POSTs to a relative API path via the browser fetch API, and
+// cli-import-graph.test.ts forbids any CLI script's import graph from reaching that transport.
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return Buffer.from(binary, "binary").toString("base64");
+}
+
+export interface PhotoExtractArgs {
+  name: string;
+  rowId?: string;
+  keys: string[];
+}
+
+export interface PhotoExtractResult {
+  rowIds: string[];
+  // Absent under --dry-run: ops.yml's preview contract is "no Anthropic call," so there is nothing
+  // to preview here beyond which rows a real run would touch.
+  proposed?: ProposedTreatment;
+}
+
+export async function opTreatmentPhotoExtract(args: OpArgs, extract: PhotoExtractArgs, usage: UsageAccumulator) {
+  return run(args.vaultId, args.store, args.dryRun, "ingest:treatment-photo-extract", async (client) => {
+    const rows = selectTreatmentRows(client.factors?.treatments ?? [], extract.name, extract.rowId);
+    if (rows.length === 0) {
+      throw new Error(
+        `${args.vaultId}: no treatment rows named "${extract.name}"${extract.rowId ? ` with id "${extract.rowId}"` : ""}`,
+      );
+    }
+    const rowIds = rows.map((r) => r.id);
+    if (args.dryRun) return { rowIds };
+
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set. Required to extract from photos.");
+    const images = await Promise.all(
+      extract.keys.map(async (key) => {
+        const rawKey = r2RawKeyFor(args.store, args.vaultId, key);
+        const bytes = await getObject(LIVE_BUCKET, rawKey);
+        if (!bytes) throw new Error(`raw object missing at ${LIVE_BUCKET}/${rawKey}`);
+        const mediaType = key.toLowerCase().endsWith(".png") ? ("image/png" as const) : ("image/jpeg" as const);
+        return { base64: bytesToBase64(bytes), mediaType };
+      }),
+    );
+
+    const anthropic = new Anthropic({ apiKey });
+    const proposed = await inferTreatment(anthropic, { images }, TREATMENT_IMAGE_MODEL, TREATMENT_INFER_MAX_TOKENS, usage);
+    applyPhotoExtractPatch(rows, proposed);
+    return { rowIds, proposed };
+  });
 }
