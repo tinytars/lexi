@@ -51,6 +51,7 @@ export const SYNTHETIC_SPECS = [
   "search-pin.spec.ts",
   "search-records.spec.ts",
   "session-resume.spec.ts",
+  "shell-leaf-regen.spec.ts",
   "shell-nav.spec.ts",
   "shell-phone.spec.ts",
   "shell-reports.spec.ts",
