@@ -8,7 +8,7 @@ import { E2E_CLINICIAN, E2E_SUPPORT } from "./_synthetic";
 // roster, and finds the provider's patients present but NOT openable (no per-patient consent); finally
 // the provider revokes the grant so the next run starts clean. Uses the dedicated e2e clinician (its
 // own synthetic patients), never fam4 — the support agent identity is already synthetic/LOCAL-only
-// (provision-support-account.ts), so nothing here reaches for a real pilot.
+// (provision-support-account.ts), so nothing here reaches for a real seeded account.
 test("support requests a provider's roster, provider approves, support views it (records gated)", async ({ page }) => {
   // 1) support console → request access to the provider by email.
   await loginAs(page, E2E_SUPPORT.email, E2E_SUPPORT.password);

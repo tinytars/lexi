@@ -3,7 +3,7 @@ import { loginAs, signUp, openOwnerAccount } from "./_login";
 import { E2E_CLINICIAN } from "./_synthetic";
 
 // W44 P8 — the owner Account modal. Uses a FRESH signed-up account (unique email) so editing the
-// profile doesn't rename a shared pilot other specs depend on.
+// profile doesn't rename an account another spec depends on.
 test("owner edits profile and sees sign-in methods in Account", async ({ page }) => {
   await signUp(page, `e2e-account-${Date.now()}@local.invalid`);
 

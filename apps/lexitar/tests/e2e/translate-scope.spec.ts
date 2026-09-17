@@ -31,7 +31,7 @@ test("a patient's own note gets its Translate", async ({ page }) => {
   await stubVaultSave(page);
   const posted = recordTranslates(page);
 
-  // A synthetic patient, not a real pilot: this asserts a patient's note DOES get a Translate, and
+  // A synthetic patient: this asserts a patient's note DOES get a Translate, and
   // `regen()` skips any leaf that isn't in the stale set. A DEFAULT synthetic patient has
   // `nodeHashes` unset, which makes staleNodes() return an empty set — nothing regens at all. The
   // fresh synthetic patient sets `nodeHashes: {}`, so noteResults reads as drifted and can fire.

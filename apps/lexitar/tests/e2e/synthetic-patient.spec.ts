@@ -8,10 +8,8 @@ import { openSynthetic, openSyntheticAsProvider, mySynthetic, expectOwnPatient }
 // the content arrives. tests/unit/provision-e2e-patient.test.ts round-trips the crypto; this closes
 // the loop through the real Functions, real D1 and real R2 self-seed.
 //
-// It runs alongside the pilots at `workers: 1` for now — deliberately additive. Moving existing specs
-// onto synthetic patients and raising the worker count only makes sense once this is green, and only
-// on a runner that is not also the developer's machine (the parallelism costs memory, and this one is
-// already swapping).
+// Every spec has since moved onto synthetic patients (see playwright.config.ts); `workers: 1` stays
+// pinned because specs still share the E2E_CLINICIAN/E2E_SUPPORT accounts.
 
 test("a synthetic patient signs in and their vault decrypts", async ({ page }) => {
   const who = await openSynthetic(page);

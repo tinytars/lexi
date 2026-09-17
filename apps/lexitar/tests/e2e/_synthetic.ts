@@ -15,9 +15,9 @@ export const E2E_SUPPORT = { email: "support@local.invalid", password: "support"
 
 // W69 — sign in as THIS worker's own synthetic patient.
 //
-// The pilots (Alex, Blair) are real people with real records, and every spec that mutates them is a
-// concurrent writer to the same vault — which is why `playwright.config.ts` pins `workers: 1`. A spec
-// that opts in here instead gets a patient nobody else is touching, and becomes safe to parallelise.
+// Every spec now runs against synthetic patients, but they still share the E2E_CLINICIAN/E2E_SUPPORT
+// accounts above, which is why `playwright.config.ts` pins `workers: 1`. A spec that opts in here
+// instead gets a patient nobody else is touching, and becomes safe to parallelise.
 //
 // The worker index is the isolation unit. Playwright guarantees a worker runs one spec file at a time,
 // so "my worker's patient" is exactly as isolated as "my file's patient" would be, at a ninth of the
@@ -83,7 +83,7 @@ async function openAsPatient(page: Page, who: Synthetic): Promise<Synthetic> {
 /**
  * Sign in as the e2e clinician and drill into `who` from the roster.
  *
- * Its own account, not fam4 — so this needs no secret and cannot disturb the pilots' roster.
+ * Its own account, not fam4 — so this needs no secret and cannot disturb any real provider's roster.
  */
 async function signInAsClinicianOnto(page: Page, who: Synthetic): Promise<Synthetic> {
   await loginAs(page, E2E_CLINICIAN.email, E2E_CLINICIAN.password);
