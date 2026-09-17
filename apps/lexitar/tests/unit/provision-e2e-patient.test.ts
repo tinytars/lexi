@@ -79,7 +79,7 @@ describe("a provisioned e2e patient", () => {
     const { sql, patients } = await provisionWorld(1);
     const joined = patients[0].sql.join("\n");
     expect(joined).toContain(E2E_PROVIDER.accountId);
-    expect(joined).toMatch(/INSERT INTO provider_links[^;]*'clinician', 'active'/);
+    expect(joined).toMatch(/INSERT INTO provider_links[^;]*'primary', 'active'/);
     // The regression this replaced: linking to fam4 put synthetic patients on the REAL provider's
     // roster and broke cover-render.spec.ts, which asserts that roster exactly.
     expect(sql.join("\n")).not.toContain("12275343-91b7-431d-ae4a-15c6e092b4a6");

@@ -156,7 +156,7 @@ export async function provisionPatient(
     `INSERT INTO vaults (vault_id, owner_account_id, r2_key, hd1_version) VALUES (${sql(ids.vault)}, ${sql(ids.account)}, ${sql(r2Key)}, 2);`,
     `INSERT INTO vault_envelopes (vault_id, principal_account_id, wrapped_dek, ephemeral_public_key_jwk, created_by, created_at) VALUES (${sql(ids.vault)}, ${sql(ids.account)}, X'${toHex(ownerEnvelope.wrappedDEK)}', ${sql(JSON.stringify(ownerEnvelope.ephemeralPublicKeyJwk))}, ${sql(ids.account)}, ${sql(now)});`,
     `INSERT INTO vault_envelopes (vault_id, principal_account_id, wrapped_dek, ephemeral_public_key_jwk, created_by, created_at) VALUES (${sql(ids.vault)}, ${sql(E2E_PROVIDER.accountId)}, X'${toHex(providerEnvelope.wrappedDEK)}', ${sql(JSON.stringify(providerEnvelope.ephemeralPublicKeyJwk))}, ${sql(ids.account)}, ${sql(now)});`,
-    `INSERT INTO provider_links (id, patient_account_id, provider_account_id, role, status, consent_ref, granted_by, granted_at) VALUES (${sql(ids.link)}, ${sql(ids.account)}, ${sql(E2E_PROVIDER.accountId)}, 'clinician', 'active', 'e2e', ${sql(ids.account)}, ${sql(now)});`,
+    `INSERT INTO provider_links (id, patient_account_id, provider_account_id, role, status, consent_ref, granted_by, granted_at) VALUES (${sql(ids.link)}, ${sql(ids.account)}, ${sql(E2E_PROVIDER.accountId)}, 'primary', 'active', 'e2e', ${sql(ids.account)}, ${sql(now)});`,
   ];
 
   return { slug, email, password, r2Key, blob, privateKey, ownerEnvelope, sql: lines };
@@ -182,8 +182,12 @@ async function provisionProvider(): Promise<{ sql: string[]; publicKeyJwk: JsonW
       `DELETE FROM identities WHERE account_id IN ${byEmail};`,
       `DELETE FROM public_keys WHERE account_id IN ${byEmail};`,
       `DELETE FROM accounts WHERE email = ${sql(E2E_PROVIDER.email)};`,
-      // provider_kind 'clinician' — the same kind fam4 is, so the roster and drill-in behave identically.
-      `INSERT INTO accounts (id, email, email_confirmed, display_name, lifecycle_stage, provider_kind, created_at) VALUES (${sql(E2E_PROVIDER.accountId)}, ${sql(E2E_PROVIDER.email)}, 1, ${sql(E2E_PROVIDER.displayName)}, 'active', 'clinician', ${sql(now)});`,
+      // provider_kind 'primary' — the value _lib/capabilities.ts's Role type and every route that
+      // calls can(roleOf(...), ...) actually check for. Migration 0002 seeded the real fam4 pilot
+      // account with the string 'clinician' instead, which is why fam4 has never been able to pass
+      // an "ai:spend"/"recovery:issue" check in production — a latent bug in that seed data, not a
+      // convention this account should match. Flagged separately; not this e2e fixture's job to fix.
+      `INSERT INTO accounts (id, email, email_confirmed, display_name, lifecycle_stage, provider_kind, created_at) VALUES (${sql(E2E_PROVIDER.accountId)}, ${sql(E2E_PROVIDER.email)}, 1, ${sql(E2E_PROVIDER.displayName)}, 'active', 'primary', ${sql(now)});`,
       `INSERT INTO identities (id, account_id, method, provider_subject, credential_id, created_at) VALUES (${sql(E2E_PROVIDER.identityId)}, ${sql(E2E_PROVIDER.accountId)}, 'password', NULL, NULL, ${sql(now)});`,
       `INSERT INTO credentials (account_id, method, wrapped_private_key, kdf_params, created_at) VALUES (${sql(E2E_PROVIDER.accountId)}, 'password', X'${toHex(wrapped)}', ${sql(JSON.stringify(kdfParams))}, ${sql(now)});`,
       `INSERT INTO public_keys (account_id, public_key_jwk, created_at) VALUES (${sql(E2E_PROVIDER.accountId)}, ${sql(JSON.stringify(publicKeyJwk))}, ${sql(now)});`,
