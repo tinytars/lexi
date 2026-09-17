@@ -45,6 +45,21 @@ export function syntheticAt(index: number): Synthetic {
   return syntheticFor(syntheticSlug(index));
 }
 
+/**
+ * A synthetic patient's URL-hash prefix — exactly like PILOTS.*.clientId in _login.ts, but NOT the
+ * same kind of id: a pilot's clientId is a UUID naming a row inside the vault's `clients` map. A
+ * synthetic vault has no such row-level id — syntheticVault() in tests/fixtures/synthetic-patient.ts
+ * keys `clients` directly by the worker's slug — so the app's `selectedClientId` (App.svelte, chosen
+ * from `Object.keys(vault.clients)`) IS the slug. Using idsFor()'s D1 account id here instead once
+ * produced a well-formed but wrong id, silently misrouting every permalink test onto the
+ * "different patient" (blocked) path.
+ */
+export const syntheticClientId = (index: number): string => syntheticSlug(index);
+
+/** A worker index guaranteed to differ from `index` — a real but WRONG patient id for a spec that
+ * needs to prove cross-patient isolation (e.g. pasting another patient's permalink). */
+export const otherSyntheticIndex = (index: number): number => (index + 1) % SYNTHETIC_WORKER_COUNT;
+
 /** This worker's patient. Reads `parallelIndex`, so it is correct at any `workers` setting. */
 export function mySynthetic(): Synthetic {
   return syntheticAt(test.info().parallelIndex);

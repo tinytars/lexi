@@ -1,6 +1,6 @@
 import { test, expect } from "./_fixtures";
 import type { Page } from "@playwright/test";
-import { openPatient, openAsProvider } from "./_login";
+import { openSynthetic, openSyntheticAsProvider } from "./_synthetic";
 import { clickLeafMenuItem, openLeafMenu } from "./_leaf-menu";
 import { clickNav } from "./_nav";
 import { stubChatHistory } from "./_stubs";
@@ -19,14 +19,14 @@ async function openSidebarIfDrawer(page: Page) {
 
 async function openMarkers(page: Page) {
   await stubChatHistory(page);
-  await openPatient(page);
+  await openSynthetic(page);
   await openSidebarIfDrawer(page);
   await clickNav(page, "Markers");
 }
 
 async function openProviderTreatment(page: Page) {
   await stubChatHistory(page);
-  await openAsProvider(page, "Alex");
+  await openSyntheticAsProvider(page);
   await openSidebarIfDrawer(page);
   await clickNav(page, "Treatment");
 }
@@ -102,7 +102,7 @@ test.describe("phone viewport", () => {
 });
 
 test("every leaf action (Edit/Chat/Delete/etc) renders as a labeled item inside one triple-dot LeafActionMenu — PersonaBubble-driven and bespoke leaves alike", async ({ page }) => {
-  await openAsProvider(page, "Alex");
+  await openSyntheticAsProvider(page);
 
   // PersonaBubble-driven: UnifiedTreatment's rowActions() (M66/M70/M71 idiom) — M71 collapsed
   // Edit/Chat/Delete into one LeafActionMenu; all three are labeled menu items now, including

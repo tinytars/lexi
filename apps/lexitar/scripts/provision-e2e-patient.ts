@@ -43,6 +43,24 @@ const APP = resolve(here, "..");
 const OUT_DIR = process.env.OUT ?? "dist";
 const ITER = 200_000;
 
+/**
+ * Deterministic ids per seed, so re-provisioning replaces rather than accumulates.
+ *
+ * Shaped like a UUID because the columns are compared against real ones; `w0` -> `...0`, and the
+ * digits are taken from the seed so two workers can never collide. `FRESH_SEED` carries no digit at
+ * all, so it gets a fixed high suffix reserved for it — safe as long as the worker count stays under
+ * that reservation (SYNTHETIC_WORKER_COUNT is 4 today).
+ */
+function idsFor(seed: string): { account: string; vault: string; link: string; identity: string } {
+  const n = seed === FRESH_SEED ? "99" : seed.replace(/\D/g, "").padStart(2, "0").slice(-2);
+  return {
+    account: `e2e0a${n}0-0000-4000-8000-0000000000${n}`,
+    vault: `e2e0v${n}0-0000-4000-8000-0000000000${n}`,
+    link: `e2e0l${n}0-0000-4000-8000-0000000000${n}`,
+    identity: `e2e0i${n}0-0000-4000-8000-0000000000${n}`,
+  };
+}
+
 // W69 — the synthetic patients get their OWN clinician, never the pilots' fam4.
 //
 // Linking them to fam4 LOOKED additive and was not: provider_links feed the roster, so four synthetic
@@ -68,24 +86,6 @@ const sql = (s: string) => "'" + s.replace(/'/g, "''") + "'";
 async function sha256Base64Url(s: string): Promise<string> {
   const d = new Uint8Array(await (globalThis.crypto as Crypto).subtle.digest("SHA-256", enc.encode(s)));
   return Buffer.from(d).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-/**
- * Deterministic ids per seed, so re-provisioning replaces rather than accumulates.
- *
- * Shaped like a UUID because the columns are compared against real ones; `w0` -> `...0`, and the
- * digits are taken from the seed so two workers can never collide. `FRESH_SEED` carries no digit at
- * all, so it gets a fixed high suffix reserved for it — safe as long as the worker count stays under
- * that reservation (SYNTHETIC_WORKER_COUNT is 4 today).
- */
-function idsFor(seed: string): { account: string; vault: string; link: string; identity: string } {
-  const n = seed === FRESH_SEED ? "99" : seed.replace(/\D/g, "").padStart(2, "0").slice(-2);
-  return {
-    account: `e2e0a${n}0-0000-4000-8000-0000000000${n}`,
-    vault: `e2e0v${n}0-0000-4000-8000-0000000000${n}`,
-    link: `e2e0l${n}0-0000-4000-8000-0000000000${n}`,
-    identity: `e2e0i${n}0-0000-4000-8000-0000000000${n}`,
-  };
 }
 
 export interface ProvisionedPatient {

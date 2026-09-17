@@ -91,6 +91,21 @@ export function syntheticClient(seed: string, opts: SyntheticClientOptions = {})
     gender: "female",
     watchlist: ["ApoB", "Hemoglobin A1c"],
     results: results(seed),
+    // One marker carries a personalized range, so specs that assert the safe-zone band actually
+    // renders (chart-zones.spec.ts) have something real to find — resolveRange() in
+    // @pablotech/akesi/ranges reads this map, and MarkerChart draws no band without an entry.
+    personalizedRanges: {
+      ApoB: {
+        low: 60,
+        high: 90,
+        unit: "mg/dL",
+        explanation: `Personalized ApoB range for ${tag}.`,
+        generalLow: 50,
+        generalHigh: 120,
+        generatedAt: "2026-06-01T00:00:00Z",
+        factorsHash: `${seed}`.padEnd(12, "0"),
+      },
+    },
     sources: [
       {
         id: `src${seed}0001`,

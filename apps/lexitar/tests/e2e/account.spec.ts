@@ -1,5 +1,6 @@
 import { test, expect } from "./_fixtures";
-import { PILOTS, signUp, openOwnerAccount } from "./_login";
+import { loginAs, signUp, openOwnerAccount } from "./_login";
+import { E2E_CLINICIAN } from "./_synthetic";
 
 // W44 P8 — the owner Account modal. Uses a FRESH signed-up account (unique email) so editing the
 // profile doesn't rename a shared pilot other specs depend on.
@@ -37,10 +38,7 @@ test("owner edits profile and sees sign-in methods in Account", async ({ page })
 // W48 — a provider now has an account menu (on the roster), but it must NOT offer record-sharing
 // (they don't own a record). The menu shows Account settings + Sign out, no "Who can access".
 test("provider account menu is present but omits the record-sharing item", async ({ page }) => {
-  await page.goto("/");
-  await page.fill('input[type="email"]', PILOTS.provider.email);
-  await page.fill('input[type="password"]', PILOTS.provider.password);
-  await page.click('button[type="submit"]');
+  await loginAs(page, E2E_CLINICIAN.email, E2E_CLINICIAN.password);
   await page.waitForSelector(".roster-list"); // provider lands on the roster
   await expect(page.locator(".account-trigger")).toBeVisible();
   await page.click(".account-trigger");

@@ -17,6 +17,12 @@ import { defineConfig } from "@playwright/test";
  */
 export const SYNTHETIC_SPECS = [
   "a11y.spec.ts",
+  "account.spec.ts",
+  "body-cell-pin.spec.ts",
+  "chart-zones.spec.ts",
+  "chat-attach-and-note.spec.ts",
+  "chat-from-leaf.spec.ts",
+  "chat-reference-cards.spec.ts",
   "cover-render.spec.ts",
   "google.spec.ts",
   "menu-exclusivity.spec.ts",
