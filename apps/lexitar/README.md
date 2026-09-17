@@ -56,10 +56,10 @@ npm run test      # unit (vitest)
 npm run test:e2e  # Playwright
 ```
 
-`playwright.config.ts` splits e2e into two projects: `synthetic`, which runs against seeded,
-credential-free fixtures and is what CI runs (`.github/workflows/ci.yml`'s `lexitar` job); and
-`pilots`, which exercises real seeded pilot-account data that deliberately never left the source
-monorepo — there's no fixture for it here, and it doesn't run outside that environment.
+Every e2e spec runs against seeded, credential-free fixtures (`tests/e2e/_synthetic.ts`'s
+per-worker synthetic patients plus a local-only e2e clinician and support account) — none of it
+needs a real credential, so the same suite runs unmodified in CI (`.github/workflows/ci.yml`'s
+`lexitar` job).
 
 ## Deploy
 

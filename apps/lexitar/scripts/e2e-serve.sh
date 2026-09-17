@@ -88,10 +88,11 @@ npx wrangler d1 execute "$D1_NAME" --local --persist-to "$STATE" --file "$STATE/
 
 # W69 — one fully synthetic patient per Playwright worker (LOCAL only, idempotent).
 #
-# The suite is pinned to `workers: 1` because its specs mutate the two REAL pilots' vault rows, so two
-# workers racing on one patient lose each other's writes. Giving each worker its own patient removes
-# the shared state rather than mocking the save path. Per WORKER, not per spec file: Playwright never
-# runs two files concurrently inside a worker, so four provisions buy what thirty-seven would.
+# The suite is pinned to `workers: 1` (see playwright.config.ts) because specs still share backend
+# state through the E2E_CLINICIAN/E2E_SUPPORT accounts, so two workers racing on the same patient would
+# lose each other's writes. Giving each worker its own patient removes the shared-*patient* state
+# rather than mocking the save path. Per WORKER, not per spec file: Playwright never runs two files
+# concurrently inside a worker, so four provisions buy what thirty-seven would.
 #
 # Needs no credential of any kind — the password is the slug and the DEK is wrapped to public keys
 # only (see scripts/provision-e2e-patient.ts). That is what will let e2e leave this machine.
