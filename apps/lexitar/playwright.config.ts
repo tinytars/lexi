@@ -17,7 +17,9 @@ import { defineConfig } from "@playwright/test";
  */
 export const SYNTHETIC_SPECS = [
   "a11y.spec.ts",
+  "cover-render.spec.ts",
   "google.spec.ts",
+  "menu-exclusivity.spec.ts",
   "modal-dirty.spec.ts",
   "onboarding.spec.ts",
   "passkey.spec.ts",
