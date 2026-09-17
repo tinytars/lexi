@@ -67,6 +67,7 @@ export const SYNTHETIC_SPECS = [
   "synthetic-patient.spec.ts",
   "translate-scope.spec.ts",
   "turn-cell-parity.spec.ts",
+  "view-controls.spec.ts",
   "visibility.spec.ts",
 ];
 

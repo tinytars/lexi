@@ -1,4 +1,4 @@
-import type { Client, Vault } from "../../src/lib/types";
+import type { Client, MarkerGrouping, Vault } from "../../src/lib/types";
 
 // W69 — a fully synthetic patient, so e2e can stop sharing two real ones.
 //
@@ -33,10 +33,21 @@ const GROUPS = ["Cardiovascular Risk", "Metabolic Health"] as const;
  */
 export const syntheticTag = (seed: string): string => seed.toUpperCase();
 
+const DAY_MS = 86_400_000;
+
+// Days-ago for each of a marker's 5 readings, keyed by body system. Anchored to `Date.now()` rather
+// than fixed calendar dates — a fixed date eventually ages out of every time-window filter as CI runs
+// on later dates. The two systems' NEWEST reading is deliberately staggered (60 days vs. 200): a
+// "3 months" window then leaves Metabolic Health's markers with nothing to plot while Cardiovascular
+// Risk's still show data, which is the partial-emptiness view-controls.spec.ts's W65 test needs.
+const READING_AGES_DAYS: Record<(typeof GROUPS)[number], number[]> = {
+  "Cardiovascular Risk": [825, 625, 400, 200, 60],
+  "Metabolic Health": [825, 625, 400, 200, 200],
+};
+
 /** Dated marker readings — three per marker minimum, which is what a chart needs to draw a line. */
 function results(seed: string): Client["results"] {
-  const dates = ["2024-02-14", "2024-09-03", "2025-04-21", "2025-11-08", "2026-05-19"];
-  const series: [marker: string, group: string, unit: string, base: number][] = [
+  const series: [marker: string, group: (typeof GROUPS)[number], unit: string, base: number][] = [
     ["ApoB", "Cardiovascular Risk", "mg/dL", 92],
     ["LDL Cholesterol", "Cardiovascular Risk", "mg/dL", 118],
     ["HDL Cholesterol", "Cardiovascular Risk", "mg/dL", 54],
@@ -47,16 +58,49 @@ function results(seed: string): Client["results"] {
   // The seed shifts every value, so a chart leaked from another worker is visibly the wrong series
   // rather than an identical one. Marker NAMES stay standard — they are what specs select on.
   const offset = [...seed].reduce((n, c) => n + c.charCodeAt(0), 0) % 7;
-  return series.flatMap(([marker, group, unit, base], m) =>
-    dates.map((date, d) => ({
+  const now = Date.now();
+  const labResults = series.flatMap(([marker, group, unit, base], m) =>
+    READING_AGES_DAYS[group].map((daysAgo, d) => ({
       marker,
       group,
       source: "lab",
-      date,
+      date: new Date(now - daysAgo * DAY_MS).toISOString().slice(0, 10),
       value: Math.round(base * (1 + (((m * 5 + d * 3 + offset) % 9) - 4) / 100) * 100) / 100,
       unit,
     })),
   );
+  // A second source in Cardiovascular Risk, alongside the lab-sourced markers above — the group
+  // view-controls.spec.ts's M102 test needs a mixed-source group to prove against: everything still
+  // renders in one flat stack, with no Blood/Imaging sub-header splitting it by source.
+  const imagingResults = [825, 400, 60].map((daysAgo) => ({
+    marker: `Coronary Calcium Score`,
+    group: "Cardiovascular Risk" as const,
+    source: "imaging",
+    date: new Date(now - daysAgo * DAY_MS).toISOString().slice(0, 10),
+    value: 40 + offset,
+    unit: "Agatston",
+  }));
+  return [...labResults, ...imagingResults];
+}
+
+// The sidebar's per-system rows (marker-sidebar-groups.ts) classify by `client.markerGroups`, the
+// AI's marker->body-system assignment — NOT by each result's own `group` field, which only drives
+// the no-Finding-yet fallback wall (marker-grid.ts's `groupsOnly`). Omitting this left every marker
+// unclassified, so the sidebar showed one catch-all "Uncategorized" row instead of "Cardiovascular
+// Risk"/"Metabolic Health" — derived from `results()` so the two can't drift apart.
+function markerGroupsFor(seed: string): MarkerGrouping {
+  const byGroup = new Map<string, string[]>();
+  for (const r of results(seed)) {
+    const names = byGroup.get(r.group) ?? [];
+    if (!names.includes(r.marker)) names.push(r.marker);
+    byGroup.set(r.group, names);
+  }
+  return {
+    groups: GROUPS.map((group) => ({ group, markers: byGroup.get(group) ?? [] })),
+    markerGroupsHash: `${seed}`.padEnd(12, "0"),
+    generatedAt: "2026-06-01T00:00:00Z",
+    generatedBy: { mode: "dev", model: "synthetic-fixture" },
+  };
 }
 
 /** Worker `i` gets patient `e2e-w{i}` — see tests/e2e/_synthetic.ts. Shared with provisioning so the
@@ -91,6 +135,7 @@ export function syntheticClient(seed: string, opts: SyntheticClientOptions = {})
     gender: "female",
     watchlist: ["ApoB", "Hemoglobin A1c"],
     results: results(seed),
+    markerGroups: markerGroupsFor(seed),
     // One marker carries a personalized range, so specs that assert the safe-zone band actually
     // renders (chart-zones.spec.ts) have something real to find — resolveRange() in
     // @pablotech/akesi/ranges reads this map, and MarkerChart draws no band without an entry.
@@ -99,6 +144,7 @@ export function syntheticClient(seed: string, opts: SyntheticClientOptions = {})
         low: 60,
         high: 90,
         unit: "mg/dL",
+        meaning: `What ApoB measures, for ${tag}.`,
         explanation: `Personalized ApoB range for ${tag}.`,
         generalLow: 50,
         generalHigh: 120,
