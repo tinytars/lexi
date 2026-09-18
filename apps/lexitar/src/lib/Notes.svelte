@@ -20,7 +20,7 @@
   import { PRODUCT_NAME } from "./brand";
   import ReferenceCard from "./ReferenceCard.svelte";
   import AttachmentStrip from "@tinytars/frame/AttachmentStrip.svelte";
-  import { attachmentUrl } from "./attachment-store";
+  import { appendAttachments, attachmentUrl } from "./attachment-store";
   import DictateButton from "@tinytars/frame/DictateButton.svelte";
 
   // M63 — a flat, reorderable list of free-text notes (one text box per entry, no title/date).
@@ -167,10 +167,10 @@
   let attachError = $state<string | null>(null);
   function attachToNote(n: NoteEntry, added: Attachment[]) {
     const match = draft!.factors!.noteEntries!.find((x) => x.id === n.id);
-    if (match) match.attachments = [...(match.attachments ?? []), ...added];
+    if (match) match.attachments = appendAttachments(match.attachments, added);
     persistNow((payload) => {
       const m = payload.factors!.noteEntries!.find((x) => x.id === n.id);
-      if (m) m.attachments = [...(m.attachments ?? []), ...added];
+      if (m) m.attachments = appendAttachments(m.attachments, added);
     });
   }
 

@@ -32,7 +32,7 @@
   import { uploadPendingImages } from "./treatment-attachment-upload";
   import { planMedicineFanout, applyMedicineFanoutPatch } from "./treatment-medicine-fanout";
   import { fanoutReason } from "./treatment-reason-fanout";
-  import { buildAttachmentKey, uploadAttachment, attachmentUrl, attachmentsOf, groupAttachmentsOf, attachFiles, isLastRawCaptureAttachment, isLastRawCaptureHolder, MAX_VISION_ATTACHMENTS } from "./attachment-store";
+  import { appendAttachments, buildAttachmentKey, uploadAttachment, attachmentUrl, attachmentsOf, groupAttachmentsOf, attachFiles, isLastRawCaptureAttachment, isLastRawCaptureHolder, MAX_VISION_ATTACHMENTS } from "./attachment-store";
   import { openAttachPicker, DEFAULT_ATTACH_ACCEPT } from "@tinytars/frame/attach-controller";
   import AttachmentStrip from "@tinytars/frame/AttachmentStrip.svelte";
   import DictateButton from "@tinytars/frame/DictateButton.svelte";
@@ -260,7 +260,7 @@
     const mirror = (rows: TreatmentItem[] | undefined) => {
       for (const x of rows ?? []) {
         if (!matchesTreatmentName(x.name, t.name)) continue;
-        x.attachments = [...(x.attachments ?? []), ...added];
+        x.attachments = appendAttachments(x.attachments, added);
       }
     };
     mirror(draft.factors?.treatments);
@@ -427,7 +427,7 @@
     openAttachPicker("files", async (files) => {
       try {
         const added = await attachFiles(clientId, files);
-        if (newTreatment) newTreatment.attachments = [...(newTreatment.attachments ?? []), ...added];
+        if (newTreatment) newTreatment.attachments = appendAttachments(newTreatment.attachments, added);
       } catch (err) {
         saveImageError = err instanceof Error ? err.message : "Attaching failed — try again.";
       }
@@ -579,7 +579,7 @@
           buildAttachmentKey,
           uploadAttachment,
         });
-        newTreatment.attachments = [...(newTreatment.attachments ?? []), ...attachments];
+        newTreatment.attachments = appendAttachments(newTreatment.attachments, attachments);
         if (rawCaptureKeys.length) {
           newTreatment.rawCaptureAttachmentKeys = [...(newTreatment.rawCaptureAttachmentKeys ?? []), ...rawCaptureKeys];
         }

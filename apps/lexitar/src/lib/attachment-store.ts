@@ -147,4 +147,4 @@ export function hasExtractedText(a: Attachment): boolean {
 export { isExtractableDocument, isPdfAttachment };
 // W68 — moved to attachment-keys.ts so the Node CLI can import them without pulling this module's
 // browser fetch dependencies. Re-exported here so every browser caller keeps its existing import.
-export { attachmentsOf, groupAttachmentsOf, attachmentKeysOf, isLastRawCaptureAttachment, isLastRawCaptureHolder } from "./attachment-keys";
+export { appendAttachments, attachmentsOf, groupAttachmentsOf, attachmentKeysOf, isLastRawCaptureAttachment, isLastRawCaptureHolder } from "./attachment-keys";

@@ -17,7 +17,7 @@
   import { standardLeafActions, buildNoteAttachment } from "./leaf-actions";
   import TurnCard from "./TurnCard.svelte";
   import AttachmentStrip from "@tinytars/frame/AttachmentStrip.svelte";
-  import { attachmentUrl } from "./attachment-store";
+  import { appendAttachments, attachmentUrl } from "./attachment-store";
   import DictateButton from "@tinytars/frame/DictateButton.svelte";
   import { sortPinnedFirst } from "./pin-sort";
   import { PRODUCT_NAME } from "./brand";
@@ -185,10 +185,10 @@
   let attachError = $state<string | null>(null);
   function attachToFamily(f: FamilyHistoryEntry, added: Attachment[]) {
     const match = draft.factors!.familyHistory!.find((x) => x.id === f.id);
-    if (match) match.attachments = [...(match.attachments ?? []), ...added];
+    if (match) match.attachments = appendAttachments(match.attachments, added);
     persistNow((p) => {
       const m = p.factors!.familyHistory!.find((x) => x.id === f.id);
-      if (m) m.attachments = [...(m.attachments ?? []), ...added];
+      if (m) m.attachments = appendAttachments(m.attachments, added);
     });
   }
 

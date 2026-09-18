@@ -15,7 +15,7 @@
   // MAX_ATTACHMENTS, not MAX_VISION_ATTACHMENTS: that cap is about how many IMAGES one request may
   // carry to a vision model. A document rides as text and a plain attachment costs nothing at all,
   // so capping a chat attach at four was the image tier leaking into a surface that isn't one.
-  import { MAX_ATTACHMENTS, fetchAttachmentBase64, attachFiles, attachmentUrl } from "./attachment-store";
+  import { MAX_ATTACHMENTS, appendAttachments, fetchAttachmentBase64, attachFiles, attachmentUrl } from "./attachment-store";
   import { documentTextsFor } from "./document-extract-client";
   import { documentsPromptBlock } from "@pablotech/akesi/document-read";
   import { DEFAULT_ATTACH_ACCEPT } from "@tinytars/frame/attach-controller";
@@ -284,7 +284,7 @@
     if (!clientId || files.length === 0) return;
     try {
       const added = await attachFiles(clientId, files, { maxCount: MAX_ATTACHMENTS });
-      pendingAttachments = [...pendingAttachments, ...added];
+      pendingAttachments = appendAttachments(pendingAttachments, added);
     } catch (err) {
       attachError = err instanceof Error ? err.message : "Attaching failed — try again.";
     }
@@ -469,7 +469,7 @@
         items={standardLeafActions({
           attach: clientId ? {
             clientId, accept: DEFAULT_ATTACH_ACCEPT, maxCount: MAX_ATTACHMENTS,
-            onAttached: (added) => (pendingAttachments = [...pendingAttachments, ...added]),
+            onAttached: (added) => (pendingAttachments = appendAttachments(pendingAttachments, added)),
             onError: (msg) => (attachError = msg),
             routeFile: async (file) => {
               if (!isSpreadsheet(file)) return false;

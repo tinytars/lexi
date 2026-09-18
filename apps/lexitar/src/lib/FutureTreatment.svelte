@@ -22,7 +22,7 @@
   import LeafCard from "@tinytars/frame/LeafCard.svelte";
   import TurnCard from "./TurnCard.svelte";
   import AttachmentStrip from "@tinytars/frame/AttachmentStrip.svelte";
-  import { attachmentUrl } from "./attachment-store";
+  import { appendAttachments, attachmentUrl } from "./attachment-store";
   import DictateButton from "@tinytars/frame/DictateButton.svelte";
   import { sortPinnedFirst } from "./pin-sort";
   import { PRODUCT_NAME } from "./brand";
@@ -156,10 +156,10 @@
   let attachError = $state<string | null>(null);
   function attachToDecision(d: DecisionEntry, added: Attachment[]) {
     const match = draft!.factors!.decisions!.find((x) => x.id === d.id);
-    if (match) match.attachments = [...(match.attachments ?? []), ...added];
+    if (match) match.attachments = appendAttachments(match.attachments, added);
     persistNow((payload) => {
       const m = payload.factors!.decisions!.find((x) => x.id === d.id);
-      if (m) m.attachments = [...(m.attachments ?? []), ...added];
+      if (m) m.attachments = appendAttachments(m.attachments, added);
     });
   }
   // M71 P6 — standalone Pin toggle per idea, same scoped-persist shape as deleteDecision above:
