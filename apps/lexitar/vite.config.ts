@@ -107,4 +107,5 @@ export default defineConfig({
   // contents still map to the dist root, so served URLs (/data-{id}.enc) are unchanged.
   publicDir: 'records/public',
   plugins: [svelte(), saveVaultMiddleware(), rawFileMiddleware()],
+  define: { 'import.meta.env.VITE_BUILD_SHA': JSON.stringify(process.env.CF_PAGES_COMMIT_SHA ?? '') },
 })
