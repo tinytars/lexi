@@ -59,7 +59,7 @@
     "@anthropic-ai/sdk": "^0.91.1",
     "@pablotech/akesi": "^0.1.43",
     "@pablotech/neuro": "^0.1.43",
-    "@simplewebauthn/browser": "^13.3.0",
+    "@simplewebauthn/browser": "^14.0.0",
     "@simplewebauthn/server": "^14.0.1",
     "@tinytars/frame": "^0.1.5",
     "@tinytars/vault": "^0.1.18",
