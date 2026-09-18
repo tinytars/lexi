@@ -5,6 +5,7 @@ import { notifyMethodAdded } from "../../../_lib/notify-method";
 import { linkGoogleToAccount } from "../../../_lib/google";
 import type { D1Database } from "../../../_lib/identity-types";
 import { getAccount, getAccountByEmail, setEmailConfirmed, updateAccountProfile } from "../../../_lib/identity-accounts";
+import { json } from "../../../_lib/http";
 
 // W45 §J — finish "add Google to my account". The OAuth popup (callback.ts, mode=link) verified the
 // Google identity and set a signed hd_google_link cookie binding the verified `sub` to THIS account.
@@ -27,8 +28,6 @@ interface Ctx {
 const ROUTE = "/api/account/methods/google";
 const LINK_COOKIE = "hd_google_link";
 const clearLink = `${LINK_COOKIE}=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0`;
-const json = (status: number, body: unknown, headers: Record<string, string> = {}): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", ...headers } });
 
 export async function onRequestPost(context: Ctx): Promise<Response> {
   const { request, env } = context;

@@ -4,6 +4,7 @@ import { listPatientsForProvider } from "../../_lib/identity-providers";
 import { can, roleOf } from "../../_lib/capabilities";
 import { requireSession } from "../../_lib/session";
 import { logRequest } from "../../_lib/log";
+import { json } from "../../_lib/http";
 
 // W50 — the support agent's OUTSTANDING (invited, not-yet-approved) access requests, so the console can
 // show "requested · awaiting approval" instead of the request silently vanishing. Covers both target
@@ -18,9 +19,6 @@ interface Ctx {
 }
 
 const ROUTE = "/api/support/requests";
-
-const json = (status: number, body: unknown): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 export async function onRequestGet(context: Ctx): Promise<Response> {
   const { request, env } = context;

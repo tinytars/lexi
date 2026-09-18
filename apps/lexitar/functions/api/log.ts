@@ -1,5 +1,6 @@
 import { requireBearer } from "../_lib/guard";
 import { auditor, type AuditEvent } from "../_lib/audit";
+import { json } from "../_lib/http";
 
 // W39/Phase 3 — client loop-event beacon. The retry loop lives browser-side (refresh-client.ts), so
 // its decisions (why it retried, when it gave up, a cancel) are invisible to the server half of the
@@ -23,9 +24,6 @@ interface Env {
 const ROUTE = "/api/refresh-finding"; // beacon events belong to the refresh-finding trail
 const CLIENT_EVENTS: readonly AuditEvent[] = ["truncated", "validation-fail", "success", "gave-up", "cancelled"];
 const SLUG = /^[a-z0-9_-]{1,40}$/; // a category/code, never prose (no spaces/punctuation)
-
-const json = (status: number, body: unknown): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 export async function onRequestPost(context: { request: Request; env: Env }): Promise<Response> {
   const { request, env } = context;

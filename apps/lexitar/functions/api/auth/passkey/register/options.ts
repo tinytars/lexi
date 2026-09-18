@@ -2,6 +2,7 @@ import type { D1Database } from "../../../../_lib/identity-types";
 import { getAccountByEmail } from "../../../../_lib/identity-accounts";
 import { logRequest } from "../../../../_lib/log";
 import { generateRegistrationOptions, setChallengeCookie, bytesToHex, type WebauthnEnv } from "../../../../_lib/webauthn";
+import { json } from "../../../../_lib/http";
 
 // W44 P3 — passkey registration, step 1: mint WebAuthn creation options (with the PRF
 // extension requested) and stash the challenge + a fresh per-credential PRF salt in a
@@ -16,9 +17,6 @@ interface Ctx {
 }
 
 const ROUTE = "/api/auth/passkey/register/options";
-
-const json = (status: number, body: unknown, headers: Record<string, string> = {}): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", ...headers } });
 
 export async function onRequestPost(context: Ctx): Promise<Response> {
   const { request, env } = context;

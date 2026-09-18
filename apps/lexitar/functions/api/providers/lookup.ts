@@ -3,6 +3,7 @@ import { getAccountByEmail } from "../../_lib/identity-accounts";
 import { getPublicKey } from "../../_lib/identity-credentials";
 import { requireSession } from "../../_lib/session";
 import { logRequest } from "../../_lib/log";
+import { json } from "../../_lib/http";
 
 // W44 P4 — resolve a provider by email so a logged-in patient can wrap their vault DEK to that
 // provider's public key (the grant step happens client-side; this only hands back the public key).
@@ -18,9 +19,6 @@ interface Ctx {
 }
 
 const ROUTE = "/api/providers/lookup";
-
-const json = (status: number, body: unknown): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 export async function onRequestGet(context: Ctx): Promise<Response> {
   const { request, env } = context;

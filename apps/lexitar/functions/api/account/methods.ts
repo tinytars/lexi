@@ -6,6 +6,7 @@ import { logRequest } from "../../_lib/log";
 import { stepUpForMethodChange } from "../../_lib/step-up";
 import { sha256Base64Url } from "../../_lib/verifier";
 import { notifyMethodAdded } from "../../_lib/notify-method";
+import { json } from "../../_lib/http";
 
 // W44 P8 — manage the caller's login methods. Each method independently wraps the same account private
 // key (client-side), so ADD = write another wrapped-key credential; REMOVE = delete it, guarded so it
@@ -32,8 +33,6 @@ function base64ToBytes(b64: string): Uint8Array {
   return out;
 }
 /** Length-guarded constant-time compare — Workers has no crypto.timingSafeEqual (mirrors login.ts). */
-const json = (status: number, body: unknown): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 export async function onRequestGet(context: Ctx): Promise<Response> {
   const { request, env } = context;

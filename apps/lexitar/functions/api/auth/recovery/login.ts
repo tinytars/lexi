@@ -7,6 +7,7 @@ import { sendMethodAddedNotice } from "../../../_lib/email";
 import type { EmailEnv } from "../../../_lib/email";
 import { signSession, sessionSetCookie } from "../../../_lib/session";
 import { sha256Base64Url, timingSafeEqualStr } from "../../../_lib/verifier";
+import { json } from "../../../_lib/http";
 
 // W44 P8b — recover with a recovery code. Verifies the client-derived recovery authHash against the
 // stored SHA-256 verifier (added at code generation) and hands back the recovery-wrapped private key +
@@ -36,8 +37,6 @@ function bytesToBase64(bytes: Uint8Array): string {
   for (const b of bytes) bin += String.fromCharCode(b);
   return btoa(bin);
 }
-const json = (status: number, body: unknown, headers: Record<string, string> = {}): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", ...headers } });
 
 export async function onRequestPost(context: Ctx): Promise<Response> {
   const { request, env } = context;

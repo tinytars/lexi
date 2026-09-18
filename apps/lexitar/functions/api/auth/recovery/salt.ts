@@ -3,6 +3,7 @@ import { getAccountByEmail } from "../../../_lib/identity-accounts";
 import { getCredential } from "../../../_lib/identity-credentials";
 import { logRequest } from "../../../_lib/log";
 import { decoySalt, KDF_ITERATIONS } from "../../../_lib/decoy-salt";
+import { json } from "../../../_lib/http";
 
 // W44 P8b — the recovery credential's KDF salt (public), looked up by email so the client can derive
 // the recovery-code KEK + authHash before the recover POST. Mirrors auth/password/salt.ts.
@@ -17,9 +18,6 @@ interface Ctx {
 }
 
 const ROUTE = "/api/auth/recovery/salt";
-
-const json = (status: number, body: unknown): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 export async function onRequestGet(context: Ctx): Promise<Response> {
   const { request, env } = context;

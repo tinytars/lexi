@@ -10,6 +10,7 @@ import type { EmailEnv } from "../../../_lib/email";
 import { sendVerificationEmail } from "../../../_lib/email";
 import { ORG_ACCOUNT_ID } from "../../../_lib/org";
 import { sha256Base64Url } from "../../../_lib/verifier";
+import { json } from "../../../_lib/http";
 
 // W44 P2 — password signup. The browser has already done all the crypto (keypair,
 // KEK-wrapped private key, authHash, DEK-encrypted vault blob, owner envelope); this
@@ -48,12 +49,8 @@ function base64ToBytes(b64: string): Uint8Array {
   return bytes;
 }
 
-
 // Server stores SHA-256(authHash), never authHash itself — a leaked DB row still can't
 // be replayed to log in without re-deriving the same authHash from the password.
-
-const json = (status: number, body: unknown, headers: Record<string, string> = {}): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", ...headers } });
 
 function missingField(body: Partial<SignupBody>): boolean {
   return (
