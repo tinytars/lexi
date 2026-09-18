@@ -1,28 +1,19 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { Miniflare } from "miniflare";
-import { applyMigrations } from "./_migrate";
+import { describe, it, expect, beforeAll, afterEach, vi } from "vitest";
 import { onRequestPost as logout } from "../../functions/api/auth/logout";
 import { signSession, requireSession } from "../../functions/_lib/session";
-import type { D1Database } from "../../functions/_lib/identity-types";
 import { createAccount } from "../../functions/_lib/identity-accounts";
+import { useWorkerd } from "../support/miniflare";
+import { SESSION_SECRET } from "../support/session";
 
-// W71 — logout used to be nothing but a Max-Age=0 on the cookie. The cookie is a self-contained
-// 30-day HMAC, so a copy taken beforehand (a shared machine, a synced profile, a proxy log) kept
-// working for the rest of its TTL: the browser had forgotten the session, the server never knew about
-// it. That is the gap between "logged out" and logged out.
-
-let mf: Miniflare;
-let env: { SESSION_SECRET: string; DB: D1Database };
+// The cookie is a self-contained 30-day HMAC, so logout must revoke server-side or a copied cookie outlives it.
+const w = useWorkerd();
+const env = { SESSION_SECRET, get DB() { return w.db; } };
 
 beforeAll(async () => {
-  mf = new Miniflare({ modules: true, script: "export default { fetch() { return new Response('ok'); } }", d1Databases: { DB: "test-logout" } });
-  const db = (await mf.getD1Database("DB")) as unknown as D1Database;
-  await applyMigrations(db);
-  env = { SESSION_SECRET: "test-secret", DB: db };
-  await createAccount(db, { id: "acc-1", displayName: "A" });
-  await createAccount(db, { id: "acc-2", displayName: "B" });
+  await createAccount(w.db, { id: "acc-1", displayName: "A" });
+  await createAccount(w.db, { id: "acc-2", displayName: "B" });
 });
-afterAll(async () => { await mf.dispose(); });
+afterEach(() => { vi.useRealTimers(); });
 
 const post = (cookie?: string) =>
   logout({ request: new Request("http://x/api/auth/logout", { method: "POST", headers: cookie ? { cookie } : {} }), env });
@@ -37,11 +28,13 @@ describe("POST /api/auth/logout", () => {
   });
 
   it("also invalidates the cookie server-side, so a copy of it stops working too", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.now());
     const token = await signSession(env, "acc-1");
     const carry = new Request("http://x/api/account", { headers: { cookie: `hd_session=${token}` } });
     expect(await requireSession(carry, env)).toEqual({ accountId: "acc-1" });
 
-    await new Promise((r) => setTimeout(r, 1100)); // the revocation stamp has one-second resolution
+    vi.setSystemTime(Date.now() + 1100); // the revocation stamp has one-second resolution
     expect((await post(`hd_session=${token}`)).status).toBe(204);
 
     // The attacker's copy — same bytes, never sent through a browser that saw the Set-Cookie.

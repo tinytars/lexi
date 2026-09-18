@@ -1,6 +1,4 @@
-import { applyMigrations } from "./_migrate";
-import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
-import { Miniflare } from "miniflare";
+import { describe, it, expect, vi } from "vitest";
 import { onRequestPost as request } from "../../functions/api/support/request";
 import { onRequestPost as approve } from "../../functions/api/support/approve";
 import { onRequestPost as access } from "../../functions/api/support/access";
@@ -13,26 +11,14 @@ import { putPublicKey } from "../../functions/_lib/identity-credentials";
 import { createVault, getEnvelope, putEnvelope } from "../../functions/_lib/identity-vault";
 import { createProviderLink, getProviderLink } from "../../functions/_lib/identity-providers";
 import { listAccessEventsForSubject } from "../../functions/_lib/identity-audit";
-import { signSession } from "../../functions/_lib/session";
 import { generateAccountKeypair, generateDEK, wrapDEKForPublicKey } from "@tinytars/vault/crypto";
 import { listSupportOwners } from "@tinytars/vault/auth-support";
+import { useWorkerd } from "../support/miniflare";
+import { SESSION_SECRET, cookieFor } from "../support/session";
 
-// W44 P4b — support consented-access + PHI-access audit, over real Miniflare D1 (0001 + 0003).
-
-let mf: Miniflare;
-let db: any;
-const SECRET = "test-secret";
-
-beforeAll(async () => {
-  mf = new Miniflare({ modules: true, script: "export default { fetch() { return new Response('ok'); } }", d1Databases: { DB: "test-support" } });
-  db = await mf.getD1Database("DB");
-  await applyMigrations(db as unknown as import("../../functions/_lib/identity-types").D1Database);
-});
-afterAll(async () => { await mf.dispose(); });
-
-const makeEnv = (extra: Record<string, unknown> = {}) => ({ DB: db, SESSION_SECRET: SECRET, ...extra }) as any;
+const w = useWorkerd();
+const makeEnv = (extra: Record<string, unknown> = {}) => ({ DB: w.db, SESSION_SECRET, ...extra }) as any;
 const bytesToBase64 = (b: Uint8Array) => Buffer.from(b).toString("base64");
-const cookieFor = async (id: string) => `hd_session=${await signSession({ SESSION_SECRET: SECRET }, id)}`;
 
 async function callPost(fn: any, actorId: string, body: unknown, env = makeEnv()) {
   return fn({ request: new Request("http://x", { method: "POST", headers: { "content-type": "application/json", cookie: await cookieFor(actorId) }, body: JSON.stringify(body) }), env });
@@ -41,15 +27,15 @@ async function callPost(fn: any, actorId: string, body: unknown, env = makeEnv()
 async function seedSupport(email = `support-${crypto.randomUUID()}@x.test`) {
   const kp = await generateAccountKeypair();
   const supportId = crypto.randomUUID();
-  await createAccount(db, { id: supportId, displayName: "Support", email, providerKind: "support" });
-  await putPublicKey(db, { accountId: supportId, publicKeyJwk: kp.publicKeyJwk });
+  await createAccount(w.db, { id: supportId, displayName: "Support", email, providerKind: "support" });
+  await putPublicKey(w.db, { accountId: supportId, publicKeyJwk: kp.publicKeyJwk });
   return { supportId, supportPublicKeyJwk: kp.publicKeyJwk, email };
 }
 async function seedPatient(email = `pat-${crypto.randomUUID()}@x.test`) {
   const patientId = crypto.randomUUID();
-  await createAccount(db, { id: patientId, displayName: "Pat", email });
+  await createAccount(w.db, { id: patientId, displayName: "Pat", email });
   const vaultId = crypto.randomUUID();
-  await createVault(db, { vaultId, ownerAccountId: patientId, r2Key: `data-${patientId}.enc`, hd1Version: 2 });
+  await createVault(w.db, { vaultId, ownerAccountId: patientId, r2Key: `data-${patientId}.enc`, hd1Version: 2 });
   const dek = await generateDEK();
   return { patientId, vaultId, dek, email };
 }
@@ -71,21 +57,21 @@ describe("support request → approve → enter", () => {
     // approve (patient wraps DEK to support pubkey)
     const ap = await callPost(approve, p.patientId, { linkId, ...(await wrap(p.dek, s.supportPublicKeyJwk)), ttlHours: 24 });
     expect(ap.status).toBe(200);
-    expect(await getEnvelope(db, p.vaultId, s.supportId)).not.toBeNull();
+    expect(await getEnvelope(w.db, p.vaultId, s.supportId)).not.toBeNull();
 
     // enter (audited)
     const en = await callPost(access, s.supportId, { ownerAccountId: p.patientId });
     expect(en.status).toBe(200);
     expect((await en.json() as { envelope: { wrappedDEK: string } }).envelope.wrappedDEK).toBeTruthy();
 
-    const events = (await listAccessEventsForSubject(db, p.patientId)).map((e) => e.action);
+    const events = (await listAccessEventsForSubject(w.db, p.patientId)).map((e) => e.action);
     expect(events).toEqual(["support_access_requested", "support_access_granted", "support_access_opened"]);
   });
 
   it("rejects a non-support requester and a non-patient approver", async () => {
     const p = await seedPatient();
     const notSupport = crypto.randomUUID();
-    await createAccount(db, { id: notSupport, displayName: "Nope" });
+    await createAccount(w.db, { id: notSupport, displayName: "Nope" });
     expect((await callPost(request, notSupport, { ownerEmail: p.email })).status).toBe(403);
   });
 
@@ -93,18 +79,18 @@ describe("support request → approve → enter", () => {
     const s = await seedSupport();
     const p = await seedPatient();
     // an already-active support link with a PAST expiry + a live envelope
-    const link = await createProviderLink(db, {
+    const link = await createProviderLink(w.db, {
       ownerAccountId: p.patientId, providerAccountId: s.supportId, role: "support",
       status: "active", grantedBy: p.patientId, expiresAt: new Date(Date.now() - 1000).toISOString(),
     });
     const e = await wrapDEKForPublicKey(p.dek, s.supportPublicKeyJwk);
-    await putEnvelope(db, { vaultId: p.vaultId, principalAccountId: s.supportId, wrappedDek: e.wrappedDEK, ephemeralPublicKeyJwk: e.ephemeralPublicKeyJwk, createdBy: p.patientId });
+    await putEnvelope(w.db, { vaultId: p.vaultId, principalAccountId: s.supportId, wrappedDek: e.wrappedDEK, ephemeralPublicKeyJwk: e.ephemeralPublicKeyJwk, createdBy: p.patientId });
 
     const en = await callPost(access, s.supportId, { ownerAccountId: p.patientId });
     expect(en.status).toBe(403);
-    expect(await getEnvelope(db, p.vaultId, s.supportId)).toBeNull();
-    expect((await getProviderLink(db, link.id))!.status).toBe("revoked");
-    expect((await listAccessEventsForSubject(db, p.patientId)).map((x) => x.action)).toContain("support_access_expired");
+    expect(await getEnvelope(w.db, p.vaultId, s.supportId)).toBeNull();
+    expect((await getProviderLink(w.db, link.id))!.status).toBe("revoked");
+    expect((await listAccessEventsForSubject(w.db, p.patientId)).map((x) => x.action)).toContain("support_access_expired");
   });
 
   it("denying a support request audits support_access_denied", async () => {
@@ -113,7 +99,7 @@ describe("support request → approve → enter", () => {
     const linkId = (await (await callPost(request, s.supportId, { ownerEmail: p.email })).json() as { linkId: string }).linkId;
     const res = await revoke({ request: new Request(`http://x/api/providers/${linkId}`, { method: "DELETE", headers: { cookie: await cookieFor(p.patientId) } }), env: makeEnv(), params: { link: linkId } });
     expect(res.status).toBe(200);
-    expect((await listAccessEventsForSubject(db, p.patientId)).map((x) => x.action)).toContain("support_access_denied");
+    expect((await listAccessEventsForSubject(w.db, p.patientId)).map((x) => x.action)).toContain("support_access_denied");
   });
 });
 
@@ -122,9 +108,9 @@ describe("support is walled off from clinician surfaces", () => {
     const s = await seedSupport();
     const p = await seedPatient();
     // grant support an active link + envelope
-    await createProviderLink(db, { ownerAccountId: p.patientId, providerAccountId: s.supportId, role: "support", status: "active", grantedBy: p.patientId });
+    await createProviderLink(w.db, { ownerAccountId: p.patientId, providerAccountId: s.supportId, role: "support", status: "active", grantedBy: p.patientId });
     const e = await wrapDEKForPublicKey(p.dek, s.supportPublicKeyJwk);
-    await putEnvelope(db, { vaultId: p.vaultId, principalAccountId: s.supportId, wrappedDek: e.wrappedDEK, ephemeralPublicKeyJwk: e.ephemeralPublicKeyJwk, createdBy: p.patientId });
+    await putEnvelope(w.db, { vaultId: p.vaultId, principalAccountId: s.supportId, wrappedDek: e.wrappedDEK, ephemeralPublicKeyJwk: e.ephemeralPublicKeyJwk, createdBy: p.patientId });
 
     const res = await clinicianPatients({ request: new Request("http://x/api/providers/patients", { headers: { cookie: await cookieFor(s.supportId) } }), env: makeEnv() });
     expect((await res.json() as { patients: unknown[] }).patients).toHaveLength(0);
@@ -140,17 +126,14 @@ describe("support is walled off from clinician surfaces", () => {
   });
 });
 
-// W76 — the two sides of /api/support/owners are maintained in different places (this Function here,
-// the parser in the published @tinytars/vault package) and every other test above mocks one side or
-// the other. Route the real handler's Response through the real (unmocked) client parser so a
-// response-key rename on either side without the other breaks this, not just production.
+// The route and its parser live in different packages; pipe the real Response through the real parser.
 describe("the owners route and the published vault client agree on the wire shape", () => {
   it("listSupportOwners() parses a real /api/support/owners response into a non-empty list", async () => {
     const s = await seedSupport();
     const p = await seedPatient();
-    await createProviderLink(db, { ownerAccountId: p.patientId, providerAccountId: s.supportId, role: "support", status: "active", grantedBy: p.patientId });
+    await createProviderLink(w.db, { ownerAccountId: p.patientId, providerAccountId: s.supportId, role: "support", status: "active", grantedBy: p.patientId });
     const e = await wrapDEKForPublicKey(p.dek, s.supportPublicKeyJwk);
-    await putEnvelope(db, { vaultId: p.vaultId, principalAccountId: s.supportId, wrappedDek: e.wrappedDEK, ephemeralPublicKeyJwk: e.ephemeralPublicKeyJwk, createdBy: p.patientId });
+    await putEnvelope(w.db, { vaultId: p.vaultId, principalAccountId: s.supportId, wrappedDek: e.wrappedDEK, ephemeralPublicKeyJwk: e.ephemeralPublicKeyJwk, createdBy: p.patientId });
 
     const cookie = await cookieFor(s.supportId);
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation((async (url: string) => {

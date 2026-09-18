@@ -1,29 +1,16 @@
-import { applyMigrations } from "./_migrate";
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { Miniflare } from "miniflare";
+import { describe, it, expect } from "vitest";
 import { onRequestGet as getAccountFn, onRequestPatch as patchAccountFn } from "../../functions/api/account";
 import { createAccount } from "../../functions/_lib/identity-accounts";
-import { signSession } from "../../functions/_lib/session";
+import { useWorkerd } from "../support/miniflare";
+import { SESSION_SECRET, cookieFor } from "../support/session";
 
-// M93 — account-level unit-system preference: GET/PATCH /api/account round-trips it, and it's
-// independent per account (a provider's own setting never leaks into/out of a patient's).
-let mf: Miniflare;
-let db: any;
-const SECRET = "test-secret";
-
-beforeAll(async () => {
-  mf = new Miniflare({ modules: true, script: "export default { fetch() { return new Response('ok'); } }", d1Databases: { DB: "test-account" } });
-  db = await mf.getD1Database("DB");
-  await applyMigrations(db as unknown as import("../../functions/_lib/identity-types").D1Database);
-});
-afterAll(async () => { await mf.dispose(); });
-
-const makeEnv = () => ({ DB: db, SESSION_SECRET: SECRET }) as any;
-const cookieFor = async (id: string) => `hd_session=${await signSession({ SESSION_SECRET: SECRET }, id)}`;
+// Unit-system preference round-trips through GET/PATCH /api/account, independently per account.
+const w = useWorkerd();
+const makeEnv = () => ({ DB: w.db, SESSION_SECRET }) as any;
 
 async function mkAccount(displayName: string) {
   const id = crypto.randomUUID();
-  await createAccount(db, { id, displayName, email: `${id}@x.test` });
+  await createAccount(w.db, { id, displayName, email: `${id}@x.test` });
   return id;
 }
 const getAcct = (cookie: string) => getAccountFn({ request: new Request("http://x/api/account", { headers: { cookie } }), env: makeEnv() });

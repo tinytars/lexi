@@ -1,12 +1,7 @@
-import { applyMigrations } from "./_migrate";
-import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
-import { Miniflare } from "miniflare";
+import { describe, it, expect, beforeAll, vi } from "vitest";
 
-// W44 P3 — real WebAuthn ceremonies can't run headless in vitest, so @simplewebauthn/server is
-// mocked at the ceremony-verification boundary. Everything else (D1 rows, R2 blob, session/
-// challenge cookies, the PRF-secret↔KEK crypto) is real; the PRF↔KEK round-trip itself is
-// already covered by crypto.test.ts (kekFromPrfSecret + wrap/unwrap), so this file only needs
-// the ceremony wiring + DB/session side-effects.
+// WebAuthn ceremonies can't run headless, so @simplewebauthn/server is mocked at ceremony
+// verification; D1, cookies and crypto are real (the PRF↔KEK round-trip is in crypto.test.ts).
 vi.mock("@simplewebauthn/server", () => ({
   generateRegistrationOptions: vi.fn(async (opts: { rpID: string; rpName: string; userName: string; extensions?: unknown }) => ({
     challenge: "test-registration-challenge",
@@ -45,27 +40,16 @@ import { getCredential, getIdentityByCredentialId } from "../../functions/_lib/i
 import { getEnvelope, listEnvelopesForVault, listVaultsForOwner } from "../../functions/_lib/identity-vault";
 import { ORG_ACCOUNT_ID } from "../../functions/_lib/org";
 import { generateAccountKeypair, wrapPrivateKey, generateDEK, encryptVaultV2, wrapDEKForPublicKey, kekFromPrfSecret } from "@tinytars/vault/crypto";
+import { useWorkerd } from "../support/miniflare";
+import { SESSION_SECRET } from "../support/session";
 
-let mf: Miniflare;
-let db: any; // D1Database
+const w = useWorkerd();
 let orgPublicKeyJwk: JsonWebKey;
 
 beforeAll(async () => {
-  mf = new Miniflare({
-    modules: true,
-    script: "export default { fetch() { return new Response('ok'); } }",
-    d1Databases: { DB: "test-passkey" },
-  });
-  db = await mf.getD1Database("DB");
-  await applyMigrations(db as unknown as import("../../functions/_lib/identity-types").D1Database);
-  // W55 P4 — register/verify now writes a second envelope to ORG_ACCOUNT_ID; the FK on
-  // vault_envelopes.principal_account_id requires the row to exist first.
-  await createAccount(db, { id: ORG_ACCOUNT_ID, displayName: "Org" });
+  // register/verify also writes an org-recovery envelope, whose FK needs the org account row.
+  await createAccount(w.db, { id: ORG_ACCOUNT_ID, displayName: "Org" });
   orgPublicKeyJwk = (await generateAccountKeypair()).publicKeyJwk;
-});
-
-afterAll(async () => {
-  await mf.dispose();
 });
 
 function bytesToBase64(bytes: Uint8Array): string {
@@ -79,14 +63,14 @@ function bytesToHex(bytes: Uint8Array): string {
 
 function makeEnv(store: Map<string, Uint8Array>) {
   return {
-    DB: db,
+    DB: w.db,
     VAULT: {
       put: async (k: string, v: Uint8Array) => {
         store.set(k, new Uint8Array(v));
       },
     },
     STORE_PREFIX: "test",
-    SESSION_SECRET: "test-secret",
+    SESSION_SECRET,
     WEBAUTHN_RP_ID: "localhost",
     WEBAUTHN_RP_NAME: "LexiTar",
     WEBAUTHN_ORIGIN: "http://localhost:8788",
@@ -186,28 +170,28 @@ describe("POST /api/auth/passkey/register", () => {
 
     const { accountId, vaultId } = (await res.json()) as { accountId: string; vaultId: string };
 
-    const account = await getAccountByEmail(db, "reg@example.com");
+    const account = await getAccountByEmail(w.db, "reg@example.com");
     expect(account?.id).toBe(accountId);
 
-    const idn = await getIdentityByCredentialId(db, "cred-reg");
+    const idn = await getIdentityByCredentialId(w.db, "cred-reg");
     expect(idn?.accountId).toBe(accountId);
 
-    const cred = await getCredential(db, accountId, "passkey");
+    const cred = await getCredential(w.db, accountId, "passkey");
     expect(cred).not.toBeNull();
     const kdf = cred!.kdfParams as { prfSalt: string; credentialID: string; counter: number };
     expect(kdf.prfSalt).toBe(prfSaltHex);
     expect(kdf.credentialID).toBe("cred-reg");
     expect(kdf.counter).toBe(0);
 
-    const vaults = await listVaultsForOwner(db, accountId);
+    const vaults = await listVaultsForOwner(w.db, accountId);
     expect(vaults.map((v) => v.vaultId)).toEqual([vaultId]);
     expect(store.has(`test/${vaults[0].r2Key}`)).toBe(true);
 
-    const envelope = await getEnvelope(db, vaultId, accountId);
+    const envelope = await getEnvelope(w.db, vaultId, accountId);
     expect(envelope).not.toBeNull();
 
-    // W55 P4 — register/verify mints exactly two envelopes: the owner's and the org-recovery one.
-    const envelopes = await listEnvelopesForVault(db, vaultId);
+    // Exactly two envelopes: the owner's and the org-recovery one.
+    const envelopes = await listEnvelopesForVault(w.db, vaultId);
     expect(envelopes.map((e) => e.principalAccountId).sort()).toEqual([accountId, ORG_ACCOUNT_ID].sort());
   });
 
@@ -295,7 +279,7 @@ describe("POST /api/auth/passkey/login", () => {
     expect(data.prfSalt).toBe(prfSaltHex);
     expect(data.ownerEnvelope).toBeTruthy();
 
-    const cred = await getCredential(db, accountId, "passkey");
+    const cred = await getCredential(w.db, accountId, "passkey");
     expect((cred!.kdfParams as { counter: number }).counter).toBe(1);
   });
 

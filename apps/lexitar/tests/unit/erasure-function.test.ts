@@ -1,15 +1,7 @@
-// W72 items 17+18 — account erasure, end to end, against a real D1 and a real R2.
-//
-// This is the most destructive operation the application has, so the tests are shaped around the two
-// ways it can be wrong: it can delete too little (the subject is told their data is gone when it is
-// not) and it can delete too much (it reaches another account's data). Both are checked with a SECOND
-// account seeded alongside the first, because an erasure test with one account in the database cannot
-// tell a correct WHERE clause from a missing one.
+// Account erasure end to end against a real D1 and R2. Each test seeds a SECOND account, because with
+// one account in the database a correct WHERE clause is indistinguishable from a missing one.
 
-import { applyMigrations } from "./_migrate";
-import { describe, it, expect, beforeEach, afterAll } from "vitest";
-import { Miniflare } from "miniflare";
-import type { D1Database } from "../../functions/_lib/identity-types";
+import { describe, it, expect } from "vitest";
 import { createAccount, getAccount, sessionsValidFrom } from "../../functions/_lib/identity-accounts";
 import { getPublicKey, listCredentials, putPublicKey } from "../../functions/_lib/identity-credentials";
 import { createVault, listEnvelopesForPrincipal, listEnvelopesForVault, listVaultsForOwner, putEnvelope } from "../../functions/_lib/identity-vault";
@@ -17,58 +9,40 @@ import { createProviderLink, listProvidersForPatient } from "../../functions/_li
 import { insertAccessEvent, listAccessEventsForSubject, listRawObjectsForAccount, recordRawObject } from "../../functions/_lib/identity-audit";
 import { eraseAccount, chatKeyForVault, r2KeysForAccount } from "../../functions/_lib/erasure";
 import { onRequestPost as erase } from "../../functions/api/account/erase";
-import { signSession } from "../../functions/_lib/session";
 import { generateAccountKeypair, generateDEK, wrapDEKForPublicKey } from "@tinytars/vault/crypto";
+import { useWorkerd } from "../support/miniflare";
+import { SESSION_SECRET, cookieFor } from "../support/session";
 
-const SECRET = "test-secret";
 const STORE = "dev";
-let mf: Miniflare;
-let db: any;
-let bucket: any;
+// Per test: fixtures reuse emails and assertions list the whole bucket.
+const w = useWorkerd({ r2: true, perTest: true });
 
-async function fresh() {
-  await mf?.dispose();
-  mf = new Miniflare({
-    modules: true,
-    script: "export default { fetch() { return new Response('ok'); } }",
-    d1Databases: { DB: `test-erase-${crypto.randomUUID()}` },
-    r2Buckets: { VAULT: `vault-${crypto.randomUUID()}` },
-  });
-  db = await mf.getD1Database("DB");
-  bucket = await mf.getR2Bucket("VAULT");
-  await applyMigrations(db as unknown as D1Database);
-}
-
-beforeEach(fresh);
-afterAll(async () => { await mf.dispose(); });
-
-const env = () => ({ DB: db, VAULT: bucket, SESSION_SECRET: SECRET, STORE_PREFIX: STORE }) as any;
-const cookie = async (id: string) => `hd_session=${await signSession({ SESSION_SECRET: SECRET }, id)}`;
+const env = () => ({ DB: w.db, VAULT: w.bucket, SESSION_SECRET, STORE_PREFIX: STORE }) as any;
 
 async function seedPatient(email: string, clientKey: string) {
   const kp = await generateAccountKeypair();
   const id = crypto.randomUUID();
-  await createAccount(db, { id, displayName: "P", email });
-  await putPublicKey(db, { accountId: id, publicKeyJwk: kp.publicKeyJwk });
+  await createAccount(w.db, { id, displayName: "P", email });
+  await putPublicKey(w.db, { accountId: id, publicKeyJwk: kp.publicKeyJwk });
   const vaultId = crypto.randomUUID();
   const slug = id;
-  await createVault(db, { vaultId, ownerAccountId: id, r2Key: `data-${slug}.enc`, hd1Version: 2 });
+  await createVault(w.db, { vaultId, ownerAccountId: id, r2Key: `data-${slug}.enc`, hd1Version: 2 });
   const dek = await generateDEK();
   const e = await wrapDEKForPublicKey(dek, kp.publicKeyJwk);
-  await putEnvelope(db, { vaultId, principalAccountId: id, wrappedDek: e.wrappedDEK, ephemeralPublicKeyJwk: e.ephemeralPublicKeyJwk, createdBy: id });
+  await putEnvelope(w.db, { vaultId, principalAccountId: id, wrappedDek: e.wrappedDEK, ephemeralPublicKeyJwk: e.ephemeralPublicKeyJwk, createdBy: id });
 
-  await bucket.put(`${STORE}/data-${slug}.enc`, "vault-ciphertext");
-  await bucket.put(`${STORE}/chat-${slug}.enc`, "chat-ciphertext");
+  await w.bucket.put(`${STORE}/data-${slug}.enc`, "vault-ciphertext");
+  await w.bucket.put(`${STORE}/chat-${slug}.enc`, "chat-ciphertext");
   const rawKey = `${STORE}/raw/${clientKey}/report.pdf`;
   const textKey = `${STORE}/text/${clientKey}/report.pdf.json`;
-  await bucket.put(rawKey, "PDF BYTES");
-  await bucket.put(textKey, '{"text":"plaintext phi"}');
-  await recordRawObject(db, rawKey, id);
-  await recordRawObject(db, textKey, id);
+  await w.bucket.put(rawKey, "PDF BYTES");
+  await w.bucket.put(textKey, '{"text":"plaintext phi"}');
+  await recordRawObject(w.db, rawKey, id);
+  await recordRawObject(w.db, textKey, id);
   return { id, vaultId, slug, rawKey, textKey, email };
 }
 
-const listKeys = async () => (await bucket.list()).objects.map((o: any) => o.key).sort();
+const listKeys = async () => (await w.bucket.list()).objects.map((o: any) => o.key).sort();
 
 describe("eraseAccount", () => {
   it("deletes the vault blob, the chat history, the originals and the extracted text", async () => {
@@ -87,15 +61,15 @@ describe("eraseAccount", () => {
     const theirs = await seedPatient("b@example.com", "blair");
     await eraseAccount(env(), mine.id);
     expect(await listKeys()).toEqual([theirs.rawKey, theirs.textKey, `${STORE}/chat-${theirs.slug}.enc`, `${STORE}/data-${theirs.slug}.enc`].sort());
-    expect(await getAccount(db, theirs.id)).toMatchObject({ email: "b@example.com", deletedAt: null });
-    expect(await listVaultsForOwner(db, theirs.id)).toHaveLength(1);
-    expect(await listRawObjectsForAccount(db, theirs.id)).toHaveLength(2);
+    expect(await getAccount(w.db, theirs.id)).toMatchObject({ email: "b@example.com", deletedAt: null });
+    expect(await listVaultsForOwner(w.db, theirs.id)).toHaveLength(1);
+    expect(await listRawObjectsForAccount(w.db, theirs.id)).toHaveLength(2);
   });
 
   it("tombstones the account rather than deleting the row, and nulls every personal field", async () => {
     const p = await seedPatient("a@example.com", "alex");
     await eraseAccount(env(), p.id);
-    const acct = await getAccount(db, p.id);
+    const acct = await getAccount(w.db, p.id);
     expect(acct).not.toBeNull();
     expect(acct!.email).toBeNull();
     expect(acct!.displayName).toBe("");
@@ -108,61 +82,61 @@ describe("eraseAccount", () => {
   it("revokes outstanding sessions before the account becomes a tombstone", async () => {
     const p = await seedPatient("a@example.com", "alex");
     await eraseAccount(env(), p.id);
-    expect(await sessionsValidFrom(db, p.id)).toBeTruthy();
+    expect(await sessionsValidFrom(w.db, p.id)).toBeTruthy();
   });
 
   it("removes the key-wrapping envelopes, the vault rows and the credentials", async () => {
     const p = await seedPatient("a@example.com", "alex");
     await eraseAccount(env(), p.id);
-    expect(await listVaultsForOwner(db, p.id)).toEqual([]);
-    expect(await listEnvelopesForVault(db, p.vaultId)).toEqual([]);
-    expect(await listCredentials(db, p.id)).toEqual([]);
-    expect(await getPublicKey(db, p.id)).toBeNull();
-    expect(await listRawObjectsForAccount(db, p.id)).toEqual([]);
+    expect(await listVaultsForOwner(w.db, p.id)).toEqual([]);
+    expect(await listEnvelopesForVault(w.db, p.vaultId)).toEqual([]);
+    expect(await listCredentials(w.db, p.id)).toEqual([]);
+    expect(await getPublicKey(w.db, p.id)).toBeNull();
+    expect(await listRawObjectsForAccount(w.db, p.id)).toEqual([]);
   });
 
   it("revokes grants in BOTH directions, so no live link points at a dead account", async () => {
     const patient = await seedPatient("a@example.com", "alex");
     const provId = crypto.randomUUID();
-    await createAccount(db, { id: provId, displayName: "Doc", email: "doc@example.com", providerKind: "primary" });
-    await createProviderLink(db, { ownerAccountId: patient.id, providerAccountId: provId, role: "primary", status: "active", grantedBy: patient.id });
+    await createAccount(w.db, { id: provId, displayName: "Doc", email: "doc@example.com", providerKind: "primary" });
+    await createProviderLink(w.db, { ownerAccountId: patient.id, providerAccountId: provId, role: "primary", status: "active", grantedBy: patient.id });
     // The PROVIDER erases itself: the patient must not be left holding an active grant to nobody.
     await eraseAccount(env(), provId);
-    expect(await listProvidersForPatient(db, patient.id)).toEqual([]);
+    expect(await listProvidersForPatient(w.db, patient.id)).toEqual([]);
   });
 
   it("deletes an envelope this account held on someone else's vault", async () => {
     const patient = await seedPatient("a@example.com", "alex");
     const prov = await generateAccountKeypair();
     const provId = crypto.randomUUID();
-    await createAccount(db, { id: provId, displayName: "Doc", email: "doc@example.com", providerKind: "primary" });
+    await createAccount(w.db, { id: provId, displayName: "Doc", email: "doc@example.com", providerKind: "primary" });
     const e = await wrapDEKForPublicKey(await generateDEK(), prov.publicKeyJwk);
-    await putEnvelope(db, { vaultId: patient.vaultId, principalAccountId: provId, wrappedDek: e.wrappedDEK, ephemeralPublicKeyJwk: e.ephemeralPublicKeyJwk, createdBy: patient.id });
+    await putEnvelope(w.db, { vaultId: patient.vaultId, principalAccountId: provId, wrappedDek: e.wrappedDEK, ephemeralPublicKeyJwk: e.ephemeralPublicKeyJwk, createdBy: patient.id });
     await eraseAccount(env(), provId);
-    expect(await listEnvelopesForPrincipal(db, provId)).toEqual([]);
+    expect(await listEnvelopesForPrincipal(w.db, provId)).toEqual([]);
     // …and the patient's own envelope is untouched.
-    expect(await listEnvelopesForVault(db, patient.vaultId)).toHaveLength(1);
+    expect(await listEnvelopesForVault(w.db, patient.vaultId)).toHaveLength(1);
   });
 
   it("destroys a live recovery grant, which holds a key to the record it just erased", async () => {
     const p = await seedPatient("a@example.com", "alex");
-    await db.prepare(
+    await w.db.prepare(
       "INSERT INTO recovery_grants (id, account_id, wrapped_dek, kdf_params, code_verifier_sha256, issued_by, issued_at, expires_at, attempts, consumed_at) VALUES (?, ?, ?, '{}', 'v', ?, ?, ?, 0, NULL)",
     ).bind(crypto.randomUUID(), p.id, new Uint8Array([1, 2, 3]), p.id, new Date().toISOString(), new Date(Date.now() + 3600_000).toISOString()).run();
 
     await eraseAccount(env(), p.id);
-    const left = await db.prepare("SELECT COUNT(*) AS n FROM recovery_grants WHERE account_id = ?").bind(p.id).first();
-    expect(left.n).toBe(0);
+    const left = await w.db.prepare("SELECT COUNT(*) AS n FROM recovery_grants WHERE account_id = ?").bind(p.id).first<{ n: number }>();
+    expect(left!.n).toBe(0);
   });
 
   it("keeps the access-event trail, which names other people's records too", async () => {
     const patient = await seedPatient("a@example.com", "alex");
     const provId = crypto.randomUUID();
-    await createAccount(db, { id: provId, displayName: "Doc", email: "doc@example.com", providerKind: "primary" });
-    await insertAccessEvent(db, { actorAccountId: provId, subjectAccountId: patient.id, action: "vault.read" });
+    await createAccount(w.db, { id: provId, displayName: "Doc", email: "doc@example.com", providerKind: "primary" });
+    await insertAccessEvent(w.db, { actorAccountId: provId, subjectAccountId: patient.id, action: "vault.read" });
     await eraseAccount(env(), patient.id);
     // Erasing the subject must not erase the evidence that a DIFFERENT principal read something.
-    expect(await listAccessEventsForSubject(db, patient.id)).toHaveLength(1);
+    expect(await listAccessEventsForSubject(w.db, patient.id)).toHaveLength(1);
   });
 
   it("is safe to run twice", async () => {
@@ -178,53 +152,46 @@ describe("eraseAccount", () => {
     // An original written before the ownership table existed: present in R2, absent from raw_objects,
     // and under THIS patient's namespace, which is what makes it this erasure's problem.
     const orphan = `${STORE}/raw/alex/old.pdf`;
-    await bucket.put(orphan, "PDF BYTES");
+    await w.bucket.put(orphan, "PDF BYTES");
     const report = await eraseAccount(env(), p.id);
     expect(report.unattributable).toBe(1);
     expect(report.complete).toBe(false);
     // Left in place: the server cannot prove whose it is, and deleting it could destroy another
     // patient's only copy. Reported so nobody is told the erasure was complete.
-    expect(await bucket.get(orphan)).not.toBeNull();
+    expect(await w.bucket.get(orphan)).not.toBeNull();
   });
 
   it("does not count a pre-0008 orphan in someone else's namespace against this erasure", async () => {
-    // W75. The count used to be store-wide, so an unowned object that this erasure was never going to
-    // touch made the report say incomplete — a false alarm that trains the reader to ignore the field
-    // that matters.
+    // A false "incomplete" trains the reader to ignore the field that matters.
     const p = await seedPatient("a@example.com", "alex");
-    await bucket.put(`${STORE}/raw/someone-else/old.pdf`, "PDF BYTES");
+    await w.bucket.put(`${STORE}/raw/someone-else/old.pdf`, "PDF BYTES");
     const report = await eraseAccount(env(), p.id);
     expect(report.unattributable).toBe(0);
     expect(report.complete).toBe(true);
   });
 
   it("reports incomplete when a clinician owns an object in the erased patient's namespace", async () => {
-    // W75, the severe half. Ownership is first-writer-wins, so a PDF a clinician uploaded ABOUT this
-    // patient carries the CLINICIAN's owner row: it is not selected for deletion (not ours) and, under
-    // the old store-wide "has no owner row" count, was not counted either. The subject was told
-    // complete: true while their PHI sat in the bucket.
+    // Ownership is first-writer-wins, so a clinician's upload ABOUT this patient is neither ours to delete
+    // nor ownerless — it must still count against `complete`.
     const p = await seedPatient("a@example.com", "alex");
     const clinician = await seedPatient("doc@example.com", "clinic");
     const theirs = `${STORE}/raw/alex/clinician-upload.pdf`;
-    await bucket.put(theirs, "PDF BYTES");
-    await recordRawObject(db, theirs, clinician.id);
+    await w.bucket.put(theirs, "PDF BYTES");
+    await recordRawObject(w.db, theirs, clinician.id);
 
     const report = await eraseAccount(env(), p.id);
     expect(report.complete).toBe(false);
     expect(report.unattributable).toBe(1);
     expect(report.r2Deleted).not.toContain(theirs);
-    expect(await bucket.get(theirs)).not.toBeNull();
+    expect(await w.bucket.get(theirs)).not.toBeNull();
   });
 });
 
 describe("the unattributable count follows R2's cursor", () => {
   it("does not stop at the first page", async () => {
-    // W73 correction. R2 caps a page at 1000 and health-vault already holds 1259, so a single list()
-    // silently stopped counting — and because this count decides `complete`, an erasure that HAD left
-    // objects behind could report complete: true. The same cap cost this project five nights of silent
-    // backup failures; this is the second time it has bitten.
+    // R2 caps a list() page at 1000; stopping at one page could report complete: true with objects left.
     const p = await seedPatient("a@example.com", "alex");
-    const real = bucket;
+    const real = w.bucket;
     let pages = 0;
     // A bucket that pages at 2 objects, so the loop is exercised without writing 1001 of them.
     const paging = {
@@ -238,7 +205,7 @@ describe("the unattributable count follows R2's cursor", () => {
         return { objects: slice, truncated: next < all.length, cursor: String(next) };
       },
     };
-    for (let i = 0; i < 5; i++) await bucket.put(`${STORE}/raw/alex/${i}.pdf`, "PDF");
+    for (let i = 0; i < 5; i++) await w.bucket.put(`${STORE}/raw/alex/${i}.pdf`, "PDF");
 
     const report = await eraseAccount({ ...env(), VAULT: paging } as any, p.id);
     expect(pages).toBeGreaterThan(2);
@@ -275,7 +242,7 @@ describe("POST /api/account/erase", () => {
 
   it("refuses when the confirmation does not match the account email", async () => {
     const p = await seedPatient("a@example.com", "alex");
-    const res = await post({ confirmEmail: "b@example.com" }, await cookie(p.id));
+    const res = await post({ confirmEmail: "b@example.com" }, await cookieFor(p.id));
     expect(res.status).toBe(400);
     expect((await res.json() as any).errorCode).toBe("confirmation_mismatch");
     // Nothing was deleted on a failed confirmation.
@@ -284,14 +251,14 @@ describe("POST /api/account/erase", () => {
 
   it("refuses an empty confirmation on an account that has no email", async () => {
     const id = crypto.randomUUID();
-    await createAccount(db, { id, displayName: "NoEmail" });
-    const res = await post({ confirmEmail: "" }, await cookie(id));
+    await createAccount(w.db, { id, displayName: "NoEmail" });
+    const res = await post({ confirmEmail: "" }, await cookieFor(id));
     expect(res.status).toBe(400);
   });
 
   it("accepts the confirmation case- and whitespace-insensitively and erases", async () => {
     const p = await seedPatient("a@example.com", "alex");
-    const res = await post({ confirmEmail: "  A@Example.com " }, await cookie(p.id));
+    const res = await post({ confirmEmail: "  A@Example.com " }, await cookieFor(p.id));
     expect(res.status).toBe(200);
     expect(await listKeys()).toEqual([]);
     expect((await res.json() as any).complete).toBe(true);
@@ -299,8 +266,8 @@ describe("POST /api/account/erase", () => {
 
   it("tells the caller when the erasure was incomplete rather than reporting success", async () => {
     const p = await seedPatient("a@example.com", "alex");
-    await bucket.put(`${STORE}/raw/alex/old.pdf`, "PDF");
-    const res = await post({ confirmEmail: p.email }, await cookie(p.id));
+    await w.bucket.put(`${STORE}/raw/alex/old.pdf`, "PDF");
+    const res = await post({ confirmEmail: p.email }, await cookieFor(p.id));
     const body = await res.json() as any;
     expect(res.status).toBe(200);
     expect(body.complete).toBe(false);
@@ -311,11 +278,9 @@ describe("POST /api/account/erase", () => {
     const mine = await seedPatient("a@example.com", "alex");
     const theirs = await seedPatient("b@example.com", "blair");
     // There is no accountId parameter; supplying one must be inert, not authoritative.
-    const res = await post({ confirmEmail: mine.email, accountId: theirs.id }, await cookie(mine.id));
-    expect(await getAccount(db, theirs.id)).toMatchObject({ deletedAt: null });
-    // And a second patient's correctly-owned objects must not make MY erasure read incomplete —
-    // "unattributable" means nobody owns it, not "somebody else owns it". This assertion is the one
-    // that caught the first implementation counting every other account's originals.
+    const res = await post({ confirmEmail: mine.email, accountId: theirs.id }, await cookieFor(mine.id));
+    expect(await getAccount(w.db, theirs.id)).toMatchObject({ deletedAt: null });
+    // "Unattributable" means nobody owns it, not "somebody else owns it".
     expect((await res.json() as any).complete).toBe(true);
   });
 });
@@ -323,7 +288,7 @@ describe("POST /api/account/erase", () => {
 describe("r2KeysForAccount", () => {
   it("returns nothing for an account with no vault, rather than a store-wide prefix", async () => {
     const id = crypto.randomUUID();
-    await createAccount(db, { id, displayName: "Empty" });
+    await createAccount(w.db, { id, displayName: "Empty" });
     expect((await r2KeysForAccount(env(), id)).keys).toEqual([]);
   });
 });

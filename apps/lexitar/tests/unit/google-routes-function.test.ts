@@ -1,51 +1,31 @@
-import { applyMigrations } from "./_migrate";
-import { describe, it, expect, beforeAll, afterAll, vi, afterEach } from "vitest";
-import { Miniflare } from "miniflare";
+import { describe, it, expect, beforeAll, vi, afterEach } from "vitest";
 import { onRequestGet as start } from "../../functions/api/auth/google/start";
 import { onRequestGet as callback } from "../../functions/api/auth/google/callback";
-import type { D1Database } from "../../functions/_lib/identity-types";
 import { createAccount } from "../../functions/_lib/identity-accounts";
 import { addIdentity, putPublicKey } from "../../functions/_lib/identity-credentials";
 import { ORG_ACCOUNT_ID } from "../../functions/_lib/org";
-import { verifyValue, signSession } from "../../functions/_lib/session";
+import { verifyValue } from "../../functions/_lib/session";
 import { generateAccountKeypair } from "@tinytars/vault/crypto";
+import { useWorkerd } from "../support/miniflare";
+import { SESSION_SECRET, cookieFor } from "../support/session";
 
-// W71 — the three Google OAuth ROUTES had no unit tests. functions/_lib/google.ts was covered
-// (provisioning, server custody, claim verification), but the routes are where the security
-// decisions actually live: CSRF via the signed state cookie, PKCE, whether an email collision is
-// allowed to sign someone in, and which account a link is bound to.
-//
-// e2e covers exactly one of these (a mismatched state). Everything else here was reachable only by
-// reading the code.
+// The Google OAuth routes, where the security decisions live: CSRF state, PKCE, email collisions, link binding.
 
-let mf: Miniflare;
-let db: any;
-let vault: any;
-const SECRET = "test-secret";
+const w = useWorkerd({ r2: true });
 const CLIENT_ID = "client-1";
 const GOOGLE_KEK = Buffer.from(new Uint8Array(32).fill(7)).toString("base64");
 
 beforeAll(async () => {
-  mf = new Miniflare({
-    modules: true,
-    script: "export default { fetch() { return new Response('ok'); } }",
-    d1Databases: { DB: "test-google-routes" },
-    r2Buckets: { VAULT: "test-google-routes-vault" },
-  });
-  db = await mf.getD1Database("DB");
-  vault = await mf.getR2Bucket("VAULT");
-  await applyMigrations(db as unknown as D1Database);
-  await createAccount(db, { id: ORG_ACCOUNT_ID, displayName: "Org" });
-  await putPublicKey(db, { accountId: ORG_ACCOUNT_ID, publicKeyJwk: (await generateAccountKeypair()).publicKeyJwk });
+  await createAccount(w.db, { id: ORG_ACCOUNT_ID, displayName: "Org" });
+  await putPublicKey(w.db, { accountId: ORG_ACCOUNT_ID, publicKeyJwk: (await generateAccountKeypair()).publicKeyJwk });
 });
-afterAll(async () => { await mf.dispose(); });
 afterEach(() => vi.unstubAllGlobals());
 
 const env = () => ({
-  DB: db,
-  VAULT: vault,
+  DB: w.db,
+  VAULT: w.bucket,
   STORE_PREFIX: "test",
-  SESSION_SECRET: SECRET,
+  SESSION_SECRET,
   GOOGLE_CLIENT_ID: CLIENT_ID,
   GOOGLE_CLIENT_SECRET: "secret",
   GOOGLE_KEK,
@@ -84,7 +64,7 @@ async function beginFlow(mode?: "link") {
   const res = await start({ request: new Request(`http://x/api/auth/google/start${mode ? `?mode=${mode}` : ""}`), env: env() });
   const cookie = cookieNamed(res, "hd_google_state")!;
   const value = cookie.split(";")[0].split("=").slice(1).join("=");
-  const parsed = await verifyValue<{ state: string; nonce: string; codeVerifier: string; mode: string }>(SECRET, value);
+  const parsed = await verifyValue<{ state: string; nonce: string; codeVerifier: string; mode: string }>(SESSION_SECRET, value);
   return { res, cookieHeader: `hd_google_state=${value}`, parsed: parsed!, authUrl: new URL(res.headers.get("location")!) };
 }
 
@@ -125,7 +105,7 @@ describe("/start hands Google a challenge only this browser can answer", () => {
     expect((await beginFlow("link")).parsed.mode).toBe("link");
     const res = await start({ request: new Request("http://x/api/auth/google/start?mode=LINK"), env: env() });
     const value = cookieNamed(res, "hd_google_state")!.split(";")[0].split("=").slice(1).join("=");
-    expect((await verifyValue<{ mode: string }>(SECRET, value))!.mode).toBe("login");
+    expect((await verifyValue<{ mode: string }>(SESSION_SECRET, value))!.mode).toBe("login");
   });
 
   it("503s rather than starting a flow it cannot finish", async () => {
@@ -233,7 +213,7 @@ describe("/callback signs in only who it should", () => {
         env: env(),
       });
       const token = cookieNamed(res, "hd_session")!.split(";")[0].split("=").slice(1).join("=");
-      return (await verifyValue<{ accountId: string }>(SECRET, token))!.accountId;
+      return (await verifyValue<{ accountId: string }>(SESSION_SECRET, token))!.accountId;
     };
     expect(await signIn()).toBe(await signIn());
   });
@@ -243,7 +223,7 @@ describe("/callback signs in only who it should", () => {
   // whoever controls that Google address.
   it("refuses to sign in on an email collision with an existing account", async () => {
     const email = `collide-${crypto.randomUUID()}@x.test`;
-    await createAccount(db, { id: crypto.randomUUID(), displayName: "Existing", email });
+    await createAccount(w.db, { id: crypto.randomUUID(), displayName: "Existing", email });
 
     const f = await beginFlow();
     stubGoogle({ nonce: f.parsed.nonce, email });
@@ -276,15 +256,15 @@ describe("/callback link mode binds to the signed-in account, not to anything se
   it("refuses when the Google account already belongs to someone else", async () => {
     const owner = crypto.randomUUID();
     const other = crypto.randomUUID();
-    for (const id of [owner, other]) await createAccount(db, { id, displayName: id });
+    for (const id of [owner, other]) await createAccount(w.db, { id, displayName: id });
     const sub = "owned-" + crypto.randomUUID();
-    await addIdentity(db, { accountId: owner, method: "google", providerSubject: sub });
+    await addIdentity(w.db, { accountId: owner, method: "google", providerSubject: sub });
 
     const f = await beginFlow("link");
     stubGoogle({ nonce: f.parsed.nonce, sub });
     const res = await callback({
       request: new Request(`http://x/api/auth/google/callback?code=c&state=${f.parsed.state}`, {
-        headers: { cookie: `${f.cookieHeader}; hd_session=${await signSession({ SESSION_SECRET: SECRET }, other)}` },
+        headers: { cookie: `${f.cookieHeader}; ${await cookieFor(other)}` },
       }),
       env: env(),
     });
@@ -296,20 +276,20 @@ describe("/callback link mode binds to the signed-in account, not to anything se
     // The finishing POST reads this cookie rather than its own body, so this is the only place the
     // pairing is decided. A cookie carrying a caller-supplied account would be an account takeover.
     const me = crypto.randomUUID();
-    await createAccount(db, { id: me, displayName: "Me" });
+    await createAccount(w.db, { id: me, displayName: "Me" });
     const sub = "fresh-" + crypto.randomUUID();
 
     const f = await beginFlow("link");
     stubGoogle({ nonce: f.parsed.nonce, sub });
     const res = await callback({
       request: new Request(`http://x/api/auth/google/callback?code=c&state=${f.parsed.state}`, {
-        headers: { cookie: `${f.cookieHeader}; hd_session=${await signSession({ SESSION_SECRET: SECRET }, me)}` },
+        headers: { cookie: `${f.cookieHeader}; ${await cookieFor(me)}` },
       }),
       env: env(),
     });
 
     const raw = cookieNamed(res, "hd_google_link")!.split(";")[0].split("=").slice(1).join("=");
-    const linked = await verifyValue<{ accountId: string; sub: string }>(SECRET, raw);
+    const linked = await verifyValue<{ accountId: string; sub: string }>(SESSION_SECRET, raw);
     expect(linked).toMatchObject({ accountId: me, sub });
     // A link must never also sign anyone in.
     expect(cookieNamed(res, "hd_session")).toBeUndefined();

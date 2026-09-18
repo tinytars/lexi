@@ -1,48 +1,24 @@
-// W73 Phase C — redeeming a recovery code now replaces the password, in the same request.
-//
-// Before this, redemption signed you in and left the forgotten password in place. The flow looked like
-// it worked and was a trap: the next sign-in put the user straight back on the recovery screen, having
-// spent their one written-down code to get nowhere. Whether the *code* verified was tested; whether the
-// user ended up able to sign in again was not.
-//
-// It cannot be a follow-up call to /api/account/methods, and that is the load-bearing detail: the
-// account still holds its old password credential, so W73's own step-up would demand the very password
-// being recovered. So the code is re-proved on the installing request instead — the replacement is
-// authorised by the code, never by the session the first call minted.
-
-import { applyMigrations } from "./_migrate";
-import { describe, it, expect, beforeEach, afterAll } from "vitest";
-import { Miniflare } from "miniflare";
+// Recovery installs the new password on the same request, authorised by re-proving the code: a follow-up
+// /api/account/methods call would demand step-up with the very password being recovered.
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { onRequestPost as regen } from "../../functions/api/account/recovery";
 import { onRequestPost as recLogin } from "../../functions/api/auth/recovery/login";
 import { onRequestPost as pwLogin } from "../../functions/api/auth/password/login";
-import type { D1Database } from "../../functions/_lib/identity-types";
 import { createAccount, sessionsValidFrom } from "../../functions/_lib/identity-accounts";
 import { addIdentity, getCredential, putCredential } from "../../functions/_lib/identity-credentials";
-import { signSession } from "../../functions/_lib/session";
 import { sha256Base64Url } from "../../functions/_lib/verifier";
 import {
   generateAccountKeypair, deriveKekFromPassword, wrapPrivateKey, deriveAuthHash, unwrapPrivateKey,
 } from "@tinytars/vault/crypto";
+import { useWorkerd } from "../support/miniflare";
+import { SESSION_SECRET, cookieFor } from "../support/session";
 
-const SECRET = "test-secret";
 const ITER = 200_000;
-let mf: Miniflare;
-let db: any;
+// Every test seeds the same fixed email, so each gets a fresh database.
+const w = useWorkerd({ perTest: true });
+afterEach(() => { vi.useRealTimers(); });
 
-beforeEach(async () => {
-  await mf?.dispose();
-  mf = new Miniflare({
-    modules: true,
-    script: "export default { fetch() { return new Response('ok'); } }",
-    d1Databases: { DB: `test-rec-pw-${crypto.randomUUID()}` },
-  });
-  db = await mf.getD1Database("DB");
-  await applyMigrations(db as unknown as D1Database);
-});
-afterAll(async () => { await mf.dispose(); });
-
-const env = () => ({ DB: db, SESSION_SECRET: SECRET }) as any;
+const env = () => ({ DB: w.db, SESSION_SECRET }) as any;
 const b64 = (b: Uint8Array) => Buffer.from(b).toString("base64");
 const hex = (b: Uint8Array) => Buffer.from(b).toString("hex");
 const hexToBytes = (h: string) => Uint8Array.from(Buffer.from(h, "hex"));
@@ -50,23 +26,23 @@ const rand = (n: number) => crypto.getRandomValues(new Uint8Array(n));
 
 async function seed(email: string, password: string, code: string) {
   const id = crypto.randomUUID();
-  await createAccount(db, { id, displayName: "A", email });
+  await createAccount(w.db, { id, displayName: "A", email });
   const { privateKey } = await generateAccountKeypair();
 
   const pwSalt = rand(16);
   const pwAuth = await deriveAuthHash(password, pwSalt);
-  await putCredential(db, {
+  await putCredential(w.db, {
     accountId: id, method: "password",
     wrappedPrivateKey: await wrapPrivateKey(privateKey, await deriveKekFromPassword(password, pwSalt)),
     kdfParams: { salt: hex(pwSalt), iterations: ITER, authHashSha256: await sha256Base64Url(pwAuth) },
   });
-  await addIdentity(db, { accountId: id, method: "password" });
+  await addIdentity(w.db, { accountId: id, method: "password" });
 
   const rSalt = rand(16);
   await regen({
     request: new Request("http://x/api/account/recovery", {
       method: "POST",
-      headers: { "content-type": "application/json", cookie: `hd_session=${await signSession({ SESSION_SECRET: SECRET }, id)}` },
+      headers: { "content-type": "application/json", cookie: await cookieFor(id) },
       body: JSON.stringify({
         wrappedPrivateKey: b64(await wrapPrivateKey(privateKey, await deriveKekFromPassword(code, rSalt))),
         kdfParams: { salt: hex(rSalt), iterations: ITER },
@@ -108,8 +84,7 @@ async function newCredentialFor(privateKey: CryptoKey, password: string) {
 
 describe("redeeming a code replaces the password", () => {
   it("leaves the user able to sign in normally afterwards", async () => {
-    // The whole point. A test that only asserted a 200 from redemption would have passed for the
-    // entire time this flow was a dead end.
+    // The whole point: a 200 from redemption alone passed while this flow was a dead end.
     const a = await seed("a@example.com", "forgotten", "CODE-1");
     const nc = await newCredentialFor(a.privateKey, "brand-new");
     const rAuth = await deriveAuthHash("CODE-1", a.rSalt);
@@ -121,13 +96,12 @@ describe("redeeming a code replaces the password", () => {
   });
 
   it("re-wraps the SAME account key, so the record still opens", async () => {
-    // Not a new keypair. If it were, every envelope wrapping the DEK to the old public key would be
-    // orphaned and the user would sign in to a record they could no longer decrypt.
+    // A new keypair would orphan every envelope wrapped to the old public key.
     const a = await seed("a@example.com", "forgotten", "CODE-1");
     const nc = await newCredentialFor(a.privateKey, "brand-new");
     await redeem({ email: "a@example.com", recoveryAuthHash: await deriveAuthHash("CODE-1", a.rSalt), newCredential: nc.body });
 
-    const cred = await getCredential(db, a.id, "password");
+    const cred = await getCredential(w.db, a.id, "password");
     const recovered = await unwrapPrivateKey(cred!.wrappedPrivateKey, await deriveKekFromPassword("brand-new", nc.salt));
     const before = await crypto.subtle.exportKey("pkcs8", a.privateKey);
     const after = await crypto.subtle.exportKey("pkcs8", recovered);
@@ -136,7 +110,7 @@ describe("redeeming a code replaces the password", () => {
 
   it("kills the old password", async () => {
     const a = await seed("a@example.com", "forgotten", "CODE-1");
-    const oldCred = await getCredential(db, a.id, "password");
+    const oldCred = await getCredential(w.db, a.id, "password");
     const oldSalt = hexToBytes((oldCred!.kdfParams as any).salt);
     const nc = await newCredentialFor(a.privateKey, "brand-new");
     await redeem({ email: "a@example.com", recoveryAuthHash: await deriveAuthHash("CODE-1", a.rSalt), newCredential: nc.body });
@@ -146,19 +120,14 @@ describe("redeeming a code replaces the password", () => {
 
   it("revokes sessions issued under the old password (RECOVERY.md I5)", async () => {
     const a = await seed("a@example.com", "forgotten", "CODE-1");
-    expect(await sessionsValidFrom(db, a.id)).toBeNull();
+    expect(await sessionsValidFrom(w.db, a.id)).toBeNull();
     const nc = await newCredentialFor(a.privateKey, "brand-new");
     await redeem({ email: "a@example.com", recoveryAuthHash: await deriveAuthHash("CODE-1", a.rSalt), newCredential: nc.body });
-    expect(await sessionsValidFrom(db, a.id)).toBeTruthy();
+    expect(await sessionsValidFrom(w.db, a.id)).toBeTruthy();
   });
 
   it("still issues a cookie that survives the revocation it just performed", async () => {
-    // revokeSessions runs BEFORE the token is minted. Getting that order wrong signs out the one person
-    // who just proved they own the account.
-    //
-    // Checked with requireSession, NOT verifySession: verifySession is the pure HMAC check and passes
-    // for a token that revocation has already invalidated, so a test written against it would go green
-    // for either ordering. That is exactly what happened to the first draft of this test.
+    // requireSession, not verifySession: the pure HMAC check passes whichever order revoke and mint ran in.
     const a = await seed("a@example.com", "forgotten", "CODE-1");
     const nc = await newCredentialFor(a.privateKey, "brand-new");
     const res = await redeem({ email: "a@example.com", recoveryAuthHash: await deriveAuthHash("CODE-1", a.rSalt), newCredential: nc.body });
@@ -171,11 +140,11 @@ describe("redeeming a code replaces the password", () => {
   });
 
   it("does NOT keep a cookie minted before the recovery", async () => {
-    // The other half of I5, and the reason the ordering matters at all: a cookie someone else was
-    // holding must stop working.
+    // Only Date is faked — Miniflare needs real timers. Session iat has one-second resolution.
+    vi.useFakeTimers({ toFake: ["Date"] });
     const a = await seed("a@example.com", "forgotten", "CODE-1");
-    const stale = `hd_session=${await signSession({ SESSION_SECRET: SECRET }, a.id)}`;
-    await new Promise((r) => setTimeout(r, 1100)); // session iat has 1s resolution
+    const stale = await cookieFor(a.id);
+    vi.setSystemTime(Date.now() + 1000);
     const nc = await newCredentialFor(a.privateKey, "brand-new");
     await redeem({ email: "a@example.com", recoveryAuthHash: await deriveAuthHash("CODE-1", a.rSalt), newCredential: nc.body });
 
@@ -186,14 +155,12 @@ describe("redeeming a code replaces the password", () => {
   });
 
   it("leaves the passkey and Google credentials alone — they wrap the same key", async () => {
-    // The distinction from a provider-issued recovery (Phase D), which mints a NEW keypair and must
-    // therefore clear them. Deleting them here would lock a passkey user out of their own authenticator
-    // for no reason.
+    // Unlike provider-issued recovery, which mints a NEW keypair and so must clear them.
     const a = await seed("a@example.com", "forgotten", "CODE-1");
-    await putCredential(db, { accountId: a.id, method: "passkey", wrappedPrivateKey: rand(48), kdfParams: { credentialID: "c1" } });
+    await putCredential(w.db, { accountId: a.id, method: "passkey", wrappedPrivateKey: rand(48), kdfParams: { credentialID: "c1" } });
     const nc = await newCredentialFor(a.privateKey, "brand-new");
     await redeem({ email: "a@example.com", recoveryAuthHash: await deriveAuthHash("CODE-1", a.rSalt), newCredential: nc.body });
-    expect(await getCredential(db, a.id, "passkey")).not.toBeNull();
+    expect(await getCredential(w.db, a.id, "passkey")).not.toBeNull();
   });
 });
 
@@ -205,7 +172,7 @@ describe("the replacement is authorised by the code, not by a session", () => {
     expect(res.status).toBe(401);
 
     // …and nothing was written. A route that verified after writing would hand the account away.
-    const oldCred = await getCredential(db, a.id, "password");
+    const oldCred = await getCredential(w.db, a.id, "password");
     const oldSalt = hexToBytes((oldCred!.kdfParams as any).salt);
     expect((await signIn("a@example.com", await deriveAuthHash("forgotten", oldSalt))).status).toBe(200);
   });
@@ -219,12 +186,11 @@ describe("the replacement is authorised by the code, not by a session", () => {
   });
 
   it("still supports redemption with no new password, so the first call can fetch the key", async () => {
-    // The client redeems twice: once to obtain the wrapped key (the only way to get it), once to
-    // install the re-wrapped one. The first call must keep working exactly as before.
+    // The client redeems twice: once to obtain the wrapped key, once to install the re-wrapped one.
     const a = await seed("a@example.com", "forgotten", "CODE-1");
     const res = await redeem({ email: "a@example.com", recoveryAuthHash: await deriveAuthHash("CODE-1", a.rSalt) });
     expect(res.status).toBe(200);
     expect((await res.json() as any).wrappedPrivateKey).toBeTruthy();
-    expect(await sessionsValidFrom(db, a.id)).toBeNull(); // nothing replaced, nothing revoked
+    expect(await sessionsValidFrom(w.db, a.id)).toBeNull(); // nothing replaced, nothing revoked
   });
 });
