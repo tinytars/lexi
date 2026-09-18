@@ -385,6 +385,23 @@ Not otherwise covered by this file, but touched by the org-recovery work above:
 
 ---
 
+## `POST /api/client-error` (browser error reporting)
+
+`src/lib/error-reporter.ts` posts every uncaught error and unhandled rejection here (each distinct
+error once per page load, at most 5). Session-gated (`hd_session`). The body `{ name, message, stack }`
+is PHI-scrubbed server-side (`functions/_lib/client-error.ts`), then filed in
+`CLIENT_ERROR_GITHUB_REPO`: a new issue titled `Client error: <name>: <message> [<fingerprint>]`,
+or a comment on the open issue carrying the same fingerprint. The fingerprint hashes name + scrubbed
+message, so the same crash on a later deploy lands on the same issue. Without
+`CLIENT_ERROR_GITHUB_TOKEN`/`_REPO` the report is only `console.error`ed.
+
+```bash
+# → 204 always once authenticated (a GitHub failure is logged, never surfaced) ;  no session → 401
+#   malformed JSON → 400 ;  body > 16 KB → 413
+```
+
+---
+
 ## `GET` / `DELETE /api/raw/[[path]]` (raw-original download + delete)
 
 Stream an **original imported file** (PDF/XLSX) for the Export tab's "Imported files" section
