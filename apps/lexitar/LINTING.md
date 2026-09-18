@@ -1,6 +1,6 @@
 # Linting
 
-`npm run lint` — oxlint, wired into the `hosted` CI job.
+`npm run lint` — oxlint (a devDependency), run by the `lexitar` CI job.
 
 **oxlint rather than ESLint**, chosen 2026-08-24 when the repo had no linter at all. A single binary
 with no plugin dependency tree matters for a public repo, and it is fast enough not to lengthen CI. The tradeoff is real and worth stating: oxlint has **no
