@@ -6,7 +6,12 @@ export interface ClientErrorPayload {
   name: string;
   message: string;
   stack: string;
+  build: string;
 }
+
+// Cloudflare Pages sets CF_PAGES_COMMIT_SHA at build time (vite.config.ts); without it the minified
+// frames in a report can't be mapped back to source.
+const BUILD: string = import.meta.env.VITE_BUILD_SHA ?? "";
 
 // A crash inside a render loop can throw every frame; one page load reports each distinct error once,
 // and at most this many in total.
@@ -30,7 +35,7 @@ export function installErrorReporter(target: EventTarget = window, report: (p: C
     const signature = `${e.name}: ${e.message}`;
     if (seen.has(signature) || seen.size >= MAX_REPORTS_PER_PAGE) return;
     seen.add(signature);
-    report({ name: e.name, message: e.message, stack: e.stack ?? "" });
+    report({ name: e.name, message: e.message, stack: e.stack ?? "", build: BUILD });
   };
   target.addEventListener("error", (ev) => capture((ev as ErrorEvent).error));
   target.addEventListener("unhandledrejection", (ev) => capture((ev as PromiseRejectionEvent).reason));

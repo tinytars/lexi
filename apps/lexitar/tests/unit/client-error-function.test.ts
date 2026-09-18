@@ -55,7 +55,7 @@ describe("client error scrubbing", () => {
 });
 
 describe("POST /api/client-error", () => {
-  const github = { CLIENT_ERROR_GITHUB_TOKEN: "ghp_test", CLIENT_ERROR_GITHUB_REPO: "tinytars/lexi" };
+  const github = { CLIENT_ERROR_GITHUB_TOKEN: "ghp_test", CLIENT_ERROR_GITHUB_REPO: "pablo-tech/plover-factory" };
   const baseEnv = () => ({ SESSION_SECRET: "test-secret", DB: fakeSessionDb() });
   const post = async (env: Parameters<typeof onRequestPost>[0]["env"], body: unknown, authed = true) => {
     const cookie = authed ? `hd_session=${await signSession(env, "acct-1")}` : "";
@@ -85,12 +85,13 @@ describe("POST /api/client-error", () => {
     expect(calls).toEqual([]);
   });
 
-  it("opens an issue for a first occurrence, titled with the fingerprint", async () => {
+  it("opens an issue for a first occurrence, titled with name and fingerprint but no message", async () => {
     const calls = stubGithub(null);
     expect((await post({ ...baseEnv(), ...github }, EACH_KEY_DUPLICATE)).status).toBe(204);
     const create = calls.find((c) => c.method === "POST")!;
-    expect(create.url).toBe("https://api.github.com/repos/tinytars/lexi/issues");
-    expect(create.body!.title).toMatch(/^Client error: Error: https:\/\/svelte\.dev\/e\/each_key_duplicate \[[0-9a-f]{8}\]$/);
+    expect(create.url).toBe("https://api.github.com/repos/pablo-tech/plover-factory/issues");
+    expect(create.body!.title).toMatch(/^Client error: Error \[[0-9a-f]{8}\]$/);
+    expect(create.body!.body).toContain("each_key_duplicate");
     expect(create.body!.body).toContain("s (/assets/index-DYIIhPYC.js:393:101240)");
     expect(create.body!.body).toContain("lexitar.example");
   });
@@ -99,13 +100,24 @@ describe("POST /api/client-error", () => {
     const calls = stubGithub(42);
     expect((await post({ ...baseEnv(), ...github }, EACH_KEY_DUPLICATE)).status).toBe(204);
     const writes = calls.filter((c) => c.method === "POST");
-    expect(writes.map((c) => c.url)).toEqual(["https://api.github.com/repos/tinytars/lexi/issues/42/comments"]);
+    expect(writes.map((c) => c.url)).toEqual(["https://api.github.com/repos/pablo-tech/plover-factory/issues/42/comments"]);
   });
 
   it("never sends the raw message to GitHub", async () => {
     const calls = stubGithub(null);
     await post({ ...baseEnv(), ...github }, { name: "TypeError", message: `bad value for "Jane Doe"`, stack: "" });
     expect(JSON.stringify(calls)).not.toContain("Jane");
+  });
+
+  it("links the build's commit, and drops a build that isn't a SHA", async () => {
+    const calls = stubGithub(null);
+    await post({ ...baseEnv(), ...github }, { ...EACH_KEY_DUPLICATE, build: "c609e8a1b2" });
+    expect(calls.find((c) => c.method === "POST")!.body!.body).toContain("- Build: tinytars/lexi@c609e8a1b2");
+    const junk = stubGithub(null);
+    await post({ ...baseEnv(), ...github }, { ...EACH_KEY_DUPLICATE, build: "Jane Doe" });
+    const body = junk.find((c) => c.method === "POST")!.body!.body;
+    expect(body).toContain("- Build: unknown");
+    expect(body).not.toContain("Jane");
   });
 
   it("still 204s, filing nothing, when no GitHub sink is configured", async () => {
