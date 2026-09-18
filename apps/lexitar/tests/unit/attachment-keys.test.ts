@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  appendAttachments,
   attachmentKeysOf,
   attachmentsOf,
   groupAttachmentsOf,
@@ -221,5 +222,19 @@ describe("isLastRawCaptureHolder", () => {
     const target = row({ id: "1", name: "NAC", attachments: ["a"], rawCapture: ["a"] });
     const other = row({ id: "2", name: "Ezetimibe", attachments: ["c"], rawCapture: ["c"] });
     expect(isLastRawCaptureHolder(target, [target, other])).toBe(true);
+  });
+});
+
+// Keys are content-addressed, so attaching the same file twice produced two entries with one key, and
+// AttachmentStrip's keyed {#each} threw each_key_duplicate on every render of that item.
+describe("appendAttachments", () => {
+  it("ignores a re-attached file the item already holds", () => {
+    const first = att("abcd1234-scan.pdf");
+    const again = { ...att("abcd1234-scan.pdf"), addedAt: "later" };
+    expect(appendAttachments([first], [again, att("b")])).toEqual([first, att("b")]);
+  });
+
+  it("dedupes within one batch and treats a missing list as empty", () => {
+    expect(appendAttachments(undefined, [att("a"), att("a")])).toEqual([att("a")]);
   });
 });

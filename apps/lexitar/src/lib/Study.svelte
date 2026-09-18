@@ -7,7 +7,7 @@
   import { standardLeafActions, buildNoteAttachment } from "./leaf-actions";
   import TurnCard from "./TurnCard.svelte";
   import AttachmentStrip from "@tinytars/frame/AttachmentStrip.svelte";
-  import { attachmentUrl } from "./attachment-store";
+  import { appendAttachments, attachmentUrl } from "./attachment-store";
   import DictateButton from "@tinytars/frame/DictateButton.svelte";
   import PendingGrouping from "./PendingGrouping.svelte";
   import HeadingAnchor from "./HeadingAnchor.svelte";
@@ -167,10 +167,10 @@
   let attachError = $state<string | null>(null);
   function attachToStudy(e: StudyEntry, added: Attachment[]) {
     const match = draft!.study!.entries!.find((x) => x.id === e.id);
-    if (match) match.attachments = [...(match.attachments ?? []), ...added];
+    if (match) match.attachments = appendAttachments(match.attachments, added);
     persistNow((payload) => {
       const m = payload.study!.entries!.find((x) => x.id === e.id);
-      if (m) m.attachments = [...(m.attachments ?? []), ...added];
+      if (m) m.attachments = appendAttachments(m.attachments, added);
     });
   }
 

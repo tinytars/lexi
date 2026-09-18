@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Attachment } from "./attachment-types";
   import AttachmentViewer from "./AttachmentViewer.svelte";
+  import { uniqueByKey } from "./attachments";
 
   // The one shared display for a leaf's attachments[]: a row of small thumbnail chips (image
   // preview, or a document glyph for anything else), each opening the in-app viewer
@@ -16,7 +17,9 @@
     productName: string;
     onRemove?: (a: Attachment) => void;
   }
-  let { attachments, clientId = null, attachmentUrl, productName, onRemove }: Props = $props();
+  let { attachments: given, clientId = null, attachmentUrl, productName, onRemove }: Props = $props();
+  // Items saved before appendAttachments deduped can already hold the same key twice.
+  const attachments = $derived(uniqueByKey(given));
 
   let openIndex = $state<number | null>(null);
 
