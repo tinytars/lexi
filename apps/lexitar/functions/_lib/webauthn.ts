@@ -23,7 +23,7 @@ import type {
   VerifiedRegistrationResponse,
   VerifiedAuthenticationResponse,
   WebAuthnCredential,
-  AuthenticatorTransportFuture,
+  AuthenticatorTransport,
 } from "@simplewebauthn/server";
 import { signValue, verifyValue, parseCookie } from "./session";
 
@@ -93,7 +93,7 @@ export async function verifyRegistrationResponse(
 
 export async function generateAuthenticationOptions(
   env: WebauthnEnv,
-  opts: { credentialId: string; transports?: AuthenticatorTransportFuture[]; prfSalt: Uint8Array }
+  opts: { credentialId: string; transports?: AuthenticatorTransport[]; prfSalt: Uint8Array }
 ): Promise<PublicKeyCredentialRequestOptionsJSON> {
   return swanGenerateAuthenticationOptions({
     rpID: env.WEBAUTHN_RP_ID,
