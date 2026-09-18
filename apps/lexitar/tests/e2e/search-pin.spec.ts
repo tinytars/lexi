@@ -1,6 +1,6 @@
 import { test, expect } from "./_fixtures";
 import type { Page } from "@playwright/test";
-import { openAsProvider } from "./_login";
+import { openSyntheticAsProvider } from "./_synthetic";
 import { clickNav } from "./_nav";
 import { clickLeafMenuItem, firstUnpinned } from "./_leaf-menu";
 import { stubVaultSave } from "./_stubs";
@@ -15,7 +15,7 @@ async function search(page: Page, text: string) {
 
 test("an Analysis hit pins from search, and the section agrees", async ({ page }) => {
   await stubVaultSave(page);
-  await openAsProvider(page, "Alex");
+  await openSyntheticAsProvider(page);
   await clickNav(page, "Analysis");
 
   const cell = firstUnpinned(page.locator(".analysis .leaf-card"));
@@ -42,7 +42,7 @@ test("an Analysis hit pins from search, and the section agrees", async ({ page }
 
 test("a Reports hit pins the report itself from search", async ({ page }) => {
   await stubVaultSave(page);
-  await openAsProvider(page, "Alex");
+  await openSyntheticAsProvider(page);
   await clickNav(page, "Reports");
 
   const card = firstUnpinned(page.locator(".health-reports .leaf-card"), ".leaf-card-head .pin-star");

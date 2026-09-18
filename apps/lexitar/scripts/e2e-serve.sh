@@ -88,10 +88,11 @@ npx wrangler d1 execute "$D1_NAME" --local --persist-to "$STATE" --file "$STATE/
 
 # W69 — one fully synthetic patient per Playwright worker (LOCAL only, idempotent).
 #
-# The suite is pinned to `workers: 1` because its specs mutate the two REAL pilots' vault rows, so two
-# workers racing on one patient lose each other's writes. Giving each worker its own patient removes
-# the shared state rather than mocking the save path. Per WORKER, not per spec file: Playwright never
-# runs two files concurrently inside a worker, so four provisions buy what thirty-seven would.
+# The suite is pinned to `workers: 1` (see playwright.config.ts) because specs still share backend
+# state through the E2E_CLINICIAN/E2E_SUPPORT accounts, so two workers racing on the same patient would
+# lose each other's writes. Giving each worker its own patient removes the shared-*patient* state
+# rather than mocking the save path. Per WORKER, not per spec file: Playwright never runs two files
+# concurrently inside a worker, so four provisions buy what thirty-seven would.
 #
 # Needs no credential of any kind — the password is the slug and the DEK is wrapped to public keys
 # only (see scripts/provision-e2e-patient.ts). That is what will let e2e leave this machine.
@@ -103,6 +104,9 @@ npx wrangler d1 execute "$D1_NAME" --local --persist-to "$STATE" --file "$STATE/
 #
 # Named failures: `set -e` would otherwise abort the server here and surface as a webServer timeout —
 # all 216 specs failing with nothing pointing at the seeding step that actually broke.
+#
+# The default below must match SYNTHETIC_WORKER_COUNT in tests/fixtures/synthetic-patient.ts — a
+# shell script can't import that constant, so this is the one place the two are kept in sync by hand.
 E2E_WORKERS="${E2E_WORKERS:-4}"
 E2E_WORKERS="$E2E_WORKERS" OUT=dist npx tsx scripts/provision-e2e-patient.ts > "$STATE/e2e-world.sql" \
   || { echo "e2e-serve: FAILED to build the synthetic patients (provision-e2e-patient.ts)" >&2; exit 1; }

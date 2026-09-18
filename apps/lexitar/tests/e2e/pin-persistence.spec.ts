@@ -1,6 +1,7 @@
 import { test, expect } from "./_fixtures";
 import type { Page } from "@playwright/test";
-import { loginAs, openPatient, PILOTS } from "./_login";
+import { loginAs } from "./_login";
+import { E2E_CLINICIAN, mySynthetic, openSynthetic } from "./_synthetic";
 import { clickLeafMenuItem } from "./_leaf-menu";
 import { clickNav } from "./_nav";
 import { stubChatHistory, interceptVaultSave } from "./_stubs";
@@ -14,7 +15,7 @@ import { stubChatHistory, interceptVaultSave } from "./_stubs";
 // check the non-interactive `.pin-star.visible` status badge instead of the old button's own class.
 
 async function drillToStudy(page: Page) {
-  await page.locator(".roster-name", { hasText: "Alex" }).click();
+  await page.locator(".roster-name", { hasText: mySynthetic().name }).click();
   await page.waitForSelector('.sidebar .nav-item', { timeout: 10_000 });
   await clickNav(page, "Study");
   await page.waitForSelector(".study", { timeout: 10_000 });
@@ -25,7 +26,7 @@ test("Study Pin persists across reload (M71 P6)", async ({ page }) => {
   const label = `E2E Pin Study ${Date.now()}`;
 
   await page.goto("/", { waitUntil: "networkidle" });
-  await loginAs(page, PILOTS.provider.email, PILOTS.provider.password);
+  await loginAs(page, E2E_CLINICIAN.email, E2E_CLINICIAN.password);
   await drillToStudy(page);
 
   await page.getByTitle("Add study").click();
@@ -51,7 +52,7 @@ test("Study Pin persists across reload (M71 P6)", async ({ page }) => {
 // pinned thread's star renders — this just confirms Pin still works there.
 test("Chat Pin shows on the sidebar row (M72 Phase 8)", async ({ page }) => {
   await stubChatHistory(page);
-  await openPatient(page);
+  await openSynthetic(page);
   await page.waitForSelector(".chat-tab textarea", { timeout: 10_000 });
 
   // Scoped to the sidebar action button, not a bare title match — an untitled thread's own

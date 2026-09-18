@@ -1,6 +1,6 @@
 import { test, expect } from "./_fixtures";
 import type { Page } from "@playwright/test";
-import { openAsProvider } from "./_login";
+import { openSyntheticAsProvider } from "./_synthetic";
 import { clickNav, clickProfileSub } from "./_nav";
 
 // W64 — ~60 duplicated rule bodies were hoisted into app.css. The failure mode of a hoist is not a
@@ -21,7 +21,7 @@ async function labelStyle(page: Page, sel: string) {
 }
 
 test("the hoisted field label reaches every editor that used to define it", async ({ page }) => {
-  await openAsProvider(page, "Alex");
+  await openSyntheticAsProvider(page);
 
   // Allergies/Family carry a `:not(.permalink-heading)` variant of this rule locally — a real
   // difference in what it SELECTS, so those keep their own copy; the body must still match.
@@ -46,7 +46,7 @@ test("the hoisted field label reaches every editor that used to define it", asyn
 // other editors used the same name for `width: 100%`. It is .field--span now, and the two must not
 // have swapped meanings.
 test("Personalization's spanning field still spans its grid", async ({ page }) => {
-  await openAsProvider(page, "Alex");
+  await openSyntheticAsProvider(page);
   await clickProfileSub(page, "Bio");
 
   const span = page.locator(".personalization .field--span").first();
@@ -60,7 +60,7 @@ test("Personalization's spanning field still spans its grid", async ({ page }) =
 // The one visible drift among the ~60: Treatment's inputs rendered a size larger than every other
 // editor's. Converged on 0.95rem / 6px.
 test("Treatment's modal inputs match the other editors'", async ({ page }) => {
-  await openAsProvider(page, "Alex");
+  await openSyntheticAsProvider(page);
   await clickNav(page, "Treatment");
   await page.getByTitle("Add treatment").click();
   // A brand-new treatment shows nothing but the capture widgets until an extraction succeeds — no

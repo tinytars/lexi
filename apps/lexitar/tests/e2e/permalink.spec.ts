@@ -1,7 +1,6 @@
 import { test, expect } from "./_fixtures";
-import type { Page } from "@playwright/test";
 import { createHash } from "node:crypto";
-import { openPatientNamed, hashOf, type PilotName } from "./_login";
+import { openSynthetic, mySynthetic } from "./_synthetic";
 import { clickNav } from "./_nav";
 import { clickLeafMenuItem } from "./_leaf-menu";
 
@@ -10,21 +9,18 @@ import { clickLeafMenuItem } from "./_leaf-menu";
 // per-row 🔗 "copy" affordance (the address bar itself is the copy source now), but body-content
 // headings (e.g. a treatment row) still carry their own 🔗 via HeadingAnchor — those are untouched.
 
-async function unlock(page: Page, name: PilotName) {
-  await openPatientNamed(page, name);
-}
-
 test("a section's URL is a permalink to that section, and it round-trips", async ({ page, context }) => {
-  await unlock(page, "Alex");
+  await openSynthetic(page);
+  const hash = `#${mySynthetic().slug}`;
 
   await clickNav(page, "Treatment");
-  await expect(page).toHaveURL(new RegExp(`${hashOf.Alex}/treatment$`));
+  await expect(page).toHaveURL(new RegExp(`${hash}/treatment$`));
 
   // M84 — the sidebar's per-row 🔗 copy-link button was removed (the address bar itself already
   // tracks the current section on every navigation); the browser's own URL is the permalink now,
   // with no separate "copy" affordance to test.
   const copied = page.url();
-  expect(copied).toMatch(new RegExp(`${hashOf.Alex}/treatment$`));
+  expect(copied).toMatch(new RegExp(`${hash}/treatment$`));
 
   // Paste it into a fresh page → unlock → it resolves to the Treatment section.
   const fresh = await context.newPage();
@@ -32,19 +28,20 @@ test("a section's URL is a permalink to that section, and it round-trips", async
   // the permalink in the URL is applied once the vault reopens. No re-login needed.
   await fresh.goto(copied, { waitUntil: "networkidle" });
   await fresh.waitForSelector(".sidebar .nav-item", { timeout: 15_000 });
-  await expect(fresh).toHaveURL(new RegExp(`${hashOf.Alex}/treatment$`));
+  await expect(fresh).toHaveURL(new RegExp(`${hash}/treatment$`));
   await expect(fresh.locator(".sidebar .nav-list .nav-item", { hasText: "Treatment" })).toHaveClass(/active/);
   await fresh.close();
 });
 
 test("a component 🔗 (a treatment) copies a deep anchor that round-trips and highlights", async ({ page, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
-  await unlock(page, "Alex");
+  await openSynthetic(page);
+  const hash = `#${mySynthetic().slug}`;
 
   await clickNav(page, "Treatment");
   await page.locator(".ct-drug .permalink-grab").first().click();
   const copied = await page.evaluate(() => navigator.clipboard.readText());
-  expect(copied).toMatch(new RegExp(`${hashOf.Alex}/treatment/rx-[a-z0-9-]+$`));
+  expect(copied).toMatch(new RegExp(`${hash}/treatment/rx-[a-z0-9-]+$`));
 
   const anchorId = decodeURIComponent(copied.split("/").pop()!);
   const fresh = await context.newPage();
@@ -77,7 +74,8 @@ test("importing a report auto-navigates to it in Reports, highlighted", async ({
   await page.route("**/api/raw/**", (route) => route.fulfill({ status: 204, body: "" }));
   await page.route("**/api/vault/**", (route) => (route.request().method() === "PUT" ? route.fulfill({ status: 204, body: "" }) : route.continue()));
 
-  await unlock(page, "Alex");
+  await openSynthetic(page);
+  const hash = `#${mySynthetic().slug}`;
   // M81 — Import's block-level sidebar button was removed; it's reachable only via the
   // top-right kebab menu now (already mirrored the same action since M78 Phase 14).
   await clickNav(page, "Reports");
@@ -89,16 +87,17 @@ test("importing a report auto-navigates to it in Reports, highlighted", async ({
 
   // No further click: the modal closes, the URL points at the new report, and the row is on screen.
   await expect(page.locator(".import-tab")).toHaveCount(0);
-  await expect(page).toHaveURL(new RegExp(`${hashOf.Alex}/healthReports$`));
+  await expect(page).toHaveURL(new RegExp(`${hash}/healthReports$`));
   await expect(page.locator(".sidebar .nav-list .nav-item", { hasText: "Reports" })).toHaveClass(/active/);
   await expect(page.locator(`[id="report-${reportId}"]`)).toBeVisible();
 });
 
 test("Chat's own URL is its coarse location (the active thread, not a section key)", async ({ page }) => {
-  await unlock(page, "Alex");
+  await openSynthetic(page);
+  const hash = `#${mySynthetic().slug}`;
   // Chat lands as the default tab and uses the active thread as its "section", so its permalink is
   // the address of the current conversation (#<client>/chat/<threadId>) rather than a section
   // key — unlike every other row. M84 removed the sidebar's per-row 🔗 button, so this now reads
   // the address bar directly instead of copying via a UI affordance that no longer exists.
-  await expect(page).toHaveURL(new RegExp(`${hashOf.Alex}/chat/t\\d+$`));
+  await expect(page).toHaveURL(new RegExp(`${hash}/chat/t\\d+$`));
 });

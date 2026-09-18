@@ -1,5 +1,5 @@
 import { test, expect } from "./_fixtures";
-import { openPatient } from "./_login";
+import { openSynthetic } from "./_synthetic";
 import { clickNav } from "./_nav";
 
 // M60 Part C — MarkerChart's y-scale is a piecewise banded scale (src/lib/chart-scale.ts) rather
@@ -11,7 +11,7 @@ import { clickNav } from "./_nav";
 const cards = (page: import("@playwright/test").Page) => page.locator(".markers-tab section.client-section .leaf-card");
 
 test("a chart's safe zone renders as a visible band, not a sub-pixel sliver", async ({ page }) => {
-  await openPatient(page);
+  await openSynthetic(page);
   await clickNav(page, "Markers");
   await page.waitForSelector(".markers-tab", { timeout: 10_000 });
   await page.locator(".markers-controls select.dropdown").first().selectOption({ label: "All time" });

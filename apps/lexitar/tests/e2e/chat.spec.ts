@@ -1,16 +1,16 @@
 import { test, expect } from "./_fixtures";
 import type { Page } from "@playwright/test";
-import { openPatient, openPatientNamed, type PilotName } from "./_login";
+import { openSynthetic } from "./_synthetic";
 import { stubChatHistory, interceptChatHistory } from "./_stubs";
 
 // W11b: Chat is the primary (default) tab — a Gemini-style thread shell. Multi-turn
 // send/receive + the W7f error/billing recovery UI, with /api/chat network-stubbed
 // via route interception — no live Anthropic, no secret.
 
-async function openClient(page: Page, name: PilotName) {
+async function openClient(page: Page) {
   // Isolate chat history per test: start thread-clean, never touch real R2/D1.
   await stubChatHistory(page);
-  await openPatientNamed(page, name);
+  await openSynthetic(page);
   // Chat is the landing tab.
   await page.waitForSelector(".chat-tab textarea", { timeout: 10_000 });
 }
@@ -27,7 +27,7 @@ async function ask(page: Page, q: string) {
 }
 
 test("chat renders the assistant answer on a 200", async ({ page }) => {
-  await openClient(page, "Alex");
+  await openClient(page);
   await stubChat(page, 200, { kind: "answer", answer: "Your gradient rose from 10 to 14." });
   await ask(page, "what changed since my last echo?");
 
@@ -40,7 +40,7 @@ test("chat renders the assistant answer on a 200", async ({ page }) => {
 });
 
 test("agentic: a tool_use round is executed in the browser, then the answer renders", async ({ page }) => {
-  await openClient(page, "Alex");
+  await openClient(page);
   const posts: Array<{ messages: Array<{ role: string; content: unknown }> }> = [];
   let n = 0;
   await page.route("**/api/chat", (route) => {
@@ -78,7 +78,7 @@ test("persistence: a conversation is restored after reload, encrypted at rest (W
   // PUT and replay it on GET (same shape as editor-roundtrip's vault save/reload), never touching R2.
   const captured = await interceptChatHistory(page);
 
-  await openPatient(page);
+  await openSynthetic(page);
   await page.waitForSelector(".chat-tab textarea", { timeout: 10_000 });
   await stubChat(page, 200, { kind: "answer", answer: "Your LDL-C is 98 mg/dL." });
   await ask(page, "what is my LDL-C?");
@@ -100,7 +100,7 @@ test("persistence: a conversation is restored after reload, encrypted at rest (W
 });
 
 test("a credit error shows the billing link and the account hint", async ({ page }) => {
-  await openClient(page, "Alex");
+  await openClient(page);
   await stubChat(page, 402, {
     error: "AI is temporarily unavailable: the account is out of credits.",
     errorCode: "insufficient_credit",
@@ -114,7 +114,7 @@ test("a credit error shows the billing link and the account hint", async ({ page
 });
 
 test("a busy error shows the retry message and no billing link", async ({ page }) => {
-  await openClient(page, "Alex");
+  await openClient(page);
   await stubChat(page, 503, { error: "The AI is busy right now — try again in a moment.", errorCode: "ai_busy" });
   await ask(page, "anything");
 
@@ -124,7 +124,7 @@ test("a busy error shows the retry message and no billing link", async ({ page }
 });
 
 test("a new thread starts a fresh conversation; the prior thread is listed", async ({ page }) => {
-  await openClient(page, "Alex");
+  await openClient(page);
   await stubChat(page, 200, { kind: "answer", answer: "first answer" });
   await ask(page, "first question about my echo");
   await expect(page.locator(".p-assistant .turn-text:not(.pending)")).toHaveText("first answer");
@@ -142,7 +142,7 @@ test.describe("phone viewport", () => {
   test.use({ viewport: { width: 390, height: 800 } });
 
   test("a two-sided chat row's rg-grid stacks the AI reply below the patient turn (M90)", async ({ page }) => {
-    await openClient(page, "Alex");
+    await openClient(page);
     await stubChat(page, 200, { kind: "answer", answer: "Your gradient rose from 10 to 14." });
     await ask(page, "what changed since my last echo?");
     await expect(page.locator(".p-assistant .turn-text:not(.pending)")).toHaveText("Your gradient rose from 10 to 14.");
@@ -160,7 +160,7 @@ test.describe("phone viewport", () => {
 });
 
 test("multi-turn: the second request carries the first turns as history in the messages array", async ({ page }) => {
-  await openClient(page, "Alex");
+  await openClient(page);
 
   const sent: Array<{ messages: Array<{ role: string; content: string }> }> = [];
   await page.route("**/api/chat", (route) => {

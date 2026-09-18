@@ -41,7 +41,7 @@ export async function onRequestGet(context: Ctx): Promise<Response> {
 
   const now = Date.now();
   const links = await listPatientsForProvider(env.DB, session.accountId);
-  const patients: unknown[] = [];
+  const owners: unknown[] = [];
   for (const link of links) {
     if (link.role !== "support" || link.status !== "active") continue;
     if (link.expiresAt && new Date(link.expiresAt).getTime() < now) continue;
@@ -49,9 +49,9 @@ export async function onRequestGet(context: Ctx): Promise<Response> {
     if (!acct) continue;
     const vault = (await listVaultsForOwner(env.DB, link.ownerAccountId))[0];
     if (!vault || !(await getEnvelope(env.DB, vault.vaultId, session.accountId))) continue;
-    patients.push({ ownerAccountId: acct.id, displayName: acct.displayName, expiresAt: link.expiresAt });
+    owners.push({ ownerAccountId: acct.id, displayName: acct.displayName, expiresAt: link.expiresAt });
   }
 
   log(200);
-  return json(200, { patients });
+  return json(200, { owners });
 }

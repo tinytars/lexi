@@ -41,19 +41,19 @@ export async function onRequestPost(context: Ctx): Promise<Response> {
     return json(403, { error: "not a support agent" });
   }
 
-  let body: { patientEmail?: unknown };
+  let body: { ownerEmail?: unknown };
   try {
     body = await request.json();
   } catch {
     log(400, "bad_json");
     return json(400, { error: "invalid JSON" });
   }
-  if (typeof body.patientEmail !== "string" || !body.patientEmail) {
+  if (typeof body.ownerEmail !== "string" || !body.ownerEmail) {
     log(400, "bad_body");
-    return json(400, { error: "patientEmail required" });
+    return json(400, { error: "ownerEmail required" });
   }
 
-  const target = await getAccountByEmail(env.DB, body.patientEmail);
+  const target = await getAccountByEmail(env.DB, body.ownerEmail);
   if (!target) {
     log(404, "not_found");
     return json(404, { error: "account not found" });

@@ -4,7 +4,8 @@
 // this run itself produced, proving nothing about whether auto-detection reached the real endpoint.
 // Safe un-intercepted: it runs on a fresh signup, whose vault is far too small to catch mid-stream.
 import { test, expect } from "@playwright/test";
-import { PILOTS, signUp, openOwnerAccess, ownerSignOut, loginAs } from "./_login";
+import { signUp, openOwnerAccess, ownerSignOut, loginAs } from "./_login";
+import { E2E_CLINICIAN } from "./_synthetic";
 
 // Before W80 the lock screen made a patient pick "I have my own code" vs. "I don't" before it would
 // even show the right field — a provider-issued grant code pasted into the self-service sub-form
@@ -17,14 +18,14 @@ test("a provider-issued grant code is auto-detected and redeems at rung 2", asyn
 
   await signUp(page, patientEmail);
   await openOwnerAccess(page);
-  await page.fill(".access-add input", PILOTS.provider.email);
+  await page.fill(".access-add input", E2E_CLINICIAN.email);
   await page.click('.access-add button:has-text("Add provider")');
   await expect(page.locator(".access-list li")).toHaveCount(1);
   await page.click('.modal-close[aria-label="Close"]').catch(() => {});
   await ownerSignOut(page);
 
   // Issue the grant code from the provider's roster.
-  await loginAs(page, PILOTS.provider.email, PILOTS.provider.password);
+  await loginAs(page, E2E_CLINICIAN.email, E2E_CLINICIAN.password);
   await page.waitForSelector(".roster-list");
   const row = page.locator(`.roster-list li:has(.roster-name:has-text("${slug}"))`);
   await row.locator(".roster-recover").click();

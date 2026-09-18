@@ -1,5 +1,5 @@
 import { test, expect } from "./_fixtures";
-import { openAsProvider, openPatient, PILOTS } from "./_login";
+import { openSyntheticAsProvider, openSynthetic } from "./_synthetic";
 import { clickNav } from "./_nav";
 import { openSearch, search } from "./_search";
 
@@ -9,7 +9,7 @@ import { openSearch, search } from "./_search";
 // empty-results state, and the close button.
 
 test("opening Search deactivates whichever sidebar row was previously active (M104)", async ({ page }) => {
-  await openAsProvider(page, "Alex");
+  await openSyntheticAsProvider(page);
   await clickNav(page, "Notes");
   await expect(page.locator(".sidebar .nav-list .nav-item", { hasText: "Notes" })).toHaveClass(/active/);
 
@@ -23,20 +23,20 @@ test("opening Search deactivates whichever sidebar row was previously active (M1
 // Uses an owner login (not a provider) — a provider reload always drops back to the roster (W49's
 // session-resume only re-opens an owner's own vault), so it's the only way to exercise a real reload.
 test("the search query survives a full page reload (M105)", async ({ page }) => {
-  await openPatient(page, PILOTS.alex);
-  await search(page, "cortisol");
+  await openSynthetic(page);
+  await search(page, "ApoB");
   await expect(page.locator(".search-group").first()).toBeVisible();
 
   await page.reload();
   await page.waitForSelector(".sidebar .nav-item");
   await clickNav(page, "Search");
-  await expect(page.locator(".search-panel .search-input")).toHaveValue("cortisol");
+  await expect(page.locator(".search-panel .search-input")).toHaveValue("ApoB");
   await expect(page.locator(".search-group").first()).toBeVisible();
 });
 
 test("Escape clears a non-empty query first, then closes the panel on a second press (M91)", async ({ page }) => {
-  await openAsProvider(page, "Alex");
-  await search(page, "cortisol");
+  await openSyntheticAsProvider(page);
+  await search(page, "ApoB");
   await expect(page.locator(".search-group").first()).toBeVisible();
 
   const input = page.locator(".search-panel .search-input");
@@ -48,7 +48,7 @@ test("Escape clears a non-empty query first, then closes the panel on a second p
 });
 
 test("a query with no matches shows the empty-results state, not a blank panel (M91)", async ({ page }) => {
-  await openAsProvider(page, "Alex");
+  await openSyntheticAsProvider(page);
   await search(page, `no such term ${Date.now()}`);
   await expect(page.locator(".search-panel.home")).toHaveCount(0);
   await expect(page.locator(".search-group")).toHaveCount(0);
@@ -56,7 +56,7 @@ test("a query with no matches shows the empty-results state, not a blank panel (
 });
 
 test("the close button closes the panel without navigating (M91)", async ({ page }) => {
-  await openAsProvider(page, "Alex");
+  await openSyntheticAsProvider(page);
   await openSearch(page);
   await expect(page.locator(".search-panel")).toBeVisible();
 

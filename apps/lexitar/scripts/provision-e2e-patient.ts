@@ -29,13 +29,37 @@ import {
   wrapDEKForPublicKey,
   encryptVaultV2,
 } from "@tinytars/vault/crypto";
-import { syntheticVault, syntheticTag } from "../tests/fixtures/synthetic-patient";
+import {
+  syntheticVault,
+  syntheticTag,
+  SYNTHETIC_WORKER_COUNT,
+  FRESH_SEED,
+  type SyntheticClientOptions,
+} from "../tests/fixtures/synthetic-patient";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const APP = resolve(here, "..");
 
 const OUT_DIR = process.env.OUT ?? "dist";
 const ITER = 200_000;
+
+/**
+ * Deterministic ids per seed, so re-provisioning replaces rather than accumulates.
+ *
+ * Shaped like a UUID because the columns are compared against real ones; `w0` -> `...0`, and the
+ * digits are taken from the seed so two workers can never collide. `FRESH_SEED` carries no digit at
+ * all, so it gets a fixed high suffix reserved for it — safe as long as the worker count stays under
+ * that reservation (SYNTHETIC_WORKER_COUNT is 4 today).
+ */
+function idsFor(seed: string): { account: string; vault: string; link: string; identity: string } {
+  const n = seed === FRESH_SEED ? "99" : seed.replace(/\D/g, "").padStart(2, "0").slice(-2);
+  return {
+    account: `e2e0a${n}0-0000-4000-8000-0000000000${n}`,
+    vault: `e2e0v${n}0-0000-4000-8000-0000000000${n}`,
+    link: `e2e0l${n}0-0000-4000-8000-0000000000${n}`,
+    identity: `e2e0i${n}0-0000-4000-8000-0000000000${n}`,
+  };
+}
 
 // W69 — the synthetic patients get their OWN clinician, never the pilots' fam4.
 //
@@ -64,22 +88,6 @@ async function sha256Base64Url(s: string): Promise<string> {
   return Buffer.from(d).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-/**
- * Deterministic ids per seed, so re-provisioning replaces rather than accumulates.
- *
- * Shaped like a UUID because the columns are compared against real ones; `w0` -> `...0`, and the
- * digits are taken from the seed so two workers can never collide.
- */
-function idsFor(seed: string): { account: string; vault: string; link: string; identity: string } {
-  const n = seed.replace(/\D/g, "").padStart(2, "0").slice(-2);
-  return {
-    account: `e2e0a${n}0-0000-4000-8000-0000000000${n}`,
-    vault: `e2e0v${n}0-0000-4000-8000-0000000000${n}`,
-    link: `e2e0l${n}0-0000-4000-8000-0000000000${n}`,
-    identity: `e2e0i${n}0-0000-4000-8000-0000000000${n}`,
-  };
-}
-
 export interface ProvisionedPatient {
   slug: string;
   email: string;
@@ -97,7 +105,11 @@ export interface ProvisionedPatient {
  * being trusted. A wrapped DEK that does not open is indistinguishable from one that does until a
  * browser tries to log in, at which point it surfaces as an opaque "cannot unwrap DEK".
  */
-export async function provisionPatient(seed: string, providerPublicKeyJwk: JsonWebKey): Promise<ProvisionedPatient> {
+export async function provisionPatient(
+  seed: string,
+  providerPublicKeyJwk: JsonWebKey,
+  opts: SyntheticClientOptions = {},
+): Promise<ProvisionedPatient> {
   const now = "2026-07-07T00:00:00Z";
   const SEED = seed;
   const slug = `e2e-${SEED}`;
@@ -117,7 +129,7 @@ export async function provisionPatient(seed: string, providerPublicKeyJwk: JsonW
   // 2 — the vault: a fresh DEK, the synthetic content encrypted under it, and one envelope per
   // principal who may open it (the patient, and the clinician who drills in from the roster).
   const dek = await generateDEK();
-  const blob = await encryptVaultV2(syntheticVault(slug), dek);
+  const blob = await encryptVaultV2(syntheticVault(slug, opts), dek);
   const ownerEnvelope = await wrapDEKForPublicKey(dek, publicKeyJwk);
   // The clinician's key is PASSED IN, not read from a migration: that account is minted fresh on each
   // boot, so its keypair only exists within the run that created it. Provisioning the whole synthetic
@@ -144,7 +156,7 @@ export async function provisionPatient(seed: string, providerPublicKeyJwk: JsonW
     `INSERT INTO vaults (vault_id, owner_account_id, r2_key, hd1_version) VALUES (${sql(ids.vault)}, ${sql(ids.account)}, ${sql(r2Key)}, 2);`,
     `INSERT INTO vault_envelopes (vault_id, principal_account_id, wrapped_dek, ephemeral_public_key_jwk, created_by, created_at) VALUES (${sql(ids.vault)}, ${sql(ids.account)}, X'${toHex(ownerEnvelope.wrappedDEK)}', ${sql(JSON.stringify(ownerEnvelope.ephemeralPublicKeyJwk))}, ${sql(ids.account)}, ${sql(now)});`,
     `INSERT INTO vault_envelopes (vault_id, principal_account_id, wrapped_dek, ephemeral_public_key_jwk, created_by, created_at) VALUES (${sql(ids.vault)}, ${sql(E2E_PROVIDER.accountId)}, X'${toHex(providerEnvelope.wrappedDEK)}', ${sql(JSON.stringify(providerEnvelope.ephemeralPublicKeyJwk))}, ${sql(ids.account)}, ${sql(now)});`,
-    `INSERT INTO provider_links (id, patient_account_id, provider_account_id, role, status, consent_ref, granted_by, granted_at) VALUES (${sql(ids.link)}, ${sql(ids.account)}, ${sql(E2E_PROVIDER.accountId)}, 'clinician', 'active', 'e2e', ${sql(ids.account)}, ${sql(now)});`,
+    `INSERT INTO provider_links (id, patient_account_id, provider_account_id, role, status, consent_ref, granted_by, granted_at) VALUES (${sql(ids.link)}, ${sql(ids.account)}, ${sql(E2E_PROVIDER.accountId)}, 'primary', 'active', 'e2e', ${sql(ids.account)}, ${sql(now)});`,
   ];
 
   return { slug, email, password, r2Key, blob, privateKey, ownerEnvelope, sql: lines };
@@ -170,8 +182,12 @@ async function provisionProvider(): Promise<{ sql: string[]; publicKeyJwk: JsonW
       `DELETE FROM identities WHERE account_id IN ${byEmail};`,
       `DELETE FROM public_keys WHERE account_id IN ${byEmail};`,
       `DELETE FROM accounts WHERE email = ${sql(E2E_PROVIDER.email)};`,
-      // provider_kind 'clinician' — the same kind fam4 is, so the roster and drill-in behave identically.
-      `INSERT INTO accounts (id, email, email_confirmed, display_name, lifecycle_stage, provider_kind, created_at) VALUES (${sql(E2E_PROVIDER.accountId)}, ${sql(E2E_PROVIDER.email)}, 1, ${sql(E2E_PROVIDER.displayName)}, 'active', 'clinician', ${sql(now)});`,
+      // provider_kind 'primary' — the value _lib/capabilities.ts's Role type and every route that
+      // calls can(roleOf(...), ...) actually check for. Migration 0002 seeded the real fam4 pilot
+      // account with the string 'clinician' instead, which is why fam4 has never been able to pass
+      // an "ai:spend"/"recovery:issue" check in production — a latent bug in that seed data, not a
+      // convention this account should match. Flagged separately; not this e2e fixture's job to fix.
+      `INSERT INTO accounts (id, email, email_confirmed, display_name, lifecycle_stage, provider_kind, created_at) VALUES (${sql(E2E_PROVIDER.accountId)}, ${sql(E2E_PROVIDER.email)}, 1, ${sql(E2E_PROVIDER.displayName)}, 'active', 'primary', ${sql(now)});`,
       `INSERT INTO identities (id, account_id, method, provider_subject, credential_id, created_at) VALUES (${sql(E2E_PROVIDER.identityId)}, ${sql(E2E_PROVIDER.accountId)}, 'password', NULL, NULL, ${sql(now)});`,
       `INSERT INTO credentials (account_id, method, wrapped_private_key, kdf_params, created_at) VALUES (${sql(E2E_PROVIDER.accountId)}, 'password', X'${toHex(wrapped)}', ${sql(JSON.stringify(kdfParams))}, ${sql(now)});`,
       `INSERT INTO public_keys (account_id, public_key_jwk, created_at) VALUES (${sql(E2E_PROVIDER.accountId)}, ${sql(JSON.stringify(publicKeyJwk))}, ${sql(now)});`,
@@ -190,11 +206,12 @@ export async function provisionWorld(count: number): Promise<{ sql: string[]; pa
   const provider = await provisionProvider();
   const patients: ProvisionedPatient[] = [];
   for (let i = 0; i < count; i++) patients.push(await provisionPatient(`w${i}`, provider.publicKeyJwk));
+  patients.push(await provisionPatient(FRESH_SEED, provider.publicKeyJwk, { fresh: true }));
   return { sql: [...provider.sql, ...patients.flatMap((p) => p.sql)], patients };
 }
 
 async function main(): Promise<void> {
-  const count = Number(process.env.E2E_WORKERS ?? 4);
+  const count = Number(process.env.E2E_WORKERS ?? SYNTHETIC_WORKER_COUNT);
   const { sql: lines, patients } = await provisionWorld(count);
   // The blob goes where the Function looks for it. functions/api/vault/[id].ts:131 fetches
   // /data-{id}.enc from ASSETS on an R2 miss and self-seeds local R2 from it, so dist/ is enough.

@@ -1,31 +1,5 @@
 import { defineConfig } from "@playwright/test";
 
-/**
- * W69 — the specs that need NO credential and NO pilot data, and can therefore run on a hosted runner.
- *
- * Membership is a property of the spec, not a preference: a file belongs here only if it never reaches
- * for Alex, Blair, or fam4. `tests/unit/e2e-projects.test.ts` re-derives that from the sources and fails
- * if this list and the imports disagree, so the list cannot quietly rot into a lie.
- *
- * Everything else stays in `pilots`. Both projects run in CI (gate.yml passes PASSPHRASE to the e2e
- * shards); the split is about which specs depend on the two real pilots' data, not about secrets.
- *
- * G8 — `editor-roundtrip.spec.ts` left this list. It called `unlock(page, "fam4")`, and the family
- * passphrase happens to EQUAL the provider slug, so a real provider login read as a public slug and
- * the detector below saw no pilot reference. It had been signing in as the real provider all along.
- * That collision is why a literal is banned here even when it looks like an identifier.
- */
-export const SYNTHETIC_SPECS = [
-  "a11y.spec.ts",
-  "google.spec.ts",
-  "modal-dirty.spec.ts",
-  "onboarding.spec.ts",
-  "passkey.spec.ts",
-  "providers-support.spec.ts",
-  "recovery.spec.ts",
-  "synthetic-patient.spec.ts",
-];
-
 export default defineConfig({
   testDir: "./tests/e2e",
   timeout: 30_000,
@@ -45,16 +19,17 @@ export default defineConfig({
   // `fullyParallel: false` only serializes tests *within* one spec file — Playwright still schedules
   // different spec files onto separate worker processes by default (one per ~2 CPUs, so 4 on an
   // 8-core box). But every spec file shares the ONE `wrangler pages dev` server + local D1/R2 below
-  // (webServer isn't per-file), and most specs mutate the same two seeded pilots' (Alex/Blair) real
-  // vault rows through the real save API, not a mock. Two files running concurrently against the same
-  // patient's vault is a genuine read-modify-write race on shared backend state — a save from one
-  // worker can silently lose an edit from another (last-write-wins), or leave a leaf-regen node
-  // looking already-fresh because a concurrent worker's write raced the staleness check. That's what
-  // surfaced as cross-spec-file flakiness (e.g. shell-nav's M66/M68 "no-double-post" tests asserting a
-  // POST count of 0 instead of 1, and editor.spec.ts's Family/Allergies test reading back its own edit
-  // reverted) that vanished once those two files were isolated — isolating them removed every *other*
-  // concurrent writer to Alex's vault. Force one worker so the whole suite runs strictly serially
-  // against the shared server, matching what `fullyParallel: false` already implied was the intent.
+  // (webServer isn't per-file), and specs that drill in as the shared E2E_CLINICIAN or E2E_SUPPORT
+  // identity (tests/e2e/_synthetic.ts) mutate the same account's roster/access rows through the real
+  // save API, not a mock. Two files running concurrently against that shared account is a genuine
+  // read-modify-write race on shared backend state — a save from one worker can silently lose an edit
+  // from another (last-write-wins), or leave a leaf-regen node looking already-fresh because a
+  // concurrent worker's write raced the staleness check. That's what surfaced as cross-spec-file
+  // flakiness (e.g. shell-nav's M66/M68 "no-double-post" tests asserting a POST count of 0 instead of
+  // 1, and editor.spec.ts's Family/Allergies test reading back its own edit reverted) before per-worker
+  // synthetic patients (mySynthetic()) removed the shared-*patient* case. Force one worker so the
+  // whole suite runs strictly serially against the shared server, matching what `fullyParallel: false`
+  // already implied was the intent.
   workers: 1,
   // These specs drive a real wrangler-pages-dev server + WebCrypto ceremonies, so a step can
   // occasionally miss its 30s budget under the pre-push hook's parallel load. One retry absorbs a
@@ -75,8 +50,8 @@ export default defineConfig({
   // The reporter is what turns the capped failure into a NAMED one — see _server-death-reporter.ts.
   reporter: [["list"], ["./tests/e2e/_server-death-reporter.ts"]],
   // W44 — account login needs the Pages Functions + D1, so e2e runs against `wrangler pages dev`
-  // (real Functions, local D1 seeded with the migrated pilots) instead of `vite dev`. The serve
-  // script builds, seeds local D1, and serves on 8788 (matching WEBAUTHN_ORIGIN in .dev.vars).
+  // (real Functions, local D1 seeded from migrations) instead of `vite dev`. The serve script builds,
+  // seeds local D1, and serves on 8788 (matching WEBAUTHN_ORIGIN in .dev.vars).
   webServer: {
     command: "bash scripts/e2e-serve.sh",
     url: "http://localhost:8788",
@@ -88,14 +63,6 @@ export default defineConfig({
     reuseExistingServer: !!process.env.PW_REUSE,
     timeout: 180_000, // build + wrangler cold start
   },
-  // Two projects, so "which specs can leave this machine" is declarative rather than a convention.
-  //   npx playwright test --project=synthetic   # credential-free; hostable
-  //   npx playwright test --project=pilots      # needs PASSPHRASE + the real pilot vaults
-  // Both run by default, which is what the local gate still does.
-  projects: [
-    { name: "synthetic", testMatch: SYNTHETIC_SPECS },
-    { name: "pilots", testIgnore: SYNTHETIC_SPECS },
-  ],
   use: {
     baseURL: "http://localhost:8788",
     // W76 — the suite had no trace, screenshot or video setting at all, which is why the one CI

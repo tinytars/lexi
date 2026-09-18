@@ -1,10 +1,9 @@
 import { test, expect } from "./_fixtures";
 import type { Page } from "@playwright/test";
-import { openAsProvider as openAsProviderHelper, loginAs, PILOTS, openPatientNamed, type PilotName } from "./_login";
+import { loginAs } from "./_login";
+import { E2E_CLINICIAN, ALL_SYNTHETIC_NAMES, syntheticAt, openSyntheticAt, openSyntheticAsProviderAt } from "./_synthetic";
 import { clickNav } from "./_nav";
 import { stubChatHistory } from "./_stubs";
-
-const CLIENTS = ["Alex", "Blair"];
 
 // W24 retired the monolithic PDF report. These tests cover what replaced it: the provider roster
 // stays PHI-free, each client's dashboard renders without runtime errors, the sections that were
@@ -32,70 +31,73 @@ async function stubLeafRegen(page: Page) {
   });
 }
 
-async function openClient(page: Page, name: PilotName) {
+async function signInAsPatient(page: Page, index: number) {
   await stubChatHistory(page);
   await stubLeafRegen(page);
-  await openPatientNamed(page, name);
+  await openSyntheticAt(page, index);
 }
 
-// Investigator (and its Analysis subsection) is provider-only (W34), so reach it via a fam4 drill-in.
-async function openAsProvider(page: Page, name: string) {
+// Investigator (and its Analysis subsection) is provider-only (W34), so reach it via a clinician drill-in.
+async function openProvider(page: Page, index: number) {
   await stubChatHistory(page);
   await stubLeafRegen(page);
-  await openAsProviderHelper(page, name);
+  await openSyntheticAsProviderAt(page, index);
 }
 
-test("fam4 (provider) shows a roster of names only — no client data", async ({ page }) => {
-  await loginAs(page, PILOTS.provider.email, PILOTS.provider.password);
+test("the e2e clinician (provider) shows a roster of names only — no client data", async ({ page }) => {
+  await loginAs(page, E2E_CLINICIAN.email, E2E_CLINICIAN.password);
   // .roster renders as soon as providerSession flips, before loadPatients() resolves; wait for the
   // names themselves so a cold-start-slow patient fetch can't be read as an empty roster.
   await page.waitForSelector(".roster-list .roster-name", { timeout: 10_000 });
 
   const names = (await page.locator(".roster-list .roster-name").allTextContents()).map((s) => s.trim());
-  expect(names.sort()).toEqual([...CLIENTS].sort());
+  expect(names.sort()).toEqual([...ALL_SYNTHETIC_NAMES].sort());
   // No client dashboard or section navigation at the provider level. Asserted against `.nav-item`,
   // which renders for every drilled-in patient: `.tabbar` has not existed since M75 retired the
   // two-bar model, so that assertion passed no matter what the roster did.
   await expect(page.locator(".sidebar .nav-list .nav-item")).toHaveCount(0);
 });
 
-for (const clientName of CLIENTS) {
-  test(`${clientName}'s dashboard renders without runtime errors`, async ({ page }) => {
+for (const index of [0, 1]) {
+  test(`${syntheticAt(index).name}'s dashboard renders without runtime errors`, async ({ page }) => {
     const errors: string[] = [];
     // W76 — an attachment blob missing from the DEV R2 is not a render defect, and this environment
-    // structurally cannot have those blobs: Alex's vault references real medication-label photos
-    // (~200 KB each) that live only in the deployed R2, and copying PHI into the repo or onto a CI
-    // runner to seed them is exactly what is forbidden. The browser reports each failed <img> as a
-    // generic "Failed to load resource … 404" with no URL in the text, so the URL has to come from
-    // the response listener. Only /api/raw/ 404s are forgiven — a 404 on any other path still fails,
-    // as does every pageerror and every non-404 console error.
+    // structurally cannot have those blobs: a synthetic patient's vault references a source file path
+    // that has no real R2 blob behind it. The browser reports each failed <img> as a generic "Failed
+    // to load resource … 404" with no URL in the text, so the URL has to come from the response
+    // listener. Only /api/raw/ 404s are forgiven — a 404 on any other path still fails, as does every
+    // pageerror and every non-404 console error.
     //
     // This test was passing by RACE, not by correctness: at baseline the 404s landed inside the
     // assertion window once in six runs. W76's suite-wide vault interception resolves the vault from
     // memory instead of the server, which renders sooner and lost that race six times in six. The
     // flake was always here; the fixture only made it honest.
     const missing: string[] = [];
-    page.on("response", (r) => { if (r.status() === 404) missing.push(new URL(r.url()).pathname); });
+    const failed: string[] = [];
+    page.on("response", (r) => {
+      if (r.status() === 404) missing.push(new URL(r.url()).pathname);
+      if (r.status() >= 400 && r.status() !== 404) failed.push(`${r.status()} ${new URL(r.url()).pathname}`);
+    });
     page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
     page.on("console", (m) => {
       if (m.type() !== "error") return;
       const isBlobMiss = /Failed to load resource/.test(m.text())
         && missing.length > 0 && missing.every((p) => p.startsWith("/api/raw/"));
-      if (!isBlobMiss) errors.push(`console.error: ${m.text()}`);
+      if (!isBlobMiss) errors.push(`console.error: ${m.text()} [non-404 failures: ${failed.join(", ") || "none"}]`);
     });
 
-    await openAsProvider(page, clientName);
+    await openProvider(page, index);
     await expect(page.locator(".sidebar .nav-list")).toBeVisible();
     // Analysis (Investigator's leftmost subsection after W37 moved Personalization out) mounts the
     // full analytical stack — the strongest single render check.
     await clickNav(page, "Analysis");
     await expect(page.locator(".analysis")).toBeVisible();
-    expect(errors, `Runtime errors on ${clientName}: ${errors.join(" | ")}`).toEqual([]);
+    expect(errors, `Runtime errors on ${syntheticAt(index).name}: ${errors.join(" | ")}`).toEqual([]);
   });
 }
 
-test("Alex's ex-PDF sections have on-screen homes (Clinical Synthesis, Pattern & Anti-pattern, Final Thoughts, Glossary)", async ({ page }) => {
-  await openAsProvider(page, "Alex");
+test("a synthetic patient's ex-PDF sections have on-screen homes (Clinical Synthesis, Pattern & Anti-pattern, Final Thoughts, Glossary)", async ({ page }) => {
+  await openProvider(page, 0);
   await clickNav(page, "Analysis");
   // M80 — Pattern & Anti-pattern, Clinical Synthesis, and Final Thoughts are direct top-level blocks
   // in Analysis now (the AI Conclusion wrapper was dissolved so each gets its own sidebar nav row).
@@ -112,7 +114,7 @@ test("Alex's ex-PDF sections have on-screen homes (Clinical Synthesis, Pattern &
 // a visible `.leaf-card` is what EVERY marker row renders, chart or not. The "pinned atop" claim is
 // also stale — M96 Phase 2 made Ratios its own sidebar group rather than a block above the levels.
 test("each ratio in the Ratios group renders as its own chart (W36/M96)", async ({ page }) => {
-  await openClient(page, "Alex");
+  await signInAsPatient(page, 0);
   await expect(page.locator(".sidebar .nav-list .nav-item", { hasText: "Critical Ratios" })).toHaveCount(0);
 
   await clickNav(page, "Markers");
@@ -133,7 +135,7 @@ test("each ratio in the Ratios group renders as its own chart (W36/M96)", async 
 });
 
 test("per-section print: chrome is hidden and only the active section prints", async ({ page }) => {
-  await openAsProvider(page, "Alex");
+  await openProvider(page, 0);
   await clickNav(page, "Analysis");
   await expect(page.locator(".analysis .health-progression")).toBeVisible();
 

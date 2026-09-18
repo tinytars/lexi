@@ -1,5 +1,4 @@
 import { expect, type Page } from "@playwright/test";
-import { openPatientNamed, type PilotName } from "./_login";
 
 // W74 — the helpers `shell-nav.spec.ts` shared with itself, now that it is seven files.
 //
@@ -11,12 +10,6 @@ import { openPatientNamed, type PilotName } from "./_login";
 //
 // Only the helpers used by MORE than one of the split files live here. A helper with one caller stays
 // in the file that calls it, where its comment sits next to the test it explains.
-
-/** Unlock as a pilot and open their record. */
-export async function unlock(page: Page, name: PilotName) {
-  await openPatientNamed(page, name);
-}
-
 
 // Treatment's default bucket is All (per-drug dose history), whose card menu edits the MEDICINE
 // (Name/Reason/Kind) — it deliberately has no Amount field. Any test that edits a dose has to pick

@@ -7,7 +7,7 @@ import { openLeafMenu } from "./_leaf-menu";
 
 // W70 Phase 3 — automated accessibility checks. The app had none across 45 specs.
 //
-// Drives the WORKER'S OWN synthetic patient, so it needs no credential and cannot disturb the pilots.
+// Drives the WORKER'S OWN synthetic patient, so it needs no credential and cannot disturb other specs.
 //
 // THE ASSERTION IS A RATCHET, NOT A ZERO. A zero-tolerance gate on an app this size fails on day one
 // and gets commented out within a week — at which point it protects nothing while looking like it

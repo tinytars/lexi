@@ -1,7 +1,7 @@
 import { test, expect } from "./_fixtures";
 import type { Page } from "@playwright/test";
 import * as XLSX from "xlsx";
-import { openPatient } from "./_login";
+import { openSynthetic } from "./_synthetic";
 import { clickNav } from "./_nav";
 import { clickLeafMenuItem } from "./_leaf-menu";
 
@@ -35,7 +35,7 @@ const REPORT = {
 const PDF = Buffer.from("%PDF-1.4 e2e fake report bytes");
 
 async function openImport(page: Page) {
-  await openPatient(page);
+  await openSynthetic(page);
   // M81 — Import's block-level sidebar button was removed; it's reachable only via the
   // top-right kebab menu now (already mirrored the same action since M78 Phase 14).
   await clickNav(page, "Reports");

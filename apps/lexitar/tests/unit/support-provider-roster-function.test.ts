@@ -76,7 +76,7 @@ describe("support→provider request classification", () => {
   it("a clinician target creates a roster request audited as support_provider_access_requested", async () => {
     const s = await seedSupport();
     const c = await seedClinician();
-    const res = await callPost(request, s.id, { patientEmail: c.email });
+    const res = await callPost(request, s.id, { ownerEmail: c.email });
     expect(res.status).toBe(200);
     expect((await res.json() as { target: string }).target).toBe("provider");
     expect((await listAccessEventsForSubject(db, c.id)).map((e) => e.action)).toContain("support_provider_access_requested");
@@ -85,8 +85,8 @@ describe("support→provider request classification", () => {
   it("rejects a support-agent target and a self target", async () => {
     const s = await seedSupport();
     const s2 = await seedSupport();
-    expect((await callPost(request, s.id, { patientEmail: s2.email })).status).toBe(400);
-    expect((await callPost(request, s.id, { patientEmail: s.email })).status).toBe(400);
+    expect((await callPost(request, s.id, { ownerEmail: s2.email })).status).toBe(400);
+    expect((await callPost(request, s.id, { ownerEmail: s.email })).status).toBe(400);
   });
 });
 
@@ -94,7 +94,7 @@ describe("provider approves a support roster request", () => {
   it("clinician approve flips the link active with an expiry + audit; support then lists the provider", async () => {
     const s = await seedSupport();
     const c = await seedClinician();
-    const linkId = (await (await callPost(request, s.id, { patientEmail: c.email })).json() as { linkId: string }).linkId;
+    const linkId = (await (await callPost(request, s.id, { ownerEmail: c.email })).json() as { linkId: string }).linkId;
 
     const ap = await callPost(approveSupport, c.id, { linkId, ttlHours: 24 });
     expect(ap.status).toBe(200);
@@ -124,7 +124,7 @@ describe("provider roster marks openable only for patient-consented records", ()
     await consentToSupport(s.id, s.publicKeyJwk, consented);
 
     // support gets the clinician's roster
-    const linkId = (await (await callPost(request, s.id, { patientEmail: c.email })).json() as { linkId: string }).linkId;
+    const linkId = (await (await callPost(request, s.id, { ownerEmail: c.email })).json() as { linkId: string }).linkId;
     await callPost(approveSupport, c.id, { linkId, ttlHours: 24 });
 
     const res = await callGet(providerRoster, s.id, `?providerId=${c.id}`);
@@ -149,8 +149,8 @@ describe("pending requests are visible to the requester", () => {
     const s = await seedSupport();
     const p = await seedPatient();
     const c = await seedClinician();
-    await callPost(request, s.id, { patientEmail: p.email });
-    await callPost(request, s.id, { patientEmail: c.email });
+    await callPost(request, s.id, { ownerEmail: p.email });
+    await callPost(request, s.id, { ownerEmail: c.email });
 
     const res = await callGet(supportRequests, s.id);
     expect(res.status).toBe(200);
@@ -165,9 +165,9 @@ describe("pending requests are visible to the requester", () => {
     const c = await seedClinician();
     const p = await seedPatient();
     await addToRoster(c.id, p.id);
-    const linkId = (await (await callPost(request, s.id, { patientEmail: c.email })).json() as { linkId: string }).linkId;
+    const linkId = (await (await callPost(request, s.id, { ownerEmail: c.email })).json() as { linkId: string }).linkId;
     await callPost(approveSupport, c.id, { linkId, ttlHours: 24 });
-    await callPost(request, s.id, { patientEmail: p.email }); // invited, not yet approved
+    await callPost(request, s.id, { ownerEmail: p.email }); // invited, not yet approved
 
     const roster = (await (await callGet(providerRoster, s.id, `?providerId=${c.id}`)).json() as { roster: { ownerAccountId: string; openable: boolean; pending: boolean }[] }).roster;
     const row = roster.find((r) => r.ownerAccountId === p.id)!;
