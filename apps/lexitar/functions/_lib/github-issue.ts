@@ -17,8 +17,9 @@ function headers(token: string): HeadersInit {
   };
 }
 
+// The title carries no message: scrubbing is a denylist, so the scrubbed text stays in the body only.
 export function issueTitle(r: ClientErrorReport): string {
-  return `Client error: ${r.name}: ${r.message || "(no message)"} [${r.fingerprint}]`;
+  return `Client error: ${r.name} [${r.fingerprint}]`;
 }
 
 function occurrence(r: ClientErrorReport, context: { deployment: string; userAgent: string }): string {
@@ -31,6 +32,7 @@ function occurrence(r: ClientErrorReport, context: { deployment: string; userAge
     "```",
     "",
     `- Deployment: \`${context.deployment}\``,
+    `- Build: ${r.build ? `tinytars/lexi@${r.build}` : "unknown"}`,
     `- User agent: \`${context.userAgent}\``,
     `- Seen: ${new Date().toISOString()}`,
     "",

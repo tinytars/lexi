@@ -18,6 +18,7 @@ describe("installErrorReporter", () => {
     expect(sent).toHaveLength(1);
     expect(sent[0]).toMatchObject({ name: "Error", message: "https://svelte.dev/e/each_key_duplicate" });
     expect(sent[0].stack).toContain("error-reporter.test.ts");
+    expect(typeof sent[0].build).toBe("string");
   });
 
   it("reports an unhandled rejection, including a non-Error reason", () => {
