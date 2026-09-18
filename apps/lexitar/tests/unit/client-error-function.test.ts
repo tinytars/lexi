@@ -69,10 +69,10 @@ describe("POST /api/client-error", () => {
 
   // GitHub is the one boundary a test cannot hit for real.
   const stubGithub = (openIssue: number | null) => {
-    const calls: { url: string; method: string; body: Record<string, string> | null }[] = [];
+    const calls: { url: string; method: string; body: { title: string; body: string; labels?: string[] } | null }[] = [];
     vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
       calls.push({ url, method: init?.method ?? "GET", body: init?.body ? JSON.parse(String(init.body)) : null });
-      if (url.includes("/search/issues")) return Response.json({ items: openIssue ? [{ number: openIssue }] : [] });
+      if (url.includes("/issues?")) return Response.json(openIssue ? [{ number: openIssue }] : []);
       return new Response("{}", { status: 201 });
     });
     return calls;
@@ -92,6 +92,9 @@ describe("POST /api/client-error", () => {
     expect(create.url).toBe("https://api.github.com/repos/pablo-tech/plover-factory/issues");
     expect(create.body!.title).toMatch(/^Client error: Error \[[0-9a-f]{8}\]$/);
     expect(create.body!.body).toContain("each_key_duplicate");
+    const fp = /\[([0-9a-f]{8})\]$/.exec(create.body!.title)![1];
+    expect(create.body!.labels).toEqual(["client-error", `fp:${fp}`]);
+    expect(calls[0].url).toContain(`labels=fp%3A${fp}`);
     expect(create.body!.body).toContain("s (/assets/index-DYIIhPYC.js:393:101240)");
     expect(create.body!.body).toContain("lexitar.example");
   });

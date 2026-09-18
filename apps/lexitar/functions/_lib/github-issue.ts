@@ -40,7 +40,9 @@ function occurrence(r: ClientErrorReport, context: { deployment: string; userAge
   ].join("\n");
 }
 
-// One open issue per fingerprint: a recurrence comments on it instead of opening a duplicate.
+// One open issue per fingerprint: a recurrence comments on it instead of opening a duplicate. The lookup
+// is by label, not /search/issues: search lagged a new issue by over a minute, the label filter by ~4s,
+// so only a repeat inside those few seconds can still open a duplicate.
 export async function fileClientError(
   env: GithubIssueEnv,
   report: ClientErrorReport,
@@ -50,14 +52,15 @@ export async function fileClientError(
   const repo = env.CLIENT_ERROR_GITHUB_REPO!;
   const body = occurrence(report, context);
 
-  const q = encodeURIComponent(`repo:${repo} is:issue is:open in:title "[${report.fingerprint}]"`);
-  const search = await fetch(`${API}/search/issues?q=${q}&per_page=1`, { headers: headers(token) });
-  if (!search.ok) throw new Error(`GitHub issue search failed: ${search.status}`);
-  const existing = ((await search.json()) as { items: { number: number }[] }).items[0];
+  const label = `fp:${report.fingerprint}`;
+
+  const lookup = await fetch(`${API}/repos/${repo}/issues?state=open&labels=${encodeURIComponent(label)}&per_page=1`, { headers: headers(token) });
+  if (!lookup.ok) throw new Error(`GitHub issue lookup failed: ${lookup.status}`);
+  const existing = ((await lookup.json()) as { number: number }[])[0];
 
   const res = existing
     ? await fetch(`${API}/repos/${repo}/issues/${existing.number}/comments`, { method: "POST", headers: headers(token), body: JSON.stringify({ body }) })
-    : await fetch(`${API}/repos/${repo}/issues`, { method: "POST", headers: headers(token), body: JSON.stringify({ title: issueTitle(report), body }) });
+    : await fetch(`${API}/repos/${repo}/issues`, { method: "POST", headers: headers(token), body: JSON.stringify({ title: issueTitle(report), body, labels: ["client-error", label] }) });
   if (!res.ok) throw new Error(`GitHub issue ${existing ? "comment" : "create"} failed: ${res.status}`);
   return existing ? "commented" : "created";
 }

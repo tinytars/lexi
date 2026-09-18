@@ -393,8 +393,9 @@ is PHI-scrubbed server-side (`functions/_lib/client-error.ts`), then filed in
 `CLIENT_ERROR_GITHUB_REPO` (`pablo-tech/plover-factory`, private): a new issue titled
 `Client error: <name> [<fingerprint>]` — the scrubbed message goes in the body only — or a comment on
 the open issue carrying the same fingerprint. `build` is the deploy's commit SHA
-(`CF_PAGES_COMMIT_SHA`, baked in at build time), linked from the issue body. The fingerprint hashes name + scrubbed
-message, so the same crash on a later deploy lands on the same issue. Without
+(`CF_PAGES_COMMIT_SHA`, baked in at build time), linked from the issue body. Each issue carries a `fp:<fingerprint>` label, which is how a
+recurrence finds it (`/search/issues` lagged new issues by over a minute; the label filter by ~4s). The
+fingerprint hashes name + scrubbed message, so the same crash on a later deploy lands on the same issue. Without
 `CLIENT_ERROR_GITHUB_TOKEN`/`_REPO` the report is only `console.error`ed.
 
 ```bash
