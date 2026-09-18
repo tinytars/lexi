@@ -9,17 +9,20 @@ export interface ClientErrorInput {
   name?: unknown;
   message?: unknown;
   stack?: unknown;
+  build?: unknown;
 }
 
 export interface ClientErrorReport {
   name: string;
   message: string;
   frames: string[];
+  build: string | null;
   fingerprint: string;
 }
 
 const MAX_MESSAGE = 160;
 const MAX_FRAMES = 12;
+const SHA = /^[0-9a-f]{7,40}$/;
 const NAME = /^[A-Za-z][A-Za-z0-9]{0,39}$/;
 const IDENT = /^[A-Za-z_$][\w$.<>]{0,80}$/;
 // Chrome: "at fn (https://host/assets/index-X.js:2:3283)" or "at https://host/...". Firefox/Safari: "fn@https://host/...".
@@ -60,5 +63,6 @@ export async function toReport(input: ClientErrorInput): Promise<ClientErrorRepo
   const name = typeof input.name === "string" && NAME.test(input.name) ? input.name : "Error";
   const message = scrubMessage(typeof input.message === "string" ? input.message : "");
   const frames = scrubFrames(typeof input.stack === "string" ? input.stack : "");
-  return { name, message, frames, fingerprint: await fingerprintOf(name, message) };
+  const build = typeof input.build === "string" && SHA.test(input.build) ? input.build : null;
+  return { name, message, frames, build, fingerprint: await fingerprintOf(name, message) };
 }
