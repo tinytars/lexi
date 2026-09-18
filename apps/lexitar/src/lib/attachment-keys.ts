@@ -9,6 +9,7 @@
 //
 // attachment-store.ts re-exports all of this, so no browser caller changed.
 
+import { uniqueByKey } from "@tinytars/frame/attachments";
 import type { Attachment, TreatmentItem } from "./types";
 
 const EXT_MEDIA_TYPE: Record<string, string> = {
@@ -32,9 +33,12 @@ const EXT_MEDIA_TYPE: Record<string, string> = {
  * no migration.
  */
 export function groupAttachmentsOf(items: Pick<TreatmentItem, "attachments" | "images">[]): Attachment[] {
-  const byKey = new Map<string, Attachment>();
-  for (const item of items) for (const a of attachmentsOf(item)) if (!byKey.has(a.key)) byKey.set(a.key, a);
-  return [...byKey.values()];
+  return uniqueByKey(items.flatMap(attachmentsOf));
+}
+
+// Re-attaching a file an item already holds is a no-op rather than a second entry with the same key.
+export function appendAttachments(existing: Attachment[] | undefined, added: Attachment[]): Attachment[] {
+  return uniqueByKey([...(existing ?? []), ...added]);
 }
 
 export function attachmentsOf(item: Pick<TreatmentItem, "attachments" | "images">): Attachment[] {
