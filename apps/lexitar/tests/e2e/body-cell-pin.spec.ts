@@ -1,6 +1,6 @@
 import { test, expect } from "./_fixtures";
 import type { Page } from "@playwright/test";
-import { openAsProvider } from "./_login";
+import { openSyntheticAsProvider } from "./_synthetic";
 import { clickLeafMenuItem, firstUnpinned } from "./_leaf-menu";
 import { clickNav } from "./_nav";
 import { stubVaultSave } from "./_stubs";
@@ -11,7 +11,7 @@ import { stubVaultSave } from "./_stubs";
 
 test("pinning an Analysis cell stars it, and the sidebar row agrees", async ({ page }) => {
   await stubVaultSave(page);
-  await openAsProvider(page, "Alex");
+  await openSyntheticAsProvider(page);
   await clickNav(page, "Analysis");
 
   const cell = page.locator(".analysis .leaf-card").first();
@@ -37,7 +37,7 @@ test("pinning an Analysis cell stars it, and the sidebar row agrees", async ({ p
 
 test("an Exploration cell pins from the body", async ({ page }) => {
   await stubVaultSave(page);
-  await openAsProvider(page, "Alex");
+  await openSyntheticAsProvider(page);
   await clickNav(page, "Exploration");
 
   const cell = page.locator(".leaf-card").first();
@@ -57,7 +57,7 @@ async function openNotesGroup(page: Page, label: string) {
 
 test("a Question cell pins from the body", async ({ page }) => {
   await stubVaultSave(page);
-  await openAsProvider(page, "Alex");
+  await openSyntheticAsProvider(page);
   await openNotesGroup(page, "Questions");
 
   const cell = page.locator(".questions-dr .leaf-card").first();
@@ -69,7 +69,7 @@ test("a Question cell pins from the body", async ({ page }) => {
 
 test("a Glossary cell pins from the body, and shows both halves of the turn", async ({ page }) => {
   await stubVaultSave(page);
-  await openAsProvider(page, "Alex");
+  await openSyntheticAsProvider(page);
   await openNotesGroup(page, "Glossary");
 
   const cell = page.locator(".glossary .leaf-card").first();
@@ -88,7 +88,7 @@ test("a Glossary cell pins from the body, and shows both halves of the turn", as
 // The card now carries the report's own star; the per-diagnosis stars stay, one level finer.
 test("a Report cell pins the report, and its sidebar row agrees", async ({ page }) => {
   await stubVaultSave(page);
-  await openAsProvider(page, "Alex");
+  await openSyntheticAsProvider(page);
   await clickNav(page, "Reports");
 
   const first = firstUnpinned(page.locator(".health-reports .leaf-card"), ".leaf-card-head .pin-star");
@@ -112,7 +112,7 @@ test("a Report cell pins the report, and its sidebar row agrees", async ({ page 
 
 test("a diagnosis pin inside a report stays its own record", async ({ page }) => {
   await stubVaultSave(page);
-  await openAsProvider(page, "Alex");
+  await openSyntheticAsProvider(page);
   await clickNav(page, "Reports");
 
   const cell = firstUnpinned(page.locator(".health-reports .leaf-card"), ".leaf-card-head .pin-star");

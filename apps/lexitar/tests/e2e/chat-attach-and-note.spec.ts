@@ -1,6 +1,6 @@
 import { test, expect } from "./_fixtures";
 import type { Page } from "@playwright/test";
-import { openPatient } from "./_login";
+import { openSynthetic } from "./_synthetic";
 import { clickLeafMenuItem } from "./_leaf-menu";
 import { stubChatHistory } from "./_stubs";
 
@@ -29,7 +29,7 @@ const READING = {
 
 async function openClient(page: Page) {
   await stubChatHistory(page);
-  await openPatient(page);
+  await openSynthetic(page);
   await page.waitForSelector(".chat-tab textarea", { timeout: 10_000 });
   await page.waitForTimeout(200);
 }

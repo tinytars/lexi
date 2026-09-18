@@ -1,5 +1,6 @@
 import { test, expect } from "./_fixtures";
-import { PILOTS, signUp, ownerSignOut } from "./_login";
+import { signUp, ownerSignOut } from "./_login";
+import { E2E_CLINICIAN } from "./_synthetic";
 
 // W49 — a browser refresh must NOT force re-auth. The hd_session cookie survives; the account private
 // key is persisted (non-extractable) in IndexedDB and the vault DEK is re-derived on load. Signing out
@@ -52,8 +53,8 @@ test("the persisted account key is non-extractable (XSS can't export it)", async
 
 test("a signed-in provider resumes on the roster across a refresh", async ({ page }) => {
   await page.goto("/");
-  await page.fill('input[type="email"]', PILOTS.provider.email);
-  await page.fill('input[type="password"]', PILOTS.provider.password);
+  await page.fill('input[type="email"]', E2E_CLINICIAN.email);
+  await page.fill('input[type="password"]', E2E_CLINICIAN.password);
   await page.click('button[type="submit"]');
   await page.waitForSelector(".roster-list");
 

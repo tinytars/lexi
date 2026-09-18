@@ -54,20 +54,32 @@ describe("a provisioned e2e patient", () => {
     expect(p.password).toBe("e2e-w3"); // the slug itself, exactly like the alex/blair pilots
   });
 
-  // Two workers sharing an id would defeat the entire point: their writes would land on one vault and
-  // the race this phase exists to remove would still be there, now silently.
-  it("gives every worker distinct account, vault and blob identities", async () => {
+  // Two patients sharing an id would defeat the entire point: their writes would land on one vault and
+  // the race this phase exists to remove would still be there, now silently. Every world also carries
+  // the dedicated FRESH patient (see below), so 4 workers means 5 distinct patients, not 4.
+  it("gives every patient distinct account, vault and blob identities", async () => {
     const { patients: ps } = await provisionWorld(4);
+    expect(ps).toHaveLength(5);
     const accountIds = ps.map((p) => p.sql.find((l) => l.startsWith("INSERT INTO accounts"))!.match(/'(e2e0a[^']+)'/)![1]);
-    expect(new Set(accountIds).size).toBe(4);
-    expect(new Set(ps.map((p) => p.r2Key)).size).toBe(4);
+    expect(new Set(accountIds).size).toBe(5);
+    expect(new Set(ps.map((p) => p.r2Key)).size).toBe(5);
+  });
+
+  // The whole point of FRESH: staleNodes() (src/lib/staleness.ts) short-circuits to "nothing stale"
+  // whenever nodeHashes is absent, which is what every OTHER synthetic patient relies on to keep the
+  // background leaf-regen sweep quiet. This is the one patient where that gate must stay open.
+  it("provisions a dedicated FRESH patient whose Finding reads as stale on every node", async () => {
+    const fresh = (await provisionWorld(1)).patients.find((p) => p.slug === "e2e-fresh")!;
+    const dek = await unwrapDEKWithPrivateKey(fresh.ownerEnvelope.wrappedDEK, fresh.ownerEnvelope.ephemeralPublicKeyJwk, fresh.privateKey);
+    const vault = await decryptVaultV2<Vault>(fresh.blob, dek);
+    expect(vault.clients["e2e-fresh"]!.finding!.nodeHashes).toEqual({});
   });
 
   it("grants an E2E-ONLY clinician, never the pilots' fam4", async () => {
     const { sql, patients } = await provisionWorld(1);
     const joined = patients[0].sql.join("\n");
     expect(joined).toContain(E2E_PROVIDER.accountId);
-    expect(joined).toMatch(/INSERT INTO provider_links[^;]*'clinician', 'active'/);
+    expect(joined).toMatch(/INSERT INTO provider_links[^;]*'primary', 'active'/);
     // The regression this replaced: linking to fam4 put synthetic patients on the REAL provider's
     // roster and broke cover-render.spec.ts, which asserts that roster exactly.
     expect(sql.join("\n")).not.toContain("12275343-91b7-431d-ae4a-15c6e092b4a6");

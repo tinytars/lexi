@@ -1,5 +1,5 @@
 import { test, expect } from "./_fixtures";
-import { openPatient } from "./_login";
+import { openSynthetic } from "./_synthetic";
 import { clickNav } from "./_nav";
 import { treatmentAnchor } from "../../src/lib/anchor";
 
@@ -7,7 +7,7 @@ import { treatmentAnchor } from "../../src/lib/anchor";
 // from the row's own label click (which keeps doing whatever it did before this milestone).
 
 test("Notes' All row starts expanded, matching its pre-W58 always-visible behavior", async ({ page }) => {
-  await openPatient(page);
+  await openSynthetic(page);
   await clickNav(page, "Notes");
   const chevron = page.locator('.sidebar .chevron[aria-label="Collapse All"]');
   await expect(chevron).toBeVisible();
@@ -16,7 +16,7 @@ test("Notes' All row starts expanded, matching its pre-W58 always-visible behavi
 });
 
 test("chevron toggles a group's children without selecting the group (decoupled from the label click)", async ({ page }) => {
-  await openPatient(page);
+  await openSynthetic(page);
   await clickNav(page, "Treatment");
 
   const ongoingRow = page.locator(".sidebar .group-list .side-row", { has: page.locator(".sub-item", { hasText: "Ongoing" }) });
@@ -39,7 +39,7 @@ test("chevron toggles a group's children without selecting the group (decoupled 
 });
 
 test("clicking a nested child scrolls to that specific item and activates its parent group", async ({ page }) => {
-  await openPatient(page);
+  await openSynthetic(page);
   await clickNav(page, "Treatment");
 
   const ongoingRow = page.locator(".sidebar .group-list .side-row", { has: page.locator(".sub-item", { hasText: "Ongoing" }) });
@@ -58,7 +58,7 @@ test("clicking a nested child scrolls to that specific item and activates its pa
 });
 
 test("switching sections resets expand state — a key like \"ungrouped\" shared across sections doesn't leak", async ({ page }) => {
-  await openPatient(page);
+  await openSynthetic(page);
 
   // Markers' rows default collapsed; expand "Ratios".
   await clickNav(page, "Markers");

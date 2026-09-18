@@ -6,7 +6,7 @@ import { clickNav } from "./_nav";
 //
 // Everything here is browser behaviour that no unit test can see: focus trapping, per-dialog Escape,
 // and whether a backdrop press actually closes. It drives the WORKER'S OWN synthetic patient, so it
-// needs no credential and cannot disturb the pilots.
+// needs no credential and cannot disturb other specs.
 //
 // What was broken before, at all 15 call sites:
 //   • The backdrop closed on ANY click, with no dirty check, so a patient composing a long free-text

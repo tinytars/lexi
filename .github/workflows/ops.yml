@@ -7,9 +7,12 @@ name: ops
 # scripts/recovery-approve.ts read and write R2/D1 directly, with no dependency on plover-code's
 # local plaintext vault mirror.
 #
-# sync_pages_secret alone stays behind in plover-code's ops.yml: it pushes a Cloudflare Pages
-# secret to a project that still deploys from plover-code until the Pages repoint (migration plan
-# Phase 6).
+# sync_pages_secret (below) is a boolean modifier, not an `op` choice: it is project-wide, not
+# per-client, and must never run through lexitar-op (that action asserts a client and a run
+# command — wrong shape for something that touches neither). Ported from plover-code's own
+# ops.yml once the Cloudflare Pages repoint (migration plan Phase 6) made health-dash-dev a
+# project this repo's runs can legitimately push a secret to; plover-code's copy stays live
+# alongside this one for now.
 #
 # A NEW OPERATIONAL FLOW IS AN ENTRY IN THIS FILE, NEVER A SECOND WORKFLOW — same discipline
 # plover-code's ops.yml documents, for the same reason (three near-identical workflows drifting
@@ -62,6 +65,10 @@ on:
         description: "Why this run is happening — echoed into the summary"
         type: string
         default: ""
+      sync_pages_secret:
+        description: "Push secrets.ANTHROPIC_API_KEY to health-dash-dev's Cloudflare Pages project as ANTHROPIC_API_KEY + RANGES_ANTHROPIC_API_KEY, then exit. Ignores op/client/preview/etc — op still must be picked to satisfy the form, but does nothing."
+        type: boolean
+        default: false
 
 # vault-sync.ts's operator push re-reads the etag immediately before the write and cannot close the
 # window (no conditional option on `wrangler r2 object put`) — serializing per-client runs is what
@@ -80,7 +87,41 @@ jobs:
         with:
           persist-credentials: false
 
+      # sync_pages_secret's own path — deliberately not lexitar-op (see the header comment): no
+      # client, no R2/D1 touch, nothing to preview. Own Node setup + install because it never
+      # reaches the composite action that would otherwise provide them.
+      - name: Set up Node (sync_pages_secret only)
+        if: ${{ inputs.sync_pages_secret }}
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Install (sync_pages_secret only)
+        if: ${{ inputs.sync_pages_secret }}
+        run: npm ci
+
+      - name: Sync Cloudflare Pages Anthropic secret
+        if: ${{ inputs.sync_pages_secret }}
+        shell: bash
+        working-directory: apps/lexitar
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          set -euo pipefail
+          # RANGES_ANTHROPIC_API_KEY is checked first by leaf-regen.ts and refresh-range.ts — both
+          # get the same value so neither can silently fall back to a stale one.
+          echo "$ANTHROPIC_API_KEY" | npx wrangler pages secret put ANTHROPIC_API_KEY --project-name health-dash-dev
+          echo "$ANTHROPIC_API_KEY" | npx wrangler pages secret put RANGES_ANTHROPIC_API_KEY --project-name health-dash-dev
+          {
+            echo "### sync_pages_secret"
+            echo
+            echo "Pushed \`secrets.ANTHROPIC_API_KEY\` to health-dash-dev as ANTHROPIC_API_KEY + RANGES_ANTHROPIC_API_KEY."
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Resolve the command
+        if: ${{ !inputs.sync_pages_secret }}
         id: plan
         env:
           # Every dispatcher-supplied value reaches the shell as an environment variable, never
@@ -180,6 +221,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - uses: ./.github/actions/lexitar-op
+        if: ${{ !inputs.sync_pages_secret }}
         with:
           op: ${{ inputs.op }}
           client: ${{ inputs.client }}

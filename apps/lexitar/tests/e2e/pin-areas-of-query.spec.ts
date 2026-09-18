@@ -1,6 +1,7 @@
 import { test, expect } from "./_fixtures";
 import type { Page } from "@playwright/test";
-import { loginAs, PILOTS } from "./_login";
+import { loginAs } from "./_login";
+import { E2E_CLINICIAN, mySynthetic } from "./_synthetic";
 import { clickLeafMenuItem } from "./_leaf-menu";
 import { clickNav } from "./_nav";
 import { interceptVaultSave } from "./_stubs";
@@ -10,7 +11,7 @@ import { interceptVaultSave } from "./_stubs";
 // the star survives a real save/reload, and the app SAYS that a pin steers the inference.
 
 async function drillToNotes(page: Page) {
-  await page.locator(".roster-name", { hasText: "Alex" }).click();
+  await page.locator(".roster-name", { hasText: mySynthetic().name }).click();
   await page.waitForSelector(".sidebar .nav-item", { timeout: 10_000 });
   await clickNav(page, "Notes");
   await page.waitForSelector(".sidebar .group-list", { timeout: 10_000 });
@@ -30,7 +31,7 @@ async function expandQuestionsOnly(page: Page) {
 test("a pinned Question keeps its star across a save and reload", async ({ page }) => {
   const wasCaptured = interceptVaultSave(page);
   await page.goto("/", { waitUntil: "networkidle" });
-  await loginAs(page, PILOTS.provider.email, PILOTS.provider.password);
+  await loginAs(page, E2E_CLINICIAN.email, E2E_CLINICIAN.password);
   await drillToNotes(page);
 
   const row = await expandQuestionsOnly(page);
@@ -55,7 +56,7 @@ test("a pinned Question keeps its star across a save and reload", async ({ page 
 // the non-silent half. It must appear only once something is actually pinned.
 test("pinning is announced, not silent", async ({ page }) => {
   await page.goto("/", { waitUntil: "networkidle" });
-  await loginAs(page, PILOTS.provider.email, PILOTS.provider.password);
+  await loginAs(page, E2E_CLINICIAN.email, E2E_CLINICIAN.password);
   await drillToNotes(page);
 
   const notice = page.locator(".sidebar .pinned-note");

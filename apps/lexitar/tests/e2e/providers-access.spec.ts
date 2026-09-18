@@ -4,11 +4,12 @@
 // is exactly what it did before this exclusion. Safe un-intercepted: these flows run on fresh
 // signups, whose vaults are far too small to be caught mid-stream by the wrangler crash.
 import { test, expect } from "@playwright/test";
-import { PILOTS, signUp, openOwnerAccess, loginAs, ownerSignOut } from "./_login";
+import { signUp, openOwnerAccess, loginAs, ownerSignOut } from "./_login";
+import { E2E_CLINICIAN, openSyntheticAsProvider } from "./_synthetic";
 
 // W44 P4 — owner-side Access panel: a patient grants then revokes a provider. Uses a FRESH signed-up
 // account (unique email per run) so the grant/revoke is additive to the shared seed — it links the
-// existing fam4 clinician to the new patient and removes it again, never touching fam4↔pilot links.
+// e2e clinician to the new patient and removes it again, never touching the clinician's synthetic roster.
 test("owner grants then revokes a provider via the Access panel", async ({ page }) => {
   await signUp(page, `e2e-grant-${Date.now()}@local.invalid`);
 
@@ -17,8 +18,8 @@ test("owner grants then revokes a provider via the Access panel", async ({ page 
   // A brand-new account has no providers.
   await expect(page.locator(".access-empty")).toBeVisible();
 
-  // Grant the existing fam4 clinician by email → it appears in the list.
-  await page.fill(".access-add input", PILOTS.provider.email);
+  // Grant the e2e clinician by email → it appears in the list.
+  await page.fill(".access-add input", E2E_CLINICIAN.email);
   await page.click('.access-add button:has-text("Add provider")');
   await expect(page.locator(".access-list li")).toHaveCount(1);
 
@@ -27,21 +28,17 @@ test("owner grants then revokes a provider via the Access panel", async ({ page 
   await expect(page.locator(".access-empty")).toBeVisible();
 });
 
-// The Access affordance is owner-only: a provider (fam4) drilled into a pilot has an account menu
-// (W48) but it must not offer record-sharing — "Who can access my record" is patient-only.
+// The Access affordance is owner-only: a provider drilled into a patient has an account menu (W48)
+// but it must not offer record-sharing — "Who can access my record" is patient-only.
 test("the Access item is absent from a provider's account menu", async ({ page }) => {
-  await page.goto("/");
-  await page.fill('input[type="email"]', PILOTS.provider.email);
-  await page.fill('input[type="password"]', PILOTS.provider.password);
-  await page.click('button[type="submit"]');
-  await page.click(`.roster-name:has-text("${PILOTS.alex.name}")`);
-  await page.waitForSelector(".sidebar .nav-item");
+  await openSyntheticAsProvider(page);
   await page.click(".account-trigger");
   await expect(page.locator('.menu-item:has-text("Who can access")')).toHaveCount(0);
 });
 
 // W48 — a provider drops a patient from their OWN roster (gives up their access); the patient's
-// record is untouched. Fresh patient grants fam4, fam4 removes them, patient still owns their vault.
+// record is untouched. Fresh patient grants the e2e clinician, the clinician removes them, patient
+// still owns their vault.
 test("a provider removes a patient from their own roster", async ({ page }) => {
   const ts = Date.now();
   const patientEmail = `e2e-provrm-${ts}@local.invalid`;
@@ -50,14 +47,14 @@ test("a provider removes a patient from their own roster", async ({ page }) => {
 
   await signUp(page, patientEmail, pw);
   await openOwnerAccess(page);
-  await page.fill(".access-add input", PILOTS.provider.email);
+  await page.fill(".access-add input", E2E_CLINICIAN.email);
   await page.click('.access-add button:has-text("Add provider")');
   await expect(page.locator(".access-list li")).toHaveCount(1);
   await page.click('.modal-close[aria-label="Close"]').catch(() => {});
   await ownerSignOut(page);
 
   page.on("dialog", (d) => d.accept()); // the Remove confirm()
-  await loginAs(page, PILOTS.provider.email, PILOTS.provider.password);
+  await loginAs(page, E2E_CLINICIAN.email, E2E_CLINICIAN.password);
   await page.waitForSelector(".roster-list");
   await expect(page.locator(`.roster-name:has-text("${slug}")`)).toBeVisible();
   await page.locator(`.roster-list li:has(.roster-name:has-text("${slug}")) .roster-remove`).click();

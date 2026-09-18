@@ -1,22 +1,22 @@
 import { test, expect } from "./_fixtures";
 import type { Page } from "@playwright/test";
-import { openAsProvider, openPatientNamed, type PilotName } from "./_login";
+import { openSynthetic, openSyntheticAsProvider } from "./_synthetic";
 import { clickNav, setSidebarMode } from "./_nav";
 
-// W15/3a — provider drill-in + provider-configurable patient visibility. The provider (fam4)
-// opens a patient's record and sees every section; a patient's own session sees only the
-// patient-audience ones (the Investigator tab — Analysis + Hypothesis — is provider-only, W34).
+// W15/3a — provider drill-in + provider-configurable patient visibility. The provider opens a
+// patient's record and sees every section; a patient's own session sees only the patient-audience
+// ones (the Investigator tab — Analysis + Hypothesis — is provider-only, W34).
 
-async function providerInto(page: Page, patient: string) {
-  await openAsProvider(page, patient);
+async function providerInto(page: Page) {
+  await openSyntheticAsProvider(page);
 }
 
-async function asPatient(page: Page, name: PilotName) {
-  await openPatientNamed(page, name);
+async function asPatient(page: Page) {
+  await openSynthetic(page);
 }
 
 test("provider drills into a patient and sees the provider-only Investigator tab", async ({ page }) => {
-  await providerInto(page, "Alex");
+  await providerInto(page);
   // Provider controls are present — M62 moved Back to roster + Visibility into the AccountMenu pulldown.
   await page.locator(".account-trigger").click();
   await expect(page.getByRole("menuitem", { name: "← Back to roster" })).toBeVisible();
@@ -48,7 +48,7 @@ test("provider drills into a patient and sees the provider-only Investigator tab
 });
 
 test("a patient's own session hides the provider-only Investigator tab but keeps the rest", async ({ page }) => {
-  await asPatient(page, "Alex");
+  await asPatient(page);
   // No provider controls.
   await expect(page.getByRole("button", { name: "Visibility", exact: true })).toHaveCount(0);
   // Investigator (Analysis + Study + Hypothesis + Exploration) is provider-only — none of its
@@ -73,7 +73,7 @@ test("a patient's own session hides the provider-only Investigator tab but keeps
 });
 
 test("the Visibility panel lists the configurable features", async ({ page }) => {
-  await providerInto(page, "Alex");
+  await providerInto(page);
   await page.locator(".account-trigger").click();
   await page.getByRole("menuitem", { name: "Visibility" }).click();
   const vis = page.locator(".vis");

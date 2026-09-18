@@ -1,5 +1,5 @@
 import { test, expect } from "./_fixtures";
-import { openAsProvider } from "./_login";
+import { openSyntheticAsProvider, openFreshSyntheticAsProvider } from "./_synthetic";
 import { clickLeafMenuItem } from "./_leaf-menu";
 import { clickNav } from "./_nav";
 import { watchFlashes, expectFlashed } from "./_flash";
@@ -19,18 +19,19 @@ import { validLeafPayload } from "./_leaf-payloads";
 // the seven live in `_shell.ts`; a helper with one caller stayed with its caller.
 
 test("Investigator → Hypothesis shows weighed hypotheses (no committed Plan) with the AI's take (W20/W21/W23/W25)", async ({ page }) => {
-  await openAsProvider(page, "Alex");
+  const who = await openSyntheticAsProvider(page);
   await clickNav(page, "Hypothesis");
   await expect(page.locator(".future-treatment .leaf-card").first()).toBeVisible();
-  // Cardiovascular Risk (the default system) is where Alex's lipid-lowering statin is recommended
-  // (AI side).
-  await expect(page.locator(".future-treatment")).toContainText("Rosuvastatin");
+  // Cardiovascular Risk (the default system) is where the fixture's lipid-lowering AI idea lives
+  // (treatmentGroups' "Lipid lowering" topic, ai: [Bempedoic acid, Rosuvastatin]).
+  await expect(page.locator(".future-treatment")).toContainText(`Rosuvastatin ${who.tag}`);
   // W23: the committed Plan moved to Treatment Plan — its "Continue …" / "Start … (TBD)" actions
   // no longer appear here (they'd otherwise duplicate the weighed hypotheses).
   await expect(page.locator(".future-treatment")).not.toContainText("(TBD)");
-  // M76/Phase 4 — Hypothesis renders one body system at a time now; a patient hypothesis paired
-  // with the AI's take lives under a different system, so select it before asserting.
-  await page.locator(".sidebar .group-list .sub-item", { hasText: "Hormonal / Endocrine" }).click();
+  // M76/Phase 4 — Hypothesis renders one body system at a time now; the fixture's patient hypothesis
+  // (Berberine, decisions.patient) paired with the AI's take lives under Metabolic Health, not the
+  // default Cardiovascular Risk system, so select it before asserting.
+  await page.locator(".sidebar .group-list .sub-item", { hasText: "Metabolic Health" }).click();
   await expect(page.locator(".future-treatment .persona-bubble.p-owner").first()).toBeVisible();
   await expect(page.locator(".future-treatment .persona-bubble.p-assistant").first()).toBeVisible();
   // The AI's take on a patient hypothesis (pros/cons/alternatives/recommendation) is available inline.
@@ -39,7 +40,7 @@ test("Investigator → Hypothesis shows weighed hypotheses (no committed Plan) w
 });
 
 test("Investigator → Study is its own subsection with in-place CRUD, pairing pursued study with the AI result (W20/W34)", async ({ page }) => {
-  await openAsProvider(page, "Alex");
+  await openSyntheticAsProvider(page);
   // Study is its own sub-tab now (moved out of Analysis).
   await clickNav(page, "Analysis");
   await expect(page.locator(".analysis")).not.toContainText("Study Result");
@@ -80,11 +81,12 @@ test("a Study delete survives a background /api/leaf-regen (treatmentGroups) lan
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ result }) });
   });
 
-  // W78 — Blair. The window this test arms only exists if the dose edit actually leaves treatmentGroups
-  // stale and the regen fires; `regen()` skips a leaf whose computed ancestors are stale, and Alex's
-  // vault has read stale on markerLevels/aiFindings since the 2026-08-26 reconcile, so nothing fired
-  // and the arming check below (rightly) failed rather than passing on nothing.
-  await openAsProvider(page, "Blair");
+  // The window this test arms only exists if the dose edit actually leaves treatmentGroups stale and
+  // the regen fires; `regen()` skips a leaf whose computed ancestors are stale. A DEFAULT synthetic
+  // patient has `nodeHashes` unset, so staleNodes() returns nothing and the dose edit never arms this —
+  // the fresh synthetic patient sets `nodeHashes: {}`, so treatmentGroups reads as drifted and can fire
+  // (same reasoning as translate-scope.spec.ts's W62 patient-translate test).
+  const who = await openFreshSyntheticAsProvider(page);
 
   // Persist a genuine Study row first (so its later removal is an actual diff from baseline). M57 —
   // Add is a modal now; its own Save persists immediately (no outer Save button exists for Study).
@@ -123,7 +125,7 @@ test("a Study delete survives a background /api/leaf-regen (treatmentGroups) lan
   // Reload with NO Save click at all — the delete's own immediate persist is what's under test.
   await page.reload();
   await page.waitForSelector(".roster-list");
-  await page.click('.roster-name:has-text("Alex")');
+  await page.click(`.roster-name:has-text("${who.name}")`);
   await page.waitForSelector(".sidebar .nav-item");
   await clickNav(page, "Study");
   await expect(page.locator(".study")).not.toContainText(marker);
@@ -133,7 +135,7 @@ test("Study has no outer Save button — Add (modal) and Delete both persist imm
   page.on("dialog", (d) => d.accept());
   const marker = `M57 immediate-persist ${Date.now()}`;
 
-  await openAsProvider(page, "Alex");
+  const who = await openSyntheticAsProvider(page);
   await clickNav(page, "Study");
   await expect(page.locator(".study-editbar .btn.primary")).toHaveCount(0);
 
@@ -153,7 +155,7 @@ test("Study has no outer Save button — Add (modal) and Delete both persist imm
 
   await page.reload();
   await page.waitForSelector(".roster-list");
-  await page.click('.roster-name:has-text("Alex")');
+  await page.click(`.roster-name:has-text("${who.name}")`);
   await page.waitForSelector(".sidebar .nav-item");
   await clickNav(page, "Study");
   await expect(page.locator(".study")).not.toContainText(marker);
@@ -164,7 +166,7 @@ test("editing a Study row persists immediately via the Edit modal, no outer Save
   const marker = `M57 edit-done ${Date.now()}`;
   const edited = `M57 edited ${Date.now()}`;
 
-  await openAsProvider(page, "Alex");
+  const who = await openSyntheticAsProvider(page);
   await clickNav(page, "Study");
 
   await page.getByTitle("Add study").click();
@@ -182,7 +184,7 @@ test("editing a Study row persists immediately via the Edit modal, no outer Save
   // Reload with no outer Save click ever — the modal's own Save is what's under test.
   await page.reload();
   await page.waitForSelector(".roster-list");
-  await page.click('.roster-name:has-text("Alex")');
+  await page.click(`.roster-name:has-text("${who.name}")`);
   await page.waitForSelector(".sidebar .nav-item");
   await clickNav(page, "Study");
   await expect(page.locator(".study")).toContainText(edited);
@@ -200,7 +202,7 @@ test("Hypothesis has no outer Save button — Add (modal), modal-Edit, and Delet
   const marker = `M57 idea ${Date.now()}`;
   const edited = `M57 idea edited ${Date.now()}`;
 
-  await openAsProvider(page, "Alex");
+  const who = await openSyntheticAsProvider(page);
   await clickNav(page, "Hypothesis");
   await expect(page.locator(".ft-editbar .btn.primary")).toHaveCount(0);
 
@@ -231,7 +233,7 @@ test("Hypothesis has no outer Save button — Add (modal), modal-Edit, and Delet
 
   await page.reload();
   await page.waitForSelector(".roster-list");
-  await page.click('.roster-name:has-text("Alex")');
+  await page.click(`.roster-name:has-text("${who.name}")`);
   await page.waitForSelector(".sidebar .nav-item");
   await clickNav(page, "Hypothesis");
   await expect(page.locator(".future-treatment")).toContainText(edited);
@@ -244,7 +246,7 @@ test("Hypothesis has no outer Save button — Add (modal), modal-Edit, and Delet
 
   await page.reload();
   await page.waitForSelector(".roster-list");
-  await page.click('.roster-name:has-text("Alex")');
+  await page.click(`.roster-name:has-text("${who.name}")`);
   await page.waitForSelector(".sidebar .nav-item");
   await clickNav(page, "Hypothesis");
   await expect(page.locator(".future-treatment")).not.toContainText(edited);

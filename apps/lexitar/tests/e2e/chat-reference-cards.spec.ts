@@ -1,18 +1,21 @@
 import { test, expect } from "./_fixtures";
 import type { Page } from "@playwright/test";
-import { openPatient, hashOf } from "./_login";
+import { openSynthetic, syntheticClientId, otherSyntheticIndex } from "./_synthetic";
 import { clickNav } from "./_nav";
 import { stubChatHistory, interceptChatHistory } from "./_stubs";
 
 // M69 — pasting a permalink (the #<client>/<tab>/<section>/<anchor> grammar from permalink.ts)
 // into chat renders it as a reference card instead of raw text. Mirrors chat.spec.ts's network-
 // stubbed /api/chat + /api/chat-history idiom, and permalink.spec.ts's "grab the real anchor from
-// the live DOM rather than hardcode it" idiom (Alex's vault is real committed PHI — never assert
-// on its content, only on structure/shape).
+// the live DOM rather than hardcode it" idiom — never assert on the synthetic vault's content,
+// only on structure/shape.
+
+const myHash = () => `#${syntheticClientId(test.info().parallelIndex)}`;
+const otherHash = () => `#${syntheticClientId(otherSyntheticIndex(test.info().parallelIndex))}`;
 
 async function openClient(page: Page) {
   await stubChatHistory(page);
-  await openPatient(page);
+  await openSynthetic(page);
   await page.waitForSelector(".chat-tab textarea", { timeout: 10_000 });
   await page.waitForTimeout(200);
 }
@@ -42,7 +45,7 @@ async function goToChat(page: Page) {
 
 async function openClientPersistent(page: Page) {
   await interceptChatHistory(page);
-  await openPatient(page);
+  await openSynthetic(page);
   await page.waitForSelector(".chat-tab textarea", { timeout: 10_000 });
   await page.waitForTimeout(200);
 }
@@ -67,7 +70,7 @@ test("pasting a marker and ratio permalink each render a reference card and navi
 
   for (const [anchorId, tag] of [[markerId, "Marker"], [ratioId, "Ratio"]] as const) {
     await goToChat(page);
-    await pasteLink(page, `${hashOf.Alex}/labs/markers/${anchorId}`);
+    await pasteLink(page, `${myHash()}/labs/markers/${anchorId}`);
     const card = page.locator(".reference-card").last();
     await expect(card).toBeVisible();
     await expect(card.locator(".reference-tag")).toHaveText(tag);
@@ -78,7 +81,7 @@ test("pasting a marker and ratio permalink each render a reference card and navi
     // the URL retaining the anchor segment).
     await card.evaluate((el) => (el as HTMLElement).click());
     await expect(page.locator(".sidebar .nav-list .nav-item", { hasText: "Markers" })).toHaveClass(/active/);
-    await expect(page).toHaveURL(new RegExp(`^http://localhost:8788/${hashOf.Alex}/markers`));
+    await expect(page).toHaveURL(new RegExp(`^http://localhost:8788/${myHash()}/markers`));
     await expect(page.locator(`[id="${anchorId}"]`)).toBeVisible();
   }
 });
@@ -91,7 +94,7 @@ test("pasting a report permalink renders a reference card and navigates to it wi
   expect(reportId).toBeTruthy();
 
   await goToChat(page);
-  await pasteLink(page, `${hashOf.Alex}/labs/healthReports/${reportId}`);
+  await pasteLink(page, `${myHash()}/labs/healthReports/${reportId}`);
   const card = page.locator(".reference-card").last();
   await expect(card).toBeVisible();
   await expect(card.locator(".reference-tag")).not.toHaveText("");
@@ -100,7 +103,7 @@ test("pasting a report permalink renders a reference card and navigates to it wi
   await page.waitForTimeout(300);
   // Client stays selected (Alex), and the click left Chat for Labs — this is the bug the plan
   // explicitly fixes.
-  await expect(page).toHaveURL(new RegExp(`^http://localhost:8788/${hashOf.Alex}/healthReports`));
+  await expect(page).toHaveURL(new RegExp(`^http://localhost:8788/${myHash()}/healthReports`));
   await expect(page.locator(".sidebar .nav-list .nav-item", { hasText: "Reports" })).toHaveClass(/active/);
   await expect(page.locator(`[id="${reportId}"]`)).toBeVisible();
 });
@@ -108,7 +111,7 @@ test("pasting a report permalink renders a reference card and navigates to it wi
 test("pasting a permalink for a different patient renders a non-clickable wrong-patient card with no data reaching the model", async ({ page }) => {
   await openClient(page);
 
-  await pasteLink(page, `${hashOf.Blair}/labs/markers`);
+  await pasteLink(page, `${otherHash()}/labs/markers`);
   const card = page.locator(".reference-card").last();
   await expect(card).toBeVisible();
   await expect(card).toHaveClass(/inert/);
@@ -144,12 +147,12 @@ test("pasting a whole-tab and a section-level permalink render section cards tha
   // visible to the patient themselves. A bare legacy tab id has no "no section" state anymore
   // (M82 Phase 5's LEGACY_TAB_DEFAULT resolves it to a real section — "labs" -> "markers" — since
   // the flat model has no section-less navigation target), so this exercises that back-compat path.
-  await pasteLink(page, `${hashOf.Alex}/labs`);
+  await pasteLink(page, `${myHash()}/labs`);
   const wholeTabCard = page.locator(".reference-card").last();
   await expect(wholeTabCard).toBeVisible();
   await expect(wholeTabCard.locator(".reference-tag")).toHaveText("View");
 
-  await pasteLink(page, `${hashOf.Alex}/doctor/treatment`);
+  await pasteLink(page, `${myHash()}/doctor/treatment`);
   const sectionCard = page.locator(".reference-card").last();
   await expect(sectionCard).toBeVisible();
   await expect(sectionCard.locator(".reference-tag")).toHaveText("View");
@@ -172,14 +175,14 @@ test("pasting a whole-tab and a section-level permalink render section cards tha
   // Whole-tab card resolves via LEGACY_TAB_DEFAULT to Markers, client stays selected.
   await page.locator(".reference-card").first().evaluate((el) => (el as HTMLElement).click());
   await page.waitForTimeout(300);
-  await expect(page).toHaveURL(new RegExp(`^http://localhost:8788/${hashOf.Alex}/markers`));
+  await expect(page).toHaveURL(new RegExp(`^http://localhost:8788/${myHash()}/markers`));
   await expect(page.locator(".sidebar .nav-list .nav-item", { hasText: "Markers" })).toHaveClass(/active/);
 
   // Section-level card (still in the same thread) navigates to Treatment.
   await goToChat(page);
   await page.locator(".reference-card").nth(1).evaluate((el) => (el as HTMLElement).click());
   await page.waitForTimeout(300);
-  await expect(page).toHaveURL(new RegExp(`^http://localhost:8788/${hashOf.Alex}/treatment`));
+  await expect(page).toHaveURL(new RegExp(`^http://localhost:8788/${myHash()}/treatment`));
   await expect(page.locator(".sidebar .nav-list .nav-item", { hasText: "Treatment" })).toHaveClass(/active/);
 });
 
@@ -193,7 +196,7 @@ test("a follow-up chat send after pasting a marker reference includes that marke
   expect(markerId).toBeTruthy();
 
   await goToChat(page);
-  await pasteLink(page, `${hashOf.Alex}/labs/markers/${markerId}`);
+  await pasteLink(page, `${myHash()}/labs/markers/${markerId}`);
   await expect(page.locator(".reference-card").last()).toBeVisible();
 
   const posts: Array<{ messages: Array<{ content: string }> }> = [];

@@ -116,6 +116,16 @@ export const test = base.extend<{ vaultGuard: void }>({
               body: JSON.stringify({ error: "not found" }),
             });
       });
+      // Chromium ≥136 (every Playwright browser here) auto-probes this workspace-discovery endpoint
+      // on every navigation once DevTools Protocol is attached, which Playwright always does. Nothing
+      // in this app ever serves it, and wrangler's local asset server answers the dotfile path with a
+      // non-2xx, which the browser logs as a generic "Failed to load resource" console error — pure
+      // browser-tooling noise, unrelated to any spec's actual assertions. Answering it with 200 removes
+      // the noise at its source instead of forgiving it ad hoc in every spec that happens to listen for
+      // console errors (today, only cover-render.spec.ts does).
+      await context.route("**/.well-known/appspecific/com.chrome.devtools.json", (route) =>
+        route.fulfill({ status: 200, contentType: "application/json", body: "{}" }),
+      );
       await use();
     },
     { auto: true },

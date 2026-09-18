@@ -1,6 +1,6 @@
 import { test, expect } from "./_fixtures";
 import type { Page } from "@playwright/test";
-import { openAsProvider } from "./_login";
+import { openSyntheticAsProvider, openSyntheticAsProviderAt, syntheticAt } from "./_synthetic";
 import { openLeafMenu, clickLeafMenuItem, leafMenuPanel, menuPanelFor } from "./_leaf-menu";
 import { clickNav, setSidebarMode } from "./_nav";
 
@@ -21,7 +21,7 @@ test("opening any menu closes whichever other menu (leaf or account) was open, i
   const a = `M104 menu-a ${Date.now()}`;
   const b = `M104 menu-b ${Date.now()}`;
 
-  await openAsProvider(page, "Alex");
+  await openSyntheticAsProvider(page);
   await clickNav(page, "Notes");
   await addNote(page, a); // appended (Notes.svelte pushes), so `a` renders above `b`.
   await addNote(page, b);
@@ -68,7 +68,7 @@ test("opening any menu closes whichever other menu (leaf or account) was open, i
 // never moved the main pane, and nothing survived re-entering the vault. Now each (role, client)
 // pair remembers its own last section in localStorage, and flipping the toggle navigates there.
 test("switching sidebar mode restores the last section visited in that mode, per client, across a fresh vault entry", async ({ page }) => {
-  await openAsProvider(page, "Alex");
+  const patientA = await openSyntheticAsProviderAt(page, 0);
 
   // Land on a Patient section, then switch to Investigator and pick a different section there.
   await clickNav(page, "Treatment");
@@ -76,28 +76,29 @@ test("switching sidebar mode restores the last section visited in that mode, per
   await clickNav(page, "Exploration");
   await expect(page.locator(".sidebar .nav-list .nav-item.active", { hasText: "Exploration" })).toBeVisible();
 
-  // Re-enter Alex's vault from a fresh, hash-less navigation (a provider session auto-resumes
+  // Re-enter patientA's vault from a fresh, hash-less navigation (a provider session auto-resumes
   // straight to the roster — never back into a specific patient — so this, not page.reload(), is
   // the real "cold start into this vault" case: no deep-link hash to carry the location, only the
   // memory). The provider session itself is already resumed, so re-navigating to "/" lands right
-  // back on the roster (no login form to fill), unlike openAsProvider's first, unauthenticated call.
+  // back on the roster (no login form to fill), unlike openSyntheticAsProviderAt's first call.
   await page.goto("/");
-  await page.waitForSelector('.roster-name:has-text("Alex")');
-  await page.click('.roster-name:has-text("Alex")');
+  await page.waitForSelector(`.roster-name:has-text("${patientA.name}")`);
+  await page.click(`.roster-name:has-text("${patientA.name}")`);
   await page.waitForSelector(".sidebar .nav-item");
   await expect(page.locator(".sidebar .mode-toggle button.active", { hasText: "Investigator" })).toBeVisible();
   await expect(page.locator(".sidebar .nav-list .nav-item.active", { hasText: "Exploration" })).toBeVisible();
 
-  // Flip back to Patient: jumps straight to Treatment (the section remembered for Alex/patient),
+  // Flip back to Patient: jumps straight to Treatment (the section remembered for patientA/patient),
   // not just the first Patient row (Markers).
   await setSidebarMode(page, "patient");
   await expect(page.locator(".sidebar .nav-list .nav-item.active", { hasText: "Treatment" })).toBeVisible();
 
-  // A different client's memory is independent — Blair has no remembered location yet, so entering
-  // her vault lands on the plain chat default, not Alex's Exploration/Treatment.
+  // A different client's memory is independent — patientB has no remembered location yet, so
+  // entering their vault lands on the plain chat default, not patientA's Exploration/Treatment.
+  const patientB = syntheticAt(1);
   await page.goto("/");
-  await page.waitForSelector('.roster-name:has-text("Blair")');
-  await page.click('.roster-name:has-text("Blair")');
+  await page.waitForSelector(`.roster-name:has-text("${patientB.name}")`);
+  await page.click(`.roster-name:has-text("${patientB.name}")`);
   await page.waitForSelector(".sidebar .nav-item");
   await expect(page).not.toHaveURL(/exploration/);
   await expect(page.locator(".sidebar .nav-list .nav-item.active", { hasText: "Chat" })).toBeVisible();

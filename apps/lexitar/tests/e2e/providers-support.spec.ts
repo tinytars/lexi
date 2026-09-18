@@ -4,7 +4,8 @@
 // is exactly what it did before this exclusion. Safe un-intercepted: these flows run on fresh
 // signups, whose vaults are far too small to be caught mid-stream by the wrangler crash.
 import { test, expect } from "@playwright/test";
-import { loginAs, signUp, PILOTS, ownerSignOut, openOwnerAccess } from "./_login";
+import { loginAs, signUp, ownerSignOut, openOwnerAccess } from "./_login";
+import { E2E_SUPPORT } from "./_synthetic";
 
 // W44 P4b — support consented access, end to end and SELF-CONTAINED (idempotent, re-runnable): a fresh
 // patient signs up; the seeded support agent logs in and requests access to them; the patient logs back
@@ -19,7 +20,7 @@ test("support requests access and the patient approves it", async ({ page }) => 
   await ownerSignOut(page);
 
   // 2) support agent logs in → support console → request access to the patient by email.
-  await loginAs(page, PILOTS.support.email, "support");
+  await loginAs(page, E2E_SUPPORT.email, E2E_SUPPORT.password);
   await page.fill(".access-add input", patientEmail);
   await page.click('.access-add button:has-text("Request access")');
   await expect(page.locator(".access-add input")).toHaveValue(""); // request POST settled (field clears)
@@ -33,12 +34,12 @@ test("support requests access and the patient approves it", async ({ page }) => 
   await openOwnerAccess(page);
   const pending = page.locator(".access-pending");
   await expect(pending).toBeVisible();
-  await expect(pending).toContainText(PILOTS.support.name);
+  await expect(pending).toContainText(E2E_SUPPORT.name);
   await pending.locator(".access-approve").click();
 
   // approved → moves out of pending into active access.
   await expect(page.locator(".access-pending")).toHaveCount(0);
-  await expect(page.locator(".access-list")).toContainText(PILOTS.support.name);
+  await expect(page.locator(".access-list")).toContainText(E2E_SUPPORT.name);
 
   // W44 P4c — revoking active support re-keys the vault (client rotation). It must succeed with no error,
   // the support must disappear, and — the real test — the patient must still open their record from a

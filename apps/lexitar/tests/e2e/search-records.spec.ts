@@ -1,10 +1,12 @@
 import { test, expect } from "./_fixtures";
 import type { Page } from "@playwright/test";
-import { openAsProvider, hashOf } from "./_login";
+import { openSyntheticAsProvider, syntheticClientId } from "./_synthetic";
 import { clickLeafMenuItem } from "./_leaf-menu";
 import { stubChatHistory } from "./_stubs";
 import { search } from "./_search";
 import { clickNav } from "./_nav";
+
+const myHash = () => `#${syntheticClientId(test.info().parallelIndex)}`;
 
 // Split out of search.spec.ts (W76): a hosted 2-vCPU/7-GB runner kills workerd partway through a long
 // spec, and `--shard` partitions by FILE, so one oversized file sets the floor for every slice.
@@ -12,8 +14,11 @@ import { clickNav } from "./_nav";
 // threads, treatments, hypotheses, exploration cells.
 
 test("sidebar search finds a marker and renders a real chart (M85 Phase 6)", async ({ page }) => {
-  await openAsProvider(page, "Alex");
-  await search(page, "Apolipoprotein B");
+  await openSyntheticAsProvider(page);
+  // Synthetic fixture's marker canonical name is "ApoB" (search-index.ts indexes by that exact
+  // short name), not the glossary term's "Apolipoprotein B" — a genuinely different string, not
+  // the same fact stored twice.
+  await search(page, "ApoB");
   // Exact heading match: "Recommended Markers" is its own search group now, and a plain
   // hasText:"Markers" filter matches both.
   const markersGroup = page
@@ -23,17 +28,17 @@ test("sidebar search finds a marker and renders a real chart (M85 Phase 6)", asy
 
   // Scoped to the Markers group specifically: Glossary results are `.leaf-card` too since W62, and
   // a glossary term matching this marker's name sorted above it would otherwise win the .first().
-  const chart = markersGroup.locator(".leaf-card", { hasText: "Apolipoprotein B" }).first();
+  const chart = markersGroup.locator(".leaf-card", { hasText: "ApoB" }).first();
   await expect(chart).toBeVisible();
-  await expect(chart.locator(".marker-name")).toHaveText("Apolipoprotein B");
+  await expect(chart.locator(".marker-name")).toHaveText("ApoB");
 
   await clickLeafMenuItem(chart, "Details");
-  await expect(page).toHaveURL(new RegExp(`${hashOf.Alex}/markers`));
+  await expect(page).toHaveURL(new RegExp(`${myHash()}/markers`));
   await expect(page.locator(".markers-tab .permalink-flash")).toBeVisible({ timeout: 5_000 });
 });
 
 test("sidebar search finds an Analysis bubble by its text (M85 Phase 8)", async ({ page }) => {
-  await openAsProvider(page, "Alex");
+  await openSyntheticAsProvider(page);
   // W78 — the phrase is READ OFF the card it is meant to find. It used to be a literal ("SERM
   // Enclomiphene") lifted from the prose of one regen of one patient's Finding, re-confirmed by hand
   // after each regen until the 2026-08-26 one dropped it and the search simply returned nothing.
@@ -52,7 +57,7 @@ test("sidebar search finds an Analysis bubble by its text (M85 Phase 8)", async 
   await expect(hit).toBeVisible();
   await clickLeafMenuItem(hit, "Open");
 
-  await expect(page).toHaveURL(new RegExp(`${hashOf.Alex}/analysis`));
+  await expect(page).toHaveURL(new RegExp(`${myHash()}/analysis`));
   await expect(page.locator(".analysis .permalink-flash")).toBeVisible({ timeout: 5_000 });
 });
 
@@ -69,7 +74,7 @@ async function ask(page: Page, q: string) {
 
 test("sidebar search finds a chat thread by its title (first message) (M85)", async ({ page }) => {
   await stubChatHistory(page);
-  await openAsProvider(page, "Alex");
+  await openSyntheticAsProvider(page);
   await page.waitForSelector(".chat-tab textarea", { timeout: 10_000 });
   const marker = `M85 chat title ${Date.now()}`;
   await stubChat(page, "Acknowledged.");
@@ -84,49 +89,47 @@ test("sidebar search finds a chat thread by its title (first message) (M85)", as
 });
 
 test("sidebar search finds a treatment and auto-selects its bucket (M85 Phase 7)", async ({ page }) => {
-  await openAsProvider(page, "Alex");
-  // Tirzepatide is one of Alex's real ongoing drugs (see shell-treatment.spec.ts's Treatment test), but the
-  // name also appears inside real Finding prose (ranges rationale, futureTreatment/docInference text,
-  // and — since M85 Phase 8 — Analysis' On Treatment bubble, whose "On Treatment" context chip makes a
-  // plain hasText:"Treatment" match the Analysis group too) — scope to the group whose heading is
-  // exactly "Treatment", not just a group containing that substring.
-  await search(page, "Tirzepatide");
+  await openSyntheticAsProvider(page);
+  // Rosuvastatin is the synthetic patient's ongoing drug (factors.treatments in
+  // synthetic-patient.ts), started with no end date so bucketOf resolves it to "Ongoing". Its
+  // finding.planAssessment paragraph is generic prose with no drug name, so — unlike Alex's real
+  // Finding — it never bleeds into the Analysis group here; scoping to the "Treatment" heading is
+  // still exact, not just belt-and-suspenders.
+  await search(page, "Rosuvastatin");
   const treatmentGroup = page.locator(".search-results .search-group").filter({ has: page.locator("h3", { hasText: /^Treatment$/ }) });
   await expect(treatmentGroup).toBeVisible();
-  const row = treatmentGroup.locator(".leaf-card", { hasText: "Tirzepatide" }).first();
+  const row = treatmentGroup.locator(".leaf-card", { hasText: "Rosuvastatin" }).first();
   await expect(row).toBeVisible();
   await clickLeafMenuItem(row, "Open");
 
-  await expect(page).toHaveURL(new RegExp(`${hashOf.Alex}/treatment`));
+  await expect(page).toHaveURL(new RegExp(`${myHash()}/treatment`));
   await expect(page.locator(".unified-treatment .permalink-flash")).toBeVisible({ timeout: 5_000 });
   await expect(page.locator(".sidebar .group-list .sub-item", { hasText: "Ongoing" })).toHaveClass(/active/);
 });
 
 test("sidebar search finds a hypothesis topic and auto-selects its system group (M85 Phase 7)", async ({ page }) => {
-  await openAsProvider(page, "Alex");
-  // Real seeded topic/system pair for Alex (finding.treatmentGroups) — the 2-token query is
-  // specific enough to avoid the cross-section name collisions found in the Treatment test above.
-  // M96 Phase 10 regen: re-confirmed against the current Finding's treatmentGroups.
-  await search(page, "Lipid-lowering Rosuvastatin");
+  await openSyntheticAsProvider(page);
+  // Real seeded topic/system pair (finding.treatmentGroups): the "Lipid lowering" topic under
+  // Cardiovascular Risk carries two AI ideas, Bempedoic acid and Rosuvastatin — the 3-token query
+  // is specific enough to avoid the cross-section name collisions found in the Treatment test above.
+  await search(page, "Lipid lowering Rosuvastatin");
   const hypothesisGroup = page.locator(".search-results .search-group", { hasText: "Hypothesis" });
   await expect(hypothesisGroup).toBeVisible();
   const topicCard = hypothesisGroup.locator(".leaf-card", { hasText: "Rosuvastatin" }).first();
-  // M103 — the "Lipid-lowering" topic has one patient idea and 3 AI ideas (Rosuvastatin,
-  // Bempedoic acid, PCSK9 inhibitor); only "Rosuvastatin" contains the search string, so the
-  // scoped preview must show just that one idea, not its siblings in the same topic.
+  // M103 — the topic has a sibling AI idea (Bempedoic acid) that does NOT contain "Rosuvastatin",
+  // so the scoped preview must show just the matched idea, not its sibling in the same topic.
   await expect(topicCard.getByText("Bempedoic acid", { exact: false })).toHaveCount(0);
-  await expect(topicCard.getByText("PCSK9 inhibitor", { exact: false })).toHaveCount(0);
   await clickLeafMenuItem(topicCard, "Open");
 
-  await expect(page).toHaveURL(new RegExp(`${hashOf.Alex}/futureTreatment`));
+  await expect(page).toHaveURL(new RegExp(`${myHash()}/futureTreatment`));
   await expect(page.locator(".future-treatment .permalink-flash")).toBeVisible({ timeout: 5_000 });
   await expect(page.locator(".sidebar .group-list .sub-item", { hasText: "Cardiovascular Risk" })).toHaveClass(/active/);
 });
 
 test("sidebar search finds one item within a multi-item exploration cell and scopes the preview to it (M103)", async ({ page }) => {
-  await openAsProvider(page, "Alex");
-  // Real seeded dataRequisition cell for Alex: type "Scan / Imaging", group "Cardiovascular Risk"
-  // has 3 items (CAC, echocardiogram, aortic imaging) — search a string unique to just the
+  await openSyntheticAsProvider(page);
+  // Seeded dataRequisition cell: type "Scan / Imaging", group "Cardiovascular Risk" has 3 items
+  // (coronary calcium score, echocardiogram, aortic imaging) — search a string unique to just the
   // echocardiogram item and confirm the preview scopes to that ONE item.
   // W61 — an exploration item is its own LeafCard now (modality in the card title, item text in a
   // single AI bubble) rather than one <li> among siblings inside a shared bubble.
@@ -143,14 +146,14 @@ test("sidebar search finds one item within a multi-item exploration cell and sco
   await expect(cell.locator(".persona-bubble.p-assistant")).toContainText(/echocardiogram/i);
   await clickLeafMenuItem(cell, "Open");
 
-  await expect(page).toHaveURL(new RegExp(`${hashOf.Alex}/exploration`));
+  await expect(page).toHaveURL(new RegExp(`${myHash()}/exploration`));
   await expect(page.locator(".tests-consider .permalink-flash")).toBeVisible({ timeout: 5_000 });
   await expect(page.locator(".sidebar .group-list .sub-item", { hasText: "Cardiovascular Risk" })).toHaveClass(/active/);
 });
 
 test("sidebar search finds a chat thread by a later message's text, not just its title (M85)", async ({ page }) => {
   await stubChatHistory(page);
-  await openAsProvider(page, "Alex");
+  await openSyntheticAsProvider(page);
   await page.waitForSelector(".chat-tab textarea", { timeout: 10_000 });
   await stubChat(page, "Ack 1");
   await ask(page, "an unrelated first question");

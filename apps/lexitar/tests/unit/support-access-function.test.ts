@@ -1,5 +1,5 @@
 import { applyMigrations } from "./_migrate";
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { Miniflare } from "miniflare";
 import { onRequestPost as request } from "../../functions/api/support/request";
 import { onRequestPost as approve } from "../../functions/api/support/approve";
@@ -15,6 +15,7 @@ import { createProviderLink, getProviderLink } from "../../functions/_lib/identi
 import { listAccessEventsForSubject } from "../../functions/_lib/identity-audit";
 import { signSession } from "../../functions/_lib/session";
 import { generateAccountKeypair, generateDEK, wrapDEKForPublicKey } from "@tinytars/vault/crypto";
+import { listSupportOwners } from "@tinytars/vault/auth-support";
 
 // W44 P4b — support consented-access + PHI-access audit, over real Miniflare D1 (0001 + 0003).
 
@@ -63,7 +64,7 @@ describe("support request → approve → enter", () => {
     const p = await seedPatient();
 
     // request
-    const rq = await callPost(request, s.supportId, { patientEmail: p.email });
+    const rq = await callPost(request, s.supportId, { ownerEmail: p.email });
     expect(rq.status).toBe(200);
     const linkId = (await rq.json() as { linkId: string }).linkId;
 
@@ -85,7 +86,7 @@ describe("support request → approve → enter", () => {
     const p = await seedPatient();
     const notSupport = crypto.randomUUID();
     await createAccount(db, { id: notSupport, displayName: "Nope" });
-    expect((await callPost(request, notSupport, { patientEmail: p.email })).status).toBe(403);
+    expect((await callPost(request, notSupport, { ownerEmail: p.email })).status).toBe(403);
   });
 
   it("expired grant self-revokes on enter, audits support_access_expired, deletes the envelope", async () => {
@@ -109,7 +110,7 @@ describe("support request → approve → enter", () => {
   it("denying a support request audits support_access_denied", async () => {
     const s = await seedSupport();
     const p = await seedPatient();
-    const linkId = (await (await callPost(request, s.supportId, { patientEmail: p.email })).json() as { linkId: string }).linkId;
+    const linkId = (await (await callPost(request, s.supportId, { ownerEmail: p.email })).json() as { linkId: string }).linkId;
     const res = await revoke({ request: new Request(`http://x/api/providers/${linkId}`, { method: "DELETE", headers: { cookie: await cookieFor(p.patientId) } }), env: makeEnv(), params: { link: linkId } });
     expect(res.status).toBe(200);
     expect((await listAccessEventsForSubject(db, p.patientId)).map((x) => x.action)).toContain("support_access_denied");
@@ -129,12 +130,39 @@ describe("support is walled off from clinician surfaces", () => {
     expect((await res.json() as { patients: unknown[] }).patients).toHaveLength(0);
     // but it DOES appear in the support console
     const sc = await supportPatients({ request: new Request("http://x/api/support/owners", { headers: { cookie: await cookieFor(s.supportId) } }), env: makeEnv() });
-    expect((await sc.json() as { patients: unknown[] }).patients).toHaveLength(1);
+    expect((await sc.json() as { owners: unknown[] }).owners).toHaveLength(1);
   });
 
   it("a support account does not receive the refresh-finding provider token", async () => {
     const s = await seedSupport();
     const res = await providerToken({ request: new Request("http://x/api/provider-token", { headers: { cookie: await cookieFor(s.supportId) } }), env: makeEnv({ PROVIDER_TOKEN: "tok" }) });
     expect(res.status).toBe(403);
+  });
+});
+
+// W76 — the two sides of /api/support/owners are maintained in different places (this Function here,
+// the parser in the published @tinytars/vault package) and every other test above mocks one side or
+// the other. Route the real handler's Response through the real (unmocked) client parser so a
+// response-key rename on either side without the other breaks this, not just production.
+describe("the owners route and the published vault client agree on the wire shape", () => {
+  it("listSupportOwners() parses a real /api/support/owners response into a non-empty list", async () => {
+    const s = await seedSupport();
+    const p = await seedPatient();
+    await createProviderLink(db, { ownerAccountId: p.patientId, providerAccountId: s.supportId, role: "support", status: "active", grantedBy: p.patientId });
+    const e = await wrapDEKForPublicKey(p.dek, s.supportPublicKeyJwk);
+    await putEnvelope(db, { vaultId: p.vaultId, principalAccountId: s.supportId, wrappedDek: e.wrappedDEK, ephemeralPublicKeyJwk: e.ephemeralPublicKeyJwk, createdBy: p.patientId });
+
+    const cookie = await cookieFor(s.supportId);
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation((async (url: string) => {
+      expect(url).toBe("/api/support/owners");
+      return supportPatients({ request: new Request(`http://x${url}`, { headers: { cookie } }), env: makeEnv() });
+    }) as typeof fetch);
+    try {
+      const owners = await listSupportOwners();
+      expect(owners).toHaveLength(1);
+      expect(owners[0].ownerAccountId).toBe(p.patientId);
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 });

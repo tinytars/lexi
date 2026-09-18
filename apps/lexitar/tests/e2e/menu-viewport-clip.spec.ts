@@ -1,5 +1,5 @@
 import { test, expect } from "./_fixtures";
-import { openPatient, openAsProvider } from "./_login";
+import { openSynthetic, openSyntheticAsProvider } from "./_synthetic";
 import { openLeafMenu, leafMenuPanel } from "./_leaf-menu";
 import { clickNav } from "./_nav";
 import { stubChatHistory } from "./_stubs";
@@ -14,7 +14,7 @@ import { stubChatHistory } from "./_stubs";
 
 test("chat '+' menu (composer sticky at the viewport bottom) opens fully inside the viewport", async ({ page }) => {
   await stubChatHistory(page);
-  await openPatient(page);
+  await openSynthetic(page);
   await page.waitForSelector(".chat-tab textarea", { timeout: 10_000 });
 
   const composer = page.locator(".chat-input");
@@ -36,7 +36,7 @@ test("chat '+' menu (composer sticky at the viewport bottom) opens fully inside 
 });
 
 test("a leaf row's ⋮ menu near the top of a scrolled page opens fully inside the viewport", async ({ page }) => {
-  await openAsProvider(page, "Alex");
+  await openSyntheticAsProvider(page);
   await clickNav(page, "Treatment");
 
   const row = page.locator(".unified-treatment .leaf-card").filter({ has: page.locator(".leaf-menu-trigger") }).first();
