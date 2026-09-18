@@ -74,7 +74,7 @@ describe("a conversation that cannot be opened is not overwritten", () => {
     expect(server.puts).toBe(putsBefore);
 
     // And the original is still there, still openable by whoever holds the right key.
-    expect((await import("@tinytars/vault/crypto")).decryptVaultV2<{ threads: Thread[] }>(server.blob!, other)).resolves.toBeTruthy();
+    await expect((await import("@tinytars/vault/crypto")).decryptVaultV2<{ threads: Thread[] }>(server.blob!, other)).resolves.toBeTruthy();
   });
 
   it("saves normally once the right key opens it", async () => {
