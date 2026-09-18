@@ -8,7 +8,7 @@ import {
   hexToBytes,
   type WebauthnEnv,
 } from "../../../../_lib/webauthn";
-import type { AuthenticatorTransportFuture } from "@simplewebauthn/server";
+import type { AuthenticatorTransport } from "@simplewebauthn/server";
 
 // W44 P3 — passkey login, step 1: look up the account's stored passkey credential and mint
 // WebAuthn request options (with the PRF extension, using the SAME prfSalt stored at
@@ -47,7 +47,7 @@ export async function onRequestPost(context: Ctx): Promise<Response> {
       return json(404, { error: "no passkey registered for this account" });
     }
 
-    const kdf = cred.kdfParams as { prfSalt: string; credentialID: string; transports?: AuthenticatorTransportFuture[] };
+    const kdf = cred.kdfParams as { prfSalt: string; credentialID: string; transports?: AuthenticatorTransport[] };
     const options = await generateAuthenticationOptions(env, {
       credentialId: kdf.credentialID,
       transports: kdf.transports,
