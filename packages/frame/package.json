@@ -1,6 +1,6 @@
 {
   "name": "@tinytars/frame",
-  "version": "0.1.15",
+  "version": "0.1.26",
   "description": "Domain-neutral Svelte app-shell: session/auth controllers, account chrome, and menu/card/modal primitives built on @tinytars/vault.",
   "license": "MIT",
   "type": "module",
@@ -87,8 +87,8 @@
     "@tsconfig/svelte": "^5.0.8",
     "svelte": "^5.55.5",
     "svelte-check": "^4.4.8",
-    "typescript": "~6.0.2",
+    "typescript": "~7.0.2",
     "vite": "^8.0.12",
-    "vitest": "^4.1.8"
+    "vitest": "^5.0.0"
   }
 }
