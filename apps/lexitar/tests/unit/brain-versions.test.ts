@@ -8,7 +8,7 @@
 
 import { describe, it, expect } from "vitest";
 import { sha256hex12 } from "@pablotech/neuro/hash-node";
-import { brainSourceFor, brainKeys, CORE_BRAIN, CHAT_BRAIN } from "../../src/lib/brain-source";
+import { brainSourceFor, brainKeys, CORE_BRAIN, CHAT_BRAIN, PERSONA_BRAIN } from "../../src/lib/brain-source";
 import { BRAIN_VERSIONS } from "../../src/lib/brain-versions";
 import { brainVersions, renderModule } from "../../scripts/gen-brain-versions";
 import { LEAF_REGEN_SPECS, mergeLeafResult } from "../../src/lib/leaf-regen-registry";
@@ -26,8 +26,8 @@ describe("the committed map matches the live prompts", () => {
     expect(readFileSync(path, "utf8")).toBe(renderModule(brainVersions()));
   });
 
-  it("covers the core, chat, and every leaf spec, with nothing left over", () => {
-    expect(Object.keys(BRAIN_VERSIONS).sort()).toEqual([CORE_BRAIN, CHAT_BRAIN, ...Object.keys(LEAF_REGEN_SPECS)].sort());
+  it("covers the core, chat, the persona adapter, and every leaf spec, with nothing left over", () => {
+    expect(Object.keys(BRAIN_VERSIONS).sort()).toEqual([CORE_BRAIN, CHAT_BRAIN, PERSONA_BRAIN, ...Object.keys(LEAF_REGEN_SPECS)].sort());
   });
 
   it("gives every brain a distinct version", () => {

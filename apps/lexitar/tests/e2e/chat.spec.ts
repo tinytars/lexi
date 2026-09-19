@@ -34,8 +34,8 @@ test("chat renders the assistant answer on a 200", async ({ page }) => {
   await expect(page.locator(".p-owner .turn-text")).toHaveText("what changed since my last echo?");
   await expect(page.locator(".p-assistant .turn-text:not(.pending)")).toHaveText("Your gradient rose from 10 to 14.");
   // W20 personas: the AI answer is the AI bubble, the question the Patient bubble.
-  // M92 — the persona-tag now displays the product name (LexiTar), not the literal "AI".
-  await expect(page.locator(".p-assistant .persona-tag")).toHaveText("LexiTar");
+  // W84 — the persona-tag names the persona whose words are shown; Lexi unless the account picked Kodi.
+  await expect(page.locator(".p-assistant .persona-tag")).toHaveText("Lexi");
   await expect(page.locator(".p-owner .persona-tag")).toHaveText("Patient");
 });
 
