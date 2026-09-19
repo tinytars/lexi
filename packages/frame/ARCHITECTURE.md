@@ -115,10 +115,14 @@ take fully caller-supplied data and render it.
 
 ## Domain-neutral utilities
 
-- **`brand.ts`** — the `LegalLink` type and `deriveLegalLinks()`. This is the domain-neutral half
-  of a brand split: a host app supplies its own legal-link URLs/labels, and this function derives
-  the rest of a consistent link set from them, without this package hardcoding any brand's actual
-  legal text.
+- **`brand.ts`** — the `OrgIdentity` and `LegalLink` types and `deriveLegalLinks()`.
+- **`OrgFooter.svelte`** + **`footer.css`** — an org footer (status line, name, legal links) rendered
+  from a host's `OrgIdentity`. `footer.css` is the markup contract, so a non-Svelte host can render
+  the same `.frame-footer` classes; themed via `--frame-footer-*`.
+
+**Entity neutrality.** Any organization can build on this package, so it ships the shape of a brand,
+never an entity's values — names, legal URLs, product copy stay in the host app.
+`neutrality.test.ts` fails the build if a shipped file names a specific organization or product.
 
 ## Two things worth reading before you adapt this
 

@@ -24,6 +24,7 @@
   "files": [
     "*.ts",
     "!*.test.ts",
+    "!vitest.config.ts",
     "*.svelte",
     "*.css"
   ],
@@ -45,6 +46,7 @@
     "./ExportTab.svelte": "./ExportTab.svelte",
     "./Field.svelte": "./Field.svelte",
     "./filter": "./filter.ts",
+    "./footer.css": "./footer.css",
     "./FormGrid.svelte": "./FormGrid.svelte",
     "./group-filter": "./group-filter.ts",
     "./LeafActionMenu.svelte": "./LeafActionMenu.svelte",
@@ -55,6 +57,7 @@
     "./Modal.svelte": "./Modal.svelte",
     "./ModalActions.svelte": "./ModalActions.svelte",
     "./Onboarding.svelte": "./Onboarding.svelte",
+    "./OrgFooter.svelte": "./OrgFooter.svelte",
     "./pdf-render": "./pdf-render.ts",
     "./PdfThumbnail.svelte": "./PdfThumbnail.svelte",
     "./persisted-json": "./persisted-json.ts",
