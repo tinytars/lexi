@@ -5,6 +5,7 @@ import { logRequest } from "../../_lib/log";
 import { storeKey } from "../../_lib/store";
 import { rawAccessFor, type RawAccess } from "../../_lib/raw-owner";
 import { json } from "../../_lib/http";
+import type { ObjectBucket, ObjectConditional } from "../../_lib/object-bucket";
 
 // W16 — per-client chat history: an in-browser-encrypted HD1 blob (Thread[] as ciphertext).
 // Never decrypts; no static seed — a first GET simply 404s and the browser starts fresh.
@@ -20,21 +21,8 @@ import { json } from "../../_lib/http";
 // PUT also takes the If-Match concurrency /api/vault gained in W70. It is the same blob-replacing
 // write with the same two-tab lost-update bug, one directory away from the fix.
 
-interface R2ObjectBody {
-  body: ReadableStream;
-  etag: string;
-}
-interface R2Conditional {
-  etagMatches?: string;
-  etagDoesNotMatch?: string;
-}
-interface R2Bucket {
-  get(key: string): Promise<R2ObjectBody | null>;
-  /** Returns the stored object (with its NEW etag), or null when an `onlyIf` precondition fails. */
-  put(key: string, value: Uint8Array, options?: { onlyIf?: R2Conditional }): Promise<{ etag: string } | null>;
-}
 interface Env {
-  VAULT: R2Bucket;
+  VAULT: Pick<ObjectBucket, "get" | "put">;
   SESSION_SECRET: string;
   // W71 — requireSession reads accounts.sessions_valid_from, so every gated route needs the binding.
   DB: D1Database;
@@ -96,7 +84,7 @@ export async function onRequestPut(context: Ctx): Promise<Response> {
   // requiring one would refuse the first save of every fresh conversation. A precondition is honoured
   // whenever it is offered, which is the case the lost update actually comes from.
   const ifMatch = request.headers.get("if-match");
-  const onlyIf: R2Conditional | undefined =
+  const onlyIf: ObjectConditional | undefined =
     ifMatch && ifMatch !== "*"
       ? { etagMatches: unquote(ifMatch) }
       : request.headers.get("if-none-match") === "*"

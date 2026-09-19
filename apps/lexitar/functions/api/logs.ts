@@ -2,6 +2,7 @@ import { requireBearer } from "../_lib/guard";
 import { json } from "../_lib/http";
 import { storeKey } from "../_lib/store";
 import type { AuditEntry } from "../_lib/audit";
+import type { ObjectBucket } from "../_lib/object-bucket";
 
 // W39/Phase 4 — provider-visible READ side of the refresh audit trail. Lists the per-event R2 objects
 // the refresh Function + the client loop beacon persisted (audit.ts writes one small object per event
@@ -10,24 +11,9 @@ import type { AuditEntry } from "../_lib/audit";
 // gated exactly like /api/refresh-finding + /api/log: the log is operational metadata, still provider-
 // only. Returns only the PHI-free entries the writers stored — no client bytes, no prose.
 
-interface R2Object {
-  key: string;
-}
-interface R2Objects {
-  objects: R2Object[];
-  truncated: boolean;
-  cursor?: string;
-}
-interface R2ObjectBody {
-  text(): Promise<string>;
-}
-interface R2Bucket {
-  list(opts: { prefix: string; cursor?: string; limit?: number }): Promise<R2Objects>;
-  get(key: string): Promise<R2ObjectBody | null>;
-}
 interface Env {
   PROVIDER_TOKEN: string;
-  VAULT?: R2Bucket;
+  VAULT?: Pick<ObjectBucket, "list" | "get">;
   STORE_PREFIX: string;
 }
 

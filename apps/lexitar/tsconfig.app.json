@@ -20,7 +20,7 @@
   // not this config, not `build` (vite bundles src/ only), not vitest (transpile-only). It belongs
   // to svelte-check rather than tsconfig.node.json because it imports types from src/ modules that
   // reach .svelte files, which only svelte-check can resolve. scripts/ went the other way — see
-  // tsconfig.node.json.
+  // tsconfig.node.json. server/ (the Node host) sits with functions/, whose modules it loads.
   //
   // W64 — tests/** is IN. It surfaced 149 errors and two of them were real bugs, not fixture noise:
   // FindingAIResponse declared `basis` as the array form alone while validate() accepted (and the
@@ -30,6 +30,6 @@
   // half its bindings, TS 5.7's generic Uint8Array. Fixed rather than cast: `npm test` still passes.
   "include": [
     "src/**/*.ts", "src/**/*.js", "src/**/*.svelte",
-    "functions/**/*.ts", "tests/**/*.ts"
+    "functions/**/*.ts", "server/**/*.ts", "tests/**/*.ts"
   ]
 }

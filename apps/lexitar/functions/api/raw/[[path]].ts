@@ -6,6 +6,7 @@ import { normalizeClientId } from "../../../src/lib/client-id";
 import { storeKey } from "../../_lib/store";
 import { rawAccessFor, mayDestroy, type RawAccess } from "../../_lib/raw-owner";
 import { json } from "../../_lib/http";
+import type { ObjectBucket } from "../../_lib/object-bucket";
 
 // W13d — GET /api/raw/{id}/{file}: stream an original raw source (PDF/XLSX) from R2.
 // Raw originals are PLAINTEXT PHI, so unlike the open /api/vault .enc GET this is
@@ -13,16 +14,8 @@ import { json } from "../../_lib/http";
 // rawAccessFor decides whether they may have THIS id (W73). The Function never decrypts —
 // raw is stored unencrypted under {store}/raw/{id}/, gated only by that pair.
 
-interface R2ObjectBody {
-  body: ReadableStream;
-}
-interface R2Bucket {
-  get(key: string): Promise<R2ObjectBody | null>;
-  put(key: string, value: Uint8Array): Promise<unknown>;
-  delete(key: string): Promise<void>;
-}
 interface Env {
-  VAULT: R2Bucket;
+  VAULT: Pick<ObjectBucket, "get" | "put" | "delete">;
   SESSION_SECRET: string;
   // W71 — requireSession reads accounts.sessions_valid_from, so every gated route needs the binding.
   DB: D1Database;

@@ -32,12 +32,10 @@ import { listEnvelopesForPrincipal, listVaultsForOwner, type VaultRow } from "./
 import { listPatientsForProvider, listProvidersForPatient } from "./identity-providers";
 import { deleteRawObjectsForAccount, listRawObjectsForAccount } from "./identity-audit";
 import { storeKey, type StoreEnv } from "./store";
+import type { ObjectBucket } from "./object-bucket";
 import { vaultIdFromR2Key } from "../../src/lib/client-id";
 
-export interface R2Like {
-  delete(key: string): Promise<void>;
-  list(options: { prefix: string; cursor?: string }): Promise<{ objects: { key: string }[]; truncated?: boolean; cursor?: string }>;
-}
+export type ErasableBucket = Pick<ObjectBucket, "delete" | "list">;
 
 /**
  * Every key under a prefix, following the cursor.
@@ -51,7 +49,7 @@ export interface R2Like {
  * The same 1000-object cap already cost this project a five-night silent backup failure
  * (`scripts/vault-sync.ts:253` paginates for that reason). Second time.
  */
-async function listAll(bucket: R2Like, prefix: string): Promise<string[]> {
+async function listAll(bucket: ErasableBucket, prefix: string): Promise<string[]> {
   const keys: string[] = [];
   let cursor: string | undefined;
   do {
@@ -64,7 +62,7 @@ async function listAll(bucket: R2Like, prefix: string): Promise<string[]> {
 
 export interface ErasureEnv extends StoreEnv {
   DB: D1Database;
-  VAULT: R2Like;
+  VAULT: ErasableBucket;
 }
 
 export interface ErasureReport {

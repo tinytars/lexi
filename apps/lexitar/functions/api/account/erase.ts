@@ -24,13 +24,13 @@ import type { D1Database } from "../../_lib/identity-types";
 import { getAccount } from "../../_lib/identity-accounts";
 import { requireSession } from "../../_lib/session";
 import { can, roleOf } from "../../_lib/capabilities";
-import { eraseAccount, type R2Like } from "../../_lib/erasure";
+import { eraseAccount, type ErasableBucket } from "../../_lib/erasure";
 import { logRequest } from "../../_lib/log";
 import { json } from "../../_lib/http";
 
 interface Env {
   DB: D1Database;
-  VAULT: R2Like;
+  VAULT: ErasableBucket;
   SESSION_SECRET: string;
   STORE_PREFIX: string;
 }

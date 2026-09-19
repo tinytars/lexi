@@ -1,18 +1,10 @@
-import { readFileSync, readdirSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import type { D1Database } from "../../functions/_lib/identity-types";
+import { migrations } from "../../server/migrations";
 
-const DIR = fileURLToPath(new URL("../../migrations/", import.meta.url));
-
-// Applies every schema migration in directory order — never a hand-picked subset, which goes stale
-// as soon as a migration is added. Seed files are skipped: fixtures are the test's choice.
+// Schema only: fixtures are the test's choice, so seed files are skipped.
 export async function applyMigrations(db: D1Database): Promise<void> {
-  const files = readdirSync(DIR)
-    .filter((f) => f.endsWith(".sql") && !f.includes("seed"))
-    .sort();
-  for (const f of files) {
-    const sql = readFileSync(DIR + f, "utf8").replace(/^\s*--.*$/gm, "");
-    for (const stmt of sql.split(";").map((s) => s.trim()).filter(Boolean)) {
+  for (const { sql } of migrations({ seeds: false })) {
+    for (const stmt of sql.replace(/^\s*--.*$/gm, "").split(";").map((s) => s.trim()).filter(Boolean)) {
       await db.prepare(stmt).run();
     }
   }
