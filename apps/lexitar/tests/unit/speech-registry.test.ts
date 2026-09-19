@@ -326,7 +326,7 @@ describe("neural engine", () => {
   });
 
   it("synthesizes with the requested voice, prefetches the next chunk, and plays chunks in order", async () => {
-    speechRegistry.play("a", LONG, "Kodi", "voice-k");
+    speechRegistry.play("a", LONG, "Cody", "voice-k");
     await settle();
     expect(FakeAudio.played).toHaveLength(1);
     expect(synthesized.map((s) => s.text.split(" ")[0])).toEqual(["One", "Two"]);

@@ -387,24 +387,26 @@ Not otherwise covered by this file, but touched by the org-recovery work above:
 
 ---
 
-## `POST /api/persona-adapt` (W84 — Kodi's retelling)
+## `POST /api/persona-adapt` (W84 — Cody's retelling)
 
-Session-gated. Body `{ persona: "kodi", text }`: `text` is Lexi's finished answer, restated by the
+Session-gated. Body `{ persona: "cody", text, question? }`: `text` is Lexi's finished answer, restated by the
 adapter prompt (`src/lib/persona-adapter-prompt.ts`) on `PERSONA_ADAPTER_MODEL`. A deterministic
 fidelity gate requires every number, unit and date from `text` in the output, retrying once; if it
 still fails the response is `{ kind: "fallback" }` and the client keeps Lexi's words, labeled Lexi.
-The adapter never sees the record, only the answer.
+The adapter never sees the record, only the answer and the patient's `question` (≤ 8 KiB), which it
+uses to acknowledge what was asked and never answers beyond `text`. Cody first shipped as `"kodi"`;
+that id is still accepted here, on `/api/speak` and on `/api/account/persona`, and read back as `"cody"`.
 
 ```bash
-# → 200 {"kind":"adapted","persona":"kodi","text":"…"} | {"kind":"fallback"} ;  no session → 401
-#   unknown persona / empty text → 400 ;  text too long → 413
+# → 200 {"kind":"adapted","persona":"cody","text":"…"} | {"kind":"fallback"} ;  no session → 401
+#   unknown persona / empty text / non-string question → 400 ;  text or question too long → 413
 ```
 
 ---
 
 ## `POST /api/speak` (W84 — neural read-aloud)
 
-Session-gated. Body `{ voice?: "lexi" | "kodi", text }` (≤ 2000 chars; the client sends one chunk at a
+Session-gated. Body `{ voice?: "lexi" | "cody", text }` (≤ 2000 chars; the client sends one chunk at a
 time). Relays SSML to **Azure AI Speech** (`AZURE_SPEECH_REGION`, the persona's fixed neural voice) and
 streams back `audio/mpeg`, `Cache-Control: no-store`. Nothing is stored or logged beyond shape and
 status. The text is answer text, i.e. PHI, so Azure AI Speech is a processor: it is covered by

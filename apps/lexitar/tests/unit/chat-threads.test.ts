@@ -69,6 +69,16 @@ describe("chat-threads", () => {
     expect(nextThread.seq).toBeGreaterThan(9); // counter rebased off the surviving (higher) seq
   });
 
+  it("adoptThreads reads a turn saved under Kodi as Cody's, and shows Lexi's original for a persona no longer offered", () => {
+    const answer = { role: "assistant" as const, text: "• LDL 142 mg/dL." };
+    const saved = [
+      { ...answer, adapted: { persona: "kodi", text: "Your LDL is 142 mg/dL." } },
+      { ...answer, adapted: { persona: "hal", text: "I'm sorry, Dave." } },
+    ] as unknown as Thread["turns"];
+    const [adopted] = adoptThreads([{ id: "t3", title: "ldl", pinned: false, turns: saved, seq: 3, lastActivityAt: 3 }]);
+    expect(adopted.turns).toEqual([{ ...answer, adapted: { persona: "cody", text: "Your LDL is 142 mg/dL." } }, answer]);
+  });
+
   it("sortThreads puts pinned first, then most-recent-first by lastActivityAt", () => {
     const oldest = { ...newThread(), lastActivityAt: 1 };
     const middle = { ...newThread(), lastActivityAt: 2 };
