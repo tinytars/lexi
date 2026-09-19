@@ -24,6 +24,8 @@ export interface ChatThreadSessionDeps {
   setChatSeedRequest: (v: Permalink | null) => void;
   /** Injected in place of a bare `confirm(...)` call, so the guard is testable. */
   confirmDelete: (message: string) => boolean;
+  /** Encrypted thread persistence; defaults to chat-store. */
+  store?: { loadThreads: typeof loadThreads; saveThreads: typeof saveThreads };
 }
 
 export interface ChatThreadSession {
@@ -36,9 +38,7 @@ export interface ChatThreadSession {
   deleteChatThread(id: string): void;
   commitChatRename(): void;
   persistChatThreads(): void;
-  /** Exposed so tests can drive the hydration/fallback/seed effects directly — `$effect` bodies
-   * don't run under this repo's Vitest setup (see draft-sync.svelte.ts), so each effect below is a
-   * thin reactive trigger over one of these three, which is what the tests call. */
+  /** Each `$effect` below is a thin reactive trigger over one of these three, exposed so tests can call them directly. */
   hydrate(): Promise<void> | undefined;
   applyChatFallback(): void;
   resolveSeedRequest(): void;
@@ -51,13 +51,14 @@ export function createChatThreadSession(deps: ChatThreadSessionDeps): ChatThread
   let chatLoadedForId = $state<string | null>(null);
   let chatHydrated = $state(false);
   let chatSaveTimer: ReturnType<typeof setTimeout> | null = null;
+  const store = deps.store ?? { loadThreads, saveThreads };
 
   function hydrate() {
     const id = deps.getSelectedClientId();
     const key = deps.getDek();
     if (!id || !key || chatLoadedForId === id) return;
     chatLoadedForId = id;
-    return loadThreads(id, key)
+    return store.loadThreads(id, key)
       .then((loaded) => {
         chatThreads = loaded && loaded.length ? adoptThreads(loaded) : [newThread()];
       })
@@ -78,12 +79,7 @@ export function createChatThreadSession(deps: ChatThreadSessionDeps): ChatThread
     if (!seed) return;
     const vault = deps.getVault();
     if (!vault || !chatHydrated) return;
-    const resolved = resolveReference(vault, deps.getSelectedClientId(), seed);
-    if (!resolved) {
-      deps.setChatSeedRequest(null);
-      return;
-    }
-    const thread = seedNewThread(resolved);
+    const thread = seedNewThread(resolveReference(vault, deps.getSelectedClientId(), seed));
     chatThreads = [...chatThreads, thread];
     deps.setSection(thread.id);
     persistChatThreads();
@@ -109,7 +105,7 @@ export function createChatThreadSession(deps: ChatThreadSessionDeps): ChatThread
     const snapshot = $state.snapshot(chatThreads) as Thread[];
     if (chatSaveTimer) clearTimeout(chatSaveTimer);
     chatSaveTimer = setTimeout(() => {
-      saveThreads(snapshot, id, key).catch(() => {});
+      store.saveThreads(snapshot, id, key).catch(() => {});
     }, 500);
   }
 

@@ -3,21 +3,7 @@ import { createPersistNow } from "../../src/lib/draft-sync.svelte";
 import type { Client } from "../../src/lib/types";
 import type { DraftSync } from "../../src/lib/draft-sync.svelte";
 
-// W71 — draft-sync.svelte.ts had no tests, and it is the mechanism whose failure mode is a silently
-// lost patient edit: nine CRUD tabs share it.
-//
-// This covers createPersistNow, which is a plain factory — no runes — and is where the rule "persist
-// a COPY, never the live client" lives. Getting that wrong means a mutation intended for the save
-// payload lands on the object the UI is still rendering from.
-//
-// NOT covered here, and it is not an oversight: createDraftSync's resync logic lives in an `$effect`,
-// and `$effect` does not run in this suite at all. The Svelte plugin in vitest.config.ts compiles
-// `$state` (which is why menu-registry and vault-save are testable) but effects are compiled away
-// under vitest's node environment, so an `$effect.root` callback never fires. Verified directly, not
-// assumed. Reaching them needs a DOM environment (jsdom/happy-dom), which is a new dependency and a
-// decision for the owner — see the W71 notes. The DECISION the effect makes is separately covered:
-// shouldResyncDraft, including the finding-only rule that protects an in-progress edit, is tested in
-// client-resync.test.ts.
+// createPersistNow is the plain half of draft-sync; the resync `$effect` is covered in draft-sync-effects.test.ts.
 
 const client = (over: Partial<Client> = {}): Client =>
   ({ displayName: "P", watchlist: [], results: [], factors: { goal: "g" }, ...over }) as Client;

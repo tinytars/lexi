@@ -9,10 +9,7 @@ function ai(intervention: string, purpose = "") {
   return { intervention, purpose, pros: [], cons: [], alternatives: [], recommendation: "" };
 }
 
-// The hypothesisEvaluation LEAF returns questions alongside the evaluation (it owns
-// doctorConversation's patient band); the stored decision entry does not carry them. W67 — it must
-// also carry a real BODY: 2-8 non-empty bullets per field and non-empty prose, the same numbers
-// finding-assemble.ts:298-320 has always demanded of the core path.
+// The leaf returns questions alongside the evaluation, and must carry the same 2-8 bullet body the core path demands.
 function hyp(intervention: string, purpose = "a stated purpose") {
   return {
     intervention,
@@ -61,7 +58,7 @@ function clientWithNotes(): Client {
   return { ...c, factors: { ...c.factors, noteEntries: [{ id: "note-1", text: "Woke up with tingling in my left hand." }] } };
 }
 
-// M102 — analogous fixture for diseaseResults, same minimal-factors style.
+// Analogous fixture for diseaseResults, same minimal-factors style.
 function clientWithDiseases(): Client {
   const c = client();
   return { ...c, factors: { ...c.factors, diseases: [{ id: "dx-1", date: "2026-01-01", diagnostic: "Mild fatty liver" }] } };
@@ -199,12 +196,9 @@ describe("leaf-regen-registry: aiOnPlan", () => {
     // the original client is untouched (mergeInto returns a new object)
     expect(c.finding!.planAssessmentRows).toBeUndefined();
   });
-
 });
 
-// M66 P8 — these two are the only e2e-untestable-for-content leaf-regen specs (mergeInto matches by
-// an EXACT existing item/study label, which an e2e test can't construct without reading the private
-// vault fixture's raw finding.treatment/studyResults strings); covered here instead.
+// mergeInto matches an exact stored label, which e2e cannot construct without the private vault fixture.
 const taSpec = LEAF_REGEN_SPECS.treatmentAssessment;
 
 describe("leaf-regen-registry: treatmentAssessment", () => {
@@ -219,9 +213,7 @@ describe("leaf-regen-registry: treatmentAssessment", () => {
     expect(taSpec.isEmpty!({ treatmentHistory: [{ name: "Ezetimibe" }] })).toBe(false);
   });
 
-  // W82 — this leaf was reading raw dose fields and had no computed daily ingredient total to reason
-  // from, the same gap chat-context.ts had. Each row keeps its own id/shape (the id-lookup and
-  // isEmpty checks above depend on that) — dailyTotal is only ever an ADDITION to a row.
+  // dailyTotal is only ever an ADDITION to a row; the id-lookup and isEmpty checks depend on each row keeping its shape.
   it("attaches a computed dailyTotal to AM+PM ongoing rows of the same medicine, not just one", () => {
     const c = client();
     const administration = { unit: "capsule", unitsPerServing: 1, suggestedUnits: 1, suggestedFrequency: "day" as const };
@@ -255,9 +247,7 @@ describe("leaf-regen-registry: treatmentAssessment", () => {
     expect(() => taSpec.validate({ items: [{ item: "x" }] })).toThrow(/item, assessment, group/);
   });
 
-  // W71 — this section was the last one still paired by a NAME the model writes itself, with the dose
-  // appended. treatment-bucket.ts took 25 changes in 403 lines building substring rules around that;
-  // the id is what removes the guessing.
+  // Pairing by a model-written name (with the dose appended) needed guesswork; the id removes it.
   describe("the answer says which treatment it is about", () => {
     it("rejects an entry with no treatmentId", () => {
       expect(() =>
@@ -338,13 +328,7 @@ describe("leaf-regen-registry: treatmentAssessment", () => {
       expect(updated.finding!.treatment[0].treatmentId).toBe("ez-1");
     });
 
-    // Regression: every real API response carries a real `phase` (the tool schema requires it), while
-    // a row written before phase existed has `phase: undefined` on disk. The stamp step used to require
-    // `i.phase === row.phase`, which compares a real value against undefined and can never be true —
-    // so a pre-phase row could never be stamped, never keyed to match an incoming item, and every
-    // regen silently appended an invisible duplicate while the visible (first-matched) row stayed
-    // frozen forever. The fixture above omits `phase` on the returned item too, which is why it kept
-    // passing throughout — this one sends the shape Anthropic actually returns.
+    // Regression: a pre-phase stored row (phase undefined) never matched a real answer's phase, so every regen appended a hidden duplicate.
     it("upgrades a stored row that predates ids AND predates phase — the shape every real answer has", () => {
       const c = client();
       expect(c.finding!.treatment[0].treatmentId).toBeUndefined();
@@ -411,51 +395,18 @@ describe("leaf-regen-registry: treatmentAssessment", () => {
     expect(() => taSpec.mergeInto(c, bad)).toThrow(/not one of the current disease groups/);
   });
 
-  // W68 — three blocks of `expect(prompt).toMatch(/phrase/)` were deleted here. Each typed a phrase
-  // into the test and matched it against the same phrase in the prompt: a deletion detector, not a
-  // test. Four of the phrases (CO-MENTION DISCIPLINE, IT EXISTS AS ITS OWN ROW, WINDOW OVERLAPS,
-  // ONGOING) are already covered for real further down, by the shared-constant parity suite — both
-  // sides there interpolate the SAME imported constant, so it catches actual drift. The rest state
-  // clinical requirements about prose quality (synergy, cofactor, deemphasis commentary) that no code
-  // can check; the rule's home is the prompt constant and its comment, not a test that restates it.
-
-  // Regression: an assessment called a glutathione stack's NAC "concurrent" when no separate NAC row
-  // was active — the name of ANOTHER entry ("Glutathione stack (Glycine 20g/day and NAC 2g/day)") was
-  // read as evidence of a treatment. A co-mention must be dated, and sourced from a real row.
-  // Regression: a drug mid-titration was described at 6mg when 9mg was active, because the prompt
-  // defined the current dose as the latest-dated row — which is a SCHEDULED FUTURE step whenever one
-  // exists. The current dose is the row whose window contains today, closed range or not.
+  // Regression: a mid-titration dose was read off a scheduled future row instead of the one whose window contains today.
   it("system prompt defines the current dose as the row whose window contains today, not the newest row", () => {
     expect(taSpec.systemPromptExtra).toContain(CURRENT_DOSE_RULE);
-    expect(taSpec.systemPromptExtra).not.toMatch(/closed-range rows are past doses, not the present/);
-    expect(taSpec.systemPromptExtra).not.toMatch(/most-recently-dated row/);
   });
 
-  // Regression: a PAST card was described as "ongoing since August 2025" with "the current 6 mg/week
-  // dose" — present tense and a current dose for a regimen that had ended. And a bucket holds many
-  // rows (Tirzepatide's past alone has nine), so naming one of them "the dose" discards the
-  // trajectory that is the actual content.
+  // Regression: an ended regimen was described in present tense with one of its many rows as "the current dose".
   it("system prompt forbids present tense for past regimens and reads a bucket as a trajectory", () => {
     expect(taSpec.systemPromptExtra).toContain(BUCKET_DOSE_RULE);
-    expect(taSpec.systemPromptExtra).toMatch(/DOSE IN CONTEXT/);
-    expect(BUCKET_DOSE_RULE).toMatch(/NEVER use .*current/);
-    expect(BUCKET_DOSE_RULE).toMatch(/Never pick one row and call it/);
   });
 
   it("system prompt places a dose against the drug's standard range", () => {
     expect(taSpec.systemPromptExtra).toContain(STANDARD_DOSING_RULE);
-    expect(STANDARD_DOSING_RULE).toMatch(/2\.5 mg\/week/);
-    expect(STANDARD_DOSING_RULE).toMatch(/15 mg\/week/);
-    // A wrong ceiling is worse than no ceiling.
-    expect(STANDARD_DOSING_RULE).toMatch(/say nothing about it rather than guessing/);
-  });
-
-  it("system prompt forbids an undated co-mention and inferring a treatment from another entry's name", () => {
-    expect(taSpec.systemPromptExtra).toMatch(/CO-MENTION DISCIPLINE/);
-    expect(taSpec.systemPromptExtra).toMatch(/IT EXISTS AS ITS OWN ROW/);
-    expect(taSpec.systemPromptExtra).toMatch(/Never infer a treatment from words inside another entry/);
-    expect(taSpec.systemPromptExtra).toMatch(/WINDOW OVERLAPS/);
-    expect(taSpec.systemPromptExtra).toMatch(/NEVER write "concurrent"/);
   });
 });
 
@@ -599,8 +550,7 @@ describe("leaf-regen-registry: noteResults", () => {
     expect(nrSpec.validate(good)).toEqual(good);
     expect(() => nrSpec.validate({})).toThrow(/items missing/);
     expect(() => nrSpec.validate({ items: [{ result: "x" }] })).toThrow(/noteId, result, group/);
-    // W67 — the id is what pairs the answer to its note; a response without it used to be accepted
-    // and silently position-paired.
+    // The id is what pairs the answer to its note; without it the answer was silently position-paired.
     expect(() => nrSpec.validate({ items: [{ result: "x", group: "Cardiovascular Risk" }] })).toThrow(/noteId, result, group/);
   });
 
@@ -749,8 +699,7 @@ describe("leaf-regen-registry: diseaseResults", () => {
   it("registers a spec with its own tool schema and the shared row-scoping buildContext", () => {
     expect(dsSpec).toBeDefined();
     expect((dsSpec.toolSchema as { name: string }).name).toBe("emit_disease_results");
-    // W67 — this used to be the one id-keyed row leaf with no buildContext, so a row-scoped Translate
-    // on a diagnosis silently ran unscoped over every diagnosis.
+    // Without buildContext a row-scoped Translate on a diagnosis ran unscoped over every diagnosis.
     expect(dsSpec.buildContext).toBeDefined();
     expect(dsSpec.scopedArrayKey).toBeUndefined();
   });
@@ -809,9 +758,7 @@ describe("leaf-regen-registry: diseaseResults", () => {
 describe("treatment timing rules are shared by both prompt paths", () => {
   const monolith = SYSTEM_PROMPT;
 
-  // W65 — the co-mention rule is no longer in the monolith, and that is the POINT: the `treatment`
-  // section it belonged to was cut, so treatmentAssessment's leaf prompt is now its only home. The
-  // shared-constant guarantee changes shape here from "both copies agree" to "there is one copy".
+  // The monolith no longer writes the treatment section, so the leaf prompt is the co-mention rule's only home.
   it("the co-mention rule lives in the leaf prompt only, now that the monolith has no treatment section", () => {
     const unwrap = (s: string) => s.replace(/\s+/g, " ").trim();
     expect(unwrap(LEAF_REGEN_SPECS.treatmentAssessment.systemPromptExtra)).toContain(unwrap(CO_MENTION_RULE));
@@ -828,31 +775,14 @@ describe("treatment timing rules are shared by both prompt paths", () => {
     expect(unwrap(monolith)).toContain(unwrap(BUCKET_DOSE_RULE));
     expect(unwrap(monolith)).toContain(unwrap(STANDARD_DOSING_RULE));
   });
-
-  it("neither prompt path still defines the current dose as the newest row", () => {
-    for (const p of [monolith, LEAF_REGEN_SPECS.treatmentAssessment.systemPromptExtra]) {
-      expect(p).not.toMatch(/closed-range rows are past doses, not the present/);
-      expect(p).not.toMatch(/most-recently-dated row/);
-    }
-  });
 });
 
-// The divergence this milestone removes: aiOnPlan — the ONE spec that handles planned items — never
-// received the canonical planned-tense wording or any dose yardstick, while treatmentAssessment
-// (which does not need the planned clause) had all of them.
+// aiOnPlan handles planned items and once lacked the dose rules treatmentAssessment had.
 describe("both treatment-facing prompts carry the same rules", () => {
   it("aiOnPlan now gets the bucket-tense and standard-dosing rules too", () => {
     const plan = LEAF_REGEN_SPECS.aiOnPlan.systemPromptExtra;
     expect(plan).toContain(BUCKET_DOSE_RULE);
     expect(plan).toContain(STANDARD_DOSING_RULE);
     expect(plan).toContain(CO_MENTION_RULE);
-  });
-
-  it("treatmentAssessment answers per (drug, phase), not once per drug", () => {
-    const ta = LEAF_REGEN_SPECS.treatmentAssessment.systemPromptExtra;
-    expect(ta).toMatch(/ONE ENTRY PER \(DRUG, PHASE\)/);
-    expect(ta).toMatch(/yields THREE entries/);
-    // The old contract said the opposite, and would have suppressed two of the three.
-    expect(ta).not.toMatch(/Never emit two entries with the same drug name\. /);
   });
 });

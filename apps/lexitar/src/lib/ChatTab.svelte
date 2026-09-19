@@ -211,7 +211,7 @@
       for (const t of current.turns) {
         if (!t.reference) continue;
         const resolved = resolveReference(vault, clientId, t.reference.permalink);
-        if (resolved?.context) references.push({ kind: resolved.kind, tag: resolved.preview.tag, title: resolved.preview.title, data: resolved.context });
+        if (resolved.context) references.push({ kind: resolved.kind, tag: resolved.preview.tag, title: resolved.preview.title, data: resolved.context });
       }
     }
     // The running conversation the browser owns: history + the catalog+question turn, grown with
@@ -329,9 +329,7 @@
     const pl = parseHash(trimmed.slice(hashIdx));
     if (!pl) return;
     e.preventDefault();
-    const resolved = resolveReference(vault, clientId, pl);
-    if (!resolved) return;
-    const turn = buildReferenceTurn(resolved);
+    const turn = buildReferenceTurn(resolveReference(vault, clientId, pl));
     const threadId = current.id;
     threads = threads.map((t) =>
       t.id === threadId
