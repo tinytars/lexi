@@ -251,7 +251,7 @@ function resolveHypothesis(client: Client, pl: Permalink, a: string): ResolvedRe
   return unresolved(pl);
 }
 
-export function resolveReference(vault: Vault, currentClientId: string | null, pl: Permalink): ResolvedReference | null {
+export function resolveReference(vault: Vault, currentClientId: string | null, pl: Permalink): ResolvedReference {
   // Client-boundary gate, checked first, always — never touch another client's vault data.
   if (pl.client && pl.client !== currentClientId) {
     return { kind: "wrong-patient", permalink: pl, preview: { title: "Different patient", tag: "Blocked" }, context: null };
