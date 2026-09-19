@@ -6,6 +6,7 @@
 //   npm run orphan:sweep                    # report only, writes nothing
 //   npm run orphan:sweep -- --record        # also date new orphans, forget resolved ones
 //   npm run orphan:sweep -- --delete        # record, then delete orphans older than --grace-days (90)
+//   npm run orphan:sweep -- --delete --grace-days 0   # delete every recorded orphan now
 //
 // --delete is irreversible outside the vault-sync backup window — an operator decision, never automatic.
 
@@ -41,11 +42,11 @@ export function eligibleForDeletion(orphans: Iterable<string>, firstSeen: Map<st
   });
 }
 
-function graceDays(argv = process.argv): number {
+export function graceDays(argv = process.argv): number {
   const i = argv.indexOf("--grace-days");
   if (i < 0) return 90;
   const n = Number(argv[i + 1]);
-  if (!Number.isInteger(n) || n < 1) throw new Error("--grace-days expects a positive integer");
+  if (!Number.isInteger(n) || n < 0) throw new Error("--grace-days expects a non-negative integer");
   return n;
 }
 
