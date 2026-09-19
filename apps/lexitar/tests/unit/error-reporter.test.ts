@@ -8,8 +8,9 @@ const fire = (target: EventTarget, type: string, props: Record<string, unknown>)
 function setup() {
   const target = new EventTarget();
   const sent: ClientErrorPayload[] = [];
-  installErrorReporter(target, (p) => sent.push(p));
-  return { target, sent };
+  const reloads: number[] = [];
+  installErrorReporter(target, (p) => sent.push(p), () => reloads.push(1));
+  return { target, sent, reloads };
 }
 
 describe("installErrorReporter", () => {
@@ -42,10 +43,17 @@ describe("installErrorReporter", () => {
     expect(sent).toEqual([]);
   });
 
-  it("reports a lazy chunk that fails to load even when the caller catches it", async () => {
-    const { sent } = setup();
+  it("reports a lazy chunk that fails to load even when the caller catches it, then reloads onto the current build", async () => {
+    const { sent, reloads } = setup();
     const stale = new TypeError("Failed to fetch dynamically imported module: /assets/pdf-OLD.js");
     await expect(lazyImport(() => Promise.reject(stale))).rejects.toBe(stale);
     expect(sent.map((p) => `${p.name}: ${p.message}`)).toEqual([`TypeError: ${stale.message}`]);
+    expect(reloads).toHaveLength(1);
+  });
+
+  it("does not reload for an ordinary uncaught error", () => {
+    const { target, reloads } = setup();
+    fire(target, "error", { error: new Error("boom") });
+    expect(reloads).toEqual([]);
   });
 });

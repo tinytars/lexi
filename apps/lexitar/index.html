@@ -7,6 +7,33 @@
     <title>LexiTar — Health Literacy Utility</title>
     <meta name="description" content="LexiTar translates lab jargon, maps biomarker reference ranges, and helps you prepare for doctor visits. Educational use only — not medical advice, diagnosis, or treatment." />
     <meta name="robots" content="noindex,nofollow" />
+    <script>
+      // Runs before the bundle, so it sees the bundle itself fail to load — the error reporter lives
+      // inside it. A build asset that fails is a tab open across a deploy: report it, then reload once
+      // onto the current build. The 60 s guard stops a loop when the current build itself is broken.
+      window.reloadForCurrentBuild = function () {
+        if (!navigator.onLine) return;
+        try {
+          var last = Number(sessionStorage.getItem("stale-build-reload"));
+          if (Date.now() - last < 60000) return;
+          sessionStorage.setItem("stale-build-reload", String(Date.now()));
+        } catch (e) {
+          return;
+        }
+        location.reload();
+      };
+      addEventListener("error", function (ev) {
+        var src = ev.target instanceof HTMLScriptElement && ev.target.src;
+        if (!src || new URL(src).pathname.indexOf("/assets/") !== 0) return;
+        fetch("/api/client-error", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ name: "StaleBuildError", message: "Failed to load " + src, stack: "", build: "" }),
+          keepalive: true,
+        }).catch(function () {});
+        window.reloadForCurrentBuild();
+      }, true);
+    </script>
   </head>
   <body>
     <div id="app"></div>
