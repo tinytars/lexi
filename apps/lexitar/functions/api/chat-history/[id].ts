@@ -3,7 +3,7 @@ import { recordRawObject } from "../../_lib/identity-audit";
 import { requireSession } from "../../_lib/session";
 import { logRequest } from "../../_lib/log";
 import { storeKey } from "../../_lib/store";
-import { rawAccessFor, type RawAccess } from "../../_lib/raw-owner";
+import { rawAccessFor, mayRead, mayWrite, type RawAccess } from "../../_lib/raw-owner";
 import { json } from "../../_lib/http";
 import type { ObjectBucket, ObjectConditional } from "../../_lib/object-bucket";
 
@@ -22,7 +22,7 @@ import type { ObjectBucket, ObjectConditional } from "../../_lib/object-bucket";
 // write with the same two-tab lost-update bug, one directory away from the fix.
 
 interface Env {
-  VAULT: Pick<ObjectBucket, "get" | "put">;
+  VAULT: Pick<ObjectBucket, "get" | "put" | "list">;
   SESSION_SECRET: string;
   // W71 — requireSession reads accounts.sessions_valid_from, so every gated route needs the binding.
   DB: D1Database;
@@ -61,11 +61,11 @@ export async function onRequestPut(context: Ctx): Promise<Response> {
 
   // W73 (SECURITY.md gap 2) — the same client-key namespace as raw/ and text/, so the same ownership
   // question, answered by the same helper. Until now any authenticated account could overwrite any
-  // client's chat history. UNCLAIMED is allowed on PUT for the same reason it is on raw/: a patient
-  // whose first chat predates any attachment has claimed nothing yet.
+  // client's chat history. An EMPTY namespace is writable for the same reason it is on raw/: a
+  // patient whose first chat predates any attachment has claimed nothing yet. An orphaned one is not.
   const access = await rawAccessFor(env.DB, env, session.accountId, id);
-  if (access.kind === "denied") {
-    log(404, { errorCode: "not_owner" });
+  if (!mayWrite(access)) {
+    log(404, { errorCode: access.kind === "denied" ? "not_owner" : access.kind, access: access.kind });
     return json(404, { error: "not found" });
   }
 
@@ -123,15 +123,12 @@ export async function onRequestGet(context: Ctx): Promise<Response> {
     return session;
   }
 
-  // W75 — this comment used to say a READ of an unclaimed namespace was refused where a write is not.
-  // It never was, and it should not be: a chat blob written before ownership recording began is
-  // unclaimed for precisely the patients the backfill cannot attribute, and refusing them the read
-  // would hand them an empty conversation whose next save overwrites their real history. The blob is
-  // ciphertext either way — strictly less exposure than raw/, where the same rule already stands. What
-  // this route does refuse is a namespace someone else owns; the unclaimed residual is logged below.
+  // Only the owner or a live grant reads (W76). An orphaned blob — written before ownership recording,
+  // for a patient the backfill cannot attribute — is reclaimed through POST /api/raw/claim, not read
+  // by whoever asks first. A brand-new client's namespace 404s here exactly as it always did.
   const access = await rawAccessFor(env.DB, env, session.accountId, id);
-  if (access.kind === "denied") {
-    log(404, { errorCode: "not_owner" });
+  if (!mayRead(access)) {
+    log(404, { errorCode: access.kind === "denied" ? "not_owner" : access.kind, access: access.kind });
     return json(404, { error: "not found" });
   }
 

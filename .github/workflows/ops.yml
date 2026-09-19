@@ -4,7 +4,7 @@ name: ops
 # plover-code's ops.yml, ported here now that scripts/r2-ops-cli.ts (refresh-finding,
 # refresh-ranges, refresh-marker-groups, process-pending, reconcile, sync-treatment-attachments,
 # treatment-groups-backfill, treatment-photo-extract) and scripts/raw-backfill.ts /
-# scripts/recovery-approve.ts read and write R2/D1 directly, with no dependency on plover-code's
+# scripts/recovery-approve.ts / scripts/orphan-sweep.ts read and write R2/D1 directly, with no dependency on plover-code's
 # local plaintext vault mirror.
 #
 # sync_pages_secret (below) is a boolean modifier, not an `op` choice: it is project-wide, not
@@ -35,9 +35,10 @@ on:
           - treatment-groups-backfill
           - treatment-photo-extract
           - raw-backfill
+          - orphan-sweep
           - recovery-approve
       client:
-        description: "Client id (e.g. alex). Ignored by raw-backfill, which is store-wide. recovery-approve reads this as the patient's account email instead. Omit for reconcile to fan out across every deployed vault."
+        description: "Client id (e.g. alex). Ignored by raw-backfill and orphan-sweep, which are store-wide. recovery-approve reads this as the patient's account email instead. Omit for reconcile to fan out across every deployed vault."
         required: false
         type: string
       preview:
@@ -81,7 +82,7 @@ concurrency:
 jobs:
   op:
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ inputs.preview && 10 || fromJSON('{"refresh-finding":45,"refresh-ranges":30,"refresh-marker-groups":20,"process-pending":30,"reconcile":20,"sync-treatment-attachments":10,"treatment-groups-backfill":30,"treatment-photo-extract":10,"raw-backfill":15,"recovery-approve":5}')[inputs.op] }}
+    timeout-minutes: ${{ inputs.preview && 10 || fromJSON('{"refresh-finding":45,"refresh-ranges":30,"refresh-marker-groups":20,"process-pending":30,"reconcile":20,"sync-treatment-attachments":10,"treatment-groups-backfill":30,"treatment-photo-extract":10,"raw-backfill":15,"orphan-sweep":15,"recovery-approve":5}')[inputs.op] }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -200,6 +201,11 @@ jobs:
               # Store-wide against D1, not per-client; `client` only sets the concurrency key.
               cmd="npx tsx scripts/raw-backfill.ts"
               if ! $preview; then cmd="$cmd --confirm"; fi
+              ;;
+            orphan-sweep)
+              # A real run only dates orphans; deleting them needs --delete in extra_args, deliberately.
+              cmd="npx tsx scripts/orphan-sweep.ts"
+              if ! $preview; then cmd="$cmd --record"; fi
               ;;
             recovery-approve)
               [ -n "$CLIENT" ] || { echo "recovery-approve needs the patient's account email as client" >&2; exit 1; }
