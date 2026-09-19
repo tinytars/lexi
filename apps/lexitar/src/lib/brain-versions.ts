@@ -8,7 +8,7 @@
 
 export const BRAIN_VERSIONS: Record<string, string> = {
   "core": "e3e7a50f77cd",
-  "chat": "6923d7dcc27e",
+  "chat": "4a968692e35d",
   "aiOnPlan": "ced2aba1fdec",
   "allergyResults": "eac95b49d150",
   "diseaseResults": "5279fa1271d0",
