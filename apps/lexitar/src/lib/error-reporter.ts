@@ -1,4 +1,6 @@
-// Forwards uncaught errors and unhandled rejections to /api/client-error, which files them as GitHub
+import { onLazyImportFailure } from "./lazy-import";
+
+// Forwards uncaught errors, unhandled rejections, and failed lazy chunk loads to /api/client-error, which files them as GitHub
 // issues. Before this, a crash like each_key_duplicate existed only in the one browser console that
 // saw it. PHI scrubbing happens server-side (functions/_lib/client-error.ts) — the trust boundary.
 
@@ -39,4 +41,5 @@ export function installErrorReporter(target: EventTarget = window, report: (p: C
   };
   target.addEventListener("error", (ev) => capture((ev as ErrorEvent).error));
   target.addEventListener("unhandledrejection", (ev) => capture((ev as PromiseRejectionEvent).reason));
+  onLazyImportFailure(capture);
 }
