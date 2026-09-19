@@ -25,6 +25,7 @@
   import { dagNode } from "./lib/finding-dag";
   import { tick } from "svelte";
   import { TABS, DEFAULT_TAB, type Tab } from "./lib/nav";
+  import { bootFromLocation } from "./lib/boot-location";
   import { parseHash, toHash, SECTION_TAB, type Permalink } from "./lib/permalink";
   import { flashAnchor, reportAnchor } from "./lib/anchor";
   import { normalizeClientId, vaultIdFromR2Key } from "./lib/client-id";
@@ -309,48 +310,27 @@
   // vault unlocks (see unlock/enterPatient); live hashchange (back-button, pasted link) is applied
   // immediately. The four-part location is mirrored back to the hash on every in-app navigation.
   if (typeof window !== "undefined") {
-    const boot = parseHash(window.location.hash);
-    if (boot) {
-      activeTab = boot.tab;
-      section = boot.section ?? null;
-      pendingNav = boot;
+    const boot = bootFromLocation(new URL(window.location.href), localStorage);
+    if (boot.permalink) {
+      activeTab = boot.permalink.tab;
+      section = boot.permalink.section ?? null;
+      pendingNav = boot.permalink;
     }
     window.addEventListener("hashchange", () => {
       const pl = parseHash(window.location.hash);
       if (pl) applyNav(pl);
     });
-
-    // W45 — return leg of the Google OAuth login redirect. ?google=1 → the session cookie is set;
-    // bootstrap the key material and enter. ?google_error=… → show it on the lock screen. Deferred to a
-    // microtask so the rest of this instance script (the const helpers it calls) has initialized.
-    const params = new URLSearchParams(window.location.search);
-    if (params.has("google") || params.has("google_error")) {
-      const gErr = params.get("google_error");
-      queueMicrotask(() => handleGoogleReturn(gErr));
-      const clean = new URL(window.location.href);
-      clean.search = "";
-      window.history.replaceState({}, "", clean.toString());
+    if (boot.cleanUrl) window.history.replaceState({}, "", boot.cleanUrl);
+    // W45 — deferred so the rest of this instance script (the const helpers it calls) has initialized.
+    const googleReturn = boot.googleReturn;
+    if (googleReturn) queueMicrotask(() => handleGoogleReturn(googleReturn.error));
+    if (boot.emailVerify) {
+      account.emailVerifyNote = boot.emailVerify;
+      if (boot.emailVerify === "ok") queueMicrotask(() => { void account.refresh().catch(() => {}); });
     }
-
-    // W47 — return leg of the email verification link (/api/auth/email/confirm redirects here).
-    const ev = params.get("email_verify");
-    if (ev === "ok" || ev === "invalid") {
-      account.emailVerifyNote = ev;
-      const clean = new URL(window.location.href);
-      clean.searchParams.delete("email_verify");
-      window.history.replaceState({}, "", clean.toString());
-      if (ev === "ok") queueMicrotask(() => { void account.refresh().catch(() => {}); });
-    }
-
-    // W49 — plain-refresh resume. A synchronous localStorage marker ("key" for password/passkey,
-    // "google" for OAuth), set at login, records that there's a session worth restoring. Only then do
-    // we gate the lock screen + probe the server — so a first-time visitor (no marker) sees the sign-in
-    // form immediately, with no doomed request. Skipped on an explicit OAuth redirect (handled above).
-    if (!params.has("google") && !params.has("google_error") && localStorage.getItem(RESUME_MARKER)) {
-      // Not deferred to a microtask: bootResume raises roster.resuming synchronously, and anything
-      // that lowers it later would let the lock screen paint first.
-      void roster.bootResume();
-    }
+    // W49 — not deferred: bootResume raises roster.resuming synchronously, and anything that lowers
+    // it later would let the lock screen paint first.
+    if (boot.resume) void roster.bootResume();
   }
   // The persisted location → hash, mirrored reactively so sub-tab clicks (which set the bound
   // `section`) also update the URL. Anchor is never written here. A change of tab/client pushes a
