@@ -1,7 +1,4 @@
-// Dedicated parser for the eight R2/D1-native ops (scripts/commands/r2-ops.ts). ingest-args.ts's
-// 42-flag Args/parseArgs is dead code in this repo (no caller besides its own unit test — ingest.ts
-// itself was excluded from the plover-code -> lexi port) and pulls in flags none of these eight ops
-// use, so this covers only what they need rather than reusing it.
+// Parser for the eight R2/D1-native ops in scripts/commands/r2-ops.ts.
 import { resolveMode } from "./inference-config";
 import type { InferenceMode } from "../src/lib/types";
 
