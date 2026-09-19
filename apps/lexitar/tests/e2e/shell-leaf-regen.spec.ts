@@ -141,7 +141,7 @@ test("Treatment (Ongoing bucket): editing dose fires the treatmentAssessment tri
     posted.push(body);
     if (body.node !== "treatmentAssessment") return route.fallback();
     // Empty on purpose: this test is about the trigger/route wiring, and the merge itself is covered
-    // by leaf-regen-registry.test.ts.
+    // by leaf-regen-spec-treatment-assessment.test.ts.
     //
     // W71 note — this used to say a match "isn't derivable from the network-visible TreatmentItem
     // shape sent here". That stopped being true when treatmentAssessment moved to id pairing: the
@@ -337,7 +337,7 @@ test("Study: saving an existing entry fires the studyResults trigger; the mocked
     const body = route.request().postDataJSON() as {
       node?: string;
       targetLabels?: string[];
-      // aiFindings IS finding.disease (leaf-regen-registry.ts:31) — the body carries the real body
+      // aiFindings IS finding.disease (leaf-regen-context.ts) — the body carries the real body
       // systems, so the mock can tag with one instead of inventing a name the app would reject.
       inputs?: { pursuedStudy?: { entries?: { focus: string }[] }; aiFindings?: { group: string }[] };
     };
