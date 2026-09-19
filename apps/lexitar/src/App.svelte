@@ -32,6 +32,7 @@
   import { parseHash, toHash, SECTION_TAB, type Permalink } from "./lib/permalink";
   import { flashAnchor, reportAnchor } from "./lib/anchor";
   import { normalizeClientId, vaultIdFromR2Key } from "./lib/client-id";
+  import { ensureLeafIds } from "./lib/leaf-ids";
   import Sidebar from "./lib/Sidebar.svelte";
   import ChatTab from "./lib/ChatTab.svelte";
   import { createChatThreadSession } from "./lib/chat-thread-session.svelte";
@@ -234,7 +235,7 @@
     setResolving: (v) => (resolvingConflict = v),
     fetchVaultBlob,
     saveVault: (v, id, dek) => saveVaultV2(v, id, dek, vaultSink),
-    decryptVault: (blob, dek) => decryptVaultV2<Vault>(blob, dek),
+    decryptVault: async (blob, dek) => ensureLeafIds(await decryptVaultV2<Vault>(blob, dek)),
   });
   const resolveConflictKeepMine = conflictResolver.resolveConflictKeepMine;
   const resolveConflictTakeTheirs = conflictResolver.resolveConflictTakeTheirs;
@@ -577,7 +578,7 @@
   // Open the signed-in owner's own vault with the DEK returned by login.
   async function openOwnVault(r2Key: string, d: CryptoKey) {
     const id = vaultIdFromR2Key(r2Key)!;
-    const opened = await openVault<Vault>(session, id, d, fetchVaultBlob);
+    const opened = ensureLeafIds(await openVault<Vault>(session, id, d, fetchVaultBlob));
     // Before anything reads attachments or chat, so a reclaimed namespace is readable on first load.
     await reclaimOrphans(opened);
     vault = opened;
@@ -614,7 +615,7 @@
   async function openPatientVault(entry: VaultEntry, providerKey: CryptoKey) {
     const d = await unwrapDEKWithPrivateKey(b64ToBytes(entry.envelope.wrappedDEK), entry.envelope.ephemeralPublicKeyJwk, providerKey);
     const id = vaultIdFromR2Key(entry.r2Key)!;
-    vault = await openVault<Vault>(session, id, d, fetchVaultBlob);
+    vault = ensureLeafIds(await openVault<Vault>(session, id, d, fetchVaultBlob));
     const ids = Object.keys(vault.clients);
     const want = normalizeClientId(entry.ownerAccountId);
     selectedClientId = ids.find((k) => normalizeClientId(k) === want) ?? ids[0] ?? null;
