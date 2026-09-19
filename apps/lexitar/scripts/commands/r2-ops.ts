@@ -153,9 +153,7 @@ export interface ReconcileResult {
   clients: { vaultId: string; result: PendingResult }[];
 }
 
-// "Omit --client for all" (ingest-args.ts's documented --reconcile contract) is the one real
-// difference left once there's no plaintext mirror to hydrate — reconcile is process-pending,
-// optionally fanned out across every deployed vault in this store.
+// Reconcile is process-pending, fanned out across every deployed vault when --client is omitted.
 export type ReconcileArgs = Omit<OpArgs, "vaultId"> & { vaultId?: string };
 
 export async function opReconcile(args: ReconcileArgs, usage: UsageAccumulator): Promise<ReconcileResult> {
