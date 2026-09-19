@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { orphanedNamespaces, eligibleForDeletion } from "../../scripts/orphan-sweep";
+import { orphanedNamespaces, eligibleForDeletion, graceDays } from "../../scripts/orphan-sweep";
 import { claimProofs } from "../../src/lib/orphan-claim";
 import type { Client } from "../../src/lib/types";
 
@@ -45,6 +45,17 @@ describe("eligibleForDeletion", () => {
 
   it("selects only orphans first seen at least the grace period ago", () => {
     expect(eligibleForDeletion(["old", "edge", "new"], seen, 90, now)).toEqual(["old", "edge"]);
+  });
+
+  it("selects every recorded orphan at grace 0, which the operator asks for explicitly", () => {
+    expect(eligibleForDeletion(["old", "edge", "new", "unrecorded"], seen, 0, now)).toEqual(["old", "edge", "new"]);
+  });
+
+  it("defaults to 90 days and accepts 0, never a negative or fractional grace", () => {
+    expect(graceDays(["node", "sweep"])).toBe(90);
+    expect(graceDays(["node", "sweep", "--grace-days", "0"])).toBe(0);
+    expect(() => graceDays(["node", "sweep", "--grace-days", "-1"])).toThrow();
+    expect(() => graceDays(["node", "sweep", "--grace-days", "1.5"])).toThrow();
   });
 
   it("never selects an orphan with no recorded first sighting", () => {
