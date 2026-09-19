@@ -1,16 +1,12 @@
-// W80 — deliberately NOT on ./_fixtures, for the same reason as providers-access.spec.ts: this test
-// grants a provider access (which re-keys the vault) and then asserts that the code the provider
-// issues actually redeems against the real server — capture-and-replay would answer that from bytes
-// this run itself produced, proving nothing about whether auto-detection reached the real endpoint.
-// Safe un-intercepted: it runs on a fresh signup, whose vault is far too small to catch mid-stream.
+// Not on ./_fixtures: the redeemed code must hit the real server, not bytes this run captured.
 import { test, expect } from "@playwright/test";
 import { signUp, openOwnerAccess, ownerSignOut, loginAs } from "./_login";
-import { E2E_CLINICIAN } from "./_synthetic";
+import { E2E_CLINICIAN, revokeClinicianLinks } from "./_synthetic";
 
-// Before W80 the lock screen made a patient pick "I have my own code" vs. "I don't" before it would
-// even show the right field — a provider-issued grant code pasted into the self-service sub-form
-// failed as an ordinary wrong-code 401, indistinguishable from a typo. This is the rung-2 case the
-// old toggle covered by hand: prove a grant code is now routed correctly with no button click at all.
+// The grant would otherwise sit on the clinician's roster, which cover-render.spec.ts asserts exactly.
+test.afterEach(({ page }) => revokeClinicianLinks(page, "patients", "e2e-grantdetect-"));
+
+// A grant code pasted into the single recovery field must be routed to rung 2 with no toggle.
 test("a provider-issued grant code is auto-detected and redeems at rung 2", async ({ page }) => {
   const ts = Date.now();
   const patientEmail = `e2e-grantdetect-${ts}@local.invalid`;

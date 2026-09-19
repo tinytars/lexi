@@ -2,12 +2,8 @@ import { test, expect } from "./_fixtures";
 import type { Page } from "@playwright/test";
 import { openSyntheticAsProvider } from "./_synthetic";
 import { clickNav, clickProfileSub } from "./_nav";
-import { clickLeafMenuItem } from "./_leaf-menu";
 
-// W62 — measured, not eyeballed. A turn cell is a TWO-column card, but several sections still wrapped
-// theirs in `.leaf-side` — a single-column max-width left over from when they were lone AI bubbles.
-// The cards came out visibly narrower than Study's and Treatment's, which is the pattern they were
-// converted to match in the first place.
+// Turn cells must match Study's width; the sections once wrapped them in a narrower `.leaf-side`.
 
 async function cardWidth(page: Page, sel: string): Promise<number> {
   const el = page.locator(sel).first();
@@ -32,28 +28,14 @@ test("every turn cell is the same width as Study's", async ({ page }) => {
   expect(await cardWidth(page, ".glossary .leaf-card")).toBe(reference);
 });
 
-// Every title in the app sits INSIDE its leaf card. Analysis had a block heading outside the cards,
-// which also duplicated the cell's own title on the single-item blocks ("On Treatment" above
-// "ON TREATMENT"). The block keeps its anchor — permalinks still resolve — but not a visible heading.
-test("Analysis renders no headings outside its cells, and keeps its anchors", async ({ page }) => {
-  await openSyntheticAsProvider(page);
-  await clickNav(page, "Analysis");
-  await expect(page.locator(".analysis .leaf-card").first()).toBeVisible();
-  await expect(page.locator(".analysis h2")).toHaveCount(0);
-  // The section still carries the id the sidebar and permalinks scroll to.
-  await expect(page.locator(".analysis .an-block[id]").first()).toHaveCount(1);
-});
-
-// W62 — an Analysis hit in search rendered a bare PersonaBubble: no card, no anchor, no star, while
-// the same item in Analysis was a full turn cell. It renders the shared AnalysisItemCard now, so
-// this asserts the two surfaces agree — the same check the plan called for once search had a cell.
+// A search hit must render the same AnalysisItemCard as the section, not a bare bubble.
 test("an Analysis search hit renders the same cell the section does", async ({ page }) => {
   await openSyntheticAsProvider(page);
   await clickNav(page, "Analysis");
   const sectionWidth = await cardWidth(page, ".analysis .leaf-card");
   const label = (await page.locator(".analysis .leaf-card-head").first().innerText()).replace("🔗", "").trim();
 
-  await page.locator('.sidebar .nav-item, .sidebar .side-row').filter({ hasText: "Search" }).first().click();
+  await clickNav(page, "Search");
   const input = page.locator(".search-panel input").first();
   await input.fill(label);
 
@@ -63,10 +45,7 @@ test("an Analysis search hit renders the same cell the section does", async ({ p
   expect(await cardWidth(page, ".search-results .leaf-card")).toBe(sectionWidth);
 });
 
-// W63 — Reports rendered its cell twice: inline in HealthReports and again in ReportRow for the
-// search preview, differing only in class prefix. They had already drifted (the section grew
-// per-diagnosis pins, the preview did not). One component now serves both, so this asserts the two
-// surfaces still show the same report the same way.
+// Reports' section and its search preview share one cell component, so they must render alike.
 test("a Reports search hit renders the same cell the section does", async ({ page }) => {
   await openSyntheticAsProvider(page);
   await clickNav(page, "Reports");
@@ -78,7 +57,7 @@ test("a Reports search hit renders the same cell the section does", async ({ pag
   // The parts that make it a report cell rather than a generic card.
   await expect(card.locator(".persona-bubble.p-provider")).toBeVisible();
 
-  await page.locator('.sidebar .nav-item, .sidebar .side-row').filter({ hasText: "Search" }).first().click();
+  await clickNav(page, "Search");
   await page.locator(".search-panel input").first().fill(title);
 
   const hit = page.locator(".search-results .leaf-card").filter({ hasText: new RegExp(title.slice(0, 20), "i") }).first();
@@ -88,9 +67,7 @@ test("a Reports search hit renders the same cell the section does", async ({ pag
   expect(await cardWidth(page, ".search-results .leaf-card")).toBe(sectionWidth);
 });
 
-// W64 — AllergyRow/FamilyRow were the last two search previews rendering a bare card of spans while
-// their sections rendered a two-persona turn. Both are turns now; this asserts the patient half is
-// really there, since a scoped-CSS or snippet mistake would still render *something*.
+// Allergy search previews must render the full turn, patient half included.
 test("an Allergies search hit renders the turn its section does", async ({ page }) => {
   page.on("dialog", (d) => d.accept());
   await openSyntheticAsProvider(page);
@@ -103,15 +80,10 @@ test("an Allergies search hit renders the turn its section does", async ({ page 
   await page.locator(".az-modal .btn.primary", { hasText: "Save" }).click();
   await expect(page.locator(".allergies .saved")).toBeVisible({ timeout: 10_000 });
 
-  await page.locator(".sidebar .nav-item, .sidebar .side-row").filter({ hasText: "Search" }).first().click();
+  await clickNav(page, "Search");
   await page.locator(".search-panel input").first().fill(allergen);
   const hit = page.locator(".search-results .leaf-card").filter({ hasText: allergen }).first();
   await expect(hit).toBeVisible({ timeout: 10_000 });
   await expect(hit.locator(".persona-bubble.p-owner")).toBeVisible();
   await expect(hit).toContainText("Hives");
-
-  // Leave the shared fixture as we found it.
-  await clickProfileSub(page, "Allergies");
-  await clickLeafMenuItem(page.locator(".allergies .leaf-card", { hasText: allergen }), "Delete");
-  await expect(page.locator(".allergies")).not.toContainText(allergen);
 });

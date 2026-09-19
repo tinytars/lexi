@@ -84,9 +84,8 @@ test("persistence: a conversation is restored after reload, encrypted at rest (W
   await ask(page, "what is my LDL-C?");
   await expect(page.locator(".p-assistant .turn-text:not(.pending)")).toHaveText("Your LDL-C is 98 mg/dL.");
 
-  // Wait out the debounced save, then confirm the blob at rest is HD1 ciphertext — never plaintext PHI.
-  await page.waitForTimeout(700);
-  expect(captured()).toBeTruthy();
+  // The blob at rest is HD1 ciphertext, never plaintext PHI.
+  await expect.poll(() => captured()).toBeTruthy();
   expect(captured()!.subarray(0, 3).toString("latin1")).toBe("HD1");
   expect(captured()!.toString("latin1")).not.toContain("LDL");
 

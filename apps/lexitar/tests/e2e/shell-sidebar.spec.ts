@@ -1,6 +1,6 @@
 import { test, expect } from "./_fixtures";
 import { openSyntheticAsProvider, openSynthetic, syntheticClientId } from "./_synthetic";
-import { clickNav, setSidebarMode } from "./_nav";
+import { clickNav, setSidebarMode, navRow } from "./_nav";
 
 // The sidebar's own chrome on desktop (M75): the icon rail, the per-row + action, the blurb
 // tooltips, and what print does to it.
@@ -25,15 +25,15 @@ import { clickNav, setSidebarMode } from "./_nav";
 
 test("Chat's sidebar row carries its blurb as a native tooltip (W37/M77)", async ({ page }) => {
   await openSyntheticAsProvider(page);
-  await expect(page.locator(".sidebar .nav-list .nav-item", { hasText: "Chat" })).toHaveAttribute("title", /Ask about your health data/);
+  await expect(navRow(page, "Chat")).toHaveAttribute("title", /Ask about your health data/);
 });
 
 test("each subsection's sidebar row carries its blurb as a native tooltip (W37/M77)", async ({ page }) => {
   await openSyntheticAsProvider(page);
   // Treatment (Patient group's leftmost, default-active since M65) shows a subsection blurb.
-  await expect(page.locator(".sidebar .nav-list .nav-item", { hasText: "Treatment" })).toHaveAttribute("title", /planned, ongoing, or stopped/);
+  await expect(navRow(page, "Treatment")).toHaveAttribute("title", /planned, ongoing, or stopped/);
   // Markers (Labs group) carries its own — M62 moved Markers to the Labs tab.
-  await expect(page.locator(".sidebar .nav-list .nav-item", { hasText: "Markers" })).toHaveAttribute("title", /grouped by body system/);
+  await expect(navRow(page, "Markers")).toHaveAttribute("title", /grouped by body system/);
 });
 
 // M75 — the collapsible sidebar shell: desktop rail collapse, and the uniform per-row "+" action
@@ -123,7 +123,7 @@ test.describe("sidebar (M75)", () => {
 // Chat's thread list gains the same collapsible All row every other section has.
 test("Chat's All row collapses and re-expands the thread list", async ({ page }) => {
   await openSyntheticAsProvider(page);
-  await page.locator(".sidebar .nav-item", { hasText: "Chat" }).first().click();
+  await clickNav(page, "Chat");
   const chevron = page.locator('.sidebar .group-list [aria-label="Collapse All"]');
   await expect(chevron).toBeVisible();
   await expect(page.locator(".sidebar .group-children .leaf-list")).toBeVisible();

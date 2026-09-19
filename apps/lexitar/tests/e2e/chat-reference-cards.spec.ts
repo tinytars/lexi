@@ -1,14 +1,11 @@
 import { test, expect } from "./_fixtures";
 import type { Page } from "@playwright/test";
 import { openSynthetic, syntheticClientId, otherSyntheticIndex } from "./_synthetic";
-import { clickNav } from "./_nav";
+import { clickNav, navRow } from "./_nav";
 import { stubChatHistory, interceptChatHistory } from "./_stubs";
+import { waitForChatReady } from "./_chat";
 
-// M69 — pasting a permalink (the #<client>/<tab>/<section>/<anchor> grammar from permalink.ts)
-// into chat renders it as a reference card instead of raw text. Mirrors chat.spec.ts's network-
-// stubbed /api/chat + /api/chat-history idiom, and permalink.spec.ts's "grab the real anchor from
-// the live DOM rather than hardcode it" idiom — never assert on the synthetic vault's content,
-// only on structure/shape.
+// M69 — a pasted permalink renders as a reference card; anchors are read from the live DOM, never hardcoded.
 
 const myHash = () => `#${syntheticClientId(test.info().parallelIndex)}`;
 const otherHash = () => `#${syntheticClientId(otherSyntheticIndex(test.info().parallelIndex))}`;
@@ -16,8 +13,7 @@ const otherHash = () => `#${syntheticClientId(otherSyntheticIndex(test.info().pa
 async function openClient(page: Page) {
   await stubChatHistory(page);
   await openSynthetic(page);
-  await page.waitForSelector(".chat-tab textarea", { timeout: 10_000 });
-  await page.waitForTimeout(200);
+  await waitForChatReady(page);
 }
 
 async function ask(page: Page, q: string) {
@@ -37,17 +33,13 @@ async function pasteLink(page: Page, text: string) {
 
 async function goToChat(page: Page) {
   await clickNav(page, "Chat");
-  await page.waitForSelector(".chat-tab textarea", { timeout: 10_000 });
-  // The textarea mounts a beat before ChatTab's own hydrate effect (thread load) settles; a paste
-  // dispatched too early can land before onpaste's handler is wired up.
-  await page.waitForTimeout(200);
+  await waitForChatReady(page);
 }
 
 async function openClientPersistent(page: Page) {
   await interceptChatHistory(page);
   await openSynthetic(page);
-  await page.waitForSelector(".chat-tab textarea", { timeout: 10_000 });
-  await page.waitForTimeout(200);
+  await waitForChatReady(page);
 }
 
 test("pasting a marker and ratio permalink each render a reference card and navigate to the right element (consolidated anchor.ts)", async ({ page }) => {
@@ -80,7 +72,7 @@ test("pasting a marker and ratio permalink each render a reference card and navi
     // resolveAnchor's flash/scroll fires — so the target's presence is what proves navigation, not
     // the URL retaining the anchor segment).
     await card.evaluate((el) => (el as HTMLElement).click());
-    await expect(page.locator(".sidebar .nav-list .nav-item", { hasText: "Markers" })).toHaveClass(/active/);
+    await expect(navRow(page, "Markers")).toHaveClass(/active/);
     await expect(page).toHaveURL(new RegExp(`^http://localhost:8788/${myHash()}/markers`));
     await expect(page.locator(`[id="${anchorId}"]`)).toBeVisible();
   }
@@ -100,11 +92,9 @@ test("pasting a report permalink renders a reference card and navigates to it wi
   await expect(card.locator(".reference-tag")).not.toHaveText("");
 
   await card.evaluate((el) => (el as HTMLElement).click());
-  await page.waitForTimeout(300);
-  // Client stays selected (Alex), and the click left Chat for Labs — this is the bug the plan
-  // explicitly fixes.
+  // The client stays selected while the click leaves Chat.
   await expect(page).toHaveURL(new RegExp(`^http://localhost:8788/${myHash()}/healthReports`));
-  await expect(page.locator(".sidebar .nav-list .nav-item", { hasText: "Reports" })).toHaveClass(/active/);
+  await expect(navRow(page, "Reports")).toHaveClass(/active/);
   await expect(page.locator(`[id="${reportId}"]`)).toBeVisible();
 });
 
@@ -165,25 +155,25 @@ test("pasting a whole-tab and a section-level permalink render section cards tha
   });
   await ask(page, "anything else?");
   await expect(page.locator(".p-assistant .turn-text:not(.pending)").last()).toHaveText("noted");
+  // Registered after the answer renders, so it catches the debounced persist that follows it.
+  const persisted = page.waitForRequest((r) => r.method() === "PUT" && r.url().includes("/api/chat-history/"));
   const lastMsg = posts[0].messages[posts[0].messages.length - 1].content;
   const ctx = JSON.parse(lastMsg.replace(/^CONTEXT:\n/, "").split("\n\nQUESTION:")[0]);
   expect(ctx.references).toBeUndefined();
 
-  // Wait out the debounced persist() (500ms) so both reference-card turns survive the tab switch.
-  await page.waitForTimeout(700);
+  // Both reference-card turns must be persisted to survive the tab switch.
+  await persisted;
 
   // Whole-tab card resolves via LEGACY_TAB_DEFAULT to Markers, client stays selected.
   await page.locator(".reference-card").first().evaluate((el) => (el as HTMLElement).click());
-  await page.waitForTimeout(300);
   await expect(page).toHaveURL(new RegExp(`^http://localhost:8788/${myHash()}/markers`));
-  await expect(page.locator(".sidebar .nav-list .nav-item", { hasText: "Markers" })).toHaveClass(/active/);
+  await expect(navRow(page, "Markers")).toHaveClass(/active/);
 
   // Section-level card (still in the same thread) navigates to Treatment.
   await goToChat(page);
   await page.locator(".reference-card").nth(1).evaluate((el) => (el as HTMLElement).click());
-  await page.waitForTimeout(300);
   await expect(page).toHaveURL(new RegExp(`^http://localhost:8788/${myHash()}/treatment`));
-  await expect(page.locator(".sidebar .nav-list .nav-item", { hasText: "Treatment" })).toHaveClass(/active/);
+  await expect(navRow(page, "Treatment")).toHaveClass(/active/);
 });
 
 test("a follow-up chat send after pasting a marker reference includes that marker's data in CONTEXT.references", async ({ page }) => {

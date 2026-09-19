@@ -1,7 +1,7 @@
 import { test, expect } from "./_fixtures";
 import { createHash } from "node:crypto";
 import { openSynthetic, mySynthetic } from "./_synthetic";
-import { clickNav } from "./_nav";
+import { clickNav, navRow } from "./_nav";
 import { clickLeafMenuItem } from "./_leaf-menu";
 
 // W38 — every navigation mirrors the current location into the URL hash (a real, pastable
@@ -29,7 +29,7 @@ test("a section's URL is a permalink to that section, and it round-trips", async
   await fresh.goto(copied, { waitUntil: "networkidle" });
   await fresh.waitForSelector(".sidebar .nav-item", { timeout: 15_000 });
   await expect(fresh).toHaveURL(new RegExp(`${hash}/treatment$`));
-  await expect(fresh.locator(".sidebar .nav-list .nav-item", { hasText: "Treatment" })).toHaveClass(/active/);
+  await expect(navRow(fresh, "Treatment")).toHaveClass(/active/);
   await fresh.close();
 });
 
@@ -50,7 +50,7 @@ test("a component 🔗 (a treatment) copies a deep anchor that round-trips and h
   await fresh.goto(copied, { waitUntil: "networkidle" });
   await fresh.waitForSelector(".sidebar .nav-item", { timeout: 15_000 });
   // Lands on Treatment with the anchored row present (the resolver scrolls + flashes it).
-  await expect(fresh.locator(".sidebar .nav-list .nav-item", { hasText: "Treatment" })).toHaveClass(/active/);
+  await expect(navRow(fresh, "Treatment")).toHaveClass(/active/);
   await expect(fresh.locator(`[id="${anchorId}"]`)).toBeVisible();
   await fresh.close();
 });
@@ -88,7 +88,7 @@ test("importing a report auto-navigates to it in Reports, highlighted", async ({
   // No further click: the modal closes, the URL points at the new report, and the row is on screen.
   await expect(page.locator(".import-tab")).toHaveCount(0);
   await expect(page).toHaveURL(new RegExp(`${hash}/healthReports$`));
-  await expect(page.locator(".sidebar .nav-list .nav-item", { hasText: "Reports" })).toHaveClass(/active/);
+  await expect(navRow(page, "Reports")).toHaveClass(/active/);
   await expect(page.locator(`[id="report-${reportId}"]`)).toBeVisible();
 });
 

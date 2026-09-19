@@ -311,9 +311,9 @@ import { pinnedQueries } from "@pablotech/akesi/pinned-queries";
   <div class="nav-list">
     {#if showToggle}
       <div class="mode-toggle" role="tablist" aria-label="Sidebar section group">
-        <button role="tab" aria-selected={sidebarMode === "patient"} class:active={sidebarMode === "patient"}
+        <button role="tab" data-testid="mode-patient" aria-selected={sidebarMode === "patient"} class:active={sidebarMode === "patient"}
                 onclick={() => setSidebarMode("patient")}>Patient</button>
-        <button role="tab" aria-selected={sidebarMode === "investigator"} class:active={sidebarMode === "investigator"}
+        <button role="tab" data-testid="mode-investigator" aria-selected={sidebarMode === "investigator"} class:active={sidebarMode === "investigator"}
                 onclick={() => setSidebarMode("investigator")}>Investigator</button>
       </div>
     {/if}
@@ -327,7 +327,7 @@ import { pinnedQueries } from "@pablotech/akesi/pinned-queries";
       {:else}
         <span class="side-row-gutter" aria-hidden="true"></span>
       {/if}
-      <button class="nav-item" class:active={searchOpen} title="Search across your record"
+      <button class="nav-item" data-testid="nav-search" class:active={searchOpen} title="Search across your record"
               onclick={() => { onOpenSearch?.(); mobileOpen = false; }}>
         <span class="side-icon" aria-hidden="true">🔎</span><span class="nav-label">Search</span>
       </button>
@@ -342,7 +342,7 @@ import { pinnedQueries } from "@pablotech/akesi/pinned-queries";
         {:else}
           <span class="side-row-gutter" aria-hidden="true"></span>
         {/if}
-        <button class="nav-item" class:active={activeTab === "chat" && !searchOpen}
+        <button class="nav-item" data-testid="nav-chat" class:active={activeTab === "chat" && !searchOpen}
                 title={chatTab.blurb} onclick={() => selectRow("chat", undefined)}>
           <span class="side-icon" aria-hidden="true">{chatTab.icon}</span><span class="nav-label">{chatTab.label}</span>
         </button>
@@ -357,7 +357,7 @@ import { pinnedQueries } from "@pablotech/akesi/pinned-queries";
         {:else}
           <span class="side-row-gutter" aria-hidden="true"></span>
         {/if}
-        <button class="nav-item" class:active={active === s.key && !searchOpen}
+        <button class="nav-item" data-testid="nav-{s.key}" class:active={active === s.key && !searchOpen}
                 title={s.blurb} onclick={() => selectRow(SECTION_TAB[s.key], s.key)}>
           <span class="side-icon" aria-hidden="true">{s.icon}</span><span class="nav-label">{s.label}</span>
         </button>
