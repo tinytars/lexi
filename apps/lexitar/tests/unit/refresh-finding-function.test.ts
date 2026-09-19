@@ -107,7 +107,7 @@ describe("/api/refresh-finding streaming", () => {
 describe("/api/refresh-finding R2 audit trail (W39 Phase 3)", () => {
   function callWithR2(store: Map<string, string>, deltas: string[]) {
     streamMock.mockReturnValue(fakeStream(deltas));
-    const env = { ...ENV, STORE_PREFIX: "dev", VAULT: { put: async (k: string, v: string) => void store.set(k, v) } };
+    const env = { ...ENV, STORE_PREFIX: "dev", VAULT: { put: async (k: string, v: string) => { store.set(k, v); return { etag: k }; } } };
     return onRequestPost({
       request: new Request("http://x/api/refresh-finding", {
         method: "POST",

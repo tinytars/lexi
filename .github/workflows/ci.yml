@@ -39,6 +39,11 @@ jobs:
       - run: npm run lint
       - run: npm run build
       - run: npm run coverage
+      # The same unit suite with the Node host's adapters (SQLite + filesystem blobs) standing in for
+      # Miniflare's D1/R2 — see tests/support/miniflare.ts.
+      - run: npm test
+        env:
+          TEST_BACKEND: node
       - name: Coverage thresholds only rise
         if: github.event_name == 'pull_request'
         env:

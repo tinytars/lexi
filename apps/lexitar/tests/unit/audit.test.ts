@@ -6,7 +6,7 @@ const ALLOWED_KEYS = ["at", "route", "requestId", "status", "event", "attempt", 
 
 function makeBucket() {
   const store = new Map<string, string>();
-  return { store, put: async (k: string, v: string) => void store.set(k, v) };
+  return { store, put: async (k: string, v: string) => { store.set(k, v); return { etag: k }; } };
 }
 
 const ENV = { STORE_PREFIX: "dev" };

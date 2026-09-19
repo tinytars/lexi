@@ -13,6 +13,8 @@ vi.mock("@anthropic-ai/sdk", () => ({
 import { onRequestPost, onRequestGet } from "../../functions/api/document-extract";
 import { signSession } from "../../functions/_lib/session";
 import { fakeSessionDb } from "../support/session-db";
+import type { StoredObject } from "../../functions/_lib/object-bucket";
+import { storedObject } from "../../server/fs-bucket";
 
 // W73 — the routes now resolve who owns a client namespace before touching R2. These tests are about
 // content types, etags and path handling, so they seed "acct-1 owns the fixture namespaces" and leave
@@ -40,11 +42,6 @@ const READING = {
   text: "IMPRESSION: mid-LAD calcified plaque.",
 };
 
-interface StoredObject {
-  arrayBuffer(): Promise<ArrayBuffer>;
-  text(): Promise<string>;
-}
-
 function makeEnv(objects: Record<string, Uint8Array | string> = {}) {
   const store = new Map<string, Uint8Array | string>(Object.entries(objects));
   return {
@@ -56,14 +53,11 @@ function makeEnv(objects: Record<string, Uint8Array | string> = {}) {
       async get(key: string): Promise<StoredObject | null> {
         const v = store.get(key);
         if (v === undefined) return null;
-        const bytes = typeof v === "string" ? new TextEncoder().encode(v) : v;
-        return {
-          arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
-          text: async () => new TextDecoder().decode(bytes),
-        };
+        return storedObject(typeof v === "string" ? new TextEncoder().encode(v) : v);
       },
       async put(key: string, value: string | Uint8Array) {
         store.set(key, value);
+        return { etag: key };
       },
     },
     _store: store,

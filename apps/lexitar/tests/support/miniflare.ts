@@ -1,7 +1,12 @@
 import { beforeAll, afterAll, beforeEach } from "vitest";
 import { Miniflare } from "miniflare";
 import type { D1Database } from "../../functions/_lib/identity-types";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { applyMigrations } from "./migrate";
+import { SqliteD1Database } from "../../server/sqlite-d1";
+import { FsBucket } from "../../server/fs-bucket";
 
 // Miniflare's own R2Bucket return type needs @cloudflare/workers-types (not installed) and otherwise
 // degrades to Request; this is the subset the tests use.
@@ -19,15 +24,50 @@ export interface Workerd {
   readonly bucket: Bucket;
 }
 
+// TEST_BACKEND=node runs the same suite against the Node host's adapters instead of workerd — the proof
+// that every route behaves identically off Cloudflare. `workerdOnly` pins files that test R2/D1 itself.
+const NODE_BACKEND = process.env.TEST_BACKEND === "node";
+
+// The test-side Bucket surface (delete of many, list without a prefix) over the Node host's FsBucket.
+function fsTestBucket(root: string): Bucket {
+  const fs = new FsBucket(root);
+  return {
+    get: (key) => fs.get(key) as ReturnType<Bucket["get"]>,
+    put: async (key, value, options) => {
+      const bytes = typeof value === "string" ? value : value instanceof ArrayBuffer ? new Uint8Array(value) : new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+      const put = await fs.put(key, bytes, options as Parameters<FsBucket["put"]>[2]);
+      return put && { etag: put.etag, httpEtag: `"${put.etag}"` };
+    },
+    delete: async (keys) => {
+      for (const k of Array.isArray(keys) ? keys : [keys]) await fs.delete(k);
+    },
+    list: (opts) => fs.list({ prefix: opts?.prefix ?? "", ...(opts?.cursor ? { cursor: opts.cursor } : {}) }),
+  };
+}
+
 // A real workerd D1 (migrated) and R2 for the calling test file; created once, disposed after.
 // `perTest` rebuilds both before every test, for files whose fixtures collide on fixed names.
 // Read `db`/`bucket` inside tests or hooks — they exist only after the setup hook has run.
-export function useWorkerd(opts: { r2?: boolean; perTest?: boolean } = {}): Workerd {
+export function useWorkerd(opts: { r2?: boolean; perTest?: boolean; workerdOnly?: boolean } = {}): Workerd {
   let mf: Miniflare | undefined;
+  let sqlite: SqliteD1Database | undefined;
+  let dir: string | undefined;
   let db: D1Database | undefined;
   let bucket: Bucket | undefined;
-  (opts.perTest ? beforeEach : beforeAll)(async () => {
+  const dispose = async () => {
     await mf?.dispose();
+    sqlite?.close();
+    if (dir) rmSync(dir, { recursive: true, force: true });
+    mf = sqlite = dir = undefined;
+  };
+  (opts.perTest ? beforeEach : beforeAll)(async () => {
+    await dispose();
+    if (NODE_BACKEND && !opts.workerdOnly) {
+      db = sqlite = new SqliteD1Database(":memory:");
+      await applyMigrations(db);
+      if (opts.r2) bucket = fsTestBucket((dir = mkdtempSync(join(tmpdir(), "lexi-r2-"))));
+      return;
+    }
     mf = new Miniflare({
       modules: true,
       script: SCRIPT,
@@ -38,9 +78,7 @@ export function useWorkerd(opts: { r2?: boolean; perTest?: boolean } = {}): Work
     await applyMigrations(db);
     if (opts.r2) bucket = (await mf.getR2Bucket("VAULT")) as unknown as Bucket;
   });
-  afterAll(async () => {
-    await mf?.dispose();
-  });
+  afterAll(dispose);
   return {
     get db() {
       if (!db) throw new Error("useWorkerd: db read before beforeAll ran");

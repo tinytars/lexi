@@ -10,6 +10,7 @@
 
 import { logRequest, type RequestLog } from "./log";
 import { storeKey, type StoreEnv } from "./store";
+import type { ObjectBucket } from "./object-bucket";
 
 export type AuditEvent =
   | "accepted" // server: request passed the guard, generation about to start
@@ -29,10 +30,6 @@ export interface AuditEntry extends RequestLog {
   reasonCategory?: string; // a CATEGORY of a retry (e.g. "validation"), NEVER the correction prose
 }
 
-interface R2PutBucket {
-  put(key: string, value: string, options?: unknown): Promise<unknown>;
-}
-
 // R2 key for one event: <prefix>/logs/<route-slug>/<yyyy-mm-dd>/<requestId>-<seq>.json. Newest-first
 // ordering is reconstructed by the reader from the `at` timestamp inside each object (Phase 4).
 function auditKey(env: StoreEnv, route: string, requestId: string, seq: number, day: string): string {
@@ -44,7 +41,7 @@ function auditKey(env: StoreEnv, route: string, requestId: string, seq: number, 
 // when an R2 bucket is present, also persists one object per event. A missing bucket (e.g. a test env
 // without VAULT) degrades to console-only. A log write NEVER throws into the request path.
 export function auditor(
-  bucket: R2PutBucket | undefined,
+  bucket: Pick<ObjectBucket, "put"> | undefined,
   env: StoreEnv,
   route: string,
   requestId: string | undefined,

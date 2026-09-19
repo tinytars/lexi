@@ -30,7 +30,7 @@ export default defineConfig({
     // Enforced in CI (`npm run coverage`); scripts/coverage-ratchet.ts stops a PR lowering them.
     coverage: {
       provider: "v8",
-      include: ["src/**/*.ts", "src/**/*.svelte", "functions/**/*.ts", "scripts/**/*.ts"],
+      include: ["src/**/*.ts", "src/**/*.svelte", "functions/**/*.ts", "scripts/**/*.ts", "server/**/*.ts"],
       exclude: ["**/*.d.ts", "scripts/_*.ts"],
       reporter: ["text-summary", "json-summary", "html"],
       reportsDirectory: "coverage",

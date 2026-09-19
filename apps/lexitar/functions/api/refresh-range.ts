@@ -10,6 +10,7 @@ import { generateRange, NoMeasuredUnitError } from "../../src/lib/ranges-anthrop
 import { RANGES_MODEL } from "../../src/lib/ranges-config";
 import { factorsCanonicalString } from "../../src/lib/factors-hash";
 import type { Client, PersonalizedRange } from "../../src/lib/types";
+import type { ObjectBucket } from "../_lib/object-bucket";
 
 // M59/Phase 2 — provider-only web Ranges refresh for ONE marker at a time. Gated on PROVIDER_TOKEN
 // (the same secret as /api/refresh-finding). Unlike Finding, a range is small and schema-constrained
@@ -20,16 +21,13 @@ import type { Client, PersonalizedRange } from "../../src/lib/types";
 // scripts/claude-ranges.ts (its generateRange()/factorsHashOf pull in scripts/factors.ts →
 // finding-dag.ts) — the factorsHash below is computed inline from factorsCanonicalString instead,
 // keeping this endpoint's module graph isolated from the Finding/investigator-study inference graph.
-interface R2Bucket {
-  put(key: string, value: string, options?: unknown): Promise<unknown>;
-}
 interface Env {
   RANGES_ANTHROPIC_API_KEY: string;
   PROVIDER_TOKEN: string;
   SESSION_SECRET: string;
   // W71 — requireSession reads accounts.sessions_valid_from, so every gated route needs the binding.
   DB: D1Database;
-  VAULT?: R2Bucket;
+  VAULT?: Pick<ObjectBucket, "put">;
   STORE_PREFIX: string;
 }
 
