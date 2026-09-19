@@ -9,6 +9,19 @@ export const E2E_CLINICIAN = { email: "e2e-clinician@local.invalid", password: "
 // Re-seeded on every e2e-serve.sh boot; grants nobody anything until a spec asks.
 export const E2E_SUPPORT = { email: "support@local.invalid", password: "support", name: "Support Agent" };
 
+// D1 links are real server state the vault guard cannot capture, so specs that add one revoke it in teardown.
+export async function revokeClinicianLinks(page: Page, list: "providers" | "patients", namePrefix: string) {
+  await page.context().clearCookies();
+  await loginAs(page, E2E_CLINICIAN.email, E2E_CLINICIAN.password);
+  await page.locator(".roster-list").waitFor();
+  await page.evaluate(async ([list, namePrefix]) => {
+    const url = list === "patients" ? "/api/providers/patients" : "/api/providers";
+    const links = ((await (await fetch(url, { cache: "no-store" })).json()) as Record<string, { linkId: string; displayName: string }[]>)[list];
+    for (const l of links.filter((l) => l.displayName.startsWith(namePrefix)))
+      await fetch(`/api/providers/${encodeURIComponent(l.linkId)}`, { method: "DELETE" });
+  }, [list, namePrefix] as const);
+}
+
 // Each Playwright worker signs in as its own synthetic patient, so a spec using these is safe to parallelise.
 
 /** The slug for a worker's patient — must match scripts/provision-e2e-patient.ts. */

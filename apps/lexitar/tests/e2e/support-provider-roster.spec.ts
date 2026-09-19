@@ -1,20 +1,8 @@
 import { test, expect } from "./_fixtures";
 import { loginAs, ownerSignOut } from "./_login";
-import { E2E_CLINICIAN, E2E_SUPPORT } from "./_synthetic";
+import { E2E_CLINICIAN, E2E_SUPPORT, revokeClinicianLinks } from "./_synthetic";
 
-// The grant is real D1 state the vault guard cannot capture, so teardown revokes it even when the body fails.
-test.afterEach(async ({ page }) => {
-  await page.context().clearCookies();
-  await loginAs(page, E2E_CLINICIAN.email, E2E_CLINICIAN.password);
-  await page.locator(".roster-list").waitFor();
-  await page.evaluate(async (name) => {
-    const { providers } = (await (await fetch("/api/providers", { cache: "no-store" })).json()) as {
-      providers: { linkId: string; kind: string; displayName: string }[];
-    };
-    for (const p of providers.filter((l) => l.kind === "support" && l.displayName === name))
-      await fetch(`/api/providers/${encodeURIComponent(p.linkId)}`, { method: "DELETE" });
-  }, E2E_SUPPORT.name);
-});
+test.afterEach(({ page }) => revokeClinicianLinks(page, "providers", E2E_SUPPORT.name));
 
 test("support requests a provider's roster, provider approves, support views it (records gated), provider revokes", async ({ page }) => {
   // 1) support console → request access to the provider by email.
