@@ -59,6 +59,9 @@ function makeEnv(objects: Record<string, Uint8Array | string> = {}) {
         store.set(key, value);
         return { etag: key };
       },
+      async list({ prefix }: { prefix: string }) {
+        return { objects: [...store.keys()].filter((k) => k.startsWith(prefix)).map((key) => ({ key })), truncated: false };
+      },
     },
     _store: store,
   };

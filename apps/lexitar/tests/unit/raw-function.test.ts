@@ -36,6 +36,7 @@ function makeEnv(seed: Record<string, Uint8Array<ArrayBuffer>> = {}) {
       get: async (k: string) => (store.has(k) ? storedObject(store.get(k)!) : null),
       put: async (k: string, v: Uint8Array<ArrayBuffer>) => { store.set(k, new Uint8Array(v)); return { etag: k }; },
       delete: async (k: string) => { store.delete(k); },
+      list: async ({ prefix }: { prefix: string }) => ({ objects: [...store.keys()].filter((k) => k.startsWith(prefix)).map((key) => ({ key })), truncated: false }),
     },
   };
 }
@@ -185,9 +186,8 @@ describe("/api/raw logging is PHI-free", () => {
     spy = vi.spyOn(console, "log").mockImplementation((l: unknown) => { lines.push(String(l)); });
     await onRequestGet(await ctx(["alex", "echo-597cd4e7.pdf"], "valid"));
     const entry = JSON.parse(lines.find((l) => l.includes('"/api/raw"'))!);
-    // W75 — `access` joins the line deliberately: raw-owner.ts claimed the routes logged it so the
-    // permissive-unclaimed decision was countable, and none did. It is an enum of four values, not
-    // patient content, so the PHI-free property this test guards is unchanged.
+    // W75 — `access` joins the line deliberately, so refused orphans are countable. It is a small enum,
+    // not patient content, so the PHI-free property this test guards is unchanged.
     expect(entry).toMatchObject({ route: "/api/raw", status: 200, id: "alex", access: "owner" });
     expect(Object.keys(entry).sort()).toEqual(["access", "at", "id", "latencyMs", "route", "status"]);
   });
