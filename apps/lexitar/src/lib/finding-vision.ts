@@ -1,5 +1,5 @@
 // W46 Phase 7 — which leaf-regen nodes' attachments are allowed to reach the Finding pipeline as
-// vision input, and how to collect them from a node's already-built context (leaf-regen-registry.ts
+// vision input, and how to collect them from a node's already-built context (leaf-regen-context.ts
 // buildLeafContext). Deliberately a closed whitelist, not a generic "scan every context value for
 // an attachments[] field" loop: per the owner's decision, Reports and Treatment attachments feed
 // Finding generation, but Chat and Notes are scratch surfaces with no medical-input value and must

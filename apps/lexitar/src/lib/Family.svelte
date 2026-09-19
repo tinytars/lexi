@@ -195,7 +195,7 @@
   // Translate is leaf-specific (like Markers' — see MarkerChart.svelte's rowActions, and
   // UnifiedTreatment.svelte's Treatment rows), so it's prepended manually rather than living in the
   // shared standardLeafActions contract. Scoped to just this entry (targetIds: [f.id]) — see
-  // leaf-regen-registry.ts's familyResults spec. force:true bypasses the staleness gate so the
+  // leaf-regen-specs/id-rows.ts's familyResults spec. force:true bypasses the staleness gate so the
   // click always fires; stays visible even when a result already exists so a provider can force a
   // re-check.
   // W64 — one implementation, in leaf-translate.svelte.ts. This block was byte-identical across
