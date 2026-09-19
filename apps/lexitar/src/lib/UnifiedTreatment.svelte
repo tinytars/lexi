@@ -2,7 +2,6 @@
   import { tick } from "svelte";
   import { describeAiError } from "./ai-error";
   import { assessmentFor } from "@pablotech/akesi/treatment-bucket";
-  import { partitionByBucket } from "./treatment-sidebar";
   import { formatIngredient, hasProductData } from "@pablotech/akesi/treatment-product";
   import { computeConclusion, isConclusion, conclusionMessage, formatIngredientTotal } from "./treatment-conclusion";
   import type { Attachment, Client, NoteAttachment, TreatmentItem } from "./types";
@@ -11,14 +10,13 @@
   import LeafCard from "@tinytars/frame/LeafCard.svelte";
   import PendingGrouping from "./PendingGrouping.svelte";
   import HeadingAnchor from "./HeadingAnchor.svelte";
-  import { treatmentAnchor, findByAnchor } from "./anchor";
-  import { groupBySystem } from "@pablotech/akesi/system-groups";
+  import { treatmentAnchor } from "./anchor";
   import { planActionSystems } from "./treatment-groups";
   import { treatmentsOf } from "@pablotech/akesi/treatment-normalize";
   import { foldLegacyTreatments, treatmentEditDraft } from "./treatment-legacy-fold";
   import { createDraftSync, createPersistNow } from "./draft-sync.svelte";
-  import { bucketOf, collapseByName, treatmentLabel, todayISODate, BUCKET_LABEL, groupByName, dateGaps, formatDose, type NamedTreatmentGroup } from "@pablotech/akesi/treatment-bucket";
-  import { sortPinnedFirst } from "./pin-sort";
+  import { bucketOf, todayISODate, BUCKET_LABEL, groupByName, dateGaps, formatDose, type NamedTreatmentGroup } from "@pablotech/akesi/treatment-bucket";
+  import { resolveTreatmentView, editView, readView, bucketForAnchor, treatmentModalLabel } from "./treatment-view-model";
   import { formatDay, isCompleteDate } from "@pablotech/akesi/dates";
   import Modal from "@tinytars/frame/Modal.svelte";
   import Button from "@tinytars/frame/Button.svelte";
@@ -415,11 +413,9 @@
       onConsumeAnchor?.();
       return;
     }
-    const all = collapseByName(treatmentsOf(client));
-    // W64 — findByAnchor, not `===`: a dose-row anchor is the medicine's plus a suffix.
-    const t = findByAnchor(all, pendingAnchor, (x) => treatmentAnchor(x.name));
-    if (t) {
-      activeGroup = bucketOf(t, today);
+    const bucket = bucketForAnchor(client, pendingAnchor, today);
+    if (bucket) {
+      activeGroup = bucket;
       onConsumeAnchor?.();
     }
   });
@@ -536,53 +532,11 @@
     revokePendingImages();
   }
 
-  // Read model (patient / read-only) — collapsed by name, grouped by system, AI matched with a used-set.
-  const model = $derived(buildTreatmentRows(client));
-
-  const ongoingGrouped = $derived.by(() => groupBySystem(client, model.ongoing, (r) => r.group));
-  const plannedGrouped = $derived.by(() => groupBySystem(client, model.planned, (r) => r.group));
-  const pastGrouped = $derived.by(() => groupBySystem(client, model.past, (r) => r.group));
-  const allRows = $derived([...model.ongoing, ...model.planned, ...model.past]);
-  const allGrouped = $derived.by(() => groupBySystem(client, allRows, (r) => r.group));
-  const READ_VIEWS = $derived({
-    medicine: { rows: allRows, grouped: allGrouped, label: "" },
-    ongoing: { rows: model.ongoing, grouped: ongoingGrouped, label: "ongoing " },
-    planned: { rows: model.planned, grouped: plannedGrouped, label: "planned " },
-    past: { rows: model.past, grouped: pastGrouped, label: "past " },
-  });
+  // Both views are $derived, so only the branch the template renders is ever computed.
+  const resolvedGroup = $derived(resolveTreatmentView(activeGroup));
+  const editViewModel = $derived(editView(draft?.factors?.treatments ?? [], resolvedGroup, today));
+  const readViewModel = $derived(readView(client, buildTreatmentRows(client), resolvedGroup));
   const empty = $derived(treatmentsOf(client).length === 0);
-
-  // M103 — Medicine's grouping, off the live draft (not `client`) so edits show immediately, same
-  // as editModel above. M108 — group order is Planned/Ongoing/Past (recency of use), not entry order.
-  // M-medicine-group — pinned medicines float to the top, keyed off the group's representative row
-  // (the same rows[0] that decides its bucket badge), matching Pin's behavior in every other leaf.
-  function groupsOf(rows: TreatmentItem[]): NamedTreatmentGroup[] {
-    return sortPinnedFirst(groupByName(rows, today), (g) => g.rows[0].pinned);
-  }
-  const medicineGroups = $derived(groupsOf(draft?.factors?.treatments ?? []));
-  // The three temporal views render the SAME per-medicine card, over just the rows their own date
-  // filter admits (bucketOf, unchanged) — so Past shows a drug's concluded dose periods, Planned its
-  // future ones, Ongoing the rest. Grouping after filtering is what keeps each view's table to its
-  // own bucket instead of repeating the drug's whole history three times.
-  const bucketedRows = $derived(partitionByBucket(draft?.factors?.treatments ?? [], today));
-  // One map, so the four view branches below become one render. They were byte-identical apart from
-  // which array they iterated and one adjective, which is exactly how a fix lands in three of them.
-  const GROUPS = $derived({
-    medicine: { groups: groupsOf(draft?.factors?.treatments ?? []), label: "", badge: true },
-    ongoing: { groups: groupsOf(bucketedRows.ongoing), label: "ongoing ", badge: false },
-    planned: { groups: groupsOf(bucketedRows.planned), label: "planned ", badge: false },
-    past: { groups: groupsOf(bucketedRows.past), label: "past ", badge: false },
-  });
-
-  // M76/Phase 3 — which single bucket renders. Trusts activeGroup when it's a valid bucket key;
-  // otherwise defaults to All — defensive only, since the real default-setting responsibility lives
-  // in App.svelte's default-group effect (which defaults this tab to the same `medicine` key).
-  // Guards against a stale/foreign value surviving a client switch — including the retired
-  // "ungrouped", which is still what a pre-existing saved nav memory holds.
-  const resolvedGroup = $derived.by(() => {
-    if (activeGroup === "ongoing" || activeGroup === "planned" || activeGroup === "past") return activeGroup;
-    return "medicine";
-  });
 </script>
 
 {#snippet assessedSection(rows: Row[], grouped: { system: string; rows: Row[] }[] | null)}
@@ -923,11 +877,10 @@
          SAME card the rows that pass its own date filter, and LexiTar now answers per (drug, phase)
          through one node — so the views differ only in which rows they hold and whether the bucket
          badge is worth showing (inside a single-bucket view every card would carry the same one). -->
-    {@const view = GROUPS[resolvedGroup as keyof typeof GROUPS]}
-    {#if view.groups.length > 0}
-      {#each view.groups as g (g.name)}{@render medicineCard(g, view.badge)}{/each}
+    {#if editViewModel.groups.length > 0}
+      {#each editViewModel.groups as g (g.name)}{@render medicineCard(g, editViewModel.badge)}{/each}
     {:else if (draft?.factors?.treatments?.length ?? 0) > 0}
-      <p class="ct-empty">No {view.label}treatments yet for {client.displayName} — add one from the sidebar.</p>
+      <p class="ct-empty">No {editViewModel.label}treatments yet for {client.displayName} — add one from the sidebar.</p>
     {/if}
     {#if (draft?.factors?.treatments?.length ?? 0) === 0}
       <p class="ct-empty">No treatment yet for {client.displayName} — add one from the sidebar.</p>
@@ -939,18 +892,17 @@
          flat, losing its body-system headings even though its rows carry `group` — a second-class
          bucket for no reason. And there was no `medicine` arm at all, though resolvedGroup defaults
          to it, so a host without onSave rendered an empty page until the user picked a bucket. -->
-    {@const view = READ_VIEWS[resolvedGroup as keyof typeof READ_VIEWS]}
-    {#if view.rows.length > 0}
-      {@render assessedSection(view.rows, view.grouped)}
+    {#if readViewModel.rows.length > 0}
+      {@render assessedSection(readViewModel.rows, readViewModel.grouped)}
     {:else}
-      <p class="ct-empty">No {view.label}treatments for {client.displayName}.</p>
+      <p class="ct-empty">No {readViewModel.label}treatments for {client.displayName}.</p>
     {/if}
   {/if}
 </div>
 
 {#if addOpen && newTreatment}
   <Modal
-    label={editScope === "medicine" ? "Edit medicine" : editScope === "entry" ? "Edit dose entry" : editingIndex !== null ? "Edit treatment" : "Add treatment"}
+    label={treatmentModalLabel(editScope, editingIndex)}
     onClose={cancelAddTreatment}
   >
     <div class="tedit">
