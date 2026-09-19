@@ -189,7 +189,7 @@ describe("/api/refresh-range generation", () => {
 
 describe("/api/refresh-range R2 audit trail", () => {
   function callWithR2(store: Map<string, string>) {
-    const env = { ...ENV, STORE_PREFIX: "dev", VAULT: { put: async (k: string, v: string) => void store.set(k, v) } };
+    const env = { ...ENV, STORE_PREFIX: "dev", VAULT: { put: async (k: string, v: string) => { store.set(k, v); return { etag: k }; } } };
     return onRequestPost({
       request: new Request("http://x/api/refresh-range", {
         method: "POST",

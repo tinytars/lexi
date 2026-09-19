@@ -3,7 +3,7 @@ import { onRequestPost } from "../../functions/api/log";
 
 function makeEnv() {
   const store = new Map<string, string>();
-  return { store, PROVIDER_TOKEN: "provtok", STORE_PREFIX: "dev", VAULT: { put: async (k: string, v: string) => void store.set(k, v) } };
+  return { store, PROVIDER_TOKEN: "provtok", STORE_PREFIX: "dev", VAULT: { put: async (k: string, v: string) => { store.set(k, v); return { etag: k }; } } };
 }
 
 function call(env: ReturnType<typeof makeEnv>, opts: { auth?: string; body?: unknown } = {}) {

@@ -39,6 +39,11 @@ jobs:
       - run: npm run lint
       - run: npm run build
       - run: npm run coverage
+      # The same unit suite with the Node host's adapters (SQLite + filesystem blobs) standing in for
+      # Miniflare's D1/R2 — see tests/support/miniflare.ts.
+      - run: npm test
+        env:
+          TEST_BACKEND: node
       - name: Coverage thresholds only rise
         if: github.event_name == 'pull_request'
         env:
@@ -62,6 +67,13 @@ jobs:
       - run: npx playwright test
         env:
           NODE_OPTIONS: --import ./scripts/e2e-node-modules-ts-register.mjs
+      # The whole suite again against the Node self-host (server/node.ts): the proof that the backend
+      # is not tied to Cloudflare.
+      - run: npx playwright test
+        env:
+          NODE_OPTIONS: --import ./scripts/e2e-node-modules-ts-register.mjs
+          E2E_HOST: node
+          E2E_SKIP_BUILD: 1
 
   lexitar-data:
     # Credential-bound tests (DATA_TESTS in vitest.config.ts). Fork PRs get no secrets, so skip them.
@@ -82,6 +94,29 @@ jobs:
       - run: npm run test:data
         env:
           ORG_KEY_PASSPHRASE: ${{ secrets.ORG_KEY_PASSPHRASE }}
+
+  autopilot-guard:
+    # Required on dev and main; a skipped run (human PRs, promotions) satisfies the requirement.
+    if: >
+      github.event_name == 'pull_request' &&
+      !startsWith(github.head_ref, 'promote/') &&
+      contains(fromJSON('["plover-autopilot[bot]","dependabot[bot]"]'), github.event.pull_request.user.login)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/lexitar
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+        working-directory: .
+      - run: npx tsx scripts/autopilot-guard.ts "origin/${{ github.base_ref }}"
 
   release:
     needs: [test, lexitar, lexitar-data]

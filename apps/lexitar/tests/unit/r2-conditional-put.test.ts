@@ -4,7 +4,7 @@ import { useWorkerd } from "../support/miniflare";
 // Pins workerd R2's conditional-put semantics (null on precondition failure, not a throw) that
 // the vault/chat-history optimistic concurrency depends on; docs alone weren't trusted.
 
-const w = useWorkerd({ r2: true });
+const w = useWorkerd({ r2: true, workerdOnly: true });
 
 const enc = new TextEncoder();
 const bytes = (s: string) => enc.encode(s);

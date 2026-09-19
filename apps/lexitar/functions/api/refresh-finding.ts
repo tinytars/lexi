@@ -5,6 +5,7 @@ import { auditor } from "../_lib/audit";
 import { buildUserMessage, SYSTEM_PROMPT, correctionSuffix } from "@pablotech/akesi/finding-generate";
 import { FINDING_MODEL } from "../../src/lib/finding-config";
 import { findingRequestParams } from "@pablotech/akesi/finding-generate";
+import type { ObjectBucket } from "../_lib/object-bucket";
 
 // W15/3b.2 — provider-only web Finding refresh. Gated on PROVIDER_TOKEN (the distinct secret from
 // /api/provider-token). A Finding call runs minutes, so we STREAM Opus text to the browser
@@ -12,15 +13,12 @@ import { findingRequestParams } from "@pablotech/akesi/finding-generate";
 // validate → assembleFinding → merge → PUT /api/vault. Retry-with-correction is browser-driven (it
 // re-POSTs with `correction`). Runs on a DISTINCT FINDING_ANTHROPIC_API_KEY (a Finding-pool key,
 // separate from the chat/extract key). PHI-free logging (id/status only, never the client or prose).
-interface R2Bucket {
-  put(key: string, value: string, options?: unknown): Promise<unknown>;
-}
 interface Env {
   FINDING_ANTHROPIC_API_KEY: string;
   PROVIDER_TOKEN: string;
   // W39/Phase 3 — persist the PHI-free audit trail to R2. Optional so a test/local env without the
   // binding degrades to console-only logging.
-  VAULT?: R2Bucket;
+  VAULT?: Pick<ObjectBucket, "put">;
   STORE_PREFIX: string;
 }
 
