@@ -222,6 +222,27 @@ describe("two patients no longer share a namespace by having the same client nam
   });
 });
 
+describe("a namespace with rows from two accounts has one stable owner", () => {
+  it("is owned by the earliest writer, whatever order the rows were inserted in", async () => {
+    const first = await patient("alex");
+    const later = await stranger();
+    await w.db
+      .prepare("INSERT INTO raw_objects (r2_key, account_id, created_at) VALUES (?, ?, '2026-09-19T00:00:00Z')")
+      .bind(`${STORE}/raw/alex/late.pdf`, later.id)
+      .run();
+    // The earlier writer's rows re-inserted AFTER, so neither rowid nor key order favours them.
+    await w.db.prepare("DELETE FROM raw_objects WHERE account_id = ?").bind(first.id).run();
+    for (const key of [`${STORE}/raw/alex/report.pdf`, `${STORE}/text/alex/report.pdf.json`]) {
+      await w.db
+        .prepare("INSERT INTO raw_objects (r2_key, account_id, created_at) VALUES (?, ?, '2026-01-01T00:00:00Z')")
+        .bind(key, first.id)
+        .run();
+    }
+    expect(await rawAccessFor(w.db, env(), first.id, "alex")).toMatchObject({ kind: "owner" });
+    expect(await rawAccessFor(w.db, env(), later.id, "alex")).toMatchObject({ kind: "denied", ownerAccountId: first.id });
+  });
+});
+
 describe("chat claims its own namespace", () => {
   it("lets a patient who has only ever chatted read their history back", async () => {
     // A chat-only patient owns no raw/ objects; unless chat claims the namespace their history reads as unclaimed.

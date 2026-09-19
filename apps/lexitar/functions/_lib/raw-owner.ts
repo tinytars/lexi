@@ -62,11 +62,14 @@ export function clientIdOfObjectKey(key: string): string | null {
   return m ? normalizeClientId(m[1] ?? m[2]) : null;
 }
 
-/** The account that owns everything belonging to `clientId`, or null when nothing has claimed it yet. */
+/**
+ * The account that owns everything belonging to `clientId`, or null when nothing has claimed it yet.
+ * First writer wins: a backfill or claim can add rows for a second account and must never flip the owner.
+ */
 export async function ownerOfClientNamespace(db: D1Database, env: StoreEnv, clientId: string): Promise<string | null> {
   const [raw, text, chat] = namespacePrefixes(env, clientId);
   const row = await db
-    .prepare("SELECT account_id FROM raw_objects WHERE r2_key LIKE ?1 OR r2_key LIKE ?2 OR r2_key = ?3 LIMIT 1")
+    .prepare("SELECT account_id FROM raw_objects WHERE r2_key LIKE ?1 OR r2_key LIKE ?2 OR r2_key = ?3 ORDER BY created_at LIMIT 1")
     .bind(`${raw}%`, `${text}%`, chat)
     .first<{ account_id: string }>();
   return row?.account_id ?? null;
