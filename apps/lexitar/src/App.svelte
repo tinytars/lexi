@@ -3,8 +3,9 @@
   import { ALL_GROUP_KEY } from "./lib/sidebar-labels";
   import type { Vault, Client, NoteAttachment } from "./lib/types";
   import type { UnitSystem } from "./lib/units";
-  import { DEFAULT_PERSONA, type PersonaId } from "./lib/personas";
-  import { loadPersona, savePersona } from "./lib/persona-client";
+  import { DEFAULT_PERSONA, PERSONAS, type PersonaId } from "./lib/personas";
+  import { loadPersona, savePersona, personaTake } from "./lib/persona-client";
+  import { configureRetell } from "@tinytars/frame/retell-registry.svelte";
   import { saveVaultV2, vaultSink, rememberVaultEtag, VaultConflictError, setVaultConflictHandler } from "@tinytars/vault/vault-sink";
   import { getMyAccount, loginPassword, loginPasskey, signupPassword, signupPasskey, bootstrapGoogleSession } from "@tinytars/vault/auth-client";
   import { updateProfile, getVaultPrincipals, getAccessEvents, type AccessEventRow } from "@tinytars/vault/auth-recovery";
@@ -61,7 +62,8 @@
   import Onboarding, { type OnboardingField } from "@tinytars/frame/Onboarding.svelte";
   import AccountMenu from "@tinytars/frame/AccountMenu.svelte";
   import SpeechControls from "@tinytars/frame/SpeechControls.svelte";
-  import { speechRegistry } from "@tinytars/frame/speech-registry.svelte";
+  import { speechRegistry, configureSpeech } from "@tinytars/frame/speech-registry.svelte";
+  import { neuralSpeech } from "./lib/speech-engine";
   import LoginScreen from "@tinytars/frame/LoginScreen.svelte";
   import RecoveryCodeDialog from "./lib/RecoveryCodeDialog.svelte";
   import AttachPicker from "@tinytars/frame/AttachPicker.svelte";
@@ -85,6 +87,9 @@
   import { loadSidebarMode, modeForSection } from "./lib/sidebar-mode";
   import { loadLastSection, saveLastSection, loadLastGroup, saveLastGroup } from "./lib/nav-memory";
   import { loadJSON, saveJSON } from "@tinytars/frame/persisted-json";
+
+  // W84 — read-aloud uses the personas' neural voices, the browser voice only as a fallback.
+  configureSpeech(neuralSpeech);
 
   // W44 — one patient the signed-in provider can open (from /api/providers/patients); the
   // envelope carries this provider's wrapped DEK for that vault. Replaces the old fam4 roster.
@@ -457,6 +462,11 @@
       error = (e as Error).message;
     }
   }
+  // W84 — with Kodi selected, any assistant bubble offers "Kodi's take" on Lexi's words.
+  $effect(() => {
+    const p = persona;
+    configureRetell(p === "lexi" ? null : { label: `${PERSONAS[p].name}'s take`, voice: p, retell: (text) => personaTake(p, text) });
+  });
   // Every login path re-reads the account; the persona rides along so no path can forget it.
   async function refreshAccount() {
     const [, p] = await Promise.all([account.refresh(), loadPersona()]);

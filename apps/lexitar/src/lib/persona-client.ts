@@ -30,3 +30,18 @@ export async function adaptAnswer(persona: PersonaId, text: string): Promise<{ p
     return null;
   }
 }
+
+// W84 — "Kodi's take" on any assistant bubble, cached per text for the session so reopening a take is
+// instant. A failed take is dropped from the cache so it can be retried.
+const takes = new Map<string, Promise<string | null>>();
+
+export function personaTake(persona: PersonaId, text: string): Promise<string | null> {
+  const key = `${persona}:${text}`;
+  let take = takes.get(key);
+  if (!take) {
+    take = adaptAnswer(persona, text).then((a) => a?.text ?? null);
+    takes.set(key, take);
+    void take.then((t) => { if (t === null) takes.delete(key); });
+  }
+  return take;
+}

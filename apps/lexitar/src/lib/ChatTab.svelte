@@ -434,6 +434,8 @@
           patient={patientTurn}
           ai={row.reply ? aiTurn : undefined}
           aiLabel={PERSONAS[shown?.persona ?? persona].name}
+          aiVoice={shown?.persona ?? persona}
+          aiRetellable={false}
           aiPending={showPending}
           aiPendingText={pending ?? "…"}
           aiEmpty="No reply yet."

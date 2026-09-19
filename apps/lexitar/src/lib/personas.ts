@@ -8,6 +8,8 @@ export interface Persona {
   blurb: string;
   // Neural voice (speak.ts). Fixed per persona so a persona always sounds like the same person.
   voice: string;
+  // A fixed, PHI-free line for the picker's "Hear" button.
+  sample: string;
 }
 
 export const PERSONAS: Record<PersonaId, Persona> = {
@@ -16,12 +18,14 @@ export const PERSONAS: Record<PersonaId, Persona> = {
     name: "Lexi",
     blurb: "MD-PhD and astronaut. Reasons to the answer step by step, in crisp executive bullets.",
     voice: "en-US-AvaMultilingualNeural",
+    sample: "Hi, I'm Lexi. I lead with the answer, then give you just enough of the reasoning to trust it.",
   },
   kodi: {
     id: "kodi",
     name: "Kodi",
     blurb: "NYC cycling instructor. Same knowledge, told like your best friend at 4am over fries.",
     voice: "en-US-AndrewMultilingualNeural",
+    sample: "Hey, I'm Kodi. Same facts as Lexi, just told the way I'd tell you over fries at four in the morning.",
   },
 };
 

@@ -3,6 +3,7 @@
   import type { Client, Vault } from "./types";
   import type { UnitSystem } from "./units";
   import { DEFAULT_PERSONA, PERSONAS, type PersonaId } from "./personas";
+  import { isSpeechSupported, speechRegistry } from "@tinytars/frame/speech-registry.svelte";
   import type { RefreshStage } from "./finding-refresh";
   import type { RefreshProgress } from "./refresh-client";
   import { SECTION_TAB, type Permalink } from "./permalink";
@@ -122,6 +123,7 @@ import { pinnedQueries } from "@pablotech/akesi/pinned-queries";
     return Object.entries(v.clients).sort((a, b) => a[1].displayName.localeCompare(b[1].displayName));
   }
 
+  const SAMPLE_ID = "persona-sample";
   let lowerZoneKind = $derived(lowerZoneKindFor(activeTab, active));
   // W48 — Profile's own group list is real navigation (Bio/Allergies/Family are three distinct
   // top-level section keys), not an in-page filter — its render branch below wires onSelect to
@@ -501,6 +503,11 @@ import { pinnedQueries } from "@pablotech/akesi/pinned-queries";
             <button type="button" title={p.blurb} class:active={persona === p.id} aria-pressed={persona === p.id}
               onclick={() => onSetPersona(p.id)}>{p.name}</button>
           {/each}
+          {#if isSpeechSupported()}
+            <button type="button" title="Hear {PERSONAS[persona].name}" aria-label="Hear {PERSONAS[persona].name}"
+              class:active={speechRegistry.statusOf(SAMPLE_ID) === "playing"}
+              onclick={() => speechRegistry.toggle(SAMPLE_ID, PERSONAS[persona].sample, PERSONAS[persona].name, persona)}>&#9654;&#xFE0E;</button>
+          {/if}
         </div>
       {/if}
       {@render accountArea()}
