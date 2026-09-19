@@ -9,6 +9,7 @@ import { runGroupingPass } from "../../src/lib/marker-groups-anthropic";
 import { MARKER_GROUPS_MODEL } from "../../src/lib/marker-groups-config";
 import { systemOrder } from "@pablotech/akesi/system-groups";
 import type { Client, MarkerGrouping } from "../../src/lib/types";
+import type { ObjectBucket } from "../_lib/object-bucket";
 
 // M95 — web-triggered marker->body-system classification for zero-knowledge (self-service)
 // accounts, which the CLI's --refresh-marker-groups can never reach (it only touches a local
@@ -18,16 +19,13 @@ import type { Client, MarkerGrouping } from "../../src/lib/types";
 // to 3 completeness re-passes, same shape as scripts/claude-marker-groups.ts), so this streams
 // like refresh-finding.ts to avoid an idle-timeout 524 during a long generation. Runs on the
 // shared ANTHROPIC_API_KEY (on-demand, user-triggered — not worth a dedicated pooled key).
-interface R2Bucket {
-  put(key: string, value: string, options?: unknown): Promise<unknown>;
-}
 interface Env {
   ANTHROPIC_API_KEY: string;
   PROVIDER_TOKEN: string;
   SESSION_SECRET: string;
   // W71 — requireSession reads accounts.sessions_valid_from, so every gated route needs the binding.
   DB: D1Database;
-  VAULT?: R2Bucket;
+  VAULT?: Pick<ObjectBucket, "put">;
   STORE_PREFIX: string;
 }
 

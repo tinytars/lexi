@@ -22,6 +22,14 @@ npm run dev             # Vite only — UI development, no backend
 npm run dev:functions   # build + wrangler pages dev — full stack, Pages Functions included
 ```
 
+Or run the backend off Cloudflare entirely — the Node self-host in `server/` (see
+[`ARCHITECTURE.md`](../../ARCHITECTURE.md#cloudflare-is-one-host-not-a-dependency)):
+
+```
+npm run build
+STORE_PREFIX=local npm run serve:node   # reads .dev.vars; SQLite + blobs under .node-data/ (LEXI_DATA_DIR)
+```
+
 `.dev.vars.example` documents every secret a route needs — chat, provider-token, WebAuthn, Google
 OAuth — and why each is issued as a *distinct* value rather than shared across routes. Most local
 UI work needs none of them.
@@ -54,6 +62,8 @@ gitignored; never commit one, synthetic or real.
 npm run check     # svelte-check + tsc
 npm run test      # unit (vitest)
 npm run test:e2e  # Playwright
+TEST_BACKEND=node npm run test          # unit, with the Node host's SQLite/fs adapters for D1/R2
+E2E_HOST=node npm run test:e2e          # e2e against server/node.ts instead of wrangler pages dev
 ```
 
 Every e2e spec runs against seeded, credential-free fixtures (`tests/e2e/_synthetic.ts`'s

@@ -1,11 +1,13 @@
 name: Claude PR Review
 
-# This repo has no branch protection / ruleset available (private repo on a
-# plan tier that doesn't support it), so there is no "required checks" concept
-# to filter on. Instead of watching checks from inside the pr-review job
-# (which would include itself and deadlock — see pablo-tech/pilos#10),
-# pr-review is triggered by CI's own completion, so it never runs
-# concurrently with the checks it cares about.
+# pr-review runs on CI's completion rather than watching checks from inside
+# itself (which would include itself and deadlock — see pablo-tech/pilos#10).
+# It approves and enables auto-merge; the dev/main rulesets then merge only
+# once every required check is green.
+#
+# vars.AUTOPILOT gates the merge: `on` enables auto-merge after approval (unless
+# the PR is labeled `hold`), `dry-run` (or unset) stops at approval, `off` skips
+# review.
 on:
   workflow_run:
     workflows: ["CI"]
@@ -28,7 +30,8 @@ jobs:
     if: >
       github.event_name == 'workflow_run' &&
       github.event.workflow_run.event == 'pull_request' &&
-      github.event.workflow_run.pull_requests[0] != null
+      github.event.workflow_run.pull_requests[0] != null &&
+      vars.AUTOPILOT != 'off'
     runs-on: ubuntu-latest
     env:
       PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
@@ -42,8 +45,8 @@ jobs:
       - uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          allowed_bots: "dependabot[bot]"
-          claude_args: '--allowedTools "Read,Grep,Glob,Bash(git diff:*),Bash(git log:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr review:*),Bash(gh pr merge:*)"'
+          allowed_bots: "dependabot[bot],plover-autopilot[bot]"
+          claude_args: '--allowedTools "Read,Grep,Glob,Bash(git diff:*),Bash(git log:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr review:*),Bash(gh pr edit:*)"'
           prompt: |
             The CI workflow just finished (conclusion: ${{ env.CI_CONCLUSION }})
             for PR #${{ env.PR_NUMBER }} in this repo.
@@ -57,15 +60,66 @@ jobs:
               `gh pr diff ${{ env.PR_NUMBER }}`.
               - If there are no blocking issues: approve with
                 `gh pr review ${{ env.PR_NUMBER }} --approve -b "<one-line
-                summary of what you checked>"`, then merge directly with
-                `gh pr merge ${{ env.PR_NUMBER }} --squash --delete-branch`
-                (not `--auto` — this repo has no branch protection to wait
-                on, and CI has already finished by the time this job runs).
+                summary of what you checked>"`. Do not merge; a later step does.
               - If there are blocking issues: post them as one review comment
                 with `gh pr comment ${{ env.PR_NUMBER }}` (most severe first,
                 with file:line references) and do not approve or merge.
-              - If you are not confident in the verdict, say so in a comment
-                and leave the PR for a human — do not approve or merge.
+              - If you are not confident in the verdict, say so in a comment,
+                run `gh pr edit ${{ env.PR_NUMBER }} --add-label autopilot:needs-human`,
+                and do not approve or merge.
+
+      # The merge is decided here, not by the model: only AUTOPILOT=on merges, and a
+      # `hold` label vetoes. The App token (not GITHUB_TOKEN) makes the merge's push
+      # trigger downstream workflows (dev CI, main's frame release).
+      - id: app
+        if: vars.AUTOPILOT == 'on' && vars.AUTOPILOT_APP_ID != ''
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.AUTOPILOT_APP_ID }}
+          private-key: ${{ secrets.AUTOPILOT_APP_KEY }}
+      - name: Auto-merge if approved at this head
+        if: steps.app.outputs.token != ''
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          pr=$(gh pr view "$PR_NUMBER" -R "$GITHUB_REPOSITORY" --json labels,headRefOid,latestReviews,baseRefName)
+          approved=$(jq --arg sha "$HEAD_SHA" '.headRefOid == $sha and any(.latestReviews[]; .state == "APPROVED" and (.author.login | test("claude")))' <<<"$pr")
+          held=$(jq 'any(.labels[].name; . == "hold" or . == "autopilot:needs-human")' <<<"$pr")
+          # A promotion into main keeps dev's history (merge commit), as every promotion has.
+          method=$([ "$(jq -r .baseRefName <<<"$pr")" = main ] && echo --merge || echo --squash)
+          echo "approved=$approved held=$held method=$method"
+          if [ "$approved" = true ] && [ "$held" = false ]; then
+            gh pr merge "$PR_NUMBER" -R "$GITHUB_REPOSITORY" --auto "$method" --delete-branch
+          fi
+
+  dependabot-repair:
+    # A Dependabot bump that breaks CI goes to the fixer in private plover-factory,
+    # which pushes migration commits onto the Dependabot branch. Keyed on the branch,
+    # not the actor, so a repair that still fails CI is retried; fix.yml caps attempts.
+    if: >
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'failure' &&
+      startsWith(github.event.workflow_run.head_branch, 'dependabot/') &&
+      github.event.workflow_run.pull_requests[0] != null &&
+      vars.AUTOPILOT != 'off' && vars.AUTOPILOT_APP_ID != ''
+    runs-on: ubuntu-latest
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.AUTOPILOT_APP_ID }}
+          private-key: ${{ secrets.AUTOPILOT_APP_KEY }}
+          owner: pablo-tech
+          repositories: plover-factory
+      - env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          PR: ${{ github.event.workflow_run.pull_requests[0].number }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          gh api repos/pablo-tech/plover-factory/dispatches -f event_type=dependabot-broken \
+            -F "client_payload[pr]=$PR" -f "client_payload[branch]=$BRANCH"
 
   push-audit:
     if: github.event_name == 'push'
@@ -91,7 +145,7 @@ jobs:
             an audit pass, not a gate, since the commit is already merged.
 
   notify-failure:
-    needs: [pr-review, push-audit]
+    needs: [pr-review, dependabot-repair, push-audit]
     if: always() && contains(needs.*.result, 'failure')
     runs-on: ubuntu-latest
     permissions:
