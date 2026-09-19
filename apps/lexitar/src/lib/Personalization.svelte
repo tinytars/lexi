@@ -1,7 +1,7 @@
 <script lang="ts">
-  import type { Client, ClientFactors, LegacyFactors } from "./types";
+  import type { Client } from "./types";
   import { PREGNANCY_VALUES, ATHLETIC_VALUES, SMOKING_VALUES } from "@pablotech/akesi/factors-edit";
-  import { normalizeTreatments } from "@pablotech/akesi/treatment-normalize";
+  import { foldLegacyTreatments, dropLegacyTreatmentFields } from "./treatment-legacy-fold";
   import { createDraftSync, createPersistNow } from "./draft-sync.svelte";
   import DictateButton from "@tinytars/frame/DictateButton.svelte";
   import Field from "@tinytars/frame/Field.svelte";
@@ -34,11 +34,7 @@
     const d = structuredClone($state.snapshot(c)) as Client;
     d.factors ??= {};
     d.factors.diseases ??= [];
-    d.factors.treatments ??= normalizeTreatments(d.factors as ClientFactors & LegacyFactors);
-    const legacy = d.factors as Partial<LegacyFactors>;
-    delete legacy.medications;
-    delete legacy.supplements;
-    delete legacy.plan;
+    dropLegacyTreatmentFields(foldLegacyTreatments(d));
     d.factors.decisions ??= [];
     d.study ??= {};
     d.study.entries ??= [];

@@ -2,7 +2,8 @@
 // upload → collect loop over pending photo uploads. compressImage/buildAttachmentKey/uploadAttachment
 // are injected so this accumulation logic (not the network/compression calls themselves) is testable.
 
-import type { Attachment } from "./types";
+import type { Attachment, TreatmentItem } from "./types";
+import { appendAttachments } from "./attachment-keys";
 
 export interface PendingImage {
   file: File;
@@ -37,4 +38,9 @@ export async function uploadPendingImages(
     if (p.usedForIdentify) rawCaptureKeys.push(key);
   }
   return { attachments, rawCaptureKeys };
+}
+
+export function mergeUploadedImages(t: TreatmentItem, { attachments, rawCaptureKeys }: AttachmentUploadResult): void {
+  t.attachments = appendAttachments(t.attachments, attachments);
+  if (rawCaptureKeys.length) t.rawCaptureAttachmentKeys = [...(t.rawCaptureAttachmentKeys ?? []), ...rawCaptureKeys];
 }
