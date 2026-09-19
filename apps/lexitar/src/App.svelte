@@ -33,7 +33,7 @@
   import ChatTab from "./lib/ChatTab.svelte";
   import { createChatThreadSession } from "./lib/chat-thread-session.svelte";
   import { createNavController } from "./lib/nav-controller";
-  import { resolveDefaultGroup, GROUP_SECTIONS, FIRST_SYSTEM_DEFAULT_SECTIONS, decideHashSync } from "./lib/nav-decisions";
+  import { resolveDefaultGroup, GROUP_SECTIONS, FIRST_SYSTEM_DEFAULT_SECTIONS, decideHashSync, decideVisibilityBounce } from "./lib/nav-decisions";
   import { createConflictResolver } from "./lib/conflict-resolver";
   import { buildRefreshMessage } from "./lib/refresh-message";
   import { patientSwitchedMidRequest } from "./lib/stale-guard";
@@ -965,20 +965,11 @@
   // `present` derivation already apply, so all three agree on what's visible.
   $effect(() => {
     if (!currentClient) return;
-    const present = presentSections(currentClient, ALL_SECTIONS).filter((s) => canSee(roster.isProvider, currentClient, s.key));
-    if (activeTab === "chat") {
-      // Chat has no SectionMeta of its own, so it needs its own canSee check. Bouncing off it also
-      // has to flip `activeTab` (not just `section`) — otherwise the chat-thread-fallback effect
-      // above (which only checks `section` against real thread ids, not visibility) would fight
-      // this one forever.
-      if (canSee(roster.isProvider, currentClient, "chat")) return;
-      const nextTab = TABS.find((t) => t.id !== "chat" && canSee(roster.isProvider, currentClient, t.id))?.id;
-      if (nextTab && present.length > 0) navigate({ tab: nextTab, section: present[0].key });
-      return;
-    }
-    if (section && !present.some((s) => s.key === section) && present.length > 0) {
-      navigate({ section: present[0].key });
-    }
+    const client = currentClient;
+    const canSeeKey = (key: string) => canSee(roster.isProvider, client, key);
+    const visible = presentSections(client, ALL_SECTIONS).map((s) => s.key).filter(canSeeKey);
+    const bounce = decideVisibilityBounce({ activeTab, section }, visible, canSeeKey);
+    if (bounce) navigate(bounce);
   });
   let aboutOpen = $state(false);
   let exportOpen = $state(false);
