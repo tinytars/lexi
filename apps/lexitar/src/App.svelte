@@ -50,6 +50,7 @@
   import ExportTab, { type ExportOption } from "@tinytars/frame/ExportTab.svelte";
   import { exportCsv, exportJson } from "./lib/export";
   import ImportTab from "./lib/ImportTab.svelte";
+  import { createAuthFlow } from "./lib/auth-flow";
   import { classifyUpload } from "./lib/import-flow";
   import { withClient } from "./lib/vault-clients";
   import { togglePinnedIn, renameIn, removeFrom, labelOf, type SidebarItemKind } from "./lib/vault-item-ops";
@@ -323,7 +324,7 @@
     if (boot.cleanUrl) window.history.replaceState({}, "", boot.cleanUrl);
     // W45 — deferred so the rest of this instance script (the const helpers it calls) has initialized.
     const googleReturn = boot.googleReturn;
-    if (googleReturn) queueMicrotask(() => handleGoogleReturn(googleReturn.error));
+    if (googleReturn) queueMicrotask(() => authFlow.handleGoogleReturn(googleReturn.error));
     if (boot.emailVerify) {
       account.emailVerifyNote = boot.emailVerify;
       if (boot.emailVerify === "ok") queueMicrotask(() => { void account.refresh().catch(() => {}); });
@@ -544,67 +545,25 @@
     else restoreLastLocation();
   }
 
-  async function doLogin(method: "password" | "passkey") {
-    if (!email || (method === "password" && !password)) return;
-    unlocking = true;
-    error = null;
-    try {
-      const r = method === "password" ? await loginPassword(email, password) : await loginPasskey(email);
-      // W49 — persist the resume key BEFORE entering the account: enterAccount paints the app
-      // (e.g. the provider roster) and a user refreshing in that window would otherwise beat the
-      // IndexedDB write and be bounced to the lock screen. persistSessionKey only needs privateKey.
-      await roster.persistSessionKey(r.privateKey);
-      await roster.enterAccount(r);
-    } catch (e) {
-      error = (e as Error).message;
-    } finally {
-      unlocking = false;
-    }
-  }
+  const authFlow = createAuthFlow({
+    getEmail: () => email,
+    getPassword: () => password,
+    setUnlocking: (busy) => (unlocking = busy),
+    setError: (m) => (error = m),
+    setGoogleError: (m) => (googleError = m),
+    loginPassword,
+    loginPasskey,
+    signupPassword,
+    signupPasskey,
+    bootstrapGoogleSession,
+    persistSessionKey: (k) => roster.persistSessionKey(k),
+    enterAccount: (r) => roster.enterAccount(r),
+    markGoogleResume: () => localStorage.setItem(RESUME_MARKER, "google"),
+  });
 
-  // W45 — start Google OAuth (full-page redirect; OAuth needs a top-level navigation).
+  // W45 — Google OAuth needs a top-level navigation, not a fetch.
   function startGoogle() {
     window.location.href = "/api/auth/google/start";
-  }
-  const GOOGLE_ERRORS: Record<string, string> = {
-    email_exists: "An account with that email already exists. Sign in with your existing method, then add Google from Account settings.",
-    state: "Google sign-in expired or was interrupted. Please try again.",
-    auth: "Google sign-in failed. Please try again.",
-    server: "Something went wrong creating your account. Please try again.",
-  };
-  async function handleGoogleReturn(errorCode: string | null) {
-    if (errorCode) { googleError = GOOGLE_ERRORS[errorCode] ?? "Google sign-in failed."; return; }
-    unlocking = true;
-    error = null;
-    try {
-      await roster.enterAccount(await bootstrapGoogleSession());
-      localStorage.setItem(RESUME_MARKER, "google"); // W49 — resume via server-custody bootstrap on refresh
-    } catch (e) {
-      error = (e as Error).message;
-    } finally {
-      unlocking = false;
-    }
-  }
-
-  // Login result held between signup and the user acknowledging their recovery code — we only enter
-  // the vault (which hides the lock screen where the code shows) once they've saved it.
-  async function doSignup(method: "password" | "passkey") {
-    if (!email || (method === "password" && !password)) return;
-    unlocking = true;
-    error = null;
-    try {
-      const displayName = email.split("@")[0] || email; // simplest; editable later via the account API
-      // W48 — signup no longer surfaces a recovery code (it lives in the Account menu now, nudged
-      // post-login). Create the account, then log in to obtain the DEK and enter directly.
-      await (method === "password" ? signupPassword(email, displayName, password) : signupPasskey(email, displayName));
-      const r = method === "password" ? await loginPassword(email, password) : await loginPasskey(email);
-      await roster.persistSessionKey(r.privateKey); // W49 — persist before entering (see doLogin) so an immediate refresh resumes
-      await roster.enterAccount(r);
-    } catch (e) {
-      error = (e as Error).message;
-    } finally {
-      unlocking = false;
-    }
   }
 
   // The drill-in ends here, where the vault does: unwrap the envelope with this session's provider
@@ -1035,7 +994,7 @@
 {/if}
 </div>
 {#if roster.resuming}
-  <LoginScreen productName={PRODUCT_NAME} resuming={true} recovery={recovery} onLogin={doLogin} onSignup={doSignup} onGoogle={startGoogle} />
+  <LoginScreen productName={PRODUCT_NAME} resuming={true} recovery={recovery} onLogin={authFlow.login} onSignup={authFlow.signup} onGoogle={startGoogle} />
   {@render appChrome()}
 {:else if !vault && !roster.isProvider}
   <!-- W73/W80 — one field for both recovery-code rungs: the endpoint called is read off the code's
@@ -1049,8 +1008,8 @@
     {unlocking}
     {googleError}
     recovery={recovery}
-    onLogin={doLogin}
-    onSignup={doSignup}
+    onLogin={authFlow.login}
+    onSignup={authFlow.signup}
     onGoogle={startGoogle}
     signUpSubheading="Create your account. Your record is encrypted end-to-end, and LexiTar holds a recovery key so a forgotten password doesn't lose it — removable any time in Account settings."
   />
