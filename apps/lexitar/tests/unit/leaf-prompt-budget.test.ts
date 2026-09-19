@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { BASE_SYSTEM_PROMPT, LEAF_REGEN_SPECS } from "../../src/lib/leaf-regen-registry";
+import { LEAF_REGEN_SPECS } from "../../src/lib/leaf-regen-registry";
+import { BASE_SYSTEM_PROMPT } from "../../src/lib/leaf-regen-prompts";
 
 // W?? — 55df014 found treatmentAssessment's "INTERACTIONS WITH OTHER TREATMENTS" paragraph forcing
 // up to 3 re-scans of the full unscoped vault context (48 treatments for Alex) per assessed item,

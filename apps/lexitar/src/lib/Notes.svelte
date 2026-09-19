@@ -36,7 +36,7 @@
     onSaved?: (anchor: string) => void;
     // M66 P7 — requests an immediate noteResults regen right after a save, instead of waiting on the
     // shell's own background staleness effect. Always unscoped (no targetLabels) — a note has no
-    // label to scope by the way Study's row-scoped regen does; see leaf-regen-registry.ts's
+    // label to scope by the way Study's row-scoped regen does; see leaf-regen-specs/id-rows.ts's
     // noteResults entry.
     onTriggerRegen?: (key: string, targetLabels?: string[], force?: boolean) => Promise<{ status: "filled" | "empty" | "skipped" | "failed"; error?: string }>;
     saved?: boolean;
@@ -177,7 +177,7 @@
   // Translate is leaf-specific (like Markers' — see MarkerChart.svelte's rowActions, and
   // UnifiedTreatment.svelte's Treatment rows), so it's prepended manually rather than living in the
   // shared standardLeafActions contract. Scoped to just this note (targetIds: [n.id]) — see
-  // leaf-regen-registry.ts's noteResults spec for how a single id gets the model to see only this
+  // leaf-regen-specs/id-rows.ts's noteResults spec for how a single id gets the model to see only this
   // row. force:true bypasses the staleness gate so the click always fires (see App.svelte's
   // regenNode comment); stays visible even when a result already exists so a provider can force a
   // re-check.

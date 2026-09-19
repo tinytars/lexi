@@ -30,7 +30,7 @@
 
 import type { Client, FindingDecisionEntry } from "./types";
 import { BASIS_KEYS } from "@pablotech/akesi/finding-assemble";
-import { labelSubject } from "./leaf-regen-registry";
+import { labelSubject } from "./leaf-regen-rows";
 import { ENTITY_SPECS } from "./entity-kinds";
 import { treatmentsOf } from "@pablotech/akesi/treatment-normalize";
 import { bucketOf, todayISODate, treatmentLabel, assessmentFor } from "@pablotech/akesi/treatment-bucket";

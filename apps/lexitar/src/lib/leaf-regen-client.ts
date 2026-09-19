@@ -21,7 +21,7 @@ import { LEAF_REGEN_DEADLINE_MS } from "./leaf-regen-config";
 export interface PendingLeafRegen {
   node: string;
   validated: unknown;
-  // Carried through to applyLeafRegen's mergeInto call — see leaf-regen-registry.ts's
+  // Carried through to applyLeafRegen's mergeInto call — see leaf-regen-specs/spec.ts's
   // LeafRegenSpec.mergeInto comment for why a scoped (targetIds-filtered) response must be paired
   // against these same ids, not the full populated list.
   targetIds?: string[];
