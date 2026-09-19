@@ -27,13 +27,13 @@
   import { compressImage } from "./image-compress";
   import { inferTreatmentRecord } from "./treatment-infer-client";
   import { mergeInferredFields } from "./treatment-infer-merge";
-  import { matchesTreatmentName } from "./treatment-name-match";
   import { wasSavedThisSession } from "./treatment-session-guard";
+  import { duplicateTreatment, clearExtractedData, togglePin, removeTreatmentsById, mirrorAttachments, removeAttachment, deleteTreatmentPrompt, deleteMedicinePrompt } from "./treatment-mutations";
   import { hasAnyDose as hasAnyDoseInTreatments, editIndexOf as editIndexOfRow } from "./treatment-row-lookup";
   import { uploadPendingImages } from "./treatment-attachment-upload";
   import { planMedicineFanout, applyMedicineFanoutPatch } from "./treatment-medicine-fanout";
   import { fanoutReason } from "./treatment-reason-fanout";
-  import { appendAttachments, buildAttachmentKey, uploadAttachment, attachmentUrl, attachmentsOf, groupAttachmentsOf, attachFiles, isLastRawCaptureAttachment, isLastRawCaptureHolder, MAX_VISION_ATTACHMENTS } from "./attachment-store";
+  import { appendAttachments, buildAttachmentKey, uploadAttachment, attachmentUrl, attachmentsOf, groupAttachmentsOf, attachFiles, MAX_VISION_ATTACHMENTS } from "./attachment-store";
   import { openAttachPicker, DEFAULT_ATTACH_ACCEPT } from "@tinytars/frame/attach-controller";
   import AttachmentStrip from "@tinytars/frame/AttachmentStrip.svelte";
   import DictateButton from "@tinytars/frame/DictateButton.svelte";
@@ -202,17 +202,6 @@
       identifying = false;
     }
   }
-  // M-locked-fields — the bulk undo for a bad/stale extraction: blanks every LexiTar-read field so
-  // the form falls back to its capture UI (still shown unconditionally at medicine scope) for a
-  // fresh Identify, rather than offering a never-used per-field edit on facts that came off a label.
-  function clearExtractedData(t: TreatmentItem) {
-    t.name = "";
-    t.description = undefined;
-    t.maker = undefined;
-    t.ingredients = undefined;
-    t.administration = undefined;
-    t.kind = undefined;
-  }
   // M107 — Amount is type="number", so it silently swallows any non-numeric keystroke (old muscle
   // memory from the pre-split "6mg/week" single field types straight through "m"/"g" after the
   // digits). Forward that keystroke into Unit instead of letting it vanish, and move focus there.
@@ -241,21 +230,11 @@
   // W46 Phase 4 — matched by id (mirrors togglePinTreatment above), not x.i: attach can fire from
   // any row regardless of which bucket/collapsed view it's currently rendered in.
   let attachError = $state<string | null>(null);
-  // An attachment documents the DRUG, not the dose period it happened to be added from, so it lands
-  // on every row of that medicine — the same mirroring name/reason/kind already get. Mirroring
-  // rather than picking one owner row is what keeps a product photo alive when an old titration
-  // step is deleted; readers take the de-duplicated union (groupAttachmentsOf).
   function attachToTreatment(t: TreatmentItem, added: Attachment[]) {
     if (!draft) return;
-    const mirror = (rows: TreatmentItem[] | undefined) => {
-      for (const x of rows ?? []) {
-        if (!matchesTreatmentName(x.name, t.name)) continue;
-        x.attachments = appendAttachments(x.attachments, added);
-      }
-    };
-    mirror(draft.factors?.treatments);
+    mirrorAttachments(draft.factors?.treatments, t.name, added);
     if (!wasSavedThisSession(client, t.id)) return;
-    persistNow((payload) => mirror(payload.factors?.treatments));
+    persistNow((payload) => mirrorAttachments(payload.factors?.treatments, t.name, added));
   }
 
   // Translate is leaf-specific (like Markers' — see MarkerChart.svelte's rowActions), so it's
@@ -348,30 +327,18 @@
   // M56 — persists immediately, scoped to just this item (see Study.svelte's deleteEntry for the
   // full rationale).
   function deleteTreatment(t: TreatmentItem, i: number) {
-    const name = t.name?.trim() || "this treatment";
-    // W78 — deleting a row can't leave a dangling provenanceIssues violation on another row (each
-    // row's claim is checked against its own attachments only), but it CAN permanently discard the
-    // only surviving evidence a photo extraction was read from — worth naming before it's gone.
-    const losesRawCapture = isLastRawCaptureHolder(t, draft?.factors?.treatments ?? []);
-    const prompt = losesRawCapture
-      ? `Remove ${name}? This is the only entry still holding the photo this extraction was read from — deleting it permanently loses that evidence. This can't be undone.`
-      : `Remove ${name}? This can't be undone.`;
-    if (!confirm(prompt)) return;
+    if (!confirm(deleteTreatmentPrompt(t, draft?.factors?.treatments ?? []))) return;
     draft!.factors!.treatments!.splice(i, 1);
     keepGroupOnNextAnchor = true;
-    persistNow((payload) => payload.factors!.treatments!.splice(i, 1), treatmentAnchor(name));
+    persistNow((payload) => payload.factors!.treatments!.splice(i, 1), treatmentAnchor(t.name?.trim() || "this treatment"));
   }
   // M71 P6 — standalone Pin toggle per treatment, same scoped-persist shape as deleteTreatment
   // above: mutate a clone of the last-saved `client` (never the live `draft`) and persist immediately.
   function togglePinTreatment(t: TreatmentItem) {
     if (!draft) return;
-    const flip = (c: Client) => {
-      const match = c.factors?.treatments?.find((x) => x.id === t.id);
-      if (match) match.pinned = !match.pinned;
-    };
-    flip(draft);
+    togglePin(draft, t.id);
     if (!wasSavedThisSession(client, t.id)) return;
-    persistNow(flip);
+    persistNow((c) => togglePin(c, t.id));
   }
   function addTreatment() {
     newTreatment = { id: crypto.randomUUID(), name: "", kind: "drug", start: "" };
@@ -413,20 +380,10 @@
       }
     }, DEFAULT_ATTACH_ACCEPT);
   }
-  // W78 — the only place any SAVED attachment can be removed (AttachmentStrip's ✕ only renders when
-  // onRemove is passed, and this is the sole TreatmentItem-facing call site that passes one). Blocks
-  // exactly what report-merge.ts's provenanceIssues check would then fail on: removing the last
-  // attachment a photo extraction's rawCaptureAttachmentKeys still claims. Medicine-scope save fans
-  // newTreatment.attachments/rawCaptureAttachmentKeys to every sibling row unchanged (:568,:599), so
-  // guarding newTreatment here covers both scopes without a separate check at save time.
+  // W78 — the only place a SAVED attachment can be removed; medicine-scope save fans newTreatment's
+  // attachments to every sibling unchanged, so guarding newTreatment here covers both scopes.
   function removeAttachmentFromEdit(a: Attachment) {
-    if (!newTreatment) return;
-    if (isLastRawCaptureAttachment(newTreatment, a.key)) {
-      saveImageError = "Can't remove the photo this extraction was read from — re-extract from a new photo first.";
-      return;
-    }
-    saveImageError = null;
-    newTreatment.attachments = (newTreatment.attachments ?? []).filter((x) => x.key !== a.key);
+    if (newTreatment) saveImageError = removeAttachment(newTreatment, a.key);
   }
   $effect(() => {
     if (autoOpenAdd) {
@@ -489,12 +446,10 @@
     editGroupName = g.name;
     addOpen = true;
   }
-  // M-medicine-dup — "Duplicate" opens the modal as an ADD pre-filled from this dose row (new id),
-  // so the common case of "same drug, new dose period" doesn't mean retyping the whole record. The
-  // attachments come along: they document the drug, so the new dose period inherits them rather
-  // than the group appearing to lose a photo the moment a row is added.
-  function duplicateTreatment(t: TreatmentItem) {
-    newTreatment = { ...t, id: crypto.randomUUID(), pinned: undefined };
+  // M-medicine-dup — "Duplicate" opens the modal as an ADD pre-filled from this dose row, so the
+  // common case of "same drug, new dose period" doesn't mean retyping the whole record.
+  function startDuplicateTreatment(t: TreatmentItem) {
+    newTreatment = duplicateTreatment(t, crypto.randomUUID());
     editingIndex = null;
     editScope = "all";
     editGroupName = null;
@@ -502,13 +457,9 @@
   }
   // Removes the whole medicine — every dose row of it — matching what the group card represents.
   function deleteMedicine(g: NamedTreatmentGroup) {
-    const n = g.rows.length;
-    if (!confirm(`Remove ${g.name} and all ${n} dose ${n === 1 ? "entry" : "entries"}? This can't be undone.`)) return;
+    if (!confirm(deleteMedicinePrompt(g))) return;
     const ids = new Set(g.rows.map((r) => r.id));
-    const drop = (c: Client) => {
-      const list = c.factors?.treatments;
-      if (list) c.factors!.treatments = list.filter((x) => !ids.has(x.id));
-    };
+    const drop = (c: Client) => removeTreatmentsById(c, ids);
     drop(draft!);
     persistNow(drop, treatmentAnchor(g.name));
   }
@@ -905,7 +856,7 @@
                       <td class="med-actions">
                         <div class="med-actbar">
                           <Button class="med-act" title="Edit this dose entry" onclick={() => startEditTreatment(t, editIndexOf(t), "entry")}>Edit</Button>
-                          <Button class="med-act" title="Start a new dose entry from this one" onclick={() => duplicateTreatment(t)}>Duplicate</Button>
+                          <Button class="med-act" title="Start a new dose entry from this one" onclick={() => startDuplicateTreatment(t)}>Duplicate</Button>
                           <Button class="del med-act" title="Delete this dose entry" onclick={() => deleteTreatment(t, editIndexOf(t))}>Delete</Button>
                         </div>
                       </td>
