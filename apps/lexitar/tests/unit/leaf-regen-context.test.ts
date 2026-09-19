@@ -18,11 +18,23 @@ describe("leaf-regen-context: buildLeafContext", () => {
         doseAmount: 1, doseUnit: "capsule", doseFrequency: "day", administration, ingredients,
       },
     );
-    const context = buildLeafContext("treatmentAssessment", c);
+    const context = buildLeafContext("treatmentAssessment", c, "2026-09-19");
     const history = context.treatmentHistory as { id: string; dailyTotal?: unknown }[];
     const am = history.find((t) => t.id === "m1");
     const pm = history.find((t) => t.id === "m2");
     expect(am?.dailyTotal).toEqual([{ name: "Magnesium", amountPerDay: 240, unit: "mg", form: "as magnesium glycinate" }]);
     expect(pm?.dailyTotal).toEqual(am?.dailyTotal);
+  });
+
+  // One `today` drives the Today: line and the plan/history bucketing, so they cannot disagree across midnight.
+  it("buckets patientPlan against the supplied today, and echoes it as the context's today", () => {
+    const c = client();
+    c.factors!.treatments!.push({ id: "t1", name: "Tirzepatide", kind: "drug", start: "2026-10-01" });
+    const before = buildLeafContext("aiOnPlan", c, "2026-09-19");
+    expect(before.today).toBe("2026-09-19");
+    expect((before.patientPlan as { name: string }[]).map((t) => t.name)).toContain("Tirzepatide");
+    const after = buildLeafContext("aiOnPlan", c, "2026-11-01");
+    expect(after.today).toBe("2026-11-01");
+    expect((after.patientPlan as { name: string }[]).map((t) => t.name)).not.toContain("Tirzepatide");
   });
 });
