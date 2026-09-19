@@ -21,17 +21,17 @@ async function call(body: unknown, auth = true) {
 beforeEach(() => create.mockReset());
 
 describe("/api/persona-adapt", () => {
-  it("returns Kodi's restatement when every fact survives", async () => {
-    const kodi = "Okay, your ApoB was 92 mg/dL on July 21, 2026 — up 3% since March 3, 2026.";
-    create.mockResolvedValueOnce(reply(kodi));
-    const res = await call({ persona: "kodi", text: LEXI });
-    expect(await res.json()).toEqual({ kind: "adapted", persona: "kodi", text: kodi });
+  it("returns Cody's restatement when every fact survives", async () => {
+    const cody = "Okay, your ApoB was 92 mg/dL on July 21, 2026 — up 3% since March 3, 2026.";
+    create.mockResolvedValueOnce(reply(cody));
+    const res = await call({ persona: "cody", text: LEXI });
+    expect(await res.json()).toEqual({ kind: "adapted", persona: "cody", text: cody });
   });
 
   it("retries once naming the dropped facts, and accepts a faithful second try", async () => {
     create.mockResolvedValueOnce(reply("Your ApoB crept up a bit, babe."));
     create.mockResolvedValueOnce(reply("ApoB: 92 mg/dL on 2026-07-21, up 3% from 2026-03-03."));
-    const res = await call({ persona: "kodi", text: LEXI });
+    const res = await call({ persona: "cody", text: LEXI });
     expect((await res.json() as { kind: string }).kind).toBe("adapted");
     expect(create).toHaveBeenCalledTimes(2);
     const retry = create.mock.calls[1][0].messages[0].content as string;
@@ -40,30 +40,47 @@ describe("/api/persona-adapt", () => {
 
   it("falls back to Lexi when the restatement keeps dropping facts", async () => {
     create.mockResolvedValue(reply("It went up a little."));
-    const res = await call({ persona: "kodi", text: LEXI });
+    const res = await call({ persona: "cody", text: LEXI });
     expect(await res.json()).toEqual({ kind: "fallback" });
     expect(create).toHaveBeenCalledTimes(2);
   });
 
   it("falls back on a truncated restatement rather than showing half of one", async () => {
     create.mockResolvedValueOnce(reply("ApoB 92 mg/dL on 2026-07-21, up 3% since 2026-03-03 and", "max_tokens"));
-    expect(await (await call({ persona: "kodi", text: LEXI })).json()).toEqual({ kind: "fallback" });
+    expect(await (await call({ persona: "cody", text: LEXI })).json()).toEqual({ kind: "fallback" });
   });
 
   it("never sends the adapter the record — only Lexi's answer", async () => {
     create.mockResolvedValueOnce(reply(LEXI));
-    await call({ persona: "kodi", text: LEXI });
+    await call({ persona: "cody", text: LEXI });
     const req = create.mock.calls[0][0];
     expect(req.messages).toHaveLength(1);
-    expect(req.messages[0].content).toBe(`LEXI'S ANSWER:\n${LEXI}`);
+    expect(req.messages[0].content).toBe(`THE ANSWER:\n${LEXI}`);
     expect(req.tools).toBeUndefined();
+  });
+
+  it("hands Cody the patient's question to listen to, ahead of the answer", async () => {
+    create.mockResolvedValueOnce(reply(LEXI));
+    await call({ persona: "cody", text: LEXI, question: "  is my ApoB getting worse? I'm scared  " });
+    expect(create.mock.calls[0][0].messages[0].content).toBe(`THE PATIENT ASKED:\nis my ApoB getting worse? I'm scared\n\nTHE ANSWER:\n${LEXI}`);
+  });
+
+  it("still answers a tab opened before the rename, which asks for Kodi", async () => {
+    create.mockResolvedValueOnce(reply(LEXI));
+    expect(await (await call({ persona: "kodi", text: LEXI })).json()).toEqual({ kind: "adapted", persona: "cody", text: LEXI });
+  });
+
+  it("rejects a question that is not text or is oversized", async () => {
+    expect((await call({ persona: "cody", text: LEXI, question: 7 })).status).toBe(400);
+    expect((await call({ persona: "cody", text: LEXI, question: "x".repeat(8 * 1024 + 1) })).status).toBe(413);
+    expect(create).not.toHaveBeenCalled();
   });
 
   it("rejects an unknown persona, empty text, and no session", async () => {
     expect((await call({ persona: "lexi", text: LEXI })).status).toBe(400);
-    expect((await call({ persona: "kodi", text: " " })).status).toBe(400);
+    expect((await call({ persona: "cody", text: " " })).status).toBe(400);
     expect((await call("{not json")).status).toBe(400);
-    expect((await call({ persona: "kodi", text: LEXI }, false)).status).toBe(401);
+    expect((await call({ persona: "cody", text: LEXI }, false)).status).toBe(401);
     expect(create).not.toHaveBeenCalled();
   });
 });

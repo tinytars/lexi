@@ -274,7 +274,7 @@
         return;
       }
       if (persona !== DEFAULT_PERSONA) pending = `${PERSONAS[persona].name} is putting it in plain talk…`;
-      const adapted = await adaptAnswer(persona, answer);
+      const adapted = await adaptAnswer(persona, answer, q);
       threads = threads.map((t) =>
         t.id === threadId
           ? { ...t, turns: [...t.turns, { role: "assistant" as const, text: answer!, ...(adapted ? { adapted } : {}) }], lastActivityAt: Date.now() }
