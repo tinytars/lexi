@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { installErrorReporter, type ClientErrorPayload } from "../../src/lib/error-reporter";
+import { lazyImport } from "../../src/lib/lazy-import";
 
 const fire = (target: EventTarget, type: string, props: Record<string, unknown>) =>
   target.dispatchEvent(Object.assign(new Event(type), props));
@@ -39,5 +40,12 @@ describe("installErrorReporter", () => {
     const { target, sent } = setup();
     fire(target, "error", { message: "Script error.", error: null });
     expect(sent).toEqual([]);
+  });
+
+  it("reports a lazy chunk that fails to load even when the caller catches it", async () => {
+    const { sent } = setup();
+    const stale = new TypeError("Failed to fetch dynamically imported module: /assets/pdf-OLD.js");
+    await expect(lazyImport(() => Promise.reject(stale))).rejects.toBe(stale);
+    expect(sent.map((p) => `${p.name}: ${p.message}`)).toEqual([`TypeError: ${stale.message}`]);
   });
 });
