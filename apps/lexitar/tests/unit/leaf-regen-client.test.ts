@@ -34,7 +34,7 @@ describe("fetchLeafRegen error reporting", () => {
   it.each([
     [402, "insufficient_credit"],
     [503, "ai_busy"],
-    [502, "anthropic_error"],
+    [502, "model_error"],
     [422, "invalid_leaf_regen"],
   ])("preserves errorCode and status from a %i", async (status, errorCode) => {
     vi.mocked(fetch).mockResolvedValue(json(status, { error: "relay prose", errorCode }));

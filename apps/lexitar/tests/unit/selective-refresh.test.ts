@@ -1,20 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-
-// Stub the SDK for the treatmentGroups leaf wiring test; the pure planFindingRefresh tests
-// don't touch it. runLeafRegen streams, so the stub exposes stream().finalMessage() — same shape
-// leaf-regen-anthropic.test.ts uses.
-const { create } = vi.hoisted(() => ({ create: vi.fn() }));
-vi.mock("@anthropic-ai/sdk", () => ({
-  default: class {
-    messages = { stream: (...args: unknown[]) => ({ finalMessage: () => create(...args) }) };
-  },
-}));
-
 import { planFindingRefresh, nodeHashesOf } from "../../scripts/factors";
 import { runLeafRegen } from "../../src/lib/leaf-regen-anthropic";
 import { leafContextFor, mergeLeafResult } from "../../src/lib/leaf-regen-registry";
-import { MODELS } from "../../scripts/inference-config";
+import { modelId } from "../../src/lib/model-config";
 import type { Client } from "../../src/lib/types";
+
+// A fake client for the treatmentGroups leaf wiring test; the pure planFindingRefresh tests don't
+// touch it. runLeafRegen streams, so it exposes stream().finalMessage().
+const create = vi.fn();
+const llm = {
+  client: { messages: { stream: (...args: unknown[]) => ({ finalMessage: () => create(...args) }) } } as never,
+  model: modelId("leafRegen"),
+};
 
 function ai(intervention: string, purpose = "") {
   return { intervention, purpose, pros: [], cons: [], alternatives: [], recommendation: "" };
@@ -140,14 +137,11 @@ describe("treatmentGroups leaf wiring (W15d; single-path since W65)", () => {
 
   it("forces the tool and resolves the id-refs to the stored TreatmentGroup shape", async () => {
     const c = baseClient();
-    const outcome = await runLeafRegen({ apiKey: "k", node: "treatmentGroups", inputs: leafContextFor("treatmentGroups", c) });
+    const outcome = await runLeafRegen({ ...llm, node: "treatmentGroups", inputs: leafContextFor("treatmentGroups", c) });
     if (outcome.kind !== "ok") throw new Error(`expected ok, got ${outcome.kind}`);
     const arg = create.mock.calls[0][0] as { tool_choice?: { name: string }; model: string };
     expect(arg.tool_choice).toEqual({ type: "tool", name: "emit_treatment_groups" });
-    // The regroup runs on the leaf tier, not the core's Opus — there is exactly one path now, so
-    // this is the tier every entry point gets.
-    expect(arg.model).toBe("claude-sonnet-4-6");
-    expect(arg.model).not.toBe(MODELS.prod.finding);
+    expect(arg.model).toBe(modelId("leafRegen"));
     const groups = mergeLeafResult(c, "treatmentGroups", outcome.result).finding!.treatmentGroups;
     expect(groups).toEqual([
       { system: "Cardiovascular Risk", topic: "Lipid-lowering", patient: ["Start statin or statin-like approach"], ai: ["Rosuvastatin", "PCSK9 inhibitor"] },
@@ -157,7 +151,7 @@ describe("treatmentGroups leaf wiring (W15d; single-path since W65)", () => {
 
   it("reports no_tool_use when the model emits no tool call", async () => {
     create.mockResolvedValue({ content: [{ type: "text", text: "no" }], usage: { input_tokens: 1, output_tokens: 1 } });
-    const outcome = await runLeafRegen({ apiKey: "k", node: "treatmentGroups", inputs: leafContextFor("treatmentGroups", baseClient()) });
+    const outcome = await runLeafRegen({ ...llm, node: "treatmentGroups", inputs: leafContextFor("treatmentGroups", baseClient()) });
     expect(outcome.kind).toBe("no_tool_use");
   });
 });

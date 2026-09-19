@@ -64,7 +64,7 @@ export const test = base.extend<{ vaultGuard: void }>({
       // the three that died.
       //
       // This is NOT a mock of a working backend. CI holds no RANGES_ANTHROPIC_API_KEY, so the real
-      // route already 502s `anthropic_error` on every call, in 3-45ms; the stub returns byte-identical
+      // route already 502s `model_error` on every call, in 3-45ms; the stub returns byte-identical
       // what the server returns, and removes only the trip across the wire. A spec whose SUBJECT is
       // leaf-regen registers its own `page.route`, and page routes are matched before context routes,
       // so all thirteen existing handlers keep winning untouched.
@@ -72,7 +72,7 @@ export const test = base.extend<{ vaultGuard: void }>({
         route.fulfill({
           status: 502,
           contentType: "application/json",
-          body: JSON.stringify({ error: "leaf-regen backend error", errorCode: "anthropic_error" }),
+          body: JSON.stringify({ error: "leaf-regen backend error", errorCode: "model_error" }),
         }),
       );
       // W76 — the THIRD source, and the same shape again: attachment blobs. Alex's vault references

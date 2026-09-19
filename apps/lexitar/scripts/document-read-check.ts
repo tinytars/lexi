@@ -6,7 +6,7 @@
 // harness, kept so re-verifying after a change to document-read.ts is one command rather than a
 // rebuild of the setup.
 //
-// NOT a reimplementation of the Function: readDocument, EXTRACT_MODEL and the {pdfBase64} source
+// NOT a reimplementation of the Function: readDocument, the "document" model and the {pdfBase64} source
 // shape are the Function's own, so a change there is exercised here.
 //
 //   npm run doc:read-check -- records/private/<client-id>/raw/<file>.pdf
@@ -14,11 +14,10 @@
 // Reads only — nothing is written, no vault or sidecar is touched. The 15 PDFs under
 // records/private/*/raw/ are real PHI; the transcription it prints is too, so keep the output local.
 import "./load-creds";
-import Anthropic from "@anthropic-ai/sdk";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { readDocument } from "@pablotech/akesi/document-read";
-import { EXTRACT_MODEL } from "../src/lib/extract-config";
+import { modelFor } from "../functions/_lib/inference/resolve";
 
 // Byte-identical to the Function's bytesToBase64 (chunked: a spread overflows the call stack).
 function bytesToBase64(bytes: Uint8Array): string {
@@ -35,13 +34,14 @@ async function main() {
   }
   const bytes = new Uint8Array(await readFile(file));
   const name = file.split("/").pop()!;
-  console.log(`file: ${name}  ${bytes.length} bytes  model: ${EXTRACT_MODEL}`);
+  const { client, model } = modelFor(process.env, "document");
+  console.log(`file: ${name}  ${bytes.length} bytes  model: ${model}`);
 
   let seen: string | null = null;
   const recorder = { record: (model: string, u: unknown) => { seen = `${model} ${JSON.stringify(u)}`; } };
 
   const t0 = Date.now();
-  const reading = await readDocument(new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }), { pdfBase64: bytesToBase64(bytes) }, name, EXTRACT_MODEL, recorder as never);
+  const reading = await readDocument(client, { pdfBase64: bytesToBase64(bytes) }, name, model, recorder as never);
   console.log(`--- ${Date.now() - t0}ms ---`);
   console.log("documentKind   :", reading.documentKind);
   console.log("isMedicalReport:", reading.isMedicalReport);

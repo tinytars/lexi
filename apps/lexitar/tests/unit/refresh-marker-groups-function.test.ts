@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { MARKER_GROUPS_MODEL } from "../../src/lib/marker-groups-config";
+import { modelId } from "../../src/lib/model-config";
 
 // Mock the SDK so the Function's guard + hash short-circuit + generation are exercised with no
 // billable call. Like refresh-range, this Function calls `.create` directly (not `.stream`).
@@ -94,7 +94,7 @@ describe("/api/refresh-marker-groups hash short-circuit", () => {
       groups: FULL_GROUPING_JSON.groups,
       markerGroupsHash: markerGroupsHashOf(MARKER_NAMES, SYSTEMS),
       generatedAt: "2026-01-01T00:00:00.000Z",
-      generatedBy: { mode: "prod", model: MARKER_GROUPS_MODEL },
+      generatedBy: { mode: "prod", model: modelId("markerGroups") },
     };
     const client = { ...CLIENT, markerGroups: cachedGrouping };
     const res = await call({ auth: "Bearer provtok", body: JSON.stringify({ client }) });
@@ -108,7 +108,7 @@ describe("/api/refresh-marker-groups hash short-circuit", () => {
       groups: [{ group: "Cardiovascular Risk", markers: ["ApoB"] }],
       markerGroupsHash: markerGroupsHashOf(["ApoB"], SYSTEMS), // missing Glucose → stale
       generatedAt: "2026-01-01T00:00:00.000Z",
-      generatedBy: { mode: "prod", model: MARKER_GROUPS_MODEL },
+      generatedBy: { mode: "prod", model: modelId("markerGroups") },
     };
     const client = { ...CLIENT, markerGroups: staleGrouping };
     const res = await call({ auth: "Bearer provtok", body: JSON.stringify({ client }) });
@@ -125,10 +125,10 @@ describe("/api/refresh-marker-groups generation", () => {
     const grouping = JSON.parse(lastLine(await bodyText(res)));
     expect(grouping.groups).toEqual(FULL_GROUPING_JSON.groups);
     expect(grouping.markerGroupsHash).toBe(markerGroupsHashOf(MARKER_NAMES, SYSTEMS));
-    expect(grouping.generatedBy).toEqual({ mode: "prod", model: MARKER_GROUPS_MODEL });
+    expect(grouping.generatedBy).toEqual({ mode: "prod", model: modelId("markerGroups") });
 
     const args = createMock.mock.calls[0][0];
-    expect(args.model).toBe(MARKER_GROUPS_MODEL);
+    expect(args.model).toBe(modelId("markerGroups"));
     expect(args.output_config.format.type).toBe("json_schema");
   });
 

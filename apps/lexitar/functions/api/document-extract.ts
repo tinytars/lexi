@@ -1,13 +1,12 @@
 import type { D1Database } from "../_lib/identity-types";
 import { recordRawObject } from "../_lib/identity-audit";
-import Anthropic from "@anthropic-ai/sdk";
 import { requireSession } from "../_lib/session";
 import { logRequest } from "../_lib/log";
-import { classifyAnthropicError } from "../_lib/anthropic-errors";
+import { modelErrorReply } from "../_lib/model-errors";
+import { modelFor } from "../_lib/inference/resolve";
 import { storeKey } from "../_lib/store";
 import { rawAccessFor, mayRead, type RawAccess } from "../_lib/raw-owner";
 import { readDocument, DOCUMENT_READ_FAILURE, type DocumentReading, type StoredExtraction } from "@pablotech/akesi/document-read";
-import { EXTRACT_MODEL } from "../../src/lib/extract-config";
 import type { ObjectBucket } from "../_lib/object-bucket";
 
 // Read one ALREADY-UPLOADED attachment as text, and cache the result forever.
@@ -25,8 +24,6 @@ import type { ObjectBucket } from "../_lib/object-bucket";
 
 interface Env {
   VAULT: Pick<ObjectBucket, "get" | "put" | "list">;
-  ANTHROPIC_API_KEY?: string;
-  RANGES_ANTHROPIC_API_KEY?: string;
   SESSION_SECRET: string;
   // W71 — requireSession reads accounts.sessions_valid_from, so every gated route needs the binding.
   DB: D1Database;
@@ -137,22 +134,17 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
       if (bytes.length > MAX_DOCUMENT_BYTES) {
         return finish(413, { error: "document too large to read", errorCode: "too_large" }, { errorCode: "too_large" });
       }
-      const apiKey = env.RANGES_ANTHROPIC_API_KEY ?? env.ANTHROPIC_API_KEY ?? "";
-      model = EXTRACT_MODEL;
-      reading = await readDocument(new Anthropic({ apiKey }), { pdfBase64: bytesToBase64(bytes) }, key, model);
+      const resolved = modelFor(env, "document");
+      model = resolved.model;
+      reading = await readDocument(resolved.client, { pdfBase64: bytesToBase64(bytes) }, key, model);
     }
   } catch (err) {
     const message = (err as Error).message ?? "";
     if (DOCUMENT_READ_FAILURE.test(message)) {
       return finish(422, { error: "could not read this document", detail: message, errorCode: "invalid_extraction" }, { errorCode: "invalid_extraction" });
     }
-    const { status, errorCode } = classifyAnthropicError(err);
-    const messagesByCode: Record<string, string> = {
-      insufficient_credit: "AI is temporarily unavailable: the account is out of credits.",
-      ai_busy: "The AI is busy right now — try again in a moment.",
-      anthropic_error: "document reading backend error",
-    };
-    return finish(status, { error: messagesByCode[errorCode] ?? "document reading backend error", errorCode }, { errorCode });
+    const { status, errorCode, error } = modelErrorReply(err, "document reading backend error");
+    return finish(status, { error, errorCode }, { errorCode });
   }
 
   const stored: StoredExtraction = {

@@ -1,10 +1,9 @@
 import type { D1Database } from "../_lib/identity-types";
-import Anthropic from "@anthropic-ai/sdk";
 import { requireSession } from "../_lib/session";
 import { logRequest } from "../_lib/log";
-import { classifyAnthropicError } from "../_lib/anthropic-errors";
+import { modelErrorReply } from "../_lib/model-errors";
+import { modelFor } from "../_lib/inference/resolve";
 import { proposeFromReport, type ReportPatient } from "@pablotech/akesi/report-extract";
-import { EXTRACT_MODEL } from "../../src/lib/extract-config";
 
 // W15/1 — extract an uploaded clinical report server-side. The browser can't hold
 // the Anthropic key, so it sends the raw PDF (base64) + a MINIMIZED patient subset
@@ -14,7 +13,6 @@ import { EXTRACT_MODEL } from "../../src/lib/extract-config";
 // transit; only the report itself does (a documented, bounded exposure). Runs on
 // ANTHROPIC_API_KEY, distinct from the Finding key so it can't drain that credit pool.
 interface Env {
-  ANTHROPIC_API_KEY: string;
   SESSION_SECRET: string;
   // W71 — requireSession reads accounts.sessions_valid_from, so every gated route needs the binding.
   DB: D1Database;
@@ -78,9 +76,9 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
   }
 
   try {
-    const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+    const { client, model } = modelFor(env, "extract");
     const today = new Date().toISOString().slice(0, 10);
-    const report = await proposeFromReport(client, { pdfBase64: body.pdfBase64 }, sourceFile, patient, today, EXTRACT_MODEL);
+    const report = await proposeFromReport(client, { pdfBase64: body.pdfBase64 }, sourceFile, patient, today, model);
     return finish(200, report);
   } catch (err) {
     // A schema/validation failure from proposeFromReport is the model's fault, not a
@@ -98,12 +96,7 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
     if (/^report "|^extraction truncated|^invalid JSON for|^no text block/.test(message)) {
       return finish(422, { error: "could not extract this report", detail: message, errorCode: "invalid_extraction" }, { errorCode: "invalid_extraction" });
     }
-    const { status, errorCode } = classifyAnthropicError(err);
-    const messagesByCode: Record<string, string> = {
-      insufficient_credit: "AI is temporarily unavailable: the account is out of credits.",
-      ai_busy: "The AI is busy right now — try again in a moment.",
-      anthropic_error: "extraction backend error",
-    };
-    return finish(status, { error: messagesByCode[errorCode] ?? "extraction backend error", errorCode }, { errorCode });
+    const { status, errorCode, error } = modelErrorReply(err, "extraction backend error");
+    return finish(status, { error, errorCode }, { errorCode });
   }
 }

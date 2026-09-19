@@ -14,7 +14,7 @@ export interface RequestLog {
   latencyMs?: number;
   requestId?: string; // Cloudflare cf-ray, for correlating with CF logs
   usage?: { input: number; output: number }; // Anthropic token counts (cost), not content
-  errorCode?: string; // short category (e.g. "unauthorized", "anthropic_error") — never a message body
+  errorCode?: string; // short category (e.g. "unauthorized", "model_error") — never a message body
   id?: string; // vault slug for /api/vault writes (W8d audit) — pseudonymous, already in the URL
   bytes?: number; // encrypted-blob size for a vault write (W8d) — a count, NEVER the bytes themselves
   // W75 — the rawAccessFor() answer behind this request. An `orphaned` line is a refused patient the

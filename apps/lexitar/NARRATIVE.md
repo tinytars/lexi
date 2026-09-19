@@ -70,7 +70,7 @@ through Claude, behind a dedicated flag.
     Fraction (Biplane Simpson)" land as one series. This is the imaging analogue
     of the stable names blood/DEXA emit by construction. Unknown names pass
     through — extend the alias map as new metrics appear.
-- **Model tier** — `MODELS[mode].report` (`inference-config.ts`): `dev` = Sonnet,
+- **Model tier** — the `extract` feature in `inference.config.json`: `dev` = Sonnet,
   `prod` = Opus. Cost is reported per run like every other API call. As with the
   Anthropic SDK elsewhere, runs need `NODE_EXTRA_CA_CERTS=/etc/ssl/cert.pem`.
 

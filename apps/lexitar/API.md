@@ -10,7 +10,7 @@ the same Pages deployment (no separate Worker, no separate domain). Live endpoin
 - Source: `functions/api/chat.ts`, `functions/api/vault/[id].ts`, `functions/api/raw/[[path]].ts`
   (routes) and `functions/_lib/guard.ts` (bearer guard) / `functions/_lib/log.ts` (PHI-free logging)
   / `functions/_lib/store.ts` (`storeKey` — every R2 key is namespaced by `env.STORE_PREFIX`).
-- Secrets live in the Function env binding (`ANTHROPIC_API_KEY`, `VAULT_TOKEN`,
+- Secrets live in the Function env binding (the model keys `inference.config.json` names, `VAULT_TOKEN`,
   `PROVIDER_TOKEN`) + the per-environment `STORE_PREFIX` var + the R2 `VAULT` binding — never in the bundle.
 - Architecture context for the vault flow: **`VAULT.md`**; ops/secrets: **`AUTH.md`**.
 
@@ -141,13 +141,15 @@ interface ChatContext {
 | `400` | `{"error":"question is required"}` | `question` missing, not a string, or empty/whitespace. |
 | `401` | `{"error":"unauthorized"}` | Missing/invalid bearer (see Authentication). |
 | `405` | — | Method other than `POST` (only `onRequestPost` is defined). |
-| `502` | `{"error":"chat backend error"}` | The upstream Anthropic call threw. Generic by design — no internals leak. |
+| `402` | `{"errorCode":"insufficient_credit"}` | The configured provider's account is out of credit. |
+| `422` | `{"errorCode":"model_unsupported"}` | The request carries input (a photo) the configured model can't read. |
+| `503` | `{"errorCode":"ai_busy"}` | The provider is rate-limited or overloaded. |
+| `502` | `{"error":"chat backend error","errorCode":"model_error"}` | The model call threw. Generic by design — no internals leak. |
 
 ### Model & behavior
 
-- Model: **`claude-sonnet-4-6`** (the cheap tier — chat is follow-on Q&A, not the Opus PROD
-  Finding). Defined as a local constant in `functions/api/chat.ts`, cross-referenced to
-  `scripts/inference-config.ts`. Changing it is a deliberate, recorded decision.
+- Model: the `chat` entry of `inference.config.json` (the cheap tier — chat is follow-on Q&A, not
+  the Finding's tier). See `INFERENCE.md`.
 - Non-streaming, `max_tokens: 4096`, no extended thinking.
 - System prompt: a **read-only** assistant over the supplied context; it does not diagnose and
   frames uncertain points as questions for the care team. It is passed today's date and is
@@ -188,7 +190,7 @@ curl -s -o /dev/null -w '%{http_code}\n' -X POST "$BASE/api/chat" \
 
 | Name | Where | Purpose |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | Pages secret (prod) / `.dev.vars` (local) | Key the Function uses to call Anthropic. **Must be distinct** from the CLI pipeline's key so chat usage can't exhaust the Finding's credits. |
+| model keys (`ANTHROPIC_API_KEY`, `FINDING_ANTHROPIC_API_KEY`, `RANGES_ANTHROPIC_API_KEY`) | Pages secrets (prod) / `.dev.vars` (local) | Named by `inference.config.json`, one pool per provider entry so chat can't exhaust the Finding's credits. See `INFERENCE.md`. |
 | `CHAT_TOKEN` | — | **Deleted 2026-08-26.** `/api/chat` is session-gated (`requireSession`); no Function read this. |
 | `VAULT_TOKEN` | Pages secret (prod) / `.dev.vars` (local) | Same allowlist value — gates `PUT /api/vault/{id}`. |
 | `RAW_TOKEN` | — | **Deleted 2026-08-26.** `/api/raw` is gated by `hd_session` plus a per-record `rawAccessFor` check; this Function never read a bearer. |
@@ -221,11 +223,11 @@ call as an inline error.
 
 - The encryption boundary stays in the browser (PBKDF2 + AES-GCM); the Function never sees the
   passphrase or decrypts anything.
-- The question + context **are** sent to the Function and on to Anthropic — consistent with the
-  existing pipeline, which already sends full vault context to Anthropic for the Finding. The
+- The question + context **are** sent to the Function and on to the configured model provider —
+  consistent with the existing pipeline, which already sends full vault context to it for the Finding. The
   new exposure is the public endpoint, closed (PoC-grade) by the bearer allowlist and the
   Cloudflare Access perimeter.
-- No secret appears in the deployed bundle; `ANTHROPIC_API_KEY` lives only in the Function env.
+- No secret appears in the deployed bundle; model keys live only in the Function env.
 - W84 — read-aloud text goes to Azure AI Speech (`/api/speak`), under Microsoft's HIPAA BAA.
 
 ## Logging

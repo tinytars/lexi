@@ -1,13 +1,12 @@
 import type { D1Database } from "../_lib/identity-types";
-import Anthropic from "@anthropic-ai/sdk";
 import { createHash } from "node:crypto";
 import { requireBearer } from "../_lib/guard";
 import { requireSession } from "../_lib/session";
 import { logRequest } from "../_lib/log";
 import { auditor } from "../_lib/audit";
-import { classifyAnthropicError } from "../_lib/anthropic-errors";
+import { classifyModelError } from "../_lib/model-errors";
+import { modelFor } from "../_lib/inference/resolve";
 import { generateRange, NoMeasuredUnitError } from "../../src/lib/ranges-anthropic";
-import { RANGES_MODEL } from "../../src/lib/ranges-config";
 import { factorsCanonicalString } from "../../src/lib/factors-hash";
 import type { Client, PersonalizedRange } from "../../src/lib/types";
 import type { ObjectBucket } from "../_lib/object-bucket";
@@ -15,14 +14,13 @@ import type { ObjectBucket } from "../_lib/object-bucket";
 // M59/Phase 2 — provider-only web Ranges refresh for ONE marker at a time. Gated on PROVIDER_TOKEN
 // (the same secret as /api/refresh-finding). Unlike Finding, a range is small and schema-constrained
 // (max_tokens: 1024), so this responds with a single plain JSON PersonalizedRange — no streaming.
-// Runs on a DISTINCT RANGES_ANTHROPIC_API_KEY (a Ranges-pool key, separate from Finding/chat/extract).
+// Runs on the Ranges-pool key (the "ranges" feature in inference.config.json).
 // PHI-free logging (id/status only, never the client or prose). Imports prompt/schema/validation
 // from src/lib/ranges-prompt.ts (pure, mirrors report-extract.ts's split), never from
 // scripts/claude-ranges.ts (its generateRange()/factorsHashOf pull in scripts/factors.ts →
 // finding-dag.ts) — the factorsHash below is computed inline from factorsCanonicalString instead,
 // keeping this endpoint's module graph isolated from the Finding/investigator-study inference graph.
 interface Env {
-  RANGES_ANTHROPIC_API_KEY: string;
   PROVIDER_TOKEN: string;
   SESSION_SECRET: string;
   // W71 — requireSession reads accounts.sessions_valid_from, so every gated route needs the binding.
@@ -81,19 +79,20 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
     // shell: auth, the body cap, the audit trail, the error→status mapping, and factorsHash (which
     // hashes through node:crypto here on purpose — see the module-graph note above).
     const usage = { input: 0, output: 0 };
+    const { client: anthropic, model } = modelFor(env, "ranges");
     const range: PersonalizedRange = {
       ...(await generateRange({
-        anthropic: new Anthropic({ apiKey: env.RANGES_ANTHROPIC_API_KEY }),
+        anthropic,
         marker,
         client: typedClient,
-        model: RANGES_MODEL,
+        model,
         mode: "prod",
         onUsage: (u: { input_tokens?: number | null; output_tokens?: number | null }) => {
           usage.input += u.input_tokens ?? 0;
           usage.output += u.output_tokens ?? 0;
         },
         isTransient: (err: unknown) => {
-          const { status, errorCode } = classifyAnthropicError(err);
+          const { status, errorCode } = classifyModelError(err);
           return status === 503 && errorCode === "ai_busy";
         },
       })),

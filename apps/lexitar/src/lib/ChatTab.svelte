@@ -25,6 +25,7 @@
   import DictateButton from "@tinytars/frame/DictateButton.svelte";
   import AttachmentStrip from "@tinytars/frame/AttachmentStrip.svelte";
   import { PRODUCT_NAME } from "./brand";
+  import { providerFor } from "./model-config";
   import { messageAnchor, reportAnchor } from "./anchor";
   import { type Permalink, parseHash } from "./permalink";
   import { resolveReference } from "./reference-resolver";
@@ -88,7 +89,7 @@
   $effect(() => { void activeId; error = null; });
   let chatTabEl: HTMLDivElement | undefined;
 
-  const BILLING_URL = "https://console.anthropic.com/settings/billing";
+  const BILLING_URL = providerFor("chat").billingUrl;
 
   let current = $derived(threads.find((t) => t.id === activeId) ?? threads[0]);
 
@@ -246,7 +247,7 @@
         });
         if (!res.ok) {
           const body = (await res.json().catch(() => ({}))) as { error?: string; errorCode?: string };
-          error = { code: body.errorCode ?? "anthropic_error", text: body.error ?? `request failed (${res.status})` };
+          error = { code: body.errorCode ?? "model_error", text: body.error ?? `request failed (${res.status})` };
           return;
         }
         const data = (await res.json()) as
@@ -270,7 +271,7 @@
         });
       }
       if (answer === null) {
-        error = { code: "anthropic_error", text: "the assistant could not complete the request" };
+        error = { code: "model_error", text: "the assistant could not complete the request" };
         return;
       }
       if (persona !== DEFAULT_PERSONA) pending = `${PERSONAS[persona].name} is putting it in plain talk…`;
@@ -455,8 +456,8 @@
       {#if error}
         <div class="chat-error">
           {error.text}
-          {#if error.code === "insufficient_credit"}
-            <a href={BILLING_URL} target="_blank" rel="noopener">Open the Anthropic billing console</a>
+          {#if error.code === "insufficient_credit" && BILLING_URL}
+            <a href={BILLING_URL} target="_blank" rel="noopener">Open the AI provider's billing console</a>
             <span class="chat-error-hint">Log in as the organization account.</span>
           {/if}
         </div>
