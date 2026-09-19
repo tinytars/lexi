@@ -35,11 +35,7 @@ export const syntheticTag = (seed: string): string => seed.toUpperCase();
 
 const DAY_MS = 86_400_000;
 
-// Days-ago for each of a marker's 5 readings, keyed by body system. Anchored to `Date.now()` rather
-// than fixed calendar dates — a fixed date eventually ages out of every time-window filter as CI runs
-// on later dates. The two systems' NEWEST reading is deliberately staggered (60 days vs. 200): a
-// "3 months" window then leaves Metabolic Health's markers with nothing to plot while Cardiovascular
-// Risk's still show data, which is the partial-emptiness view-controls.spec.ts's W65 test needs.
+// Relative to now so no window ages out; newest readings stagger (60 vs 200 days) for markers-tab's W65 case.
 const READING_AGES_DAYS: Record<(typeof GROUPS)[number], number[]> = {
   "Cardiovascular Risk": [825, 625, 400, 200, 60],
   "Metabolic Health": [825, 625, 400, 200, 200],

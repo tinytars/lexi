@@ -2,6 +2,7 @@ import { checkBreakGlass } from "@tinytars/vault/break-glass";
 import type { Account, AuditStore, Envelope, EnvelopeStore, ProviderLink, ProviderLinkStore, VaultRow } from "@tinytars/vault/stores";
 import { can, roleOf } from "../capabilities";
 import { logRequest } from "../log";
+import { json } from "../http";
 
 // W44 P4b — the audited moment a support agent ENTERS a patient's account. Verifies an active,
 // unexpired support link + envelope, records support_access_opened, and returns the envelope for
@@ -31,9 +32,6 @@ function bytesToBase64(bytes: Uint8Array): string {
   for (const b of bytes) bin += String.fromCharCode(b);
   return btoa(bin);
 }
-
-const json = (status: number, body: unknown): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 export async function supportAccessHandler(request: Request, deps: SupportAccessDeps): Promise<Response> {
   const start = Date.now();

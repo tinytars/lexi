@@ -25,6 +25,7 @@
   import { dagNode } from "./lib/finding-dag";
   import { tick } from "svelte";
   import { TABS, DEFAULT_TAB, type Tab } from "./lib/nav";
+  import { bootFromLocation } from "./lib/boot-location";
   import { parseHash, toHash, SECTION_TAB, type Permalink } from "./lib/permalink";
   import { flashAnchor, reportAnchor } from "./lib/anchor";
   import { normalizeClientId, vaultIdFromR2Key } from "./lib/client-id";
@@ -32,7 +33,7 @@
   import ChatTab from "./lib/ChatTab.svelte";
   import { createChatThreadSession } from "./lib/chat-thread-session.svelte";
   import { createNavController } from "./lib/nav-controller";
-  import { resolveDefaultGroup, GROUP_SECTIONS, FIRST_SYSTEM_DEFAULT_SECTIONS, decideHashSync } from "./lib/nav-decisions";
+  import { resolveDefaultGroup, GROUP_SECTIONS, FIRST_SYSTEM_DEFAULT_SECTIONS, decideHashSync, decideVisibilityBounce } from "./lib/nav-decisions";
   import { createConflictResolver } from "./lib/conflict-resolver";
   import { buildRefreshMessage } from "./lib/refresh-message";
   import { patientSwitchedMidRequest } from "./lib/stale-guard";
@@ -49,7 +50,10 @@
   import ExportTab, { type ExportOption } from "@tinytars/frame/ExportTab.svelte";
   import { exportCsv, exportJson } from "./lib/export";
   import ImportTab from "./lib/ImportTab.svelte";
-  import { classifyUpload } from "./lib/import-flow";
+  import { createAuthFlow } from "./lib/auth-flow";
+  import { importFileForChat, type ChatImportResult } from "./lib/import-flow";
+  import { withClient } from "./lib/vault-clients";
+  import { putRaw } from "./lib/attachment-store";
   import { togglePinnedIn, renameIn, removeFrom, labelOf, type SidebarItemKind } from "./lib/vault-item-ops";
   import { pinnedQueries } from "@pablotech/akesi/pinned-queries";
   import Onboarding, { type OnboardingField } from "@tinytars/frame/Onboarding.svelte";
@@ -308,48 +312,27 @@
   // vault unlocks (see unlock/enterPatient); live hashchange (back-button, pasted link) is applied
   // immediately. The four-part location is mirrored back to the hash on every in-app navigation.
   if (typeof window !== "undefined") {
-    const boot = parseHash(window.location.hash);
-    if (boot) {
-      activeTab = boot.tab;
-      section = boot.section ?? null;
-      pendingNav = boot;
+    const boot = bootFromLocation(new URL(window.location.href), localStorage);
+    if (boot.permalink) {
+      activeTab = boot.permalink.tab;
+      section = boot.permalink.section ?? null;
+      pendingNav = boot.permalink;
     }
     window.addEventListener("hashchange", () => {
       const pl = parseHash(window.location.hash);
       if (pl) applyNav(pl);
     });
-
-    // W45 — return leg of the Google OAuth login redirect. ?google=1 → the session cookie is set;
-    // bootstrap the key material and enter. ?google_error=… → show it on the lock screen. Deferred to a
-    // microtask so the rest of this instance script (the const helpers it calls) has initialized.
-    const params = new URLSearchParams(window.location.search);
-    if (params.has("google") || params.has("google_error")) {
-      const gErr = params.get("google_error");
-      queueMicrotask(() => handleGoogleReturn(gErr));
-      const clean = new URL(window.location.href);
-      clean.search = "";
-      window.history.replaceState({}, "", clean.toString());
+    if (boot.cleanUrl) window.history.replaceState({}, "", boot.cleanUrl);
+    // W45 — deferred so the rest of this instance script (the const helpers it calls) has initialized.
+    const googleReturn = boot.googleReturn;
+    if (googleReturn) queueMicrotask(() => authFlow.handleGoogleReturn(googleReturn.error));
+    if (boot.emailVerify) {
+      account.emailVerifyNote = boot.emailVerify;
+      if (boot.emailVerify === "ok") queueMicrotask(() => { void account.refresh().catch(() => {}); });
     }
-
-    // W47 — return leg of the email verification link (/api/auth/email/confirm redirects here).
-    const ev = params.get("email_verify");
-    if (ev === "ok" || ev === "invalid") {
-      account.emailVerifyNote = ev;
-      const clean = new URL(window.location.href);
-      clean.searchParams.delete("email_verify");
-      window.history.replaceState({}, "", clean.toString());
-      if (ev === "ok") queueMicrotask(() => { void account.refresh().catch(() => {}); });
-    }
-
-    // W49 — plain-refresh resume. A synchronous localStorage marker ("key" for password/passkey,
-    // "google" for OAuth), set at login, records that there's a session worth restoring. Only then do
-    // we gate the lock screen + probe the server — so a first-time visitor (no marker) sees the sign-in
-    // form immediately, with no doomed request. Skipped on an explicit OAuth redirect (handled above).
-    if (!params.has("google") && !params.has("google_error") && localStorage.getItem(RESUME_MARKER)) {
-      // Not deferred to a microtask: bootResume raises roster.resuming synchronously, and anything
-      // that lowers it later would let the lock screen paint first.
-      void roster.bootResume();
-    }
+    // W49 — not deferred: bootResume raises roster.resuming synchronously, and anything that lowers
+    // it later would let the lock screen paint first.
+    if (boot.resume) void roster.bootResume();
   }
   // The persisted location → hash, mirrored reactively so sub-tab clicks (which set the bound
   // `section`) also update the URL. Anchor is never written here. A change of tab/client pushes a
@@ -480,14 +463,9 @@
     // and save in the meantime, and merging onto the old snapshot would silently revert it once this
     // regen's own save follows.
     persist: async (pending, id) => {
-      const liveVault = vault;
-      const liveClient = selectedClientId === id ? liveVault?.clients[id] : undefined;
+      const liveClient = selectedClientId === id ? vault?.clients[id] : undefined;
       if (!liveClient || !session.dek || !session.r2Id) return false;
-      const updated = await applyLeafRegen(liveClient, pending, "translate");
-      const next: Vault = { clients: { ...liveVault!.clients, [id]: updated } };
-      await saveVaultV2(next, session.r2Id, session.dek, vaultSink);
-      vault = next;
-      return true;
+      return persistClient(id, await applyLeafRegen(liveClient, pending, "translate"));
     },
   });
 
@@ -568,67 +546,25 @@
     else restoreLastLocation();
   }
 
-  async function doLogin(method: "password" | "passkey") {
-    if (!email || (method === "password" && !password)) return;
-    unlocking = true;
-    error = null;
-    try {
-      const r = method === "password" ? await loginPassword(email, password) : await loginPasskey(email);
-      // W49 — persist the resume key BEFORE entering the account: enterAccount paints the app
-      // (e.g. the provider roster) and a user refreshing in that window would otherwise beat the
-      // IndexedDB write and be bounced to the lock screen. persistSessionKey only needs privateKey.
-      await roster.persistSessionKey(r.privateKey);
-      await roster.enterAccount(r);
-    } catch (e) {
-      error = (e as Error).message;
-    } finally {
-      unlocking = false;
-    }
-  }
+  const authFlow = createAuthFlow({
+    getEmail: () => email,
+    getPassword: () => password,
+    setUnlocking: (busy) => (unlocking = busy),
+    setError: (m) => (error = m),
+    setGoogleError: (m) => (googleError = m),
+    loginPassword,
+    loginPasskey,
+    signupPassword,
+    signupPasskey,
+    bootstrapGoogleSession,
+    persistSessionKey: (k) => roster.persistSessionKey(k),
+    enterAccount: (r) => roster.enterAccount(r),
+    markGoogleResume: () => localStorage.setItem(RESUME_MARKER, "google"),
+  });
 
-  // W45 — start Google OAuth (full-page redirect; OAuth needs a top-level navigation).
+  // W45 — Google OAuth needs a top-level navigation, not a fetch.
   function startGoogle() {
     window.location.href = "/api/auth/google/start";
-  }
-  const GOOGLE_ERRORS: Record<string, string> = {
-    email_exists: "An account with that email already exists. Sign in with your existing method, then add Google from Account settings.",
-    state: "Google sign-in expired or was interrupted. Please try again.",
-    auth: "Google sign-in failed. Please try again.",
-    server: "Something went wrong creating your account. Please try again.",
-  };
-  async function handleGoogleReturn(errorCode: string | null) {
-    if (errorCode) { googleError = GOOGLE_ERRORS[errorCode] ?? "Google sign-in failed."; return; }
-    unlocking = true;
-    error = null;
-    try {
-      await roster.enterAccount(await bootstrapGoogleSession());
-      localStorage.setItem(RESUME_MARKER, "google"); // W49 — resume via server-custody bootstrap on refresh
-    } catch (e) {
-      error = (e as Error).message;
-    } finally {
-      unlocking = false;
-    }
-  }
-
-  // Login result held between signup and the user acknowledging their recovery code — we only enter
-  // the vault (which hides the lock screen where the code shows) once they've saved it.
-  async function doSignup(method: "password" | "passkey") {
-    if (!email || (method === "password" && !password)) return;
-    unlocking = true;
-    error = null;
-    try {
-      const displayName = email.split("@")[0] || email; // simplest; editable later via the account API
-      // W48 — signup no longer surfaces a recovery code (it lives in the Account menu now, nudged
-      // post-login). Create the account, then log in to obtain the DEK and enter directly.
-      await (method === "password" ? signupPassword(email, displayName, password) : signupPasskey(email, displayName));
-      const r = method === "password" ? await loginPassword(email, password) : await loginPasskey(email);
-      await roster.persistSessionKey(r.privateKey); // W49 — persist before entering (see doLogin) so an immediate refresh resumes
-      await roster.enterAccount(r);
-    } catch (e) {
-      error = (e as Error).message;
-    } finally {
-      unlocking = false;
-    }
   }
 
   // The drill-in ends here, where the vault does: unwrap the envelope with this session's provider
@@ -666,8 +602,6 @@
     if (!vault || !currentClient || !selectedClientId || !session.dek || !session.r2Id || !providerToken) return;
     const c = currentClient;
     const id = selectedClientId;
-    const d = session.dek;
-    const vid = session.r2Id;
     refreshing = true;
     refreshError = null;
     refreshProgress = null;
@@ -683,9 +617,7 @@
         signal: refreshController.signal,
         save: async (updated) => {
           if (patientSwitchedMidRequest(currentClient, c)) return; // provider switched patients mid-run
-          const next: Vault = { clients: { ...vault!.clients, [id]: updated } };
-          await saveVaultV2(next, vid, d, vaultSink);
-          vault = next;
+          await persistClient(id, updated);
         },
       });
       // A failed leaf is not a failed refresh: the core and every other leaf are saved. Name them so
@@ -740,6 +672,15 @@
     error = null;
   }
 
+  // The awaited save: the vault changes only once the write lands, so a failed save leaves it as it was.
+  async function persistClient(id: string, client: Client): Promise<boolean> {
+    if (!vault || !session.dek || !session.r2Id) return false;
+    const next = withClient(vault, id, client);
+    await saveVaultV2(next, session.r2Id, session.dek, vaultSink);
+    vault = next;
+    return true;
+  }
+
   // M57 — every section's Add/Edit/Delete now persists immediately (no more outer Save queuing up
   // a whole-client draft), so it's normal for a second edit to fire before the first's network PUT
   // resolves. Apply the vault update OPTIMISTICALLY (synchronously, before the await) so that second
@@ -750,7 +691,7 @@
   // completions can't roll back a newer optimistic state.
   function saveEdits(updated: Client): void {
     if (!vault || !selectedClientId || !session.dek || !session.r2Id) return;
-    const next: Vault = { clients: { ...vault.clients, [selectedClientId]: updated } };
+    const next = withClient(vault, selectedClientId, updated);
     const r2id = session.r2Id;
     const key = session.dek;
     vault = next; // updates currentClient → children see the new baseline on this same tick
@@ -842,10 +783,7 @@
   // persist it exactly like an edit (re-encrypt + sink), then swap it into the vault
   // so Health Reports + the stale chips recompute. ImportTab handles the raw PUT.
   async function handleImported(updated: Client, reportId?: string) {
-    if (!vault || !selectedClientId || !session.dek || !session.r2Id) return;
-    const next: Vault = { clients: { ...vault.clients, [selectedClientId]: updated } };
-    await saveVaultV2(next, session.r2Id, session.dek, vaultSink);
-    vault = next;
+    if (!selectedClientId || !(await persistClient(selectedClientId, updated))) return;
     void fillMissingRanges(updated);
     // W38/5 — headline case: after a report import, close the modal and auto-follow to it in
     // Reports, highlighted (no confirming click).
@@ -855,39 +793,16 @@
     }
   }
 
-  // W-chat-attach — same classify/PUT/save spine as handleImported, driven from the chat
-  // composer instead of the Import modal: no navigation, just report back what landed so
-  // the caller can build a reference-turn card.
-  async function importFileForChat(
-    file: File,
-  ): Promise<
-    | { ok: false; message: string }
-    | { ok: true; kind: "report" | "source" | "pending"; id: string; originalName: string }
-  > {
+  async function importChatFile(file: File): Promise<ChatImportResult> {
     if (!currentClient || !selectedClientId || !session.dek || !session.r2Id) return { ok: false, message: "No active client." };
-    const client = currentClient;
-    const clientId = selectedClientId;
-    const result = await classifyUpload(client, clientId, file);
-    if (result.status === "error") return { ok: false, message: result.message };
-    if (result.status === "duplicate") {
-      return { ok: true, kind: result.kind, id: result.existingId, originalName: file.name };
-    }
-    const nextClient =
-      result.status === "report" ? result.fold.client : result.status === "source" ? result.srcFold.client : result.pending.client;
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    const res = await fetch(`/api/raw/${normalizeClientId(clientId)}/${result.storedFile}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/octet-stream" },
-      body: bytes as BodyInit,
+    return importFileForChat(currentClient, selectedClientId, file, {
+      storeOriginal: putRaw,
+      persist: async (id, next) => {
+        if (!(await persistClient(id, next))) return false;
+        void fillMissingRanges(next);
+        return true;
+      },
     });
-    if (!res.ok && res.status !== 204) {
-      return { ok: false, message: `storing the original failed (${res.status})` };
-    }
-    const next: Vault = { clients: { ...vault!.clients, [clientId]: nextClient } };
-    await saveVaultV2(next, session.r2Id, session.dek, vaultSink);
-    vault = next;
-    void fillMissingRanges(nextClient);
-    return { ok: true, kind: result.status, id: result.id, originalName: file.name };
   }
 
   // W46 — first-run: a signed-in account with an empty vault ({clients:{}}) has no browser way
@@ -895,7 +810,7 @@
   // provider can resolve it, App.svelte enterPatient), persist like an edit, select it, then open
   // Import so the user lands in "import files to get started".
   async function createFirstClient(info: Record<string, unknown>) {
-    if (!vault || !session.dek || !session.r2Id) return;
+    if (!vault) return;
     const birthYear = info.birthYear as number | undefined;
     const gender = info.gender as "male" | "female";
     const { id } = await getMyAccount();
@@ -905,9 +820,7 @@
     // skipped year is an empty dob (age renders as null, no clinical default).
     const dob = birthYear ? `${birthYear}-01-01` : "";
     const client: Client = { displayName: "My records", dob, gender, watchlist: [], results: [] };
-    const next: Vault = { clients: { ...vault.clients, [clientId]: client } };
-    await saveVaultV2(next, session.r2Id, session.dek, vaultSink);
-    vault = next;
+    if (!(await persistClient(clientId, client))) return;
     selectedClientId = clientId;
     importOpen = true;
   }
@@ -991,20 +904,11 @@
   // `present` derivation already apply, so all three agree on what's visible.
   $effect(() => {
     if (!currentClient) return;
-    const present = presentSections(currentClient, ALL_SECTIONS).filter((s) => canSee(roster.isProvider, currentClient, s.key));
-    if (activeTab === "chat") {
-      // Chat has no SectionMeta of its own, so it needs its own canSee check. Bouncing off it also
-      // has to flip `activeTab` (not just `section`) — otherwise the chat-thread-fallback effect
-      // above (which only checks `section` against real thread ids, not visibility) would fight
-      // this one forever.
-      if (canSee(roster.isProvider, currentClient, "chat")) return;
-      const nextTab = TABS.find((t) => t.id !== "chat" && canSee(roster.isProvider, currentClient, t.id))?.id;
-      if (nextTab && present.length > 0) navigate({ tab: nextTab, section: present[0].key });
-      return;
-    }
-    if (section && !present.some((s) => s.key === section) && present.length > 0) {
-      navigate({ section: present[0].key });
-    }
+    const client = currentClient;
+    const canSeeKey = (key: string) => canSee(roster.isProvider, client, key);
+    const visible = presentSections(client, ALL_SECTIONS).map((s) => s.key).filter(canSeeKey);
+    const bounce = decideVisibilityBounce({ activeTab, section }, visible, canSeeKey);
+    if (bounce) navigate(bounce);
   });
   let aboutOpen = $state(false);
   let exportOpen = $state(false);
@@ -1070,7 +974,7 @@
 {/if}
 </div>
 {#if roster.resuming}
-  <LoginScreen productName={PRODUCT_NAME} resuming={true} recovery={recovery} onLogin={doLogin} onSignup={doSignup} onGoogle={startGoogle} />
+  <LoginScreen productName={PRODUCT_NAME} resuming={true} recovery={recovery} onLogin={authFlow.login} onSignup={authFlow.signup} onGoogle={startGoogle} />
   {@render appChrome()}
 {:else if !vault && !roster.isProvider}
   <!-- W73/W80 — one field for both recovery-code rungs: the endpoint called is read off the code's
@@ -1084,8 +988,8 @@
     {unlocking}
     {googleError}
     recovery={recovery}
-    onLogin={doLogin}
-    onSignup={doSignup}
+    onLogin={authFlow.login}
+    onSignup={authFlow.signup}
     onGoogle={startGoogle}
     signUpSubheading="Create your account. Your record is encrypted end-to-end, and LexiTar holds a recovery key so a forgotten password doesn't lose it — removable any time in Account settings."
   />
@@ -1511,7 +1415,7 @@
         onClose={() => (searchOpen = false)}
       />
     {:else if activeTab === "chat" && currentClient}
-      <ChatTab client={currentClient} dek={session.dek} clientId={selectedClientId} {unitSystem} activeId={section} bind:threads={chatSession.threads} {vault} onNavigate={navigate} onPersist={chatSession.persistChatThreads} onImportFile={importFileForChat} onCreateNote={createNoteFromAttachment} />
+      <ChatTab client={currentClient} dek={session.dek} clientId={selectedClientId} {unitSystem} activeId={section} bind:threads={chatSession.threads} hydrated={chatSession.hydrated} {vault} onNavigate={navigate} onPersist={chatSession.persistChatThreads} onImportFile={importChatFile} onCreateNote={createNoteFromAttachment} />
     {:else if currentClient}
       <ReportSections client={currentClient} sections={ALL_SECTIONS} bind:active={section} clientId={selectedClientId} providerSession={roster.isProvider} canTranslate={roster.isProvider && !!providerToken} onTranslate={translateMarker} onCategorizeMarkers={handleCategorizeMarkers} {vault} {unitSystem} bind:windowYears onToggleWatchlist={toggleWatchlist} onTogglePinnedRatio={togglePinnedRatio} onSave={saveEdits} onSaved={(anchor) => navigate({ anchor })} onTriggerRegen={triggerLeafRegen} saved={vaultSave.saved} saveError={vaultSave.error} onStartChat={startChatFromLeaf} onCreateNote={createNoteFromAttachment} pendingSidebarAction={pendingSidebarAction} onConsumeSidebarAction={() => (pendingSidebarAction = null)} bind:activeGroup {activeLeaf} {pendingAnchor} onConsumeAnchor={() => (pendingAnchor = null)} pendingNoteAttachment={pendingNoteAttachment} onPendingNoteAttachmentConsumed={() => (pendingNoteAttachment = null)} onNavigate={navigate} />
     {/if}

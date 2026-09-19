@@ -1,30 +1,16 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { Miniflare } from "miniflare";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from "vitest";
 import { signSession, verifySession, requireSession, sessionSetCookie } from "../../functions/_lib/session";
-import type { D1Database } from "../../functions/_lib/identity-types";
 import { createAccount, revokeSessions } from "../../functions/_lib/identity-accounts";
+import { useWorkerd } from "../support/miniflare";
+import { SESSION_SECRET } from "../support/session";
 
-// Real D1, not a fake: since W71 requireSession consults accounts.sessions_valid_from, and the point
-// of the column is that a revocation actually stops a cookie the signature still accepts. A stub that
-// returns "not revoked" would agree with any implementation, including the one this replaced.
-let mf: Miniflare;
-let env: { SESSION_SECRET: string; DB: D1Database };
+// Real D1: a stub returning "not revoked" would agree with any requireSession, including a broken one.
+const w = useWorkerd();
+const env = { SESSION_SECRET, get DB() { return w.db; } };
 
 beforeAll(async () => {
-  mf = new Miniflare({ modules: true, script: "export default { fetch() { return new Response('ok'); } }", d1Databases: { DB: "test-session" } });
-  const db = (await mf.getD1Database("DB")) as unknown as D1Database;
-  for (const f of ["0001_identity.sql", "0007_session_revocation.sql"]) {
-    const sql = readFileSync(fileURLToPath(new URL(`../../migrations/${f}`, import.meta.url)), "utf8");
-    for (const stmt of sql.replace(/^\s*--.*$/gm, "").split(";").map((x) => x.trim()).filter(Boolean)) {
-      await db.prepare(stmt).run();
-    }
-  }
-  env = { SESSION_SECRET: "test-secret", DB: db };
-  for (const id of ["acc-1", "acc-2", "acc-3"]) await createAccount(db, { id, displayName: id });
+  for (const id of ["acc-1", "acc-2", "acc-3"]) await createAccount(w.db, { id, displayName: id });
 });
-afterAll(async () => { await mf.dispose(); });
 
 describe("session", () => {
   it("round-trips a signed session to the same accountId", async () => {
@@ -88,19 +74,18 @@ describe("session", () => {
     });
   });
 
-  // W71 — the cookie is a self-contained 30-day HMAC with no jti and no server-side store, and logout
-  // only cleared it. A captured cookie therefore survived logout, a password change and a passkey
-  // removal alike; the only lever was rotating SESSION_SECRET, which signs out every account at once
-  // and also invalidates email-verification tokens and WebAuthn challenges, since all five token
-  // types share that one secret.
   describe("a session can actually be revoked", () => {
     const withCookie = (token: string) => new Request("http://x/api/account", { headers: { cookie: `hd_session=${token}` } });
+    // Only Date is faked — Miniflare needs real timers. The revocation stamp has one-second resolution.
+    beforeEach(() => { vi.useFakeTimers({ toFake: ["Date"] }); });
+    afterEach(() => { vi.useRealTimers(); });
 
     it("a cookie issued before the revocation stops working, while its signature stays valid", async () => {
+      const t = Date.now();
       const token = await signSession(env, "acc-3");
       expect(await requireSession(withCookie(token), env)).toEqual({ accountId: "acc-3" });
 
-      await new Promise((r) => setTimeout(r, 1100)); // the stamp has one-second resolution
+      vi.setSystemTime(t + 1000);
       await revokeSessions(env.DB, "acc-3");
 
       // Still authentic — this is the distinction the old code could not draw.
@@ -114,7 +99,9 @@ describe("session", () => {
     });
 
     it("a cookie issued after the revocation works — logging back in is not blocked", async () => {
-      await new Promise((r) => setTimeout(r, 1100));
+      const t = Date.now();
+      await revokeSessions(env.DB, "acc-3");
+      vi.setSystemTime(t + 1000);
       const fresh = await signSession(env, "acc-3");
       expect(await requireSession(withCookie(fresh), env)).toEqual({ accountId: "acc-3" });
     });

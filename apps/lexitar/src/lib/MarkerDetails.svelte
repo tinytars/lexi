@@ -63,7 +63,7 @@
       <div class="mc-values-scroll">
         <table class="mc-values-table">
           <tbody>
-            {#each valueRows as v (v.date)}
+            {#each valueRows as v}
               <tr><td class="mc-v-date">{v.date}</td><td class="mc-v-val">{v.value}{v.unit ? " " + v.unit : ""}{#if v.fromComparison}<span class="mc-v-note"> ○</span>{/if}</td></tr>
             {/each}
           </tbody>

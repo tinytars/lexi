@@ -28,6 +28,7 @@ import { can, roleOf } from "../../_lib/capabilities";
 import { issueGrant } from "../../_lib/recovery";
 import type { EmailEnv } from "../../_lib/email";
 import { logRequest } from "../../_lib/log";
+import { json } from "../../_lib/http";
 
 type Env = EmailEnv & { DB: D1Database; SESSION_SECRET: string };
 interface Ctx {
@@ -37,8 +38,6 @@ interface Ctx {
 }
 
 const ROUTE = "/api/recovery/grant";
-const json = (status: number, body: unknown): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 function base64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64);

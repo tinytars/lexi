@@ -1,6 +1,4 @@
-import { applyMigrations } from "./_migrate";
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { Miniflare } from "miniflare";
+import { describe, it, expect } from "vitest";
 import {
   D1AccountStore,
   D1CredentialStore,
@@ -17,23 +15,14 @@ import {
   runProviderLinkStoreConformance,
   runAuditStoreConformance,
 } from "@tinytars/vault/adapters/conformance";
+import { useWorkerd } from "../support/miniflare";
 
 // Contract-conformance for the D1 adapters in @tinytars/vault/adapters/d1: each store class
 // is a one-line wrapper over the identity-*.ts free functions, so this exercises the wiring itself
 // (right function, right argument order) rather than re-testing behavior already covered by the
 // identity-*.ts and route-level unit tests.
 
-let mf: Miniflare;
-let db: any;
-
-beforeAll(async () => {
-  mf = new Miniflare({ modules: true, script: "export default { fetch() { return new Response('ok'); } }", d1Databases: { DB: "test-d1-store" } });
-  db = await mf.getD1Database("DB");
-  await applyMigrations(db as unknown as import("../../functions/_lib/identity-types").D1Database);
-});
-afterAll(async () => {
-  await mf.dispose();
-});
+const w = useWorkerd();
 
 // The shared contract suite (@tinytars/vault/adapters/conformance) run against the SAME D1
 // database as above. tests/unit/memory-adapter.test.ts runs the identical suite against the memory
@@ -54,7 +43,7 @@ const RESET_TABLES = [
 ];
 async function resetD1(): Promise<void> {
   for (const table of RESET_TABLES) {
-    await db.prepare(`DELETE FROM ${table}`).run();
+    await w.db.prepare(`DELETE FROM ${table}`).run();
   }
 }
 
@@ -69,22 +58,22 @@ const FIXTURE_ACCOUNT_IDS = ["acct-1", "acct-2", "p1", "p2", "d1", "d2"];
 async function resetD1WithFixtureAccounts(): Promise<void> {
   await resetD1();
   for (const id of FIXTURE_ACCOUNT_IDS) {
-    await db
+    await w.db
       .prepare("INSERT INTO accounts (id, display_name, created_at) VALUES (?, ?, ?)")
       .bind(id, id, new Date().toISOString())
       .run();
   }
 }
 
-runAccountStoreConformance("D1", async () => { await resetD1(); return new D1AccountStore(db); });
-runCredentialStoreConformance("D1", async () => { await resetD1WithFixtureAccounts(); return new D1CredentialStore(db); });
-runEnvelopeStoreConformance("D1", async () => { await resetD1WithFixtureAccounts(); return new D1EnvelopeStore(db); });
-runProviderLinkStoreConformance("D1", async () => { await resetD1WithFixtureAccounts(); return new D1ProviderLinkStore(db); });
-runAuditStoreConformance("D1", async () => { await resetD1WithFixtureAccounts(); return new D1AuditStore(db); });
+runAccountStoreConformance("D1", async () => { await resetD1(); return new D1AccountStore(w.db); });
+runCredentialStoreConformance("D1", async () => { await resetD1WithFixtureAccounts(); return new D1CredentialStore(w.db); });
+runEnvelopeStoreConformance("D1", async () => { await resetD1WithFixtureAccounts(); return new D1EnvelopeStore(w.db); });
+runProviderLinkStoreConformance("D1", async () => { await resetD1WithFixtureAccounts(); return new D1ProviderLinkStore(w.db); });
+runAuditStoreConformance("D1", async () => { await resetD1WithFixtureAccounts(); return new D1AuditStore(w.db); });
 
 describe("D1AccountStore", () => {
   it("creates, reads, and updates an account through the store interface", async () => {
-    const store = new D1AccountStore(db);
+    const store = new D1AccountStore(w.db);
     const account = await store.create({ id: crypto.randomUUID(), displayName: "Ada", email: "ada@example.com" });
     expect(await store.get(account.id)).toEqual(account);
     expect(await store.getByEmail("ada@example.com")).toEqual(account);
@@ -108,8 +97,8 @@ describe("D1AccountStore", () => {
 
 describe("D1CredentialStore", () => {
   it("wires identities, credentials, and public keys through the store interface", async () => {
-    const accounts = new D1AccountStore(db);
-    const store = new D1CredentialStore(db);
+    const accounts = new D1AccountStore(w.db);
+    const store = new D1CredentialStore(w.db);
     const account = await accounts.create({ id: crypto.randomUUID(), displayName: "Bob" });
 
     const identity = await store.addIdentity({ accountId: account.id, method: "password" });
@@ -133,9 +122,9 @@ describe("D1CredentialStore", () => {
 
 describe("D1EnvelopeStore + resolveEnvelopeAccess", () => {
   it("composes vault/envelope storage with provider-link policy", async () => {
-    const accounts = new D1AccountStore(db);
-    const envelopes = new D1EnvelopeStore(db);
-    const links = new D1ProviderLinkStore(db);
+    const accounts = new D1AccountStore(w.db);
+    const envelopes = new D1EnvelopeStore(w.db);
+    const links = new D1ProviderLinkStore(w.db);
 
     const owner = await accounts.create({ id: crypto.randomUUID(), displayName: "Owner" });
     const provider = await accounts.create({ id: crypto.randomUUID(), displayName: "Provider" });
@@ -175,8 +164,8 @@ describe("D1EnvelopeStore + resolveEnvelopeAccess", () => {
 
 describe("D1AuditStore", () => {
   it("records and lists PHI-access events through the store interface", async () => {
-    const accounts = new D1AccountStore(db);
-    const store = new D1AuditStore(db);
+    const accounts = new D1AccountStore(w.db);
+    const store = new D1AuditStore(w.db);
     const actor = await accounts.create({ id: crypto.randomUUID(), displayName: "Actor" });
     const subject = await accounts.create({ id: crypto.randomUUID(), displayName: "Subject" });
 

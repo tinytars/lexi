@@ -1,6 +1,6 @@
 import { test, expect } from "./_fixtures";
 import type { Page } from "@playwright/test";
-import { openSyntheticAsProvider, mySynthetic } from "./_synthetic";
+import { openSyntheticAsProvider, reloadOntoPatient } from "./_synthetic";
 import { clickLeafMenuItem } from "./_leaf-menu";
 import { watchFlashes, expectFlashed } from "./_flash";
 import { clickNav, clickProfileSub } from "./_nav";
@@ -57,15 +57,11 @@ test("Personalization is a single basic-details block (no sub-tabs, no Close/Dis
 });
 
 test("editing Goal persists immediately on blur, no Save button needed (M57)", async ({ page }) => {
-  const who = mySynthetic();
   await openPersonalization(page);
 
-  // M64 retired the separate Notes scalar field this test used to target; Goal exercises the
-  // identical blur-persist behavior and still exists.
   const goal = page
     .locator(".personalization label.field", { has: page.getByText("Goal", { exact: true }) })
     .locator("textarea");
-  const original = await goal.inputValue();
   // Capitalized — normalizeClientDraft applies capFirst to goal on every persist (factors-edit.ts),
   // so a lowercase-starting sentinel would round-trip mutated and fail a naive equality check.
   const marker = `Edited in test — M57 ${Date.now()}`;
@@ -74,24 +70,16 @@ test("editing Goal persists immediately on blur, no Save button needed (M57)", a
   await expect(page.locator(".personalization .saved")).toBeVisible({ timeout: 10_000 });
 
   // Reload with no Save click ever — the blur's own immediate persist is what's under test.
-  await page.reload();
-  await page.waitForSelector(".roster-list");
-  await page.click(`.roster-name:has-text("${who.name}")`);
+  await reloadOntoPatient(page);
   await clickNav(page, "Profile");
   const reloadedGoal = page
     .locator(".personalization label.field", { has: page.getByText("Goal", { exact: true }) })
     .locator("textarea");
   await expect(reloadedGoal).toHaveValue(marker);
-
-  // Restore the original value so this test doesn't leave garbage in the synthetic profile.
-  await reloadedGoal.fill(original);
-  await reloadedGoal.blur();
-  await expect(page.locator(".personalization .saved")).toBeVisible({ timeout: 10_000 });
 });
 
 test("Allergies: modal-Add, modal-Edit, and Delete all persist immediately (M66)", async ({ page }) => {
   page.on("dialog", (d) => d.accept());
-  const who = mySynthetic();
   const marker = `M65 allergen ${Date.now()}`;
   const edited = `M65 allergen edited ${Date.now()}`;
 
@@ -122,9 +110,7 @@ test("Allergies: modal-Add, modal-Edit, and Delete all persist immediately (M66)
   await expectFlashed(page, editedAnchorId);
   await expect(page.locator(".allergies .saved")).toBeVisible({ timeout: 10_000 });
 
-  await page.reload();
-  await page.waitForSelector(".roster-list");
-  await page.click(`.roster-name:has-text("${who.name}")`);
+  await reloadOntoPatient(page);
   await clickProfileSub(page, "Allergies");
   await expect(page.locator(".allergies")).toContainText(edited);
   await expect(page.locator(".allergies")).not.toContainText(marker);
@@ -136,7 +122,6 @@ test("Allergies: modal-Add, modal-Edit, and Delete all persist immediately (M66)
 
 test("Family: modal-Add, modal-Edit, and Delete all persist immediately (M66)", async ({ page }) => {
   page.on("dialog", (d) => d.accept());
-  const who = mySynthetic();
   const marker = `M65 family ${Date.now()}`;
   const edited = `M65 family edited ${Date.now()}`;
 
@@ -168,9 +153,7 @@ test("Family: modal-Add, modal-Edit, and Delete all persist immediately (M66)", 
   await expectFlashed(page, editedAnchorId);
   await expect(page.locator(".family .saved")).toBeVisible({ timeout: 10_000 });
 
-  await page.reload();
-  await page.waitForSelector(".roster-list");
-  await page.click(`.roster-name:has-text("${who.name}")`);
+  await reloadOntoPatient(page);
   await clickProfileSub(page, "Family");
   await expect(page.locator(".family")).toContainText(edited);
   await expect(page.locator(".family")).not.toContainText(marker);
@@ -285,7 +268,6 @@ test("Allergies: a pin survives a reload on the row that was clicked", async ({ 
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("dialog", (d) => d.accept());
-  const who = mySynthetic();
   const first = `W64 alpha ${Date.now()}`;
   const second = `W64 beta ${Date.now()}`;
 
@@ -301,9 +283,7 @@ test("Allergies: a pin survives a reload on the row that was clicked", async ({ 
   // last-saved payload can disagree.
   await clickLeafMenuItem(page.locator(".allergies .leaf-card", { hasText: second }), "Pin");
 
-  await page.reload();
-  await page.waitForSelector(".roster-list");
-  await page.click(`.roster-name:has-text("${who.name}")`);
+  await reloadOntoPatient(page);
   await clickProfileSub(page, "Allergies");
 
   const pinnedRow = page.locator(".allergies .leaf-card", { hasText: second });

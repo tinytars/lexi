@@ -27,6 +27,11 @@ UI-ready surface. All six take their dependencies as thunks/callbacks rather tha
 values, which is what lets the same controller run unmodified against different host apps — see
 `CONTRIBUTING.md`'s "controller shape" section before adding a seventh.
 
+`roster-session`, `vault-principals` and `account-methods` also take an optional `deps.api`: a
+partial override of the `@tinytars/vault` server/key-store calls (and `fetch`) they make. Hosts
+omit it; tests pass fakes through it instead of module-mocking. Crypto and base64 are not in it —
+tests run the real WebCrypto implementations.
+
 - **`vault-session.svelte.ts`** — the foundation the other five build on. `createVaultSession()`
   holds an unlocked session's key material (`VaultEntry`, the DEK, the account keypair) as one
   `$state` object, and re-exports `VaultEntry`/`VaultSession`/`openVault` from

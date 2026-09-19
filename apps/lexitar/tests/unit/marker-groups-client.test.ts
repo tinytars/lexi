@@ -27,10 +27,9 @@ function streamResponse(text: string): Response {
 }
 
 const fetchMock = vi.fn();
-vi.stubGlobal("fetch", fetchMock);
-
 beforeEach(() => {
   fetchMock.mockReset();
+  vi.stubGlobal("fetch", fetchMock);
 });
 
 describe("refreshMarkerGroups client-side hash pre-check", () => {

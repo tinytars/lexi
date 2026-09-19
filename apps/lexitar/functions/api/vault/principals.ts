@@ -5,6 +5,7 @@ import { listProvidersForPatient } from "../../_lib/identity-providers";
 import { requireSession } from "../../_lib/session";
 import { logRequest } from "../../_lib/log";
 import { ORG_ACCOUNT_ID } from "../../_lib/org";
+import { json } from "../../_lib/http";
 
 // W44 P4c — the re-wrap targets for a DEK rotation: the owner's own public key, the org-recovery public
 // key, and every ACTIVE provider's public key (the principals that must keep access after the re-key).
@@ -19,9 +20,6 @@ interface Ctx {
 }
 
 const ROUTE = "/api/vault/principals";
-
-const json = (status: number, body: unknown): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 export async function onRequestGet(context: Ctx): Promise<Response> {
   const { request, env } = context;

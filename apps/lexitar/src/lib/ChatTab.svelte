@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Client, Vault, NoteAttachment, Attachment } from "./types";
+  import type { ChatImportResult } from "./import-flow";
   import type { UnitSystem } from "./units";
   import { buildChatContext, type ChatContext } from "./chat-context";
   import { runMarkerTool } from "./chat-tools";
@@ -42,17 +43,13 @@
     activeId: string | null;
     // Bindable — App.svelte owns the array; send()/onPaste() append turns straight back through it.
     threads: Thread[];
+    hydrated: boolean;
     // M69 — pasted-permalink reference cards: vault to resolve against, onNavigate to reuse
     // App.svelte's navigate() when a card is clicked.
     vault: Vault | null;
     onNavigate?: (patch: Partial<Permalink>) => void;
     onPersist: () => void;
-    onImportFile?: (
-      file: File,
-    ) => Promise<
-      | { ok: true; kind: "report" | "source" | "pending"; id: string; originalName: string }
-      | { ok: false; message: string }
-    >;
+    onImportFile?: (file: File) => Promise<ChatImportResult>;
     onCreateNote?: (attachment: NoteAttachment) => void;
   }
   let {
@@ -62,6 +59,7 @@
     unitSystem = "imperial",
     activeId,
     threads = $bindable(),
+    hydrated,
     vault,
     onNavigate,
     onPersist,
@@ -211,7 +209,7 @@
       for (const t of current.turns) {
         if (!t.reference) continue;
         const resolved = resolveReference(vault, clientId, t.reference.permalink);
-        if (resolved?.context) references.push({ kind: resolved.kind, tag: resolved.preview.tag, title: resolved.preview.title, data: resolved.context });
+        if (resolved.context) references.push({ kind: resolved.kind, tag: resolved.preview.tag, title: resolved.preview.title, data: resolved.context });
       }
     }
     // The running conversation the browser owns: history + the catalog+question turn, grown with
@@ -329,9 +327,7 @@
     const pl = parseHash(trimmed.slice(hashIdx));
     if (!pl) return;
     e.preventDefault();
-    const resolved = resolveReference(vault, clientId, pl);
-    if (!resolved) return;
-    const turn = buildReferenceTurn(resolved);
+    const turn = buildReferenceTurn(resolveReference(vault, clientId, pl));
     const threadId = current.id;
     threads = threads.map((t) =>
       t.id === threadId
@@ -382,7 +378,7 @@
   }
 </script>
 
-<div class="chat-tab" bind:this={chatTabEl}>
+<div class="chat-tab" data-testid="chat-tab" data-hydrated={hydrated} bind:this={chatTabEl}>
   <section class="conversation">
     <div class="chat-body">
       {#if current.turns.length === 0}

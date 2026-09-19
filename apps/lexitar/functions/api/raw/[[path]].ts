@@ -5,6 +5,7 @@ import { logRequest } from "../../_lib/log";
 import { normalizeClientId } from "../../../src/lib/client-id";
 import { storeKey } from "../../_lib/store";
 import { rawAccessFor, mayDestroy, type RawAccess } from "../../_lib/raw-owner";
+import { json } from "../../_lib/http";
 
 // W13d — GET /api/raw/{id}/{file}: stream an original raw source (PDF/XLSX) from R2.
 // Raw originals are PLAINTEXT PHI, so unlike the open /api/vault .enc GET this is
@@ -34,9 +35,6 @@ interface Ctx {
 }
 
 const ROUTE = "/api/raw";
-
-const json = (status: number, body: unknown): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 const contentTypeFor = (file: string): string => {
   const ext = file.slice(file.lastIndexOf(".") + 1).toLowerCase();

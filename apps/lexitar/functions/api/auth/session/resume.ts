@@ -3,6 +3,7 @@ import { getAccount } from "../../../_lib/identity-accounts";
 import { getEnvelope, listVaultsForOwner } from "../../../_lib/identity-vault";
 import { requireSession } from "../../../_lib/session";
 import { logRequest } from "../../../_lib/log";
+import { json } from "../../../_lib/http";
 
 // W49 — plain-refresh session resume (password/passkey). The hd_session cookie survives a refresh,
 // but the client dropped the in-memory account key + vault DEK. This session-gated read returns the
@@ -26,9 +27,6 @@ function bytesToBase64(bytes: Uint8Array): string {
   for (const b of bytes) bin += String.fromCharCode(b);
   return btoa(bin);
 }
-
-const json = (status: number, body: unknown): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 export async function onRequestGet(context: Ctx): Promise<Response> {
   const { request, env } = context;

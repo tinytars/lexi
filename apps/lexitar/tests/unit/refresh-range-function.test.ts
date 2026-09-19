@@ -12,7 +12,7 @@ vi.mock("@anthropic-ai/sdk", () => ({
 
 import { onRequestPost } from "../../functions/api/refresh-range";
 import { signSession } from "../../functions/_lib/session";
-import { fakeSessionDb } from "./_session-db";
+import { fakeSessionDb } from "../support/session-db";
 
 const ENV = { PROVIDER_TOKEN: "provtok", RANGES_ANTHROPIC_API_KEY: "k", SESSION_SECRET: "test-secret",
     DB: fakeSessionDb(), STORE_PREFIX: "dev", };

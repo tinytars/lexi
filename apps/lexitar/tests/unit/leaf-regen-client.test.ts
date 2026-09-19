@@ -26,7 +26,7 @@ const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
 beforeEach(() => { vi.stubGlobal("fetch", vi.fn()); });
-afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+afterEach(() => vi.restoreAllMocks());
 
 describe("fetchLeafRegen error reporting", () => {
   // The relay already classifies every failure; before this the client read res.text() and

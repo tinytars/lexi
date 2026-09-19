@@ -1,4 +1,5 @@
 import { requireBearer } from "../_lib/guard";
+import { json } from "../_lib/http";
 import { storeKey } from "../_lib/store";
 import type { AuditEntry } from "../_lib/audit";
 
@@ -36,20 +37,19 @@ const SLUG = /^[a-z0-9-]{1,40}$/; // bounds the listed route prefix — no path 
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 500;
 
-const json = (status: number, body: unknown): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
+const noStore = (status: number, body: unknown): Response => json(status, body, { "cache-control": "no-store" });
 
 export async function onRequestGet(context: { request: Request; env: Env }): Promise<Response> {
   const { request, env } = context;
-  if (requireBearer(request, env.PROVIDER_TOKEN)) return json(401, { error: "unauthorized" });
+  if (requireBearer(request, env.PROVIDER_TOKEN)) return noStore(401, { error: "unauthorized" });
 
   const url = new URL(request.url);
   const route = url.searchParams.get("route") ?? "refresh-finding";
-  if (!SLUG.test(route)) return json(400, { error: "bad route" });
+  if (!SLUG.test(route)) return noStore(400, { error: "bad route" });
   const limit = Math.min(MAX_LIMIT, Math.max(1, Number(url.searchParams.get("limit")) || DEFAULT_LIMIT));
 
   // No R2 binding (a local/test env without VAULT) → the trail was console-only, nothing persisted to read.
-  if (!env.VAULT) return json(200, { entries: [] });
+  if (!env.VAULT) return noStore(200, { entries: [] });
   const bucket = env.VAULT;
 
   const prefix = storeKey(env, "logs", route);
@@ -81,5 +81,5 @@ export async function onRequestGet(context: { request: Request; env: Env }): Pro
 
   // Exact newest-first by the persisted timestamp (key order is only approximate within a day).
   entries.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
-  return json(200, { entries });
+  return noStore(200, { entries });
 }

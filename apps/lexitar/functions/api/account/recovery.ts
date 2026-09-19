@@ -3,6 +3,7 @@ import { putCredential } from "../../_lib/identity-credentials";
 import { requireSession } from "../../_lib/session";
 import { logRequest } from "../../_lib/log";
 import { sha256Base64Url } from "../../_lib/verifier";
+import { json } from "../../_lib/http";
 
 // W44 P8b — regenerate the recovery code (session-gated). The client re-wrapped its in-memory private
 // key under a fresh code and computed the code's authHash; we store the wrapped key + SHA-256(authHash)
@@ -25,8 +26,6 @@ function base64ToBytes(b64: string): Uint8Array {
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out;
 }
-const json = (status: number, body: unknown): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 export async function onRequestPost(context: Ctx): Promise<Response> {
   const { request, env } = context;

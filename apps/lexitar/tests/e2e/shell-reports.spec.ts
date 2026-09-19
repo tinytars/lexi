@@ -1,5 +1,5 @@
 import { test, expect } from "./_fixtures";
-import { openSynthetic, openSyntheticAsProvider, mySynthetic, syntheticClientId } from "./_synthetic";
+import { openSynthetic, openSyntheticAsProvider, syntheticClientId, reloadOntoPatient } from "./_synthetic";
 import { clickLeafMenuItem, openLeafMenu } from "./_leaf-menu";
 import { clickNav } from "./_nav";
 import { watchFlashes, expectFlashed } from "./_flash";
@@ -75,7 +75,6 @@ test("Health Reports maps Hospital reports to LexiTar diagnoses and downloads vi
 });
 
 test("Health Reports: the ✎ edit modal edits a report's title and a linked diagnosis (M66 P3)", async ({ page }) => {
-  const who = mySynthetic();
   await openSyntheticAsProvider(page);
   await clickNav(page, "Reports");
 
@@ -97,9 +96,7 @@ test("Health Reports: the ✎ edit modal edits a report's title and a linked dia
   await expect(modal).toHaveAttribute("aria-label", "Edit report");
 
   const studyTypeInput = modal.locator("label.field", { hasText: "Study type" }).locator("input");
-  const originalTitle = await studyTypeInput.inputValue();
   const dxInput = modal.locator(".cr-edit-dx").first().locator("label.field", { hasText: "Diagnostic" }).locator("input");
-  const originalDx = await dxInput.inputValue();
 
   await studyTypeInput.fill(editedTitle);
   await dxInput.fill(editedDx);
@@ -114,22 +111,11 @@ test("Health Reports: the ✎ edit modal edits a report's title and a linked dia
   await expect(page.locator(".health-reports")).toContainText(editedTitle);
   await expect(page.locator(".health-reports")).toContainText(editedDx);
 
-  await page.reload();
-  await page.waitForSelector(".roster-list");
-  await page.click(`.roster-name:has-text("${who.name}")`);
-  await page.waitForSelector(".sidebar .nav-item");
+  await reloadOntoPatient(page);
   await clickNav(page, "Reports");
   await expect(page.locator(".health-reports")).toContainText(editedTitle);
   await expect(page.locator(".health-reports")).toContainText(editedDx);
 
-  // Restore the synthetic fixture — this test must not leave mutated content for other tests.
-  const editedRow = page.locator(".leaf-card").filter({ has: page.locator(".cr-title", { hasText: editedTitle }) }).first();
-  await clickLeafMenuItem(editedRow.locator(".leaf-card-head"), "Edit");
-  await modal.locator("label.field", { hasText: "Study type" }).locator("input").fill(originalTitle);
-  await modal.locator(".cr-edit-dx").first().locator("label.field", { hasText: "Diagnostic" }).locator("input").fill(originalDx);
-  await modal.locator(".btn.primary", { hasText: "Save" }).click();
-  await expect(page.locator(".health-reports .saved")).toBeVisible({ timeout: 10_000 });
-  await expect(page.locator(".health-reports")).not.toContainText(editedTitle);
 });
 
 test("Reports delete is available to a patient session too — download and delete both present (W34/M51)", async ({ page }) => {

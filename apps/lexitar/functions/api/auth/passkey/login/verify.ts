@@ -11,6 +11,7 @@ import {
   type WebauthnEnv,
 } from "../../../../_lib/webauthn";
 import type { AuthenticationResponseJSON, WebAuthnCredential } from "@simplewebauthn/server";
+import { jsonWithCookies } from "../../../../_lib/http";
 
 // W44 P3 — passkey login, step 2. Verifies the assertion against the challenge cookie and the
 // stored credential, bumps the replay-detection counter, then hands back the wrapped private
@@ -33,12 +34,6 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(bin);
 }
 
-function jsonResponse(status: number, body: unknown, cookies: string[] = []): Response {
-  const headers = new Headers({ "content-type": "application/json" });
-  for (const c of cookies) headers.append("set-cookie", c);
-  return new Response(JSON.stringify(body), { status, headers });
-}
-
 export async function onRequestPost(context: Ctx): Promise<Response> {
   const { request, env } = context;
   const start = Date.now();
@@ -49,20 +44,20 @@ export async function onRequestPost(context: Ctx): Promise<Response> {
     const body = (await request.json()) as Partial<{ authenticationResponse: AuthenticationResponseJSON }>;
     if (!body.authenticationResponse) {
       log(400, "missing_fields");
-      return jsonResponse(400, { error: "missing required fields" });
+      return jsonWithCookies(400, { error: "missing required fields" });
     }
 
     const challenge = await readChallengeCookie(env, request);
     if (!challenge) {
       log(400, "bad_challenge");
-      return jsonResponse(400, { error: "missing or expired challenge" });
+      return jsonWithCookies(400, { error: "missing or expired challenge" });
     }
 
     const identity = await getIdentityByCredentialId(env.DB, body.authenticationResponse.id);
     const cred = identity ? await getCredential(env.DB, identity.accountId, "passkey") : null;
     if (!identity || !cred) {
       log(401, "unknown_credential");
-      return jsonResponse(401, { error: "unknown credential" });
+      return jsonWithCookies(401, { error: "unknown credential" });
     }
 
     const kdf = cred.kdfParams as {
@@ -84,7 +79,7 @@ export async function onRequestPost(context: Ctx): Promise<Response> {
     const verification = await verifyAuthenticationResponse(env, body.authenticationResponse, challenge.challenge, credential);
     if (!verification.verified) {
       log(401, "verification_failed");
-      return jsonResponse(401, { error: "passkey authentication could not be verified" });
+      return jsonWithCookies(401, { error: "passkey authentication could not be verified" });
     }
 
     await updatePasskeyCounter(env.DB, identity.accountId, verification.authenticationInfo.newCounter);
@@ -94,7 +89,7 @@ export async function onRequestPost(context: Ctx): Promise<Response> {
 
     const token = await signSession(env, identity.accountId);
     log(200);
-    return jsonResponse(
+    return jsonWithCookies(
       200,
       {
         accountId: identity.accountId,
@@ -111,6 +106,6 @@ export async function onRequestPost(context: Ctx): Promise<Response> {
     );
   } catch {
     log(500, "login_verify_failed");
-    return jsonResponse(500, { error: "login verify failed" });
+    return jsonWithCookies(500, { error: "login verify failed" });
   }
 }

@@ -4,6 +4,7 @@ import { requireSession } from "../../_lib/session";
 import { logRequest } from "../../_lib/log";
 import { storeKey } from "../../_lib/store";
 import { rawAccessFor, type RawAccess } from "../../_lib/raw-owner";
+import { json } from "../../_lib/http";
 
 // W16 — per-client chat history: an in-browser-encrypted HD1 blob (Thread[] as ciphertext).
 // Never decrypts; no static seed — a first GET simply 404s and the browser starts fresh.
@@ -52,9 +53,6 @@ const MAX_BYTES = 2 * 1024 * 1024; // conversations are text; a generous ceiling
 const HD1 = [0x48, 0x44, 0x31]; // "HD1" — the in-browser crypto magic prefix
 
 const r2Key = (env: Env, id: string) => storeKey(env, `chat-${id}.enc`);
-
-const json = (status: number, body: unknown): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 /** An `If-Match` header value is quoted (`"abc"`); R2's etagMatches wants the bare token. */
 const unquote = (v: string): string => v.trim().replace(/^W\//, "").replace(/^"|"$/g, "");

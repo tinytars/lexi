@@ -1,4 +1,5 @@
 import { logRequest } from "../_lib/log";
+import { json } from "../_lib/http";
 import { requireSession } from "../_lib/session";
 import type { D1Database } from "../_lib/identity-types";
 import { getAccount } from "../_lib/identity-accounts";
@@ -16,8 +17,7 @@ interface Env {
 
 const ROUTE = "/api/provider-token";
 
-const json = (status: number, body: unknown): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
+const noStore = (status: number, body: unknown): Response => json(status, body, { "cache-control": "no-store" });
 
 export async function onRequestGet(context: { request: Request; env: Env }): Promise<Response> {
   const { request, env } = context;
@@ -37,12 +37,12 @@ export async function onRequestGet(context: { request: Request; env: Env }): Pro
   // against every other role's row instead of only here.
   if (!can(roleOf(account), "ai:spend")) {
     log(403, "not_a_provider");
-    return json(403, { error: "not a provider", errorCode: "not_a_provider" });
+    return noStore(403, { error: "not a provider", errorCode: "not_a_provider" });
   }
   if (!env.PROVIDER_TOKEN) {
     log(500, "unconfigured");
-    return json(500, { error: "provider token not configured", errorCode: "unconfigured" });
+    return noStore(500, { error: "provider token not configured", errorCode: "unconfigured" });
   }
   log(200);
-  return json(200, { token: env.PROVIDER_TOKEN });
+  return noStore(200, { token: env.PROVIDER_TOKEN });
 }

@@ -14,6 +14,7 @@
 import { mkdirSync, writeFileSync, readdirSync, rmSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { chatSystemPrompt } from "../src/lib/chat-prompt";
+import { isMain } from "./is-main";
 
 // chatSystemPrompt takes "today" as an explicit param rather than reading the ambient clock, so
 // (unlike the akesi-pil-owned surfaces) no frozen-clock wrapper is needed here.
@@ -39,4 +40,4 @@ function main(): void {
   console.log(`wrote ${Object.keys(files).length} prompt golden file(s) to ${DIR}`);
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) main();
+if (isMain(import.meta.url)) main();

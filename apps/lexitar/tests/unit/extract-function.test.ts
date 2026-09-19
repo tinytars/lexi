@@ -11,7 +11,7 @@ vi.mock("@anthropic-ai/sdk", () => ({
 
 import { onRequestPost } from "../../functions/api/extract";
 import { signSession } from "../../functions/_lib/session";
-import { fakeSessionDb } from "./_session-db";
+import { fakeSessionDb } from "../support/session-db";
 
 const ENV = { SESSION_SECRET: "test-secret",
     DB: fakeSessionDb(), ANTHROPIC_API_KEY: "k" };

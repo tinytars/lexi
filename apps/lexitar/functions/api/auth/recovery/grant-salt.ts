@@ -12,6 +12,7 @@ import { getAccountByEmail } from "../../../_lib/identity-accounts";
 import { getLiveGrant } from "../../../_lib/recovery";
 import { decoySalt, KDF_ITERATIONS } from "../../../_lib/decoy-salt";
 import { logRequest } from "../../../_lib/log";
+import { json } from "../../../_lib/http";
 
 interface Env {
   DB: D1Database;
@@ -23,8 +24,6 @@ interface Ctx {
 }
 
 const ROUTE = "/api/auth/recovery/grant-salt";
-const json = (status: number, body: unknown): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 export async function onRequestGet(context: Ctx): Promise<Response> {
   const { request, env } = context;

@@ -1,39 +1,33 @@
 import { test, expect, type Page } from "@playwright/test";
 import { loginAs } from "./_login";
+import { clickNav } from "./_nav";
 import { syntheticTag, SYNTHETIC_WORKER_COUNT, FRESH_SEED } from "../fixtures/synthetic-patient";
 
-// The e2e-only clinician minted alongside the synthetic patients. Mirrors E2E_PROVIDER in
-// scripts/provision-e2e-patient.ts — deliberately NOT the pilots' fam4, whose password is the real
-// family passphrase and whose roster is asserted exactly by cover-render.spec.ts.
+// Not the pilots' fam4, whose roster cover-render.spec.ts asserts exactly.
 export const E2E_CLINICIAN = { email: "e2e-clinician@local.invalid", password: "e2e-clinician" };
 
-// The e2e-only support agent (provider_kind='support'), provisioned by
-// scripts/provision-support-account.ts and re-seeded (RESET=1) on every scripts/e2e-serve.sh boot.
-// LOCAL-only, like E2E_CLINICIAN above — it has no vault of its own and grants nobody anything until
-// a spec asks for it, so it was never a "pilot" by this file's own definition even before it lived here.
+// Re-seeded on every e2e-serve.sh boot; grants nobody anything until a spec asks.
 export const E2E_SUPPORT = { email: "support@local.invalid", password: "support", name: "Support Agent" };
 
-// W69 — sign in as THIS worker's own synthetic patient.
-//
-// Every spec now runs against synthetic patients, but they still share the E2E_CLINICIAN/E2E_SUPPORT
-// accounts above, which is why `playwright.config.ts` pins `workers: 1`. A spec that opts in here
-// instead gets a patient nobody else is touching, and becomes safe to parallelise.
-//
-// The worker index is the isolation unit. Playwright guarantees a worker runs one spec file at a time,
-// so "my worker's patient" is exactly as isolated as "my file's patient" would be, at a ninth of the
-// provisioning cost. scripts/e2e-serve.sh seeds `E2E_WORKERS` of them at boot.
-//
-// Contrast with signUpRaw(): that also yields a private account, but an EMPTY one. These carry a full
-// synthetic vault (tests/fixtures/synthetic-patient.ts), so specs that assert against real content —
-// sidebar grouping, search, navigation — can move onto them.
-//
-// Everything visible carries the worker's tag, so an assertion that fails names the worker that
-// actually produced the value instead of leaving two indistinguishable patients.
+// D1 links are real server state the vault guard cannot capture, so specs that add one revoke it in teardown.
+export async function revokeClinicianLinks(page: Page, list: "providers" | "patients", namePrefix: string) {
+  await page.context().clearCookies();
+  await loginAs(page, E2E_CLINICIAN.email, E2E_CLINICIAN.password);
+  await page.locator(".roster-list").waitFor();
+  await page.evaluate(async ([list, namePrefix]) => {
+    const url = list === "patients" ? "/api/providers/patients" : "/api/providers";
+    const links = ((await (await fetch(url, { cache: "no-store" })).json()) as Record<string, { linkId: string; displayName: string }[]>)[list];
+    for (const l of links.filter((l) => l.displayName.startsWith(namePrefix)))
+      await fetch(`/api/providers/${encodeURIComponent(l.linkId)}`, { method: "DELETE" });
+  }, [list, namePrefix] as const);
+}
+
+// Each Playwright worker signs in as its own synthetic patient, so a spec using these is safe to parallelise.
 
 /** The slug for a worker's patient — must match scripts/provision-e2e-patient.ts. */
 export const syntheticSlug = (workerIndex: number): string => `e2e-w${workerIndex}`;
 
-interface Synthetic {
+export interface Synthetic {
   slug: string;
   name: string;
   tag: string;
@@ -51,13 +45,7 @@ export function syntheticAt(index: number): Synthetic {
   return syntheticFor(syntheticSlug(index));
 }
 
-/**
- * A synthetic patient's URL-hash prefix. A synthetic vault has no row-level client id —
- * syntheticVault() in tests/fixtures/synthetic-patient.ts keys `clients` directly by the worker's
- * slug — so the app's `selectedClientId` (App.svelte, chosen from `Object.keys(vault.clients)`) IS
- * the slug. Using idsFor()'s D1 account id here instead once produced a well-formed but wrong id,
- * silently misrouting every permalink test onto the "different patient" (blocked) path.
- */
+// A synthetic vault keys `clients` by slug, so the slug (not the D1 account id) is the client id.
 export const syntheticClientId = (index: number): string => syntheticSlug(index);
 
 /** A worker index guaranteed to differ from `index` — a real but WRONG patient id for a spec that
@@ -80,16 +68,21 @@ async function openAsPatient(page: Page, who: Synthetic): Promise<Synthetic> {
   return who;
 }
 
-/**
- * Sign in as the e2e clinician and drill into `who` from the roster.
- *
- * Its own account, not fam4 — so this needs no secret and cannot disturb any real provider's roster.
- */
-async function signInAsClinicianOnto(page: Page, who: Synthetic): Promise<Synthetic> {
-  await loginAs(page, E2E_CLINICIAN.email, E2E_CLINICIAN.password);
+async function drillInto(page: Page, who: Synthetic): Promise<Synthetic> {
   await page.click(`.roster-name:has-text("${who.name}")`);
   await page.waitForSelector(".sidebar .nav-item");
   return who;
+}
+
+async function signInAsClinicianOnto(page: Page, who: Synthetic): Promise<Synthetic> {
+  await loginAs(page, E2E_CLINICIAN.email, E2E_CLINICIAN.password);
+  return drillInto(page, who);
+}
+
+export async function reloadOntoPatient(page: Page, who: Synthetic = mySynthetic()): Promise<Synthetic> {
+  await page.reload();
+  await page.waitForSelector(".roster-list", { timeout: 15_000 });
+  return drillInto(page, who);
 }
 
 /** Sign in as an explicit worker's synthetic patient — see syntheticAt(). */
@@ -114,19 +107,9 @@ export const ALL_SYNTHETIC_NAMES: string[] = [
   freshSynthetic().name,
 ];
 
-/**
- * Assert the page really is showing THIS worker's patient — the cross-worker-leak canary.
- *
- * Checks the TREATMENT body, not the sidebar. The sidebar renders section labels only (Search, Chat,
- * Notes, Treatment, Markers, Reports, Profile) and never the patient's name, so asserting the tag
- * there could only ever fail — which is exactly what it did on first run.
- */
+// The cross-worker-leak canary: the patient's tag only renders in the Treatment body, never the sidebar.
 export async function expectOwnPatient(page: Page, who: Synthetic): Promise<void> {
-  await page.locator(".sidebar .nav-list .nav-item", { hasText: "Treatment" }).click();
-  // Poll the rendered text rather than a guessed selector, and put the ACTUAL text in the failure.
-  // Two earlier attempts asserted against elements that could never match (`.sidebar` never shows the
-  // patient's name; there is no "Doctor" nav item), and each cost a CI round-trip to learn one fact.
-  // A locator that reports what it saw turns the next wrong guess into a single run instead of two.
+  await clickNav(page, "Treatment");
   const tagged = `Rosuvastatin ${who.tag}`;
   await expect
     .poll(async () => (await page.locator("body").innerText()).replace(/\s+/g, " "), {

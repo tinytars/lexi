@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, afterEach } from "vitest";
 import { flushSync } from "svelte";
-import { withEffectRoot, observe } from "./_effect-root.svelte";
+import { withEffectRoot, observe } from "../support/effect-root.svelte";
 import { createVaultSession } from "@tinytars/frame/vault-session.svelte";
 
 // W72 — the unlocked-session key material. docs/cross-app/10's only Phase A prerequisite, and the

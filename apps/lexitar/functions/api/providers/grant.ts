@@ -4,6 +4,7 @@ import { listVaultsForOwner, putEnvelope } from "../../_lib/identity-vault";
 import { createProviderLink, listProvidersForPatient, updateProviderLinkStatus } from "../../_lib/identity-providers";
 import { requireSession } from "../../_lib/session";
 import { logRequest } from "../../_lib/log";
+import { json } from "../../_lib/http";
 
 // W44 P4 — patient-initiated, zero-knowledge grant. The logged-in patient has already wrapped their
 // in-memory DEK to the provider's public key client-side (crypto.wrapDEKForPublicKey); this endpoint
@@ -20,9 +21,6 @@ interface Ctx {
 }
 
 const ROUTE = "/api/providers/grant";
-
-const json = (status: number, body: unknown): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 function base64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64);

@@ -1,5 +1,5 @@
 import { test, expect } from "./_fixtures";
-import { signUp, ownerSignOut } from "./_login";
+import { signUp, ownerSignOut, loginAs } from "./_login";
 import { E2E_CLINICIAN } from "./_synthetic";
 
 // W49 — a browser refresh must NOT force re-auth. The hd_session cookie survives; the account private
@@ -52,10 +52,7 @@ test("the persisted account key is non-extractable (XSS can't export it)", async
 });
 
 test("a signed-in provider resumes on the roster across a refresh", async ({ page }) => {
-  await page.goto("/");
-  await page.fill('input[type="email"]', E2E_CLINICIAN.email);
-  await page.fill('input[type="password"]', E2E_CLINICIAN.password);
-  await page.click('button[type="submit"]');
+  await loginAs(page, E2E_CLINICIAN.email, E2E_CLINICIAN.password);
   await page.waitForSelector(".roster-list");
 
   await page.reload();

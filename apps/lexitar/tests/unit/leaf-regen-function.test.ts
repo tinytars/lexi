@@ -13,7 +13,7 @@ vi.mock("@anthropic-ai/sdk", () => ({
 
 import { onRequestPost } from "../../functions/api/leaf-regen";
 import { signSession } from "../../functions/_lib/session";
-import { fakeSessionDb } from "./_session-db";
+import { fakeSessionDb } from "../support/session-db";
 
 const ENV = { ANTHROPIC_API_KEY: "k", SESSION_SECRET: "test-secret", DB: fakeSessionDb() };
 

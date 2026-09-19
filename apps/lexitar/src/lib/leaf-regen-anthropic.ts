@@ -6,7 +6,8 @@
 // cap, and error→status-code mapping (classifyAnthropicError) remain there, HTTP-specific.
 
 import Anthropic from "@anthropic-ai/sdk";
-import { LEAF_REGEN_SPECS, validateLeafResult, BASE_SYSTEM_PROMPT } from "./leaf-regen-registry";
+import { LEAF_REGEN_SPECS, validateLeafResult } from "./leaf-regen-registry";
+import { BASE_SYSTEM_PROMPT } from "./leaf-regen-prompts";
 import { REGROUP_MODEL } from "./regroup-config";
 import { LEAF_REGEN_MAX_TOKENS } from "./leaf-regen-config";
 import { documentsPromptBlock, type DocumentText } from "@pablotech/akesi/document-read";

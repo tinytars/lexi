@@ -4,6 +4,7 @@ import { getPublicKey } from "../../_lib/identity-credentials";
 import { listProvidersForPatient } from "../../_lib/identity-providers";
 import { requireSession } from "../../_lib/session";
 import { logRequest } from "../../_lib/log";
+import { json } from "../../_lib/http";
 
 // W44 P4 — the patient-side "who can see me" view (complements /api/providers/patients, the
 // provider→patients view). Lists this account's provider links (excluding revoked) with the
@@ -18,9 +19,6 @@ interface Ctx {
 }
 
 const ROUTE = "/api/providers";
-
-const json = (status: number, body: unknown): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 export async function onRequestGet(context: Ctx): Promise<Response> {
   const { request, env } = context;

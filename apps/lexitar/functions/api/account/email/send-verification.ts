@@ -4,6 +4,7 @@ import type { EmailEnv } from "../../../_lib/email";
 import { sendVerificationEmail } from "../../../_lib/email";
 import { requireSession } from "../../../_lib/session";
 import { logRequest } from "../../../_lib/log";
+import { json } from "../../../_lib/http";
 
 // W47 — (re)send the verification email for the caller's current email. Non-blocking flow: the app
 // never gates on confirmation, so this backs the "Resend" action in the account menu/banner.
@@ -17,8 +18,6 @@ interface Ctx {
 }
 
 const ROUTE = "/api/account/email/send-verification";
-const json = (status: number, body: unknown): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 export async function onRequestPost(context: Ctx): Promise<Response> {
   const { request, env } = context;

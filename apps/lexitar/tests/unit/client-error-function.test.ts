@@ -1,8 +1,8 @@
-import { describe, it, expect, afterEach, vi } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { onRequestPost } from "../../functions/api/client-error";
 import { scrubMessage, scrubFrames, toReport } from "../../functions/_lib/client-error";
 import { signSession } from "../../functions/_lib/session";
-import { fakeSessionDb } from "./_session-db";
+import { fakeSessionDb } from "../support/session-db";
 
 // The crash that prompted the reporter: it existed only in one browser console, never in the tracker.
 const EACH_KEY_DUPLICATE = {
@@ -77,8 +77,6 @@ describe("POST /api/client-error", () => {
     });
     return calls;
   };
-  afterEach(() => vi.unstubAllGlobals());
-
   it("refuses a caller without a session, so the public URL cannot spam the tracker", async () => {
     const calls = stubGithub(null);
     expect((await post({ ...baseEnv(), ...github }, EACH_KEY_DUPLICATE, false)).status).toBe(401);

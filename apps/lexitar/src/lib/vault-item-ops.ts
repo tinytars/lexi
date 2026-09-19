@@ -11,7 +11,7 @@
 // user-entered patient data, where "never lose it" is the standing rule.
 import type { AllergyEntry, Client, DecisionEntry, FamilyHistoryEntry, NoteEntry, StudyEntry, TreatmentItem } from "./types";
 import { toggleItemPin, isItemPinned } from "@pablotech/akesi/item-registry";
-import { labelSubject } from "./leaf-regen-registry";
+import { labelSubject } from "./leaf-regen-rows";
 import { entityForSidebarKind } from "./entity-kinds";
 
 // W62 — the kinds below the divider have no writable-list record of their own, so each dispatches

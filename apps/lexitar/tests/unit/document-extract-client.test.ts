@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { documentTextsFor, isExtractableDocument, isPdfAttachment, extractedMetadata } from "../../src/lib/document-extract-client";
 import { MAX_DOCUMENT_CHARS, MAX_DOCUMENTS_TOTAL_CHARS } from "@pablotech/akesi/document-read";
 import type { Attachment } from "../../src/lib/types";
@@ -45,8 +45,6 @@ describe("documentTextsFor", () => {
       return new Response(JSON.stringify({ ...hit, at: "now", chars: hit.text.length, documentKind: "x", isMedicalReport: false }), { status: 200 });
     }));
   });
-  afterEach(() => vi.unstubAllGlobals());
-
   it("returns nothing when no attachment is a readable document", async () => {
     expect(await documentTextsFor("alex", [att("p.jpg", "image/jpeg")])).toEqual([]);
     expect(fetch).not.toHaveBeenCalled();

@@ -8,6 +8,7 @@ import {
   findPendingBySha,
   foldSource,
   classifyUpload,
+  importFileForChat,
 } from "../../src/lib/import-flow";
 
 const base = (): Client => ({ displayName: "Alex", dob: "1980-01-01", gender: "male", watchlist: [], results: [] });
@@ -96,8 +97,10 @@ describe("foldSource", () => {
 // file-attach path — one set of tests covers both callers.
 describe("classifyUpload", () => {
   const fetchMock = vi.fn();
-  vi.stubGlobal("fetch", fetchMock);
-  beforeEach(() => fetchMock.mockReset());
+  beforeEach(() => {
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+  });
 
   // W69 — was a real panel from records/private/. classifyUpload is being tested here, not that
   // patient; the bytes only need to be a recognizable spreadsheet.
@@ -157,5 +160,71 @@ describe("classifyUpload", () => {
     const file = new File([new Uint8Array([1, 2, 3])], "echo.pdf");
     const res = await classifyUpload(base(), "Alex", file);
     expect(res).toEqual({ status: "error", message: "model unavailable" });
+  });
+});
+
+describe("importFileForChat", () => {
+  const fetchMock = vi.fn();
+  beforeEach(() => {
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  function fakeDeps({ storeStatus = 204, persisted = true } = {}) {
+    const stored: string[] = [];
+    const saved: { clientId: string; client: Client }[] = [];
+    const deps = {
+      storeOriginal: async (clientId: string, storedFile: string) => {
+        stored.push(`${clientId}/${storedFile}`);
+        return { ok: storeStatus < 300, status: storeStatus };
+      },
+      persist: async (clientId: string, client: Client) => {
+        saved.push({ clientId, client });
+        return persisted;
+      },
+    };
+    return { stored, saved, deps };
+  }
+
+  it("stores the original under its canonical name, persists the folded client, and reports what landed", async () => {
+    const { stored, saved, deps } = fakeDeps();
+    const res = await importFileForChat(base(), "Alex", new File([healthmattersXlsx()], "labs.xlsx"), deps);
+    if (!res.ok) throw new Error(res.message);
+    expect(res).toMatchObject({ kind: "source", originalName: "labs.xlsx" });
+    expect(stored).toHaveLength(1);
+    expect(stored[0]).toMatch(/^Alex\/.+-blood-panel-[0-9a-f]{8}\.xlsx$/);
+    expect(saved).toHaveLength(1);
+    expect(saved[0].clientId).toBe("Alex");
+    expect(saved[0].client.sources!.map((s) => s.id)).toEqual([res.id]);
+  });
+
+  it("reports a duplicate as landed without storing or persisting anything", async () => {
+    const first = await classifyUpload(base(), "Alex", new File([healthmattersXlsx()], "labs.xlsx"));
+    if (first.status !== "source") throw new Error("expected source");
+    const { stored, saved, deps } = fakeDeps();
+    const res = await importFileForChat(first.srcFold.client, "Alex", new File([healthmattersXlsx()], "again.xlsx"), deps);
+    expect(res).toEqual({ ok: true, kind: "source", id: first.id, originalName: "again.xlsx" });
+    expect(stored).toEqual([]);
+    expect(saved).toEqual([]);
+  });
+
+  it("does not persist when storing the original fails", async () => {
+    const { saved, deps } = fakeDeps({ storeStatus: 500 });
+    const res = await importFileForChat(base(), "Alex", new File([healthmattersXlsx()], "labs.xlsx"), deps);
+    expect(res).toEqual({ ok: false, message: "storing the original failed (500)" });
+    expect(saved).toEqual([]);
+  });
+
+  it("reports a refused persist as a failure rather than a landed file", async () => {
+    const res = await importFileForChat(base(), "Alex", new File([healthmattersXlsx()], "labs.xlsx"), fakeDeps({ persisted: false }).deps);
+    expect(res).toEqual({ ok: false, message: "No active client." });
+  });
+
+  it("passes a classification error straight through", async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ error: "model unavailable" }), { status: 503 }));
+    const { stored, saved, deps } = fakeDeps();
+    const res = await importFileForChat(base(), "Alex", new File([new Uint8Array([1, 2, 3])], "echo.pdf"), deps);
+    expect(res).toEqual({ ok: false, message: "model unavailable" });
+    expect([...stored, ...saved]).toEqual([]);
   });
 });
