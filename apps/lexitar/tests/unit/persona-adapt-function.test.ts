@@ -15,7 +15,7 @@ const reply = (text: string, stop_reason = "end_turn") => ({ content: [{ type: "
 async function call(body: unknown, auth = true) {
   const headers: Record<string, string> = { "content-type": "application/json" };
   if (auth) headers.cookie = `hd_session=${await signSession(ENV, "acct-1")}`;
-  return onRequestPost({ request: new Request("http://x/api/persona-adapt", { method: "POST", headers, body: JSON.stringify(body) }), env: ENV });
+  return onRequestPost({ request: new Request("http://x/api/persona-adapt", { method: "POST", headers, body: typeof body === "string" ? body : JSON.stringify(body) }), env: ENV });
 }
 
 beforeEach(() => create.mockReset());
@@ -62,6 +62,7 @@ describe("/api/persona-adapt", () => {
   it("rejects an unknown persona, empty text, and no session", async () => {
     expect((await call({ persona: "lexi", text: LEXI })).status).toBe(400);
     expect((await call({ persona: "kodi", text: " " })).status).toBe(400);
+    expect((await call("{not json")).status).toBe(400);
     expect((await call({ persona: "kodi", text: LEXI }, false)).status).toBe(401);
     expect(create).not.toHaveBeenCalled();
   });

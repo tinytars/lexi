@@ -16,7 +16,7 @@ afterEach(() => vi.unstubAllGlobals());
 async function call(body: unknown, { auth = true, env = ENV }: { auth?: boolean; env?: Partial<typeof ENV> } = {}) {
   const headers: Record<string, string> = { "content-type": "application/json" };
   if (auth) headers.cookie = `hd_session=${await signSession(ENV, "acct-1")}`;
-  return onRequestPost({ request: new Request("http://x/api/speak", { method: "POST", headers, body: JSON.stringify(body) }), env: env as typeof ENV });
+  return onRequestPost({ request: new Request("http://x/api/speak", { method: "POST", headers, body: typeof body === "string" ? body : JSON.stringify(body) }), env: env as typeof ENV });
 }
 
 describe("/api/speak", () => {
@@ -40,6 +40,11 @@ describe("/api/speak", () => {
   it("rejects a voice outside the persona registry instead of passing it to the vendor", async () => {
     const res = await call({ voice: "en-US-SomeoneElse", text: "Hello." });
     expect(res.status).toBe(400);
+    expect(vendor).not.toHaveBeenCalled();
+  });
+
+  it("rejects a body that is not JSON", async () => {
+    expect((await call("{not json")).status).toBe(400);
     expect(vendor).not.toHaveBeenCalled();
   });
 

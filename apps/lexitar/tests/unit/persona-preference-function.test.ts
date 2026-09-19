@@ -15,7 +15,7 @@ async function mkAccount() {
 const get = async (cookie: string) =>
   onRequestGet({ request: new Request("http://x/api/account/persona", { headers: { cookie } }), env: env() });
 const put = async (cookie: string, body: unknown) =>
-  onRequestPut({ request: new Request("http://x/api/account/persona", { method: "PUT", headers: { "content-type": "application/json", cookie }, body: JSON.stringify(body) }), env: env() });
+  onRequestPut({ request: new Request("http://x/api/account/persona", { method: "PUT", headers: { "content-type": "application/json", cookie }, body: typeof body === "string" ? body : JSON.stringify(body) }), env: env() });
 
 describe("/api/account/persona", () => {
   it("reads null for an account that never chose", async () => {
@@ -42,6 +42,7 @@ describe("/api/account/persona", () => {
   it("rejects a persona that is not in the registry", async () => {
     const cookie = await mkAccount();
     expect((await put(cookie, { persona: "hal" })).status).toBe(400);
+    expect((await put(cookie, "{not json")).status).toBe(400);
     expect(await (await get(cookie)).json()).toEqual({ persona: null });
   });
 
