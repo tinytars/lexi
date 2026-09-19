@@ -22,6 +22,7 @@ beforeAll(async () => {
   mkdirSync(join(dist, "assets"), { recursive: true });
   writeFileSync(join(dist, "index.html"), "<!doctype html><title>spa</title>");
   writeFileSync(join(dist, "assets", "app.js"), "export {}");
+  writeFileSync(join(dist, "assets", "404.html"), "missing asset");
   writeFileSync(join(dist, "data-x.enc"), "cipher");
   writeFileSync(join(tmp, "secret.txt"), "outside dist");
   writeFileSync(join(dist, "_headers"), "# comment\n/data*\n  Cache-Control: public, max-age=0, must-revalidate\n");
@@ -73,6 +74,13 @@ describe("Node host", () => {
       expect(res.status, path).toBe(200);
       expect(await res.text(), path).toContain("spa");
     }
+  });
+
+  it("answers a missing file under a directory with a 404.html with that page and a 404, not the SPA", async () => {
+    const res = await get("/assets/index-OLDHASH.js");
+    expect(res.status).toBe(404);
+    expect(await res.text()).toBe("missing asset");
+    expect(res.headers.get("content-type")).toMatch(/html/);
   });
 
   it("a method no Function handles falls through to assets, which only serve GET and HEAD", async () => {
