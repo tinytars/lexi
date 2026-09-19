@@ -95,6 +95,29 @@ jobs:
         env:
           ORG_KEY_PASSPHRASE: ${{ secrets.ORG_KEY_PASSPHRASE }}
 
+  autopilot-guard:
+    # Required on dev and main; a skipped run (human PRs, promotions) satisfies the requirement.
+    if: >
+      github.event_name == 'pull_request' &&
+      !startsWith(github.head_ref, 'promote/') &&
+      contains(fromJSON('["plover-autopilot[bot]","dependabot[bot]"]'), github.event.pull_request.user.login)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/lexitar
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+        working-directory: .
+      - run: npx tsx scripts/autopilot-guard.ts "origin/${{ github.base_ref }}"
+
   release:
     needs: [test, lexitar, lexitar-data]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
