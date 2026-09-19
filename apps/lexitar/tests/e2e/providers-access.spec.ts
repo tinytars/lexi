@@ -5,7 +5,11 @@
 // signups, whose vaults are far too small to be caught mid-stream by the wrangler crash.
 import { test, expect } from "@playwright/test";
 import { signUp, openOwnerAccess, loginAs, ownerSignOut } from "./_login";
-import { E2E_CLINICIAN, openSyntheticAsProvider } from "./_synthetic";
+import { E2E_CLINICIAN, openSyntheticAsProvider, revokeClinicianLinks } from "./_synthetic";
+
+test.afterEach(async ({ page }) => {
+  for (const prefix of ["e2e-grant-", "e2e-provrm-"]) await revokeClinicianLinks(page, "patients", prefix);
+});
 
 // W44 P4 — owner-side Access panel: a patient grants then revokes a provider. Uses a FRESH signed-up
 // account (unique email per run) so the grant/revoke is additive to the shared seed — it links the

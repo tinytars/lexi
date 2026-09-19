@@ -18,6 +18,7 @@ import { checkRedemption, activateRecovery, type NewIdentity } from "../../../_l
 import { signSession, sessionSetCookie } from "../../../_lib/session";
 import { sendMethodAddedNotice, type EmailEnv } from "../../../_lib/email";
 import { logRequest } from "../../../_lib/log";
+import { json } from "../../../_lib/http";
 
 type Env = EmailEnv & { DB: D1Database; SESSION_SECRET: string };
 interface Ctx {
@@ -27,8 +28,6 @@ interface Ctx {
 }
 
 const ROUTE = "/api/auth/recovery/grant-redeem";
-const json = (status: number, body: unknown, headers: Record<string, string> = {}): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", ...headers } });
 
 function base64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64);

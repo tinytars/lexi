@@ -1,14 +1,12 @@
 import { test, expect } from "./_fixtures";
+import { navRow } from "./_nav";
 import type { Page } from "@playwright/test";
 import { openSynthetic } from "./_synthetic";
 import { clickLeafMenuItem } from "./_leaf-menu";
 import { stubChatHistory } from "./_stubs";
+import { waitForChatReady } from "./_chat";
 
-// M-chat-file-attach-and-create-note — two chat-composer actions added alongside the existing
-// paste-a-permalink reference cards (chat-reference-cards.spec.ts): attaching a file from the
-// Send menu's "+", and a per-turn "Annotate" action (M-annotate renamed it from "Create Note")
-// that seeds Notes' Add modal. Mirrors import.spec.ts's /api/extract + /api/raw + /api/vault stub
-// idiom for the attach path, and chat-reference-cards.spec.ts's reference-card assertions.
+// Chat composer actions: attaching a file from the Send menu, and a per-turn Annotate that seeds Notes' Add modal.
 
 const REPORT = {
   studyType: "Coronary CTA",
@@ -30,8 +28,7 @@ const READING = {
 async function openClient(page: Page) {
   await stubChatHistory(page);
   await openSynthetic(page);
-  await page.waitForSelector(".chat-tab textarea", { timeout: 10_000 });
-  await page.waitForTimeout(200);
+  await waitForChatReady(page);
 }
 
 test("attaching a PDF in chat makes it a discussable attachment, not a report import", async ({ page }) => {
@@ -172,7 +169,7 @@ test("a chat turn's 'Annotate' action seeds Notes' Add modal with a reference ba
   const turnCard = page.locator(".chat-tab .leaf-card").last();
   await clickLeafMenuItem(turnCard, "Annotate");
 
-  await expect(page.locator(".sidebar .nav-list .nav-item", { hasText: "Notes" })).toHaveClass(/active/);
+  await expect(navRow(page, "Notes")).toHaveClass(/active/);
   await expect(page.locator(".nt-modal")).toBeVisible();
   const attached = page.locator(".nt-modal .reference-card");
   await expect(attached).toBeVisible();

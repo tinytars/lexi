@@ -53,7 +53,6 @@ let other: CryptoKey;
 let loadThreads: (id: string, dek: CryptoKey) => Promise<Thread[] | null>;
 let saveThreads: (t: Thread[], id: string, dek: CryptoKey) => Promise<void>;
 beforeEach(async () => {
-  vi.unstubAllGlobals();
   vi.stubEnv("DEV", false);
   ({ loadThreads, saveThreads } = await tab());
   dek = await generateDEK();

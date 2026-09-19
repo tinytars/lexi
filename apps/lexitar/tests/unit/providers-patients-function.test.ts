@@ -1,52 +1,34 @@
-import { applyMigrations } from "./_migrate";
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { Miniflare } from "miniflare";
+import { describe, it, expect } from "vitest";
 import { onRequestGet as patients } from "../../functions/api/providers/patients";
 import type { LinkStatus } from "../../functions/_lib/identity-types";
 import { createAccount } from "../../functions/_lib/identity-accounts";
 import { putPublicKey } from "../../functions/_lib/identity-credentials";
 import { createVault, putEnvelope } from "../../functions/_lib/identity-vault";
 import { createProviderLink } from "../../functions/_lib/identity-providers";
-import { signSession } from "../../functions/_lib/session";
 import { generateAccountKeypair, generateDEK, wrapDEKForPublicKey } from "@tinytars/vault/crypto";
+import { useWorkerd } from "../support/miniflare";
+import { SESSION_SECRET, cookieFor } from "../support/session";
 
-let mf: Miniflare;
-let db: any; // D1Database
-
-beforeAll(async () => {
-  mf = new Miniflare({
-    modules: true,
-    script: "export default { fetch() { return new Response('ok'); } }",
-    d1Databases: { DB: "test-providers" },
-  });
-  db = await mf.getD1Database("DB");
-  await applyMigrations(db as unknown as import("../../functions/_lib/identity-types").D1Database);
-});
-
-afterAll(async () => {
-  await mf.dispose();
-});
-
-const SECRET = "test-secret";
-const makeEnv = () => ({ DB: db, SESSION_SECRET: SECRET });
+const w = useWorkerd();
+const makeEnv = () => ({ DB: w.db, SESSION_SECRET });
 
 // Seed one provider + one patient (owned vault). Optionally grant the provider an envelope and
 // set the link status. Returns their ids so the caller can sign a session for the provider.
 async function seed(displayName: string, opts: { status?: LinkStatus; grantEnvelope?: boolean } = {}) {
   const prov = await generateAccountKeypair();
   const providerId = crypto.randomUUID();
-  await createAccount(db, { id: providerId, displayName: "Prov", providerKind: "primary" });
-  await putPublicKey(db, { accountId: providerId, publicKeyJwk: prov.publicKeyJwk });
+  await createAccount(w.db, { id: providerId, displayName: "Prov", providerKind: "primary" });
+  await putPublicKey(w.db, { accountId: providerId, publicKeyJwk: prov.publicKeyJwk });
 
   const patientId = crypto.randomUUID();
-  await createAccount(db, { id: patientId, displayName });
+  await createAccount(w.db, { id: patientId, displayName });
   const vaultId = crypto.randomUUID();
-  await createVault(db, { vaultId, ownerAccountId: patientId, r2Key: `data-${patientId}.enc`, hd1Version: 2 });
+  await createVault(w.db, { vaultId, ownerAccountId: patientId, r2Key: `data-${patientId}.enc`, hd1Version: 2 });
 
   if (opts.grantEnvelope ?? true) {
     const dek = await generateDEK();
     const env0 = await wrapDEKForPublicKey(dek, prov.publicKeyJwk);
-    await putEnvelope(db, {
+    await putEnvelope(w.db, {
       vaultId,
       principalAccountId: providerId,
       wrappedDek: env0.wrappedDEK,
@@ -54,7 +36,7 @@ async function seed(displayName: string, opts: { status?: LinkStatus; grantEnvel
       createdBy: providerId,
     });
   }
-  await createProviderLink(db, {
+  await createProviderLink(w.db, {
     ownerAccountId: patientId,
     providerAccountId: providerId,
     role: "primary",
@@ -66,7 +48,7 @@ async function seed(displayName: string, opts: { status?: LinkStatus; grantEnvel
 
 async function get(providerId: string | null): Promise<Response> {
   const headers: Record<string, string> = {};
-  if (providerId) headers.cookie = `hd_session=${await signSession({ SESSION_SECRET: SECRET }, providerId)}`;
+  if (providerId) headers.cookie = await cookieFor(providerId);
   return patients({ request: new Request("http://x/api/providers/patients", { headers }), env: makeEnv() });
 }
 

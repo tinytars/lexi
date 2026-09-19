@@ -18,6 +18,7 @@ import type { EmailEnv } from "../../../../_lib/email";
 import { sendVerificationEmail } from "../../../../_lib/email";
 import { ORG_ACCOUNT_ID } from "../../../../_lib/org";
 import { sha256Base64Url } from "../../../../_lib/verifier";
+import { jsonWithCookies } from "../../../../_lib/http";
 
 // W44 P3 — passkey registration, step 2. The browser has already done all the crypto
 // (attestation, keypair, PRF-derived-KEK-wrapped private key, DEK-encrypted vault blob, owner
@@ -55,13 +56,6 @@ function base64ToBytes(b64: string): Uint8Array {
   return bytes;
 }
 
-
-function jsonResponse(status: number, body: unknown, cookies: string[] = []): Response {
-  const headers = new Headers({ "content-type": "application/json" });
-  for (const c of cookies) headers.append("set-cookie", c);
-  return new Response(JSON.stringify(body), { status, headers });
-}
-
 function missingField(body: Partial<VerifyBody>): boolean {
   return (
     !body.attestationResponse ||
@@ -88,20 +82,20 @@ export async function onRequestPost(context: Ctx): Promise<Response> {
     const body = (await request.json()) as Partial<VerifyBody>;
     if (missingField(body)) {
       log(400, "missing_fields");
-      return jsonResponse(400, { error: "missing required fields" });
+      return jsonWithCookies(400, { error: "missing required fields" });
     }
     const b = body as VerifyBody;
 
     const challenge = await readChallengeCookie(env, request);
     if (!challenge) {
       log(400, "bad_challenge");
-      return jsonResponse(400, { error: "missing or expired challenge" });
+      return jsonWithCookies(400, { error: "missing or expired challenge" });
     }
 
     const verification = await verifyRegistrationResponse(env, b.attestationResponse, challenge.challenge);
     if (!verification.verified || !verification.registrationInfo) {
       log(400, "verification_failed");
-      return jsonResponse(400, { error: "passkey registration could not be verified" });
+      return jsonWithCookies(400, { error: "passkey registration could not be verified" });
     }
 
     const { credential } = verification.registrationInfo;
@@ -168,9 +162,9 @@ export async function onRequestPost(context: Ctx): Promise<Response> {
 
     const token = await signSession(env, accountId);
     log(200);
-    return jsonResponse(200, { accountId, vaultId }, [sessionSetCookie(token), clearChallengeCookie()]);
+    return jsonWithCookies(200, { accountId, vaultId }, [sessionSetCookie(token), clearChallengeCookie()]);
   } catch {
     log(500, "register_verify_failed");
-    return jsonResponse(500, { error: "registration verify failed" });
+    return jsonWithCookies(500, { error: "registration verify failed" });
   }
 }

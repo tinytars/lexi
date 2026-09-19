@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { standardLeafActions, buildNoteAttachment } from "../../src/lib/leaf-actions";
 import { registerAttachPicker } from "@tinytars/frame/attach-controller";
 
@@ -71,8 +71,6 @@ describe("standardLeafActions — attach (no window, i.e. a fine/desktop pointer
 });
 
 describe("standardLeafActions — attach on a coarse pointer", () => {
-  afterEach(() => vi.unstubAllGlobals());
-
   it("expands into Take photo / Photo library / Choose file", () => {
     vi.stubGlobal("window", { matchMedia: () => ({ matches: true }) });
     const items = standardLeafActions({ chat: vi.fn(), attach: attachTarget });
@@ -83,8 +81,6 @@ describe("standardLeafActions — attach on a coarse pointer", () => {
 // W50 — Chat merges "Add file" into Attach by routing a picked PDF/XLSX through report-ingest
 // instead of the generic attachFiles() upload every other Attach use makes.
 describe("standardLeafActions — attach routeFile", () => {
-  afterEach(() => vi.unstubAllGlobals());
-
   it("a claimed file skips attachFiles/onAttached; an unclaimed one still uploads normally", async () => {
     const puts: string[] = [];
     vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit) => {

@@ -28,13 +28,17 @@ export async function buildAttachmentKey(bytes: Uint8Array, originalName: string
   return `${sha8}-${safeName}`;
 }
 
-export async function uploadAttachment(clientId: string, bytes: Uint8Array, key: string): Promise<void> {
-  const res = await fetch(`/api/raw/${normalizeClientId(clientId)}/${key}`, {
+export function putRaw(clientId: string, key: string, bytes: Uint8Array): Promise<Response> {
+  return fetch(`/api/raw/${normalizeClientId(clientId)}/${key}`, {
     method: "PUT",
     // /api/raw is gated by the hd_session cookie (W44) — same-origin fetch sends it automatically.
     headers: { "Content-Type": "application/octet-stream" },
     body: bytes as BodyInit,
   });
+}
+
+export async function uploadAttachment(clientId: string, bytes: Uint8Array, key: string): Promise<void> {
+  const res = await putRaw(clientId, key, bytes);
   if (!res.ok && res.status !== 204) {
     throw new Error(`storing the attachment failed (${res.status})`);
   }

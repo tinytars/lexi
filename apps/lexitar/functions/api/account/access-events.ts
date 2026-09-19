@@ -2,6 +2,7 @@ import type { D1Database } from "../../_lib/identity-types";
 import { listAccessEventsForSubject } from "../../_lib/identity-audit";
 import { requireSession } from "../../_lib/session";
 import { logRequest } from "../../_lib/log";
+import { json } from "../../_lib/http";
 
 // W55 P4 — the patient-visible side of phi_access_events: newest first, capped at 200. First caller of
 // listAccessEventsForSubject, which orders ascending with no limit.
@@ -16,9 +17,6 @@ interface Ctx {
 
 const ROUTE = "/api/account/access-events";
 const CAP = 200;
-
-const json = (status: number, body: unknown): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 export async function onRequestGet(context: Ctx): Promise<Response> {
   const { request, env } = context;

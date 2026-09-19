@@ -5,7 +5,6 @@
 // local records/private/ mirror (never ported here). Flag shape intentionally matches ops.yml's
 // existing `cmd=` lines so porting that workflow here later is a script-name swap, not a rewrite.
 import "./load-creds";
-import { fileURLToPath } from "node:url";
 import { parseR2OpsArgs } from "./r2-ops-args";
 import { UsageAccumulator } from "./inference-cost";
 import { flushOrgKeyUses } from "./access-log";
@@ -25,6 +24,7 @@ import {
   type PhotoExtractResult,
 } from "./commands/r2-ops";
 import type { VaultOpResult } from "./vault-ops";
+import { isMain } from "./is-main";
 
 function reportApplied(dryRun: boolean, applied: boolean): void {
   process.stdout.write(applied ? "Applied — pushed to R2.\n" : dryRun ? "Dry run — no R2 write.\n" : "Nothing to apply.\n");
@@ -109,8 +109,7 @@ async function main(): Promise<void> {
   if (usage.totalCost() > 0) process.stdout.write(`\n${usage.summary(args.mode)}\n`);
 }
 
-const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
-if (isMain) {
+if (isMain(import.meta.url)) {
   main()
     .finally(() => flushOrgKeyUses())
     .catch((e) => {

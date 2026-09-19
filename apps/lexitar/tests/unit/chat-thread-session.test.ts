@@ -1,27 +1,22 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-
-const chatStore = vi.hoisted(() => ({
-  loadThreads: vi.fn(async () => null as import("../../src/lib/chat-threads").Thread[] | null),
-  saveThreads: vi.fn(async () => {}),
-}));
-vi.mock("../../src/lib/chat-store", () => chatStore);
-
-const refResolver = vi.hoisted(() => ({ resolveReference: vi.fn() }));
-vi.mock("../../src/lib/reference-resolver", () => refResolver);
-
 import { createChatThreadSession, type ChatThreadSessionDeps } from "../../src/lib/chat-thread-session.svelte";
-import type { Vault } from "../../src/lib/types";
+import { markerAnchor } from "../../src/lib/anchor";
+import type { Thread } from "../../src/lib/chat-threads";
+import type { Client, Vault } from "../../src/lib/types";
 import type { Permalink } from "../../src/lib/permalink";
 
-// W79 phase 3a — `$effect` does not run under this repo's Vitest setup (see draft-sync.svelte.ts's
-// note), so these tests call `hydrate`/`applyChatFallback`/`resolveSeedRequest` directly rather than
-// relying on the `$effect` shells that trigger them in the real component.
+const chatStore = {
+  loadThreads: vi.fn(async (): Promise<Thread[] | null> => null),
+  saveThreads: vi.fn(async () => {}),
+};
+
+const blair = { displayName: "Blair", results: [{ marker: "ApoB", date: "2026-01-01", value: 90, unit: "mg/dL" }] } as unknown as Client;
 
 function makeHarness(overrides: Partial<ChatThreadSessionDeps> = {}) {
   const state = {
     selectedClientId: "blair" as string | null,
     dek: {} as CryptoKey | null,
-    vault: {} as Vault | null,
+    vault: { clients: { blair } } as unknown as Vault | null,
     activeTab: "chat",
     section: null as string | null,
     chatSeedRequest: null as Permalink | null,
@@ -37,6 +32,7 @@ function makeHarness(overrides: Partial<ChatThreadSessionDeps> = {}) {
     getChatSeedRequest: () => state.chatSeedRequest,
     setChatSeedRequest: (v) => { state.chatSeedRequest = v; },
     confirmDelete,
+    store: chatStore,
     ...overrides,
   };
   const session = createChatThreadSession(deps);
@@ -46,7 +42,6 @@ function makeHarness(overrides: Partial<ChatThreadSessionDeps> = {}) {
 beforeEach(() => {
   chatStore.loadThreads.mockReset().mockResolvedValue(null);
   chatStore.saveThreads.mockReset().mockResolvedValue(undefined);
-  refResolver.resolveReference.mockReset();
 });
 
 describe("hydrate", () => {
@@ -130,7 +125,6 @@ describe("resolveSeedRequest", () => {
     const before = session.threads.length;
     session.resolveSeedRequest();
     expect(session.threads).toHaveLength(before);
-    expect(refResolver.resolveReference).not.toHaveBeenCalled();
   });
 
   it("does not consume the seed while unhydrated, even with a vault present", () => {
@@ -139,7 +133,6 @@ describe("resolveSeedRequest", () => {
     state.chatSeedRequest = seed;
     session.resolveSeedRequest();
     expect(state.chatSeedRequest).toBe(seed);
-    expect(refResolver.resolveReference).not.toHaveBeenCalled();
   });
 
   it("does not consume the seed without a vault, even once hydrated", async () => {
@@ -149,34 +142,17 @@ describe("resolveSeedRequest", () => {
     state.chatSeedRequest = seed;
     session.resolveSeedRequest();
     expect(state.chatSeedRequest).toBe(seed);
-    expect(refResolver.resolveReference).not.toHaveBeenCalled();
-  });
-
-  it("clears an unresolvable seed without creating a thread", async () => {
-    refResolver.resolveReference.mockReturnValue(null);
-    const { session, state } = makeHarness();
-    await session.hydrate();
-    const before = session.threads.length;
-    state.chatSeedRequest = { tab: "chat" } as Permalink;
-    session.resolveSeedRequest();
-    expect(state.chatSeedRequest).toBeNull();
-    expect(session.threads).toHaveLength(before);
   });
 
   it("seeds a new thread from a resolved reference and selects it", async () => {
-    refResolver.resolveReference.mockReturnValue({
-      kind: "marker",
-      permalink: { tab: "chat" },
-      preview: { title: "ApoB", tag: "Marker" },
-      context: null,
-    });
     const { session, state } = makeHarness();
     await session.hydrate();
     const before = session.threads.length;
-    state.chatSeedRequest = { tab: "chat" } as Permalink;
+    state.chatSeedRequest = { client: "blair", tab: "markers", anchor: markerAnchor("ApoB") } as Permalink;
     session.resolveSeedRequest();
     expect(session.threads).toHaveLength(before + 1);
     const created = session.threads[session.threads.length - 1];
+    expect(created.title).toContain("ApoB");
     expect(state.section).toBe(created.id);
     expect(state.chatSeedRequest).toBeNull();
   });

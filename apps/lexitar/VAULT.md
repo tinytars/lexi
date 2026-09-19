@@ -8,7 +8,7 @@ in `AUTH.md` (secrets/deploy) and `API.md` (endpoint contracts).
 > env `PASSPHRASE`) and `<org-passphrase>` (env `ORG_KEY_PASSPHRASE`) live in a local credentials
 > file (`health-dash.env`, not committed in this repo), loaded via `scripts/load-creds.ts`. Source it
 > before running any command below:
-> `set -a; . "${PLOVER_CREDENTIALS_DIR:-$HOME/.claude/infra/cloud/credentials}/health-dash.env"; set +a`.
+> `set -a; . "${PLOVER_CREDENTIALS_DIR:-$HOME/PabloTech/plover-keys}/health-dash.env"; set +a`.
 
 ## 1. Data model — four layers under one umbrella
 

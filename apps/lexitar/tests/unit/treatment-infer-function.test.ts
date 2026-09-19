@@ -1,4 +1,4 @@
-import { fakeSessionDb } from "./_session-db";
+import { fakeSessionDb } from "../support/session-db";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Mock the SDK so the gate, the limits and the error mapping are exercised with no billable call.

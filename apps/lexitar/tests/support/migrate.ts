@@ -4,18 +4,8 @@ import type { D1Database } from "../../functions/_lib/identity-types";
 
 const DIR = fileURLToPath(new URL("../../migrations/", import.meta.url));
 
-/**
- * Applies every migration, in order, to a fresh Miniflare D1.
- *
- * Read from the DIRECTORY rather than from a list, because the list was the bug: twenty-one test
- * files each named the migrations they happened to need, so W71's session-revocation migration
- * reached none of them and every session-gated route test failed on a missing column at once. A
- * hand-maintained subset of the schema is a copy of the schema, and it goes stale the same way every
- * other copy in this codebase has.
- *
- * Seed data (0002) is skipped: it inserts specific accounts, which is fixture material a test should
- * choose for itself, not schema.
- */
+// Applies every schema migration in directory order — never a hand-picked subset, which goes stale
+// as soon as a migration is added. Seed files are skipped: fixtures are the test's choice.
 export async function applyMigrations(db: D1Database): Promise<void> {
   const files = readdirSync(DIR)
     .filter((f) => f.endsWith(".sql") && !f.includes("seed"))

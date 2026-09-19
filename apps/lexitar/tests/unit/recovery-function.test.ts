@@ -1,28 +1,16 @@
-import { applyMigrations } from "./_migrate";
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { Miniflare } from "miniflare";
+import { describe, it, expect } from "vitest";
 import { onRequestPost as regen } from "../../functions/api/account/recovery";
 import { onRequestGet as recSalt } from "../../functions/api/auth/recovery/salt";
 import { onRequestPost as recLogin } from "../../functions/api/auth/recovery/login";
 import { createAccount } from "../../functions/_lib/identity-accounts";
 import { putPublicKey } from "../../functions/_lib/identity-credentials";
-import { signSession } from "../../functions/_lib/session";
 import { generateAccountKeypair, deriveKekFromPassword, wrapPrivateKey, deriveAuthHash, unwrapPrivateKey } from "@tinytars/vault/crypto";
+import { useWorkerd } from "../support/miniflare";
+import { SESSION_SECRET, cookieFor } from "../support/session";
 
-let mf: Miniflare;
-let db: any;
-const SECRET = "test-secret";
 const ITER = 200_000;
-
-beforeAll(async () => {
-  mf = new Miniflare({ modules: true, script: "export default { fetch() { return new Response('ok'); } }", d1Databases: { DB: "test-recovery" } });
-  db = await mf.getD1Database("DB");
-  await applyMigrations(db as unknown as import("../../functions/_lib/identity-types").D1Database);
-});
-afterAll(async () => { await mf.dispose(); });
-
-const makeEnv = () => ({ DB: db, SESSION_SECRET: SECRET }) as any;
-const cookieFor = async (id: string) => `hd_session=${await signSession({ SESSION_SECRET: SECRET }, id)}`;
+const w = useWorkerd();
+const makeEnv = () => ({ DB: w.db, SESSION_SECRET }) as any;
 const b64 = (b: Uint8Array) => Buffer.from(b).toString("base64");
 const hex = (b: Uint8Array) => Buffer.from(b).toString("hex");
 const hexToBytes = (h: string) => Uint8Array.from(Buffer.from(h, "hex"));
@@ -53,9 +41,9 @@ describe("account recovery redemption", () => {
   it("recovers with the correct code and the returned wrapped key unwraps to the account key", async () => {
     const email = `r-${crypto.randomUUID()}@x.test`;
     const id = crypto.randomUUID();
-    await createAccount(db, { id, displayName: "R", email });
+    await createAccount(w.db, { id, displayName: "R", email });
     const { privateKey, publicKeyJwk } = await generateAccountKeypair();
-    await putPublicKey(db, { accountId: id, publicKeyJwk });
+    await putPublicKey(w.db, { accountId: id, publicKeyJwk });
     await setRecovery(id, privateKey, "CODE-ALPHA-1");
 
     const out = await recover(email, "CODE-ALPHA-1");
@@ -72,9 +60,9 @@ describe("account recovery redemption", () => {
   it("rejects a wrong recovery code (401)", async () => {
     const email = `r-${crypto.randomUUID()}@x.test`;
     const id = crypto.randomUUID();
-    await createAccount(db, { id, displayName: "R", email });
+    await createAccount(w.db, { id, displayName: "R", email });
     const { privateKey, publicKeyJwk } = await generateAccountKeypair();
-    await putPublicKey(db, { accountId: id, publicKeyJwk });
+    await putPublicKey(w.db, { accountId: id, publicKeyJwk });
     await setRecovery(id, privateKey, "RIGHT-CODE");
     expect((await recover(email, "WRONG-CODE")).status).toBe(401);
   });
@@ -82,19 +70,16 @@ describe("account recovery redemption", () => {
   it("regen replaces the code: the new code works, the old one 401s", async () => {
     const email = `r-${crypto.randomUUID()}@x.test`;
     const id = crypto.randomUUID();
-    await createAccount(db, { id, displayName: "R", email });
+    await createAccount(w.db, { id, displayName: "R", email });
     const { privateKey, publicKeyJwk } = await generateAccountKeypair();
-    await putPublicKey(db, { accountId: id, publicKeyJwk });
+    await putPublicKey(w.db, { accountId: id, publicKeyJwk });
     await setRecovery(id, privateKey, "OLD-CODE");
     await setRecovery(id, privateKey, "NEW-CODE"); // regen
     expect((await recover(email, "NEW-CODE")).status).toBe(200);
     expect((await recover(email, "OLD-CODE")).status).toBe(401);
   });
 
-  // W71 — this used to assert a 404, which is exactly what made the endpoint an oracle: 404 for an
-  // address with no recovery credential, 200 for one with, unauthenticated and unlogged. On a health
-  // application that answers "is this person a patient here". `login.ts` returns a uniform 401 for
-  // precisely this reason; the salt lookup in front of it gave the answer away first.
+  // A 404 for unknown addresses would answer "is this person a patient here", unauthenticated.
   describe("the salt lookup does not reveal whether an account exists", () => {
     const saltFor = async (email: string) =>
       recSalt({ request: new Request(`http://x/api/auth/recovery/salt?email=${encodeURIComponent(email)}`), env: makeEnv() });
@@ -102,9 +87,9 @@ describe("account recovery redemption", () => {
     it("answers a registered address and an unknown one indistinguishably", async () => {
       const registered = `r-${crypto.randomUUID()}@x.test`;
       const id = crypto.randomUUID();
-      await createAccount(db, { id, displayName: "R", email: registered });
+      await createAccount(w.db, { id, displayName: "R", email: registered });
       const { privateKey, publicKeyJwk } = await generateAccountKeypair();
-      await putPublicKey(db, { accountId: id, publicKeyJwk });
+      await putPublicKey(w.db, { accountId: id, publicKeyJwk });
       await setRecovery(id, privateKey, "CODE");
 
       const real = await saltFor(registered);

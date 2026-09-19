@@ -1,6 +1,7 @@
 import { revokeBreakGlass } from "@tinytars/vault/break-glass";
 import type { AuditStore, EnvelopeStore, ProviderLink, ProviderLinkStore, VaultRow } from "@tinytars/vault/stores";
 import { logRequest } from "../log";
+import { json } from "../http";
 
 // W44 P4 — revoke a provider's access. Only the patient who owns the link may revoke. Deletes the
 // provider's envelope (so no NEW read can unwrap the DEK) and marks the link revoked.
@@ -22,9 +23,6 @@ export interface ProvidersLinkRevokeDeps {
 }
 
 const ROUTE = "/api/providers";
-
-const json = (status: number, body: unknown): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 export async function providersLinkRevokeHandler(request: Request, deps: ProvidersLinkRevokeDeps): Promise<Response> {
   const start = Date.now();

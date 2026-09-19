@@ -1,24 +1,23 @@
 <script lang="ts">
   import { tick } from "svelte";
   import { describeAiError } from "./ai-error";
-  import { renameAssessmentItems, assessmentFor } from "@pablotech/akesi/treatment-bucket";
-  import { partitionByBucket } from "./treatment-sidebar";
+  import { assessmentFor } from "@pablotech/akesi/treatment-bucket";
   import { formatIngredient, hasProductData } from "@pablotech/akesi/treatment-product";
   import { computeConclusion, isConclusion, conclusionMessage, formatIngredientTotal } from "./treatment-conclusion";
-  import type { Attachment, Client, ClientFactors, LegacyFactors, NoteAttachment, TreatmentItem } from "./types";
+  import type { Attachment, Client, NoteAttachment, TreatmentItem } from "./types";
   import PersonaBubble, { type BubbleAction } from "@tinytars/frame/PersonaBubble.svelte";
   import { standardLeafActions, buildNoteAttachment } from "./leaf-actions";
   import LeafCard from "@tinytars/frame/LeafCard.svelte";
   import PendingGrouping from "./PendingGrouping.svelte";
   import HeadingAnchor from "./HeadingAnchor.svelte";
-  import { treatmentAnchor, findByAnchor } from "./anchor";
-  import { groupBySystem } from "@pablotech/akesi/system-groups";
+  import { treatmentAnchor } from "./anchor";
   import { planActionSystems } from "./treatment-groups";
-  import { treatmentsOf, normalizeTreatments } from "@pablotech/akesi/treatment-normalize";
+  import { treatmentsOf } from "@pablotech/akesi/treatment-normalize";
+  import { foldLegacyTreatments, treatmentEditDraft } from "./treatment-legacy-fold";
   import { createDraftSync, createPersistNow } from "./draft-sync.svelte";
-  import { bucketOf, collapseByName, treatmentLabel, todayISODate, BUCKET_LABEL, groupByName, dateGaps, formatDose, type NamedTreatmentGroup } from "@pablotech/akesi/treatment-bucket";
-  import { sortPinnedFirst } from "./pin-sort";
-  import { endOfMonth, formatDay, isCompleteDate } from "@pablotech/akesi/dates";
+  import { bucketOf, todayISODate, BUCKET_LABEL, groupByName, dateGaps, formatDose, type NamedTreatmentGroup } from "@pablotech/akesi/treatment-bucket";
+  import { resolveTreatmentView, editView, readView, bucketForAnchor, treatmentModalLabel } from "./treatment-view-model";
+  import { formatDay, isCompleteDate } from "@pablotech/akesi/dates";
   import Modal from "@tinytars/frame/Modal.svelte";
   import Button from "@tinytars/frame/Button.svelte";
   import Field from "@tinytars/frame/Field.svelte";
@@ -26,13 +25,12 @@
   import { compressImage } from "./image-compress";
   import { inferTreatmentRecord } from "./treatment-infer-client";
   import { mergeInferredFields } from "./treatment-infer-merge";
-  import { matchesTreatmentName } from "./treatment-name-match";
   import { wasSavedThisSession } from "./treatment-session-guard";
+  import { duplicateTreatment, clearExtractedData, togglePin, removeTreatmentsById, mirrorAttachments, removeAttachment, deleteTreatmentPrompt, deleteMedicinePrompt } from "./treatment-mutations";
   import { hasAnyDose as hasAnyDoseInTreatments, editIndexOf as editIndexOfRow } from "./treatment-row-lookup";
-  import { uploadPendingImages } from "./treatment-attachment-upload";
-  import { planMedicineFanout, applyMedicineFanoutPatch } from "./treatment-medicine-fanout";
-  import { fanoutReason } from "./treatment-reason-fanout";
-  import { appendAttachments, buildAttachmentKey, uploadAttachment, attachmentUrl, attachmentsOf, groupAttachmentsOf, attachFiles, isLastRawCaptureAttachment, isLastRawCaptureHolder, MAX_VISION_ATTACHMENTS } from "./attachment-store";
+  import { uploadPendingImages, mergeUploadedImages } from "./treatment-attachment-upload";
+  import { planTreatmentSave, applyTreatmentSave, type TreatmentFieldScope as FieldScope } from "./treatment-save";
+  import { appendAttachments, buildAttachmentKey, uploadAttachment, attachmentUrl, attachmentsOf, groupAttachmentsOf, attachFiles, MAX_VISION_ATTACHMENTS } from "./attachment-store";
   import { openAttachPicker, DEFAULT_ATTACH_ACCEPT } from "@tinytars/frame/attach-controller";
   import AttachmentStrip from "@tinytars/frame/AttachmentStrip.svelte";
   import DictateButton from "@tinytars/frame/DictateButton.svelte";
@@ -86,38 +84,24 @@
   }: Props = $props();
 
   const today = todayISODate();
-  const todayDate = new Date().toISOString().slice(0, 10);
-  // "medicine" = Name/Reason/Kind (true of the drug); "entry" = dates/dose/timing (true of one dose
-  // period); "all" = both, for Add and for the temporal tabs.
-  type FieldScope = "all" | "medicine" | "entry";
   // M51 — patient and provider share one editable view; edit availability is purely whether a save
   // sink is wired (it always is from the shell). The read-only branch survives only for a no-onSave host.
   const canEdit = $derived(!!onSave);
 
   // Edit draft — always-on; createDraftSync resyncs it to the live client only when its identity
-  // changes (patient switch / post-save reload), folding any legacy vault into `treatments` on the
-  // way in.
+  // changes (patient switch / post-save reload).
   function build(c: Client): Client {
-    const d = structuredClone($state.snapshot(c)) as Client;
-    d.factors ??= {};
-    d.factors.treatments ??= normalizeTreatments(d.factors as ClientFactors & LegacyFactors);
-    // Coerce legacy month-only start/end to a full date (last day of month) so the type="date"
-    // inputs display them — a date picker can't render a bare "YYYY-MM". normalizeClientDraft applies
-    // the same coercion, so the baseline matches and this doesn't read as an unsaved change on load.
-    for (const t of d.factors.treatments) {
-      if (t.start) t.start = endOfMonth(t.start);
-      if (t.end) t.end = endOfMonth(t.end);
-    }
-    const legacy = d.factors as Partial<LegacyFactors>;
-    delete legacy.medications;
-    delete legacy.supplements;
-    delete legacy.plan;
-    return d;
+    return treatmentEditDraft(structuredClone($state.snapshot(c)) as Client);
+  }
+
+  // The immediate-persist payload must be folded like `draft`: `client.factors.treatments` may still
+  // be legacy-shaped while draft's index `i` assumes the already-folded array.
+  function treatmentBaseline(c: Client): Client {
+    return foldLegacyTreatments(structuredClone($state.snapshot(c)) as Client);
   }
 
   const ds = createDraftSync(() => client, build, () => saveError, () => canEdit);
   const draft = $derived(ds.draft);
-  // treatmentBaseline (not the default clone) — folds legacy factors the way `draft` does.
   const persistNow = createPersistNow(ds, () => client, onSave, onSaved, treatmentBaseline);
 
   // One lookup for every bucket — see assessmentFor. A drug can hold three assessments now, one per
@@ -212,17 +196,6 @@
       identifying = false;
     }
   }
-  // M-locked-fields — the bulk undo for a bad/stale extraction: blanks every LexiTar-read field so
-  // the form falls back to its capture UI (still shown unconditionally at medicine scope) for a
-  // fresh Identify, rather than offering a never-used per-field edit on facts that came off a label.
-  function clearExtractedData(t: TreatmentItem) {
-    t.name = "";
-    t.description = undefined;
-    t.maker = undefined;
-    t.ingredients = undefined;
-    t.administration = undefined;
-    t.kind = undefined;
-  }
   // M107 — Amount is type="number", so it silently swallows any non-numeric keystroke (old muscle
   // memory from the pre-split "6mg/week" single field types straight through "m"/"g" after the
   // digits). Forward that keystroke into Unit instead of letting it vanish, and move focus there.
@@ -251,21 +224,11 @@
   // W46 Phase 4 — matched by id (mirrors togglePinTreatment above), not x.i: attach can fire from
   // any row regardless of which bucket/collapsed view it's currently rendered in.
   let attachError = $state<string | null>(null);
-  // An attachment documents the DRUG, not the dose period it happened to be added from, so it lands
-  // on every row of that medicine — the same mirroring name/reason/kind already get. Mirroring
-  // rather than picking one owner row is what keeps a product photo alive when an old titration
-  // step is deleted; readers take the de-duplicated union (groupAttachmentsOf).
   function attachToTreatment(t: TreatmentItem, added: Attachment[]) {
     if (!draft) return;
-    const mirror = (rows: TreatmentItem[] | undefined) => {
-      for (const x of rows ?? []) {
-        if (!matchesTreatmentName(x.name, t.name)) continue;
-        x.attachments = appendAttachments(x.attachments, added);
-      }
-    };
-    mirror(draft.factors?.treatments);
+    mirrorAttachments(draft.factors?.treatments, t.name, added);
     if (!wasSavedThisSession(client, t.id)) return;
-    persistNow((payload) => mirror(payload.factors?.treatments));
+    persistNow((payload) => mirrorAttachments(payload.factors?.treatments, t.name, added));
   }
 
   // Translate is leaf-specific (like Markers' — see MarkerChart.svelte's rowActions), so it's
@@ -355,43 +318,21 @@
   // W46 Phase 2/4 — canonical Edit → Chat → Annotate → Attach → Delete order via the shared
   // leaf-actions contract (was a hand-rolled array, no Annotate/Attach). Attach here now also
   // covers what used to be "photos only at treatment-creation time" — any existing row can attach.
-  // Builds an immediate-persist payload folded the same way the resync effect folds `draft`
-  // (normalizeTreatments) — required since M57 made Add persist immediately too, so
-  // `client.factors.treatments` may still be legacy-shaped while `draft`'s index `i` assumes the
-  // already-folded array.
-  function treatmentBaseline(): Client {
-    const payload = structuredClone($state.snapshot(client)) as Client;
-    payload.factors ??= {};
-    payload.factors.treatments ??= normalizeTreatments(payload.factors as ClientFactors & LegacyFactors);
-    return payload;
-  }
   // M56 — persists immediately, scoped to just this item (see Study.svelte's deleteEntry for the
   // full rationale).
   function deleteTreatment(t: TreatmentItem, i: number) {
-    const name = t.name?.trim() || "this treatment";
-    // W78 — deleting a row can't leave a dangling provenanceIssues violation on another row (each
-    // row's claim is checked against its own attachments only), but it CAN permanently discard the
-    // only surviving evidence a photo extraction was read from — worth naming before it's gone.
-    const losesRawCapture = isLastRawCaptureHolder(t, draft?.factors?.treatments ?? []);
-    const prompt = losesRawCapture
-      ? `Remove ${name}? This is the only entry still holding the photo this extraction was read from — deleting it permanently loses that evidence. This can't be undone.`
-      : `Remove ${name}? This can't be undone.`;
-    if (!confirm(prompt)) return;
+    if (!confirm(deleteTreatmentPrompt(t, draft?.factors?.treatments ?? []))) return;
     draft!.factors!.treatments!.splice(i, 1);
     keepGroupOnNextAnchor = true;
-    persistNow((payload) => payload.factors!.treatments!.splice(i, 1), treatmentAnchor(name));
+    persistNow((payload) => payload.factors!.treatments!.splice(i, 1), treatmentAnchor(t.name?.trim() || "this treatment"));
   }
   // M71 P6 — standalone Pin toggle per treatment, same scoped-persist shape as deleteTreatment
   // above: mutate a clone of the last-saved `client` (never the live `draft`) and persist immediately.
   function togglePinTreatment(t: TreatmentItem) {
     if (!draft) return;
-    const flip = (c: Client) => {
-      const match = c.factors?.treatments?.find((x) => x.id === t.id);
-      if (match) match.pinned = !match.pinned;
-    };
-    flip(draft);
+    togglePin(draft, t.id);
     if (!wasSavedThisSession(client, t.id)) return;
-    persistNow(flip);
+    persistNow((c) => togglePin(c, t.id));
   }
   function addTreatment() {
     newTreatment = { id: crypto.randomUUID(), name: "", kind: "drug", start: "" };
@@ -433,20 +374,10 @@
       }
     }, DEFAULT_ATTACH_ACCEPT);
   }
-  // W78 — the only place any SAVED attachment can be removed (AttachmentStrip's ✕ only renders when
-  // onRemove is passed, and this is the sole TreatmentItem-facing call site that passes one). Blocks
-  // exactly what report-merge.ts's provenanceIssues check would then fail on: removing the last
-  // attachment a photo extraction's rawCaptureAttachmentKeys still claims. Medicine-scope save fans
-  // newTreatment.attachments/rawCaptureAttachmentKeys to every sibling row unchanged (:568,:599), so
-  // guarding newTreatment here covers both scopes without a separate check at save time.
+  // W78 — the only place a SAVED attachment can be removed; medicine-scope save fans newTreatment's
+  // attachments to every sibling unchanged, so guarding newTreatment here covers both scopes.
   function removeAttachmentFromEdit(a: Attachment) {
-    if (!newTreatment) return;
-    if (isLastRawCaptureAttachment(newTreatment, a.key)) {
-      saveImageError = "Can't remove the photo this extraction was read from — re-extract from a new photo first.";
-      return;
-    }
-    saveImageError = null;
-    newTreatment.attachments = (newTreatment.attachments ?? []).filter((x) => x.key !== a.key);
+    if (newTreatment) saveImageError = removeAttachment(newTreatment, a.key);
   }
   $effect(() => {
     if (autoOpenAdd) {
@@ -482,11 +413,9 @@
       onConsumeAnchor?.();
       return;
     }
-    const all = collapseByName(treatmentsOf(client));
-    // W64 — findByAnchor, not `===`: a dose-row anchor is the medicine's plus a suffix.
-    const t = findByAnchor(all, pendingAnchor, (x) => treatmentAnchor(x.name));
-    if (t) {
-      activeGroup = bucketOf(t, today);
+    const bucket = bucketForAnchor(client, pendingAnchor, today);
+    if (bucket) {
+      activeGroup = bucket;
       onConsumeAnchor?.();
     }
   });
@@ -509,12 +438,10 @@
     editGroupName = g.name;
     addOpen = true;
   }
-  // M-medicine-dup — "Duplicate" opens the modal as an ADD pre-filled from this dose row (new id),
-  // so the common case of "same drug, new dose period" doesn't mean retyping the whole record. The
-  // attachments come along: they document the drug, so the new dose period inherits them rather
-  // than the group appearing to lose a photo the moment a row is added.
-  function duplicateTreatment(t: TreatmentItem) {
-    newTreatment = { ...t, id: crypto.randomUUID(), pinned: undefined };
+  // M-medicine-dup — "Duplicate" opens the modal as an ADD pre-filled from this dose row, so the
+  // common case of "same drug, new dose period" doesn't mean retyping the whole record.
+  function startDuplicateTreatment(t: TreatmentItem) {
+    newTreatment = duplicateTreatment(t, crypto.randomUUID());
     editingIndex = null;
     editScope = "all";
     editGroupName = null;
@@ -522,13 +449,9 @@
   }
   // Removes the whole medicine — every dose row of it — matching what the group card represents.
   function deleteMedicine(g: NamedTreatmentGroup) {
-    const n = g.rows.length;
-    if (!confirm(`Remove ${g.name} and all ${n} dose ${n === 1 ? "entry" : "entries"}? This can't be undone.`)) return;
+    if (!confirm(deleteMedicinePrompt(g))) return;
     const ids = new Set(g.rows.map((r) => r.id));
-    const drop = (c: Client) => {
-      const list = c.factors?.treatments;
-      if (list) c.factors!.treatments = list.filter((x) => !ids.has(x.id));
-    };
+    const drop = (c: Client) => removeTreatmentsById(c, ids);
     drop(draft!);
     persistNow(drop, treatmentAnchor(g.name));
   }
@@ -574,15 +497,11 @@
     if (pendingImages.length > 0 && clientId) {
       savingNew = true;
       try {
-        const { attachments, rawCaptureKeys } = await uploadPendingImages(clientId, pendingImages, {
+        mergeUploadedImages(newTreatment, await uploadPendingImages(clientId, pendingImages, {
           compressImage,
           buildAttachmentKey,
           uploadAttachment,
-        });
-        newTreatment.attachments = appendAttachments(newTreatment.attachments, attachments);
-        if (rawCaptureKeys.length) {
-          newTreatment.rawCaptureAttachmentKeys = [...(newTreatment.rawCaptureAttachmentKeys ?? []), ...rawCaptureKeys];
-        }
+        }));
       } catch (err) {
         saveImageError = err instanceof Error ? err.message : "Couldn't save photos — try again.";
         savingNew = false;
@@ -590,88 +509,19 @@
       }
       savingNew = false;
     }
-    // M-medicine-fields — a medicine-scope save fans Name/Reason/Kind out across every dose row of
-    // the drug instead of writing one index, then exits early: the dates/dose fields weren't shown,
-    // so there is nothing per-row to write.
-    if (editScope === "medicine") {
-      const { name, reason, kind, description, maker, ingredients, links, administration, extracted, rawCaptureAttachmentKeys, rawCaptureText } = newTreatment;
-      const prev = editGroupName!.trim().toLowerCase();
-      // M-doseunit-relabel — administration.unit is what computeConclusion locks every sibling
-      // row's doseUnit against; identifyFrom() only ever updates THIS draft's doseUnit, so without
-      // this every other existing dose row keeps its old free-text unit forever and the Daily-total
-      // bubble refuses via unit-mismatch even after a successful re-extraction. doseAmount is left
-      // untouched deliberately: its existing numeric value is taken as already being a count of the
-      // new unit, not converted.
-      const prevAdministration = (draft!.factors?.treatments ?? []).find(
-        (x) => x.name.trim().toLowerCase() === prev,
-      )?.administration;
-      const { patch, relabelUnit } = planMedicineFanout(
-        { name, reason, kind, description, maker, ingredients, links, administration, extracted, rawCaptureAttachmentKeys, rawCaptureText, attachments: attachmentsOf(newTreatment) },
-        prevAdministration,
-      );
-      const apply = (c: Client) => {
-        // Rename the stored assessment with it, so the LexiTar turn doesn't vanish the moment the
-        // name changes and stay gone if the regen below fails.
-        renameAssessmentItems(c.finding?.treatment ?? [], editGroupName!, name);
-        applyMedicineFanoutPatch(c.factors?.treatments, prev, patch);
-      };
-      apply(draft!);
-      keepGroupOnNextAnchor = true;
-      persistNow(apply, treatmentAnchor(name));
-      if (hasAnyDose(name)) reportIfRegenFailed(onTriggerRegen?.("treatmentAssessment", [name]), name);
-      // The relabel above changes every row's treatmentLabel() (name + dose, unit included), which
-      // stale-matches the finding.treatmentGroups[].patient[] ref resolvePatientRef persisted under
-      // the OLD label — only reachable for a currently-planned row, but there's no cheap way to know
-      // that here. treatmentGroups has no per-drug scoping, so a forced full regen is the only way
-      // to rewrite it; skip it entirely when nothing was relabeled.
-      if (relabelUnit != null) onTriggerRegen?.("treatmentGroups", undefined, true);
-      addOpen = false;
-      newTreatment = null;
-      editScope = "all";
-      editGroupName = null;
-      revokePendingImages();
-      return;
-    }
-    // M57 — persists immediately once any photo upload above has landed, mirroring Study/Hypothesis's
-    // modal-Add. draft gets the same push so the row shows up without waiting on the resync round trip
-    // (which skipNextResync deliberately skips, to avoid clobbering another row's in-progress edit).
-    // M66 — editing an existing item writes it back by index instead of pushing.
-    // M-reason-in-dose-editor — reason moved here from the medicine-scope form (above), but it's
-    // still a medicine-level fact by convention, so this branch fans it out to every sibling row of
-    // the drug the same way the medicine-scope branch fans Name/Kind/product fields — this is now the
-    // ONLY branch that can change reason, so without the fan-out a sibling row would silently keep
-    // the OLD reason forever.
-    const savedId = newTreatment.id;
-    const savedName = newTreatment.name.trim().toLowerCase();
-    const savedReason = newTreatment.reason;
-    if (editingIndex !== null) {
-      draft!.factors!.treatments![editingIndex] = newTreatment;
-    } else {
-      draft!.factors!.treatments!.push(newTreatment);
-    }
-    fanoutReason(draft!.factors?.treatments, savedId, savedName, savedReason);
+    const plan = planTreatmentSave({
+      item: newTreatment, scope: editScope, editingIndex, editGroupName, rows: draft!.factors?.treatments ?? [],
+    });
+    // M57 — persists immediately; draft gets the same write so the row shows without waiting on the
+    // resync round trip (which skipNextResync deliberately skips).
+    applyTreatmentSave(draft!, plan);
     keepGroupOnNextAnchor = true;
-    persistNow((payload) => {
-      if (editingIndex !== null) {
-        payload.factors!.treatments![editingIndex] = { ...newTreatment! };
-      } else {
-        payload.factors!.treatments!.push(newTreatment!);
-      }
-      fanoutReason(payload.factors?.treatments, savedId, savedName, savedReason);
-    }, treatmentAnchor(newTreatment.name));
-    // M68 P4 — aiOnPlan stays holistic/unscoped (deliberately no targetLabels); only the
-    // treatmentAssessment branch narrows to the row that changed, keyed by the raw treatment name
-    // (the SCOPE OVERRIDE clause in leaf-regen.ts matches this against the model's own dose-annotated label).
-    // One node for every bucket: treatmentAssessment now answers per (drug, phase), so there is no
-    // bucket branch left to get wrong — and a planned Translate is scoped to the drug instead of
-    // regenerating the whole plan section the way aiOnPlan had to.
-    if (hasAnyDose(newTreatment.name)) reportIfRegenFailed(onTriggerRegen?.("treatmentAssessment", [newTreatment.name]), newTreatment.name);
-    addOpen = false;
-    newTreatment = null;
-    editingIndex = null;
-    editScope = "all";
-    editGroupName = null;
-    revokePendingImages();
+    persistNow((payload) => applyTreatmentSave(payload, plan), treatmentAnchor(plan.name));
+    // treatmentAssessment is keyed by the raw treatment name (leaf-regen.ts's SCOPE OVERRIDE matches
+    // it against the model's dose-annotated label) and answers per (drug, phase), so no bucket branch.
+    if (hasAnyDose(plan.name)) reportIfRegenFailed(onTriggerRegen?.("treatmentAssessment", [plan.name]), plan.name);
+    if (plan.kind === "medicine" && plan.regenGroups) onTriggerRegen?.("treatmentGroups", undefined, true);
+    cancelAddTreatment();
   }
   function cancelAddTreatment() {
     addOpen = false;
@@ -682,53 +532,11 @@
     revokePendingImages();
   }
 
-  // Read model (patient / read-only) — collapsed by name, grouped by system, AI matched with a used-set.
-  const model = $derived(buildTreatmentRows(client));
-
-  const ongoingGrouped = $derived.by(() => groupBySystem(client, model.ongoing, (r) => r.group));
-  const plannedGrouped = $derived.by(() => groupBySystem(client, model.planned, (r) => r.group));
-  const pastGrouped = $derived.by(() => groupBySystem(client, model.past, (r) => r.group));
-  const allRows = $derived([...model.ongoing, ...model.planned, ...model.past]);
-  const allGrouped = $derived.by(() => groupBySystem(client, allRows, (r) => r.group));
-  const READ_VIEWS = $derived({
-    medicine: { rows: allRows, grouped: allGrouped, label: "" },
-    ongoing: { rows: model.ongoing, grouped: ongoingGrouped, label: "ongoing " },
-    planned: { rows: model.planned, grouped: plannedGrouped, label: "planned " },
-    past: { rows: model.past, grouped: pastGrouped, label: "past " },
-  });
+  // Both views are $derived, so only the branch the template renders is ever computed.
+  const resolvedGroup = $derived(resolveTreatmentView(activeGroup));
+  const editViewModel = $derived(editView(draft?.factors?.treatments ?? [], resolvedGroup, today));
+  const readViewModel = $derived(readView(client, buildTreatmentRows(client), resolvedGroup));
   const empty = $derived(treatmentsOf(client).length === 0);
-
-  // M103 — Medicine's grouping, off the live draft (not `client`) so edits show immediately, same
-  // as editModel above. M108 — group order is Planned/Ongoing/Past (recency of use), not entry order.
-  // M-medicine-group — pinned medicines float to the top, keyed off the group's representative row
-  // (the same rows[0] that decides its bucket badge), matching Pin's behavior in every other leaf.
-  function groupsOf(rows: TreatmentItem[]): NamedTreatmentGroup[] {
-    return sortPinnedFirst(groupByName(rows, today), (g) => g.rows[0].pinned);
-  }
-  const medicineGroups = $derived(groupsOf(draft?.factors?.treatments ?? []));
-  // The three temporal views render the SAME per-medicine card, over just the rows their own date
-  // filter admits (bucketOf, unchanged) — so Past shows a drug's concluded dose periods, Planned its
-  // future ones, Ongoing the rest. Grouping after filtering is what keeps each view's table to its
-  // own bucket instead of repeating the drug's whole history three times.
-  const bucketedRows = $derived(partitionByBucket(draft?.factors?.treatments ?? [], today));
-  // One map, so the four view branches below become one render. They were byte-identical apart from
-  // which array they iterated and one adjective, which is exactly how a fix lands in three of them.
-  const GROUPS = $derived({
-    medicine: { groups: groupsOf(draft?.factors?.treatments ?? []), label: "", badge: true },
-    ongoing: { groups: groupsOf(bucketedRows.ongoing), label: "ongoing ", badge: false },
-    planned: { groups: groupsOf(bucketedRows.planned), label: "planned ", badge: false },
-    past: { groups: groupsOf(bucketedRows.past), label: "past ", badge: false },
-  });
-
-  // M76/Phase 3 — which single bucket renders. Trusts activeGroup when it's a valid bucket key;
-  // otherwise defaults to All — defensive only, since the real default-setting responsibility lives
-  // in App.svelte's default-group effect (which defaults this tab to the same `medicine` key).
-  // Guards against a stale/foreign value surviving a client switch — including the retired
-  // "ungrouped", which is still what a pre-existing saved nav memory holds.
-  const resolvedGroup = $derived.by(() => {
-    if (activeGroup === "ongoing" || activeGroup === "planned" || activeGroup === "past") return activeGroup;
-    return "medicine";
-  });
 </script>
 
 {#snippet assessedSection(rows: Row[], grouped: { system: string; rows: Row[] }[] | null)}
@@ -883,7 +691,7 @@
       <Field label="End">
         <div class="end-row">
           <input type="date" bind:value={t.end} bind:this={endDateInput} />
-          {#if !t.end}<Button class="end-now" title="mark discontinued today" onclick={() => (t.end = todayDate)}>End now</Button>{/if}
+          {#if !t.end}<Button class="end-now" title="mark discontinued today" onclick={() => (t.end = today)}>End now</Button>{/if}
         </div>
       </Field>
     </div>
@@ -925,7 +733,7 @@
                       <td class="med-actions">
                         <div class="med-actbar">
                           <Button class="med-act" title="Edit this dose entry" onclick={() => startEditTreatment(t, editIndexOf(t), "entry")}>Edit</Button>
-                          <Button class="med-act" title="Start a new dose entry from this one" onclick={() => duplicateTreatment(t)}>Duplicate</Button>
+                          <Button class="med-act" title="Start a new dose entry from this one" onclick={() => startDuplicateTreatment(t)}>Duplicate</Button>
                           <Button class="del med-act" title="Delete this dose entry" onclick={() => deleteTreatment(t, editIndexOf(t))}>Delete</Button>
                         </div>
                       </td>
@@ -1069,11 +877,10 @@
          SAME card the rows that pass its own date filter, and LexiTar now answers per (drug, phase)
          through one node — so the views differ only in which rows they hold and whether the bucket
          badge is worth showing (inside a single-bucket view every card would carry the same one). -->
-    {@const view = GROUPS[resolvedGroup as keyof typeof GROUPS]}
-    {#if view.groups.length > 0}
-      {#each view.groups as g (g.name)}{@render medicineCard(g, view.badge)}{/each}
+    {#if editViewModel.groups.length > 0}
+      {#each editViewModel.groups as g (g.name)}{@render medicineCard(g, editViewModel.badge)}{/each}
     {:else if (draft?.factors?.treatments?.length ?? 0) > 0}
-      <p class="ct-empty">No {view.label}treatments yet for {client.displayName} — add one from the sidebar.</p>
+      <p class="ct-empty">No {editViewModel.label}treatments yet for {client.displayName} — add one from the sidebar.</p>
     {/if}
     {#if (draft?.factors?.treatments?.length ?? 0) === 0}
       <p class="ct-empty">No treatment yet for {client.displayName} — add one from the sidebar.</p>
@@ -1085,18 +892,17 @@
          flat, losing its body-system headings even though its rows carry `group` — a second-class
          bucket for no reason. And there was no `medicine` arm at all, though resolvedGroup defaults
          to it, so a host without onSave rendered an empty page until the user picked a bucket. -->
-    {@const view = READ_VIEWS[resolvedGroup as keyof typeof READ_VIEWS]}
-    {#if view.rows.length > 0}
-      {@render assessedSection(view.rows, view.grouped)}
+    {#if readViewModel.rows.length > 0}
+      {@render assessedSection(readViewModel.rows, readViewModel.grouped)}
     {:else}
-      <p class="ct-empty">No {view.label}treatments for {client.displayName}.</p>
+      <p class="ct-empty">No {readViewModel.label}treatments for {client.displayName}.</p>
     {/if}
   {/if}
 </div>
 
 {#if addOpen && newTreatment}
   <Modal
-    label={editScope === "medicine" ? "Edit medicine" : editScope === "entry" ? "Edit dose entry" : editingIndex !== null ? "Edit treatment" : "Add treatment"}
+    label={treatmentModalLabel(editScope, editingIndex)}
     onClose={cancelAddTreatment}
   >
     <div class="tedit">

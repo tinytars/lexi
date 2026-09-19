@@ -2,7 +2,7 @@ import { test, expect } from "./_fixtures";
 import type { Page } from "@playwright/test";
 import * as XLSX from "xlsx";
 import { openSynthetic } from "./_synthetic";
-import { clickNav } from "./_nav";
+import { clickNav, navRow } from "./_nav";
 import { clickLeafMenuItem } from "./_leaf-menu";
 
 // A real HealthMatters-shaped .xlsx (section-header row + data rows) the browser folds inline.
@@ -75,7 +75,7 @@ test("drop a PDF → preview → commit stores the raw + saves the vault", async
   // W38/5 — a committed report auto-navigates: the modal closes and the view follows to Reports.
   await page.click(".import-tab button.primary");
   await expect(page.locator(".import-tab")).toHaveCount(0);
-  await expect(page.locator(".sidebar .nav-list .nav-item", { hasText: "Reports" })).toHaveClass(/active/);
+  await expect(navRow(page, "Reports")).toHaveClass(/active/);
   expect(rawPut).toBe(true);
   expect(vaultSaved).toBe(true);
 });

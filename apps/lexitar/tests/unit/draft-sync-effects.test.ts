@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { flushSync } from "svelte";
-import { withEffectRoot, box } from "./_effect-root.svelte";
+import { withEffectRoot, box } from "../support/effect-root.svelte";
 import { createDraftSync } from "../../src/lib/draft-sync.svelte";
 import type { Client } from "../../src/lib/types";
 

@@ -1,13 +1,10 @@
 import { test, expect } from "./_fixtures";
 import type { Page } from "@playwright/test";
 import { openSyntheticAsProvider, openSyntheticAsProviderAt, syntheticAt } from "./_synthetic";
-import { openLeafMenu, clickLeafMenuItem, leafMenuPanel, menuPanelFor } from "./_leaf-menu";
-import { clickNav, setSidebarMode } from "./_nav";
+import { openLeafMenu, leafMenuPanel, menuPanelFor } from "./_leaf-menu";
+import { clickNav, setSidebarMode, navRow } from "./_nav";
 
-// M104 — LeafActionMenu (every leaf row's ⋮) and AccountMenu each used to own fully independent
-// open/closed state; opening one never closed another. menu-registry.svelte.ts makes every
-// popover in the app share one "which menu is open" signal instead. Adds its own two Notes rows
-// (cleaned up at the end) rather than depending on real seeded data having 2+ rows on one tab.
+// Every popover shares one "which menu is open" signal (menu-registry.svelte.ts).
 
 async function addNote(page: Page, text: string) {
   await page.getByTitle("Add note").click();
@@ -17,7 +14,6 @@ async function addNote(page: Page, text: string) {
 }
 
 test("opening any menu closes whichever other menu (leaf or account) was open, in both directions", async ({ page }) => {
-  page.on("dialog", (d) => d.accept());
   const a = `M104 menu-a ${Date.now()}`;
   const b = `M104 menu-b ${Date.now()}`;
 
@@ -56,12 +52,6 @@ test("opening any menu closes whichever other menu (leaf or account) was open, i
   await openLeafMenu(rowA);
   await expect(panelA).toBeVisible();
   await expect(accountPanel).not.toBeVisible();
-
-  await page.keyboard.press("Escape");
-  await clickLeafMenuItem(rowA, /Delete/);
-  await clickLeafMenuItem(rowB, /Delete/);
-  await expect(page.locator(".notes")).not.toContainText(a);
-  await expect(page.locator(".notes")).not.toContainText(b);
 });
 
 // M105 — the sidebar's Patient/Investigator toggle only ever swapped which row list was shown; it
@@ -74,7 +64,7 @@ test("switching sidebar mode restores the last section visited in that mode, per
   await clickNav(page, "Treatment");
   await setSidebarMode(page, "investigator");
   await clickNav(page, "Exploration");
-  await expect(page.locator(".sidebar .nav-list .nav-item.active", { hasText: "Exploration" })).toBeVisible();
+  await expect(navRow(page, "Exploration")).toHaveClass(/active/);
 
   // Re-enter patientA's vault from a fresh, hash-less navigation (a provider session auto-resumes
   // straight to the roster — never back into a specific patient — so this, not page.reload(), is
@@ -86,12 +76,12 @@ test("switching sidebar mode restores the last section visited in that mode, per
   await page.click(`.roster-name:has-text("${patientA.name}")`);
   await page.waitForSelector(".sidebar .nav-item");
   await expect(page.locator(".sidebar .mode-toggle button.active", { hasText: "Investigator" })).toBeVisible();
-  await expect(page.locator(".sidebar .nav-list .nav-item.active", { hasText: "Exploration" })).toBeVisible();
+  await expect(navRow(page, "Exploration")).toHaveClass(/active/);
 
   // Flip back to Patient: jumps straight to Treatment (the section remembered for patientA/patient),
   // not just the first Patient row (Markers).
   await setSidebarMode(page, "patient");
-  await expect(page.locator(".sidebar .nav-list .nav-item.active", { hasText: "Treatment" })).toBeVisible();
+  await expect(navRow(page, "Treatment")).toHaveClass(/active/);
 
   // A different client's memory is independent — patientB has no remembered location yet, so
   // entering their vault lands on the plain chat default, not patientA's Exploration/Treatment.
@@ -101,5 +91,5 @@ test("switching sidebar mode restores the last section visited in that mode, per
   await page.click(`.roster-name:has-text("${patientB.name}")`);
   await page.waitForSelector(".sidebar .nav-item");
   await expect(page).not.toHaveURL(/exploration/);
-  await expect(page.locator(".sidebar .nav-list .nav-item.active", { hasText: "Chat" })).toBeVisible();
+  await expect(navRow(page, "Chat")).toHaveClass(/active/);
 });

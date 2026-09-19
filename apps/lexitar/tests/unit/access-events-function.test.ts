@@ -1,26 +1,13 @@
-import { applyMigrations } from "./_migrate";
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { Miniflare } from "miniflare";
+import { describe, it, expect } from "vitest";
 import { onRequestGet as accessEvents } from "../../functions/api/account/access-events";
 import { createAccount } from "../../functions/_lib/identity-accounts";
 import { insertAccessEvent } from "../../functions/_lib/identity-audit";
-import { signSession } from "../../functions/_lib/session";
+import { useWorkerd } from "../support/miniflare";
+import { SESSION_SECRET, cookieFor } from "../support/session";
 
-// W55 P4 — first caller of listAccessEventsForSubject: patient-visible read of phi_access_events,
-// newest first, capped, and strictly scoped to the caller's own subject_account_id.
-let mf: Miniflare;
-let db: any;
-const SECRET = "test-secret";
-
-beforeAll(async () => {
-  mf = new Miniflare({ modules: true, script: "export default { fetch() { return new Response('ok'); } }", d1Databases: { DB: "test-access-events" } });
-  db = await mf.getD1Database("DB");
-  await applyMigrations(db as unknown as import("../../functions/_lib/identity-types").D1Database);
-});
-afterAll(async () => { await mf.dispose(); });
-
-const makeEnv = () => ({ DB: db, SESSION_SECRET: SECRET }) as any;
-const cookieFor = async (id: string) => `hd_session=${await signSession({ SESSION_SECRET: SECRET }, id)}`;
+// Patient-visible read of phi_access_events: newest first, capped, scoped to the caller's own subject.
+const w = useWorkerd();
+const makeEnv = () => ({ DB: w.db, SESSION_SECRET }) as any;
 const getEvents = (cookie?: string) => {
   const headers: Record<string, string> = {};
   if (cookie) headers.cookie = cookie;
@@ -29,7 +16,7 @@ const getEvents = (cookie?: string) => {
 
 async function mkAccount(displayName: string) {
   const id = crypto.randomUUID();
-  await createAccount(db, { id, displayName });
+  await createAccount(w.db, { id, displayName });
   return id;
 }
 
@@ -41,7 +28,7 @@ describe("GET /api/account/access-events", () => {
   it("returns the caller's own events newest first", async () => {
     const subject = await mkAccount("Subject");
     for (const action of ["org_recovery_minted", "org_key_decrypt", "org_recovery_revoked"]) {
-      await insertAccessEvent(db, { actorAccountId: subject, subjectAccountId: subject, action });
+      await insertAccessEvent(w.db, { actorAccountId: subject, subjectAccountId: subject, action });
     }
 
     const res = await getEvents(await cookieFor(subject));
@@ -53,8 +40,8 @@ describe("GET /api/account/access-events", () => {
   it("never returns another subject's events", async () => {
     const a = await mkAccount("A");
     const b = await mkAccount("B");
-    await insertAccessEvent(db, { actorAccountId: a, subjectAccountId: a, action: "org_recovery_minted" });
-    await insertAccessEvent(db, { actorAccountId: b, subjectAccountId: b, action: "org_recovery_minted" });
+    await insertAccessEvent(w.db, { actorAccountId: a, subjectAccountId: a, action: "org_recovery_minted" });
+    await insertAccessEvent(w.db, { actorAccountId: b, subjectAccountId: b, action: "org_recovery_minted" });
 
     const res = await getEvents(await cookieFor(a));
     const { events } = (await res.json()) as { events: { subjectAccountId: string }[] };
@@ -65,7 +52,7 @@ describe("GET /api/account/access-events", () => {
   it("caps at 200 events", async () => {
     const subject = await mkAccount("Heavy");
     for (let i = 0; i < 205; i++) {
-      await insertAccessEvent(db, { actorAccountId: subject, subjectAccountId: subject, action: `event-${i}` });
+      await insertAccessEvent(w.db, { actorAccountId: subject, subjectAccountId: subject, action: `event-${i}` });
     }
 
     const res = await getEvents(await cookieFor(subject));

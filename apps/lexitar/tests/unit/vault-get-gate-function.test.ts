@@ -1,71 +1,44 @@
-import { applyMigrations } from "./_migrate";
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { Miniflare } from "miniflare";
+import { describe, it, expect, beforeAll } from "vitest";
 import { onRequestGet } from "../../functions/api/vault/[id]";
 import { createAccount } from "../../functions/_lib/identity-accounts";
 import { putPublicKey } from "../../functions/_lib/identity-credentials";
 import { createVault, putEnvelope } from "../../functions/_lib/identity-vault";
-import { signSession } from "../../functions/_lib/session";
 import { generateAccountKeypair, generateDEK, wrapDEKForPublicKey } from "@tinytars/vault/crypto";
+import { useWorkerd } from "../support/miniflare";
+import { SESSION_SECRET, cookieFor } from "../support/session";
+import { hd1Blob } from "../support/blobs";
 
-// W44 P4 / §G — GET /api/vault/[id] now requires the ops bearer OR a session whose account holds an
-// envelope for the vault. This exercises the session/envelope matrix against a real Miniflare D1.
-
-let mf: Miniflare;
-let db: any;
-
-const SECRET = "test-secret";
+// GET /api/vault/[id] requires the ops bearer OR a session whose account holds an envelope for the vault.
 const SLUG = "pab";
+const w = useWorkerd({ r2: true });
 
-// HD1-prefixed blob so the served bytes look like a real encrypted slice.
-function hd1(n = 40): Uint8Array<ArrayBuffer> {
-  const b = new Uint8Array(n);
-  b[0] = 0x48; b[1] = 0x44; b[2] = 0x31;
-  for (let i = 3; i < n; i++) b[i] = (i * 7) & 0xff;
-  return b;
-}
-
-function makeEnv() {
-  const store = new Map<string, Uint8Array<ArrayBuffer>>();
-  store.set(`dev/data-${SLUG}.enc`, hd1(64)); // pre-seeded blob
-  return {
-    store,
-    DB: db,
-    SESSION_SECRET: SECRET,
-    VAULT_TOKEN: "t",
-    STORE_PREFIX: "dev",
-    VAULT: {
-      get: async (k: string) => (store.has(k) ? { body: new Response(store.get(k)!).body! } : null),
-      put: async (k: string, v: Uint8Array<ArrayBuffer>) => { store.set(k, new Uint8Array(v)); },
-      delete: async (k: string) => { store.delete(k); },
-    },
-    ASSETS: { fetch: async () => new Response(null, { status: 404 }) },
-  };
-}
+const makeEnv = () => ({
+  DB: w.db,
+  SESSION_SECRET,
+  VAULT_TOKEN: "t",
+  STORE_PREFIX: "dev",
+  VAULT: w.bucket,
+  ASSETS: { fetch: async () => new Response(null, { status: 404 }) },
+});
 
 let patientId: string;
 let strangerId: string;
 
 beforeAll(async () => {
-  mf = new Miniflare({ modules: true, script: "export default { fetch() { return new Response('ok'); } }", d1Databases: { DB: "test-vault-gate" } });
-  db = await mf.getD1Database("DB");
-  await applyMigrations(db as unknown as import("../../functions/_lib/identity-types").D1Database);
-
+  await w.bucket.put(`dev/data-${SLUG}.enc`, hd1Blob(64));
   const kp = await generateAccountKeypair();
   patientId = crypto.randomUUID();
-  await createAccount(db, { id: patientId, displayName: "Pat" });
-  await putPublicKey(db, { accountId: patientId, publicKeyJwk: kp.publicKeyJwk });
+  await createAccount(w.db, { id: patientId, displayName: "Pat" });
+  await putPublicKey(w.db, { accountId: patientId, publicKeyJwk: kp.publicKeyJwk });
   const vaultId = crypto.randomUUID();
-  await createVault(db, { vaultId, ownerAccountId: patientId, r2Key: `data-${SLUG}.enc`, hd1Version: 2 });
+  await createVault(w.db, { vaultId, ownerAccountId: patientId, r2Key: `data-${SLUG}.enc`, hd1Version: 2 });
   const dek = await generateDEK();
   const env0 = await wrapDEKForPublicKey(dek, kp.publicKeyJwk);
-  await putEnvelope(db, { vaultId, principalAccountId: patientId, wrappedDek: env0.wrappedDEK, ephemeralPublicKeyJwk: env0.ephemeralPublicKeyJwk, createdBy: patientId });
+  await putEnvelope(w.db, { vaultId, principalAccountId: patientId, wrappedDek: env0.wrappedDEK, ephemeralPublicKeyJwk: env0.ephemeralPublicKeyJwk, createdBy: patientId });
 
   strangerId = crypto.randomUUID();
-  await createAccount(db, { id: strangerId, displayName: "Stranger" });
+  await createAccount(w.db, { id: strangerId, displayName: "Stranger" });
 });
-
-afterAll(async () => { await mf.dispose(); });
 
 const get = (cookie?: string) =>
   onRequestGet({
@@ -80,12 +53,12 @@ describe("GET /api/vault/:id — §G session/envelope gate", () => {
   });
 
   it("403s for a session whose account has no envelope for the vault", async () => {
-    const cookie = `hd_session=${await signSession({ SESSION_SECRET: SECRET }, strangerId)}`;
+    const cookie = await cookieFor(strangerId);
     expect((await get(cookie)).status).toBe(403);
   });
 
   it("200s (returns the blob) for a session whose account holds an envelope", async () => {
-    const cookie = `hd_session=${await signSession({ SESSION_SECRET: SECRET }, patientId)}`;
+    const cookie = await cookieFor(patientId);
     const res = await get(cookie);
     expect(res.status).toBe(200);
     expect(new Uint8Array(await res.arrayBuffer())[0]).toBe(0x48); // "H" of HD1

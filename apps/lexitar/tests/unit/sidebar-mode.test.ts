@@ -3,17 +3,18 @@ import { loadSidebarMode, saveSidebarMode, modeForSection } from "../../src/lib/
 import { AI_SECTIONS, PATIENT_SECTIONS } from "../../src/lib/report-sections";
 
 const store = new Map<string, string>();
-vi.stubGlobal("localStorage", {
+const fakeStorage = {
   getItem: (key: string) => store.get(key) ?? null,
   setItem: (key: string, value: string) => void store.set(key, value),
   removeItem: (key: string) => void store.delete(key),
   clear: () => store.clear(),
   key: () => null,
   length: 0,
-} as Storage);
+} as Storage;
 
 beforeEach(() => {
   store.clear();
+  vi.stubGlobal("localStorage", fakeStorage);
 });
 
 describe("sidebar-mode", () => {

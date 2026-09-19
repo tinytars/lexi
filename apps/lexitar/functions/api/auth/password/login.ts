@@ -5,6 +5,7 @@ import { getEnvelope, listVaultsForOwner } from "../../../_lib/identity-vault";
 import { logRequest } from "../../../_lib/log";
 import { signSession, sessionSetCookie } from "../../../_lib/session";
 import { sha256Base64Url, timingSafeEqualStr } from "../../../_lib/verifier";
+import { json } from "../../../_lib/http";
 
 // W44 P2 — password login. Verifies the client-derived authHash against the stored
 // SHA-256(authHash) and hands back the wrapped private key + owner envelope; the client
@@ -27,12 +28,6 @@ function bytesToBase64(bytes: Uint8Array): string {
   for (const b of bytes) bin += String.fromCharCode(b);
   return btoa(bin);
 }
-
-
-
-
-const json = (status: number, body: unknown, headers: Record<string, string> = {}): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", ...headers } });
 
 export async function onRequestPost(context: Ctx): Promise<Response> {
   const { request, env } = context;

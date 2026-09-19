@@ -1,6 +1,6 @@
 import { test, expect } from "./_fixtures";
 import { openSyntheticAsProvider, openSynthetic } from "./_synthetic";
-import { clickNav } from "./_nav";
+import { clickNav, navRow } from "./_nav";
 import { openSearch, search } from "./_search";
 
 // Split out of search.spec.ts (W76): a hosted 2-vCPU/7-GB runner kills workerd partway through a long
@@ -11,11 +11,11 @@ import { openSearch, search } from "./_search";
 test("opening Search deactivates whichever sidebar row was previously active (M104)", async ({ page }) => {
   await openSyntheticAsProvider(page);
   await clickNav(page, "Notes");
-  await expect(page.locator(".sidebar .nav-list .nav-item", { hasText: "Notes" })).toHaveClass(/active/);
+  await expect(navRow(page, "Notes")).toHaveClass(/active/);
 
   await clickNav(page, "Search");
-  await expect(page.locator(".sidebar .nav-list .nav-item", { hasText: "Search" })).toHaveClass(/active/);
-  await expect(page.locator(".sidebar .nav-list .nav-item", { hasText: "Notes" })).not.toHaveClass(/active/);
+  await expect(navRow(page, "Search")).toHaveClass(/active/);
+  await expect(navRow(page, "Notes")).not.toHaveClass(/active/);
 });
 
 // M105 — the query (never the derived results, which are recomputed live) is now persisted across

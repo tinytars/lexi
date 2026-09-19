@@ -59,6 +59,7 @@ export interface LeafRegenQueueDeps {
    * failure.
    */
   persist: (pending: PendingLeafRegen, id: string) => Promise<boolean>;
+  fetchLeafRegen?: typeof fetchLeafRegen;
 }
 
 export interface LeafRegenQueue {
@@ -148,7 +149,7 @@ export function createLeafRegenQueue(deps: LeafRegenQueueDeps): LeafRegenQueue {
     lastSig[key] = sig;
     busy[key] = true;
     try {
-      const pending = await fetchLeafRegen(c, key, targetLabels, id);
+      const pending = await (deps.fetchLeafRegen ?? fetchLeafRegen)(c, key, targetLabels, id);
       if (!pending) return { status: "empty" };
       const persisted = await deps.persist(pending, id);
       return { status: persisted ? "filled" : "skipped" };

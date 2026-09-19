@@ -1,16 +1,14 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { onRequestPut, onRequestGet } from "../../functions/api/chat-history/[id]";
-import { signSession } from "../../functions/_lib/session";
-import { fakeSessionDb } from "./_session-db";
+import { fakeSessionDb } from "../support/session-db";
+import { useWorkerd, emptyBucket } from "../support/miniflare";
+import { SESSION_SECRET, cookieFor } from "../support/session";
+import { hd1Blob as hd1 } from "../support/blobs";
 
-// W73 — the routes now resolve who owns a client namespace before touching R2. These tests are about
-// content types, etags and path handling, so they seed "acct-1 owns the fixture namespaces" and leave
-// the ownership MATRIX (owner vs provider vs stranger, live vs revoked) to raw-authorization.test.ts,
-// which settles it against a real D1.
+// These tests are about content types, etags and paths; the ownership matrix is raw-authorization.test.ts's.
 function ownedDb() {
   const db = fakeSessionDb();
-  // Both store prefixes, because these fixtures do not agree on one ("dev" here, "test" there) and the
-  // ownership key is store-scoped.
+  // Both store prefixes, because the ownership key is store-scoped and fixtures use "dev" and "test".
   for (const store of ["dev", "test"]) {
     for (const id of ["alex", "blair", "acct-1"]) {
       db.own(`${store}/raw/${id}/%`, "acct-1");
@@ -21,48 +19,23 @@ function ownedDb() {
   return db;
 }
 
-
 const KEY = "dev/chat-alex.enc"; // R2 key — store-prefixed (W13d)
 
-// HD1-prefixed blob of length n (>= 32 passes the validity check).
-function hd1(n = 40): Uint8Array<ArrayBuffer> {
-  const b = new Uint8Array(n);
-  b[0] = 0x48; b[1] = 0x44; b[2] = 0x31;
-  for (let i = 3; i < n; i++) b[i] = (i * 7) & 0xff;
-  return b;
-}
+const w = useWorkerd({ r2: true });
+afterEach(() => emptyBucket(w.bucket));
 
-// W71 — the fake now carries etags and honours `onlyIf`, because the route now depends on both.
-// Semantics copied from tests/unit/r2-conditional-put.test.ts, which pins them against real workerd:
-// a failed precondition returns NULL rather than throwing.
-function makeEnv() {
-  const store = new Map<string, Uint8Array<ArrayBuffer>>();
-  const tags = new Map<string, string>();
-  let seq = 0;
-  return {
-    store,
-    tags,
-    SESSION_SECRET: "test-secret",
-    DB: ownedDb(),
-    STORE_PREFIX: "dev",
-    VAULT: {
-      get: async (k: string) => (store.has(k) ? { body: new Response(store.get(k)!).body!, etag: tags.get(k)! } : null),
-      put: async (k: string, v: Uint8Array<ArrayBuffer>, opts?: { onlyIf?: { etagMatches?: string; etagDoesNotMatch?: string } }) => {
-        const cond = opts?.onlyIf;
-        if (cond?.etagMatches !== undefined && tags.get(k) !== cond.etagMatches) return null;
-        if (cond?.etagDoesNotMatch === "*" && store.has(k)) return null;
-        store.set(k, new Uint8Array(v));
-        const etag = `e${++seq}`;
-        tags.set(k, etag);
-        return { etag };
-      },
-    },
-  };
-}
+const stored = async (key: string) => {
+  const obj = await w.bucket.get(key);
+  return obj && new Uint8Array(await obj.arrayBuffer());
+};
+const bucketSize = async () => (await w.bucket.list()).objects.length;
+const etagOf = async (key: string) => (await w.bucket.get(key))!.etag;
+
+const makeEnv = () => ({ SESSION_SECRET, DB: ownedDb(), STORE_PREFIX: "dev", VAULT: w.bucket });
 
 const putCtx = async (env: ReturnType<typeof makeEnv>, opts: { auth?: "valid" | "bogus"; body?: BodyInit; ifMatch?: string; ifNoneMatch?: string } = {}) => {
   const headers: Record<string, string> = { "content-type": "application/octet-stream" };
-  if (opts.auth === "valid") headers.cookie = `hd_session=${await signSession(env, "acct-1")}`;
+  if (opts.auth === "valid") headers.cookie = await cookieFor("acct-1");
   else if (opts.auth === "bogus") headers.cookie = "hd_session=bogus";
   if (opts.ifMatch) headers["if-match"] = opts.ifMatch;
   if (opts.ifNoneMatch) headers["if-none-match"] = opts.ifNoneMatch;
@@ -75,7 +48,7 @@ const putCtx = async (env: ReturnType<typeof makeEnv>, opts: { auth?: "valid" | 
 const getCtx = async (env: ReturnType<typeof makeEnv>, auth: "valid" | "bogus" | "none" = "valid") => ({
   request: new Request("http://x/api/chat-history/alex", {
     headers:
-      auth === "valid" ? { cookie: `hd_session=${await signSession(env, "acct-1")}` } : auth === "bogus" ? { cookie: "hd_session=bogus" } : {},
+      auth === "valid" ? { cookie: await cookieFor("acct-1") } : auth === "bogus" ? { cookie: "hd_session=bogus" } : {},
   }),
   env,
   params: { id: "alex" },
@@ -88,21 +61,21 @@ describe("PUT /api/chat-history/:id", () => {
     const env = makeEnv();
     expect((await onRequestPut(await putCtx(env))).status).toBe(401);
     expect((await onRequestPut(await putCtx(env, { auth: "bogus" }))).status).toBe(401);
-    expect(env.store.size).toBe(0);
+    expect(await bucketSize()).toBe(0);
   });
 
   it("400s on a non-HD1 or too-short blob", async () => {
     const env = makeEnv();
     expect((await onRequestPut(await putCtx(env, { auth: "valid", body: new Uint8Array(40) }))).status).toBe(400);
     expect((await onRequestPut(await putCtx(env, { auth: "valid", body: hd1(10) }))).status).toBe(400);
-    expect(env.store.size).toBe(0);
+    expect(await bucketSize()).toBe(0);
   });
 
   it("413s on an oversized blob", async () => {
     const env = makeEnv();
     const res = await onRequestPut(await putCtx(env, { auth: "valid", body: hd1(2 * 1024 * 1024 + 1) }));
     expect(res.status).toBe(413);
-    expect(env.store.size).toBe(0);
+    expect(await bucketSize()).toBe(0);
   });
 
   it("204s and stores a valid blob under the store-prefixed chat-{id}.enc key", async () => {
@@ -110,7 +83,7 @@ describe("PUT /api/chat-history/:id", () => {
     const blob = hd1(64);
     const res = await onRequestPut(await putCtx(env, { auth: "valid", body: blob }));
     expect(res.status).toBe(204);
-    expect(env.store.get(KEY)).toEqual(blob);
+    expect(await stored(KEY)).toEqual(blob);
   });
 });
 
@@ -123,12 +96,10 @@ describe("GET /api/chat-history/:id", () => {
     expect(res.status).toBe(200);
     expect(await bytesOf(res)).toEqual(blob);
     // Without this the client has no If-Match token and every save is unconditional again.
-    expect(res.headers.get("etag")).toBe(env.tags.get(KEY));
+    expect(res.headers.get("etag")).toBe(await etagOf(KEY));
   });
 
-  // W71 — this GET had NO auth at all. The blob is ciphertext, but it was an unauthenticated
-  // PHI-ciphertext read keyed by a guessable slug: a standing offline-attack target that a patient
-  // could neither see nor revoke, and the one route here with no gate whatsoever.
+  // Ciphertext behind a guessable slug is still an offline-attack target the patient cannot revoke.
   it("401s without a session, and hands back nothing", async () => {
     const env = makeEnv();
     await onRequestPut(await putCtx(env, { auth: "valid", body: hd1(64) }));
@@ -144,13 +115,12 @@ describe("GET /api/chat-history/:id", () => {
   });
 });
 
-// W71 — the same two-tab lost update /api/vault fixed in W70, one directory away. A whole-blob PUT
-// with no precondition means the second tab to save silently discards everything the first wrote.
+// A whole-blob PUT with no precondition lets the second tab to save silently discard the first's writes.
 describe("PUT is conditional when the caller offers a precondition", () => {
   it("412s when the blob moved since it was read, and does not overwrite it", async () => {
     const env = makeEnv();
     await onRequestPut(await putCtx(env, { auth: "valid", body: hd1(64) }));
-    const stale = env.tags.get(KEY)!;
+    const stale = await etagOf(KEY);
 
     // A second tab saves first.
     const theirs = hd1(72);
@@ -158,9 +128,9 @@ describe("PUT is conditional when the caller offers a precondition", () => {
 
     const res = await onRequestPut(await putCtx(env, { auth: "valid", body: hd1(80), ifMatch: stale }));
     expect(res.status).toBe(412);
-    expect(env.store.get(KEY)).toEqual(theirs); // the winner's write is intact
+    expect(await stored(KEY)).toEqual(theirs); // the winner's write is intact
     // The current etag rides along so the loser resolves in one round trip.
-    expect(res.headers.get("etag")).toBe(env.tags.get(KEY));
+    expect(res.headers.get("etag")).toBe(await etagOf(KEY));
   });
 
   it("If-None-Match: * refuses to clobber a blob this tab has never read", async () => {
@@ -169,7 +139,7 @@ describe("PUT is conditional when the caller offers a precondition", () => {
     await onRequestPut(await putCtx(env, { auth: "valid", body: theirs }));
     const res = await onRequestPut(await putCtx(env, { auth: "valid", body: hd1(80), ifNoneMatch: "*" }));
     expect(res.status).toBe(412);
-    expect(env.store.get(KEY)).toEqual(theirs);
+    expect(await stored(KEY)).toEqual(theirs);
   });
 
   // Deliberately NOT the vault's 428: a fresh conversation has no etag to send, so requiring a

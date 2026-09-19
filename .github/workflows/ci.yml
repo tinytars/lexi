@@ -19,6 +19,7 @@ jobs:
           node-version: 22
       - run: npm ci
       - run: npm run typecheck --workspace packages/frame
+      - run: npm test --workspace packages/frame
 
   lexitar:
     runs-on: ubuntu-latest
@@ -35,8 +36,22 @@ jobs:
       - run: npm ci
         working-directory: .
       - run: npm run check
+      - run: npm run lint
       - run: npm run build
-      - run: npm run test
+      - run: npm run coverage
+      - name: Coverage thresholds only rise
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git fetch --depth=1 origin "$BASE_REF"
+          git show FETCH_HEAD:apps/lexitar/coverage-thresholds.json > "$RUNNER_TEMP/base-thresholds.json" 2>/dev/null || echo '{}' > "$RUNNER_TEMP/base-thresholds.json"
+          npx tsx scripts/coverage-ratchet.ts "$RUNNER_TEMP/base-thresholds.json" coverage-thresholds.json
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: lexitar-coverage
+          path: apps/lexitar/coverage/coverage-summary.json
       - run: npx playwright install --with-deps chromium
       # Every spec runs against synthetic patients + the local e2e-only clinician/support accounts
       # (tests/e2e/_synthetic.ts) — none of them needs a credential or touches real patient data.
@@ -48,8 +63,28 @@ jobs:
         env:
           NODE_OPTIONS: --import ./scripts/e2e-node-modules-ts-register.mjs
 
+  lexitar-data:
+    # Credential-bound tests (DATA_TESTS in vitest.config.ts). Fork PRs get no secrets, so skip them.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/lexitar
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+        working-directory: .
+      - run: npm run test:data
+        env:
+          ORG_KEY_PASSPHRASE: ${{ secrets.ORG_KEY_PASSPHRASE }}
+
   release:
-    needs: test
+    needs: [test, lexitar, lexitar-data]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:

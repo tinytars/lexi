@@ -1,43 +1,29 @@
-import { applyMigrations } from "./_migrate";
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { Miniflare } from "miniflare";
+import { describe, it, expect, beforeAll } from "vitest";
 import { onRequestGet } from "../../functions/api/provider-token";
 import { createAccount } from "../../functions/_lib/identity-accounts";
-import { signSession } from "../../functions/_lib/session";
+import { useWorkerd } from "../support/miniflare";
+import { SESSION_SECRET, cookieFor } from "../support/session";
 
-let mf: Miniflare;
-let db: any; // D1Database
+const w = useWorkerd();
 let providerId: string;
 let patientId: string;
 
-const SECRET = "test-secret";
 const PROVIDER_TOKEN = "distinct-secret-xyz";
 
 beforeAll(async () => {
-  mf = new Miniflare({
-    modules: true,
-    script: "export default { fetch() { return new Response('ok'); } }",
-    d1Databases: { DB: "test-provider-token" },
-  });
-  db = await mf.getD1Database("DB");
-  await applyMigrations(db as unknown as import("../../functions/_lib/identity-types").D1Database);
   providerId = crypto.randomUUID();
   patientId = crypto.randomUUID();
-  await createAccount(db, { id: providerId, displayName: "Prov", providerKind: "primary" });
-  await createAccount(db, { id: patientId, displayName: "Pat" });
-});
-
-afterAll(async () => {
-  await mf.dispose();
+  await createAccount(w.db, { id: providerId, displayName: "Prov", providerKind: "primary" });
+  await createAccount(w.db, { id: patientId, displayName: "Pat" });
 });
 
 async function call(accountId: string | null, token = PROVIDER_TOKEN, bogus = false): Promise<Response> {
   const headers: Record<string, string> = {};
-  if (accountId) headers.cookie = `hd_session=${await signSession({ SESSION_SECRET: SECRET }, accountId)}`;
+  if (accountId) headers.cookie = await cookieFor(accountId);
   else if (bogus) headers.cookie = "hd_session=bogus";
   return onRequestGet({
     request: new Request("http://x/api/provider-token", { headers }),
-    env: { DB: db, SESSION_SECRET: SECRET, PROVIDER_TOKEN: token },
+    env: { DB: w.db, SESSION_SECRET, PROVIDER_TOKEN: token },
   });
 }
 

@@ -9,7 +9,7 @@ import { stubVaultSave } from "./_stubs";
 // though five of its preview components already accepted one. It passes App's own sidebarTogglePin
 // now, so a hit pins the SAME record its section does — not a parallel one.
 async function search(page: Page, text: string) {
-  await page.locator(".sidebar .nav-item, .sidebar .side-row").filter({ hasText: "Search" }).first().click();
+  await clickNav(page, "Search");
   await page.locator(".search-panel input").first().fill(text);
 }
 

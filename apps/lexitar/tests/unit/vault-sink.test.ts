@@ -20,7 +20,6 @@ beforeEach(() => {
   vi.stubGlobal("fetch", fetchMock);
 });
 afterEach(() => {
-  vi.unstubAllGlobals();
   setVaultConflictHandler(null);
   rememberVaultEtag(ID, null);
 });

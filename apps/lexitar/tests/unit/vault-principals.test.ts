@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
 
 // W76 — the first unit tests for the access panel and the vault re-key.
 //
@@ -7,7 +7,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // connection dropped between the blob write and the envelope commit leaves the vault openable —
 // had no test at all. That property is the first describe block below.
 
-const auth = vi.hoisted(() => ({
+import { createVaultPrincipals } from "@tinytars/frame/vault-principals.svelte";
+import { createVaultSession } from "@tinytars/frame/vault-session.svelte";
+import { generateAccountKeypair, generateDEK, wrapDEKForPublicKey, unwrapDEKWithPrivateKey, type AccountKeypair } from "@tinytars/vault/crypto";
+import { b64ToBytes, bytesToB64 } from "@tinytars/vault/base64";
+import type { Vault } from "../../src/lib/types";
+import type { ProviderLinkView } from "@tinytars/vault/auth-grants";
+
+const auth = {
   listMyProviders: vi.fn(),
   lookupProvider: vi.fn(),
   grantProvider: vi.fn(),
@@ -17,50 +24,37 @@ const auth = vi.hoisted(() => ({
   getVaultPrincipals: vi.fn(),
   stageVaultRotation: vi.fn(),
   rotateVault: vi.fn(),
-}));
-vi.mock("@tinytars/vault/auth-grants", () => ({
-  listMyProviders: auth.listMyProviders,
-  lookupProvider: auth.lookupProvider,
-  grantProvider: auth.grantProvider,
-  revokeProvider: auth.revokeProvider,
-}));
-vi.mock("@tinytars/vault/auth-support", () => ({
-  approveSupport: auth.approveSupport,
-  approveSupportAsProvider: auth.approveSupportAsProvider,
-}));
-vi.mock("@tinytars/vault/auth-recovery", () => ({
-  getVaultPrincipals: auth.getVaultPrincipals,
-  stageVaultRotation: auth.stageVaultRotation,
-  rotateVault: auth.rotateVault,
-}));
-vi.mock("@tinytars/vault/crypto", () => ({
-  generateDEK: vi.fn(async () => ({ id: "dek-new" }) as unknown as CryptoKey),
-  wrapDEKForPublicKey: vi.fn(async (dek: { id: string }, jwk: JsonWebKey) => ({
-    wrappedDEK: new TextEncoder().encode(`${dek.id}->${(jwk as { kid?: string }).kid}`),
-    ephemeralPublicKeyJwk: { kid: "eph" } as JsonWebKey,
-  })),
-}));
+};
 
-import { createVaultPrincipals } from "@tinytars/frame/vault-principals.svelte";
-import { createVaultSession } from "@tinytars/frame/vault-session.svelte";
-import type { Vault } from "../../src/lib/types";
-import type { ProviderLinkView } from "@tinytars/vault/auth-grants";
-
-const OLD_DEK = { id: "dek-old" } as unknown as CryptoKey;
 const VAULT = { clients: {} } as unknown as Vault;
+
+let OLD_DEK: CryptoKey;
+let principals: Record<"self" | "org" | "p1", AccountKeypair>;
+
+beforeAll(async () => {
+  OLD_DEK = await generateDEK();
+  principals = { self: await generateAccountKeypair(), org: await generateAccountKeypair(), p1: await generateAccountKeypair() };
+});
+
+const rawKey = async (k: CryptoKey) => bytesToB64(new Uint8Array(await crypto.subtle.exportKey("raw", k)));
+
+type Envelope = { principalAccountId: string; wrappedDEK: string; ephemeralPublicKeyJwk: JsonWebKey };
+
+async function envelopeFor(dek: CryptoKey, principalAccountId: keyof typeof principals): Promise<Envelope> {
+  const e = await wrapDEKForPublicKey(dek, principals[principalAccountId].publicKeyJwk);
+  return { principalAccountId, wrappedDEK: bytesToB64(e.wrappedDEK), ephemeralPublicKeyJwk: e.ephemeralPublicKeyJwk };
+}
 
 /**
  * A stand-in for the two things the server keeps: the R2 object each id holds, and the envelope rows
  * that say which key opens which vault. "Openable" below means exactly what it means in production —
- * the envelopes name the id whose blob was encrypted under the key they wrap.
+ * each principal's envelope unwraps, under their own private key, to the key the pointed-at blob was
+ * encrypted under.
  */
-function fakeStore() {
-  const blobs = new Map<string, string>([["vault-1", "dek-old"]]);
+async function fakeStore() {
+  const blobs = new Map<string, CryptoKey>([["vault-1", OLD_DEK]]);
   let pointer = "vault-1";
-  let envelopes = [
-    { principalAccountId: "self", wrappedDEK: "dek-old->self" },
-    { principalAccountId: "org", wrappedDEK: "dek-old->org" },
-  ];
+  let envelopes = [await envelopeFor(OLD_DEK, "self"), await envelopeFor(OLD_DEK, "org")];
   return {
     blobs,
     get pointer() {
@@ -69,20 +63,26 @@ function fakeStore() {
     get envelopes() {
       return envelopes;
     },
-    commit(newVaultId: string, next: { principalAccountId: string; wrappedDEK: string }[]) {
+    commit(newVaultId: string, next: Envelope[]) {
       pointer = newVaultId;
-      // The controller base64s what the wrapper returned; decode so the assertion below can read it.
-      envelopes = next.map((e) => ({ ...e, wrappedDEK: atob(e.wrappedDEK) }));
+      envelopes = next;
     },
     /** The invariant: every envelope wraps the key the pointed-at blob is encrypted under. */
-    opens(): boolean {
+    async opens(): Promise<boolean> {
       const key = blobs.get(pointer);
-      return !!key && envelopes.length > 0 && envelopes.every((e) => e.wrappedDEK.startsWith(`${key}->`));
+      if (!key || envelopes.length === 0) return false;
+      const want = await rawKey(key);
+      for (const e of envelopes) {
+        const holder = principals[e.principalAccountId as keyof typeof principals];
+        const got = await unwrapDEKWithPrivateKey(b64ToBytes(e.wrappedDEK), e.ephemeralPublicKeyJwk, holder.privateKey);
+        if ((await rawKey(got)) !== want) return false;
+      }
+      return true;
     },
   };
 }
 
-let store: ReturnType<typeof fakeStore>;
+let store: Awaited<ReturnType<typeof fakeStore>>;
 
 function makeController(over: { orgRecoveryRevokedAt?: string | null; providers?: { accountId: string; publicKeyJwk: JsonWebKey }[] } = {}) {
   const session = createVaultSession();
@@ -92,15 +92,16 @@ function makeController(over: { orgRecoveryRevokedAt?: string | null; providers?
     getVault: () => VAULT,
     session,
     saveVault: async (_v, id, dek) => {
-      store.blobs.set(id, (dek as unknown as { id: string }).id);
+      store.blobs.set(id, dek);
     },
     reportError: (m) => errors.push(m),
+    api: auth,
   });
   auth.getVaultPrincipals.mockResolvedValue({
     selfAccountId: "self",
     orgAccountId: "org",
-    selfPublicKeyJwk: { kid: "self" },
-    orgPublicKeyJwk: { kid: "org" },
+    selfPublicKeyJwk: principals.self.publicKeyJwk,
+    orgPublicKeyJwk: principals.org.publicKeyJwk,
     providers: over.providers ?? [],
     envelopePrincipalIds: ["self", "org"],
     orgRecoveryRevokedAt: over.orgRecoveryRevokedAt ?? null,
@@ -112,12 +113,12 @@ function makeController(over: { orgRecoveryRevokedAt?: string | null; providers?
 const link = (over: Partial<ProviderLinkView> = {}): ProviderLinkView =>
   ({ linkId: "l1", displayName: "Dr Who", kind: "primary", status: "active", ...over }) as ProviderLinkView;
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.clearAllMocks();
-  store = fakeStore();
+  store = await fakeStore();
   auth.listMyProviders.mockResolvedValue([]);
   auth.stageVaultRotation.mockImplementation(async () => "vault-2");
-  auth.rotateVault.mockImplementation(async (a: { newVaultId: string; envelopes: { principalAccountId: string; wrappedDEK: string }[] }) =>
+  auth.rotateVault.mockImplementation(async (a: { newVaultId: string; envelopes: Envelope[] }) =>
     store.commit(a.newVaultId, a.envelopes),
   );
 });
@@ -130,9 +131,9 @@ describe("the re-key is atomic: an interruption never strands the vault", () => 
     await expect(c.rotateVaultKey()).rejects.toThrow("connection dropped");
 
     // The new ciphertext exists, under a key only this tab ever held — and nothing points at it.
-    expect(store.blobs.get("vault-2")).toBe("dek-new");
+    expect(await rawKey(store.blobs.get("vault-2")!)).not.toBe(await rawKey(OLD_DEK));
     expect(store.pointer).toBe("vault-1");
-    expect(store.opens()).toBe(true);
+    expect(await store.opens()).toBe(true);
     // The session must not have moved either, or the tab would read a vault the server has not adopted.
     expect(session.r2Id).toBe("vault-1");
   });
@@ -143,9 +144,9 @@ describe("the re-key is atomic: an interruption never strands the vault", () => 
 
     expect(auth.stageVaultRotation).toHaveBeenCalledWith("vault-1");
     // The pre-rotation ciphertext survives the whole operation; the commit is a pointer swap.
-    expect(store.blobs.get("vault-1")).toBe("dek-old");
+    expect(store.blobs.get("vault-1")).toBe(OLD_DEK);
     expect(store.pointer).toBe("vault-2");
-    expect(store.opens()).toBe(true);
+    expect(await store.opens()).toBe(true);
   });
 
   it("stages before it writes, and commits only after every envelope is wrapped", async () => {
@@ -159,11 +160,11 @@ describe("the re-key is atomic: an interruption never strands the vault", () => 
   });
 
   it("re-wraps to the owner, org recovery and every active provider", async () => {
-    const { c } = makeController({ providers: [{ accountId: "p1", publicKeyJwk: { kid: "p1" } as JsonWebKey }] });
+    const { c } = makeController({ providers: [{ accountId: "p1", publicKeyJwk: principals.p1.publicKeyJwk }] });
     await c.rotateVaultKey();
 
     expect(store.envelopes.map((e) => e.principalAccountId).sort()).toEqual(["org", "p1", "self"]);
-    expect(store.opens()).toBe(true);
+    expect(await store.opens()).toBe(true);
   });
 
   it("does not silently restore org recovery for a patient who removed it", async () => {
@@ -178,7 +179,8 @@ describe("the re-key is atomic: an interruption never strands the vault", () => 
     await c.rotateVaultKey();
 
     expect(session.r2Id).toBe("vault-2");
-    expect((session.dek as unknown as { id: string }).id).toBe("dek-new");
+    expect(session.dek).toBe(store.blobs.get("vault-2"));
+    expect(await rawKey(session.dek!)).not.toBe(await rawKey(OLD_DEK));
   });
 
   it("does nothing at all without an open vault", async () => {
@@ -188,6 +190,7 @@ describe("the re-key is atomic: an interruption never strands the vault", () => 
       session,
       saveVault: async () => {},
       reportError: () => {},
+      api: auth,
     });
     await c.rotateVaultKey();
     expect(auth.stageVaultRotation).not.toHaveBeenCalled();
@@ -252,7 +255,7 @@ describe("adding a provider", () => {
 
   it("does nothing without a DEK — a grant needs the key it is wrapping", async () => {
     const session = createVaultSession();
-    const c = createVaultPrincipals({ getVault: () => VAULT, session, saveVault: async () => {}, reportError: () => {} });
+    const c = createVaultPrincipals({ getVault: () => VAULT, session, saveVault: async () => {}, reportError: () => {}, api: auth });
     c.newProviderEmail = "dr@example.com";
     await c.addProvider();
     expect(auth.lookupProvider).not.toHaveBeenCalled();

@@ -90,7 +90,7 @@ export function computeConclusion(
 
 // Every currently-ongoing medicine's computed daily ingredient total, keyed by the medicine's
 // normalized (trimmed, lowercased) name — the groupByName + bucketOf + computeConclusion join,
-// factored out so chat-context.ts and leaf-regen-registry.ts (Finding generation) don't each
+// factored out so chat-context.ts and leaf-regen-context.ts (Finding generation) don't each
 // reimplement the same "which rows are concurrently ongoing" arithmetic.
 export function dailyTotalsByName(items: TreatmentItem[], today: string): Map<string, IngredientTotal[]> {
   const totals = new Map<string, IngredientTotal[]>();

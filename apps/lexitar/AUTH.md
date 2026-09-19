@@ -122,7 +122,7 @@ The manual env dance above is now wrapped so it reproduces on a fresh clone / ne
 
 - **The Cloudflare token is NOT in this repo** — it lives in a local credentials directory
   (`cloudflare.env`), loaded by `scripts/creds.sh`. Point `PLOVER_CREDENTIALS_DIR` at that
-  directory; it defaults to `~/.claude/infra/cloud/credentials`. It's account-scoped, so rotate it
+  directory; it defaults to `~/PabloTech/plover-keys`. It's account-scoped, so rotate it
   if it is ever exposed.
 - **`scripts/wrangler.sh`** — run any wrangler command through it and PATH + `NODE_EXTRA_CA_CERTS` +
   the token are set for you: `npm run wrangler -- <args>` (e.g. `npm run wrangler -- whoami`). No more
@@ -437,7 +437,7 @@ Or, to source it manually into the current shell (e.g. for a raw `npx wrangler`)
 ```
 export PATH="/Users/finca/homebrew/bin:$PATH"          # node/npm live here
 export NODE_EXTRA_CA_CERTS=/etc/ssl/cert.pem           # VPN/proxy TLS
-CRED="${PLOVER_CREDENTIALS_DIR:-$HOME/.claude/infra/cloud/credentials}"
+CRED="${PLOVER_CREDENTIALS_DIR:-$HOME/PabloTech/plover-keys}"
 set -a; source "$CRED/cloudflare.env"; set +a
 npx wrangler <…>
 ```

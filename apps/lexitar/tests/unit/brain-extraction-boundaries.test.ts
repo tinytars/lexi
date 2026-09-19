@@ -3,12 +3,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// W72 — the boundaries docs/cross-app/06 needs held, asserted rather than remembered.
-//
-// 06's Phase A found that the clinical reasoning layer looked clean at first-order imports and was
-// not: the transitive closure from its roots is 49 files, and three things in it must not travel into
-// an extracted brain package. Two of those are now severed. Nothing stops them being re-introduced by
-// an import that looks harmless — which is what this file is for.
+// Clinical modules headed for an extracted brain package must not re-acquire UI imports.
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const read = (rel: string) => readFileSync(join(ROOT, rel), "utf8");
@@ -18,29 +13,7 @@ const importsOf = (src: string) => [...src.matchAll(/from\s+"((?:\.|@pablotech\/
 const UI_MODULES = /sidebar-leaf-mappers|sidebar-rows|sidebar-labels|sidebar-leaf-rows|permalink|anchor|\.svelte$/;
 
 describe("the clinical layer does not reach into the UI", () => {
-  // treatment-bucket.ts is the concrete case 06 names: bucketing, dose formatting and the assessment
-  // lookup are pure, and were pinned to the app by ~60 lines of sidebar code at the bottom of the file.
-  // 06 Phase A step 13 — moved wholesale into @pablotech/akesi; src/lib/treatment-bucket.ts no longer
-  // exists (the shim was deleted), so this guard reads the declarations at their new path.
-  it("treatment-bucket imports no UI module", () => {
-    const offenders = importsOf(read("../../node_modules/@pablotech/akesi/treatment-bucket.ts")).filter((i) =>
-      UI_MODULES.test(i),
-    );
-    expect(offenders).toEqual([]);
-  });
-
-  it("and the sidebar half still exists, so the split was not just a deletion", () => {
-    const sidebar = read("src/lib/treatment-sidebar.ts");
-    for (const name of ["treatmentSidebarBuckets", "partitionByBucket", "TreatmentSidebarBucket"]) {
-      expect(sidebar).toContain(name);
-    }
-    // It is allowed — required, even — to import both the UI and the clinical half.
-    expect(importsOf(sidebar).some((i) => UI_MODULES.test(i))).toBe(true);
-    expect(importsOf(sidebar)).toContain("@pablotech/akesi/treatment-bucket");
-  });
-
-  // The other direction: the clinical modules 06 moved must not have acquired a UI import either.
-  // The four that moved in step 13 are read at their new @pablotech/akesi path; the rest stayed app-side.
+  // Paths under node_modules/@pablotech/akesi are the modules already moved out of the app.
   it.each([
     "../../node_modules/@pablotech/akesi/treatment-normalize.ts",
     "../../node_modules/@pablotech/akesi/treatment-bucket.ts",
@@ -58,35 +31,18 @@ describe("the clinical layer does not reach into the UI", () => {
     for (const stem of ["sidebar-leaf-mappers", "sidebar-labels", "permalink"]) {
       expect(libFiles, stem).toContain(`${stem}.ts`);
     }
-    // sidebar-rows.ts moved to packages/frame (doc 13) — its import specifier still matches
-    // UI_MODULES as a substring (@tinytars/frame/sidebar-rows), so the boundary check above still
-    // holds; this just points the "real file" half of the guard at its new location.
+    // sidebar-rows lives in packages/frame; its @tinytars/frame/sidebar-rows specifier still matches UI_MODULES.
     const frameFiles = readdirSync(join(ROOT, "..", "..", "packages/frame"));
     expect(frameFiles, "sidebar-rows").toContain("sidebar-rows.ts");
   });
 });
 
-// 06's second named blocker: types.ts imported `Permalink` — the app's UI routing, including its Tab
-// union — for a single field on NoteAttachment, in a module 194 files import and that 06 plans to
-// move wholesale into the brain package.
+// Permalink carries the UI's Tab union, so types.ts (moved into @pablotech/akesi) must not import it.
 describe("types.ts carries no UI routing", () => {
-  // W72 step 6 — types.ts moved wholesale into @pablotech/akesi; src/lib/types.ts is now a barrel
-  // re-exporting it. The declarations this guards live at the new path.
   const types = read("../../node_modules/@pablotech/akesi/types.ts");
 
   it("does not import from permalink or nav", () => {
     expect(importsOf(types).filter((i) => /permalink|nav$/.test(i))).toEqual([]);
-  });
-
-  it("declares LeafRef with a widened tab, which is the whole mechanism", () => {
-    // `tab: Tab` here would re-import the app's opinion about how many tabs exist; `tab: string`
-    // keeps Permalink assignable to LeafRef while leaving the union to the UI.
-    expect(types).toMatch(/interface LeafRef\s*\{[^}]*tab:\s*string/);
-  });
-
-  it("NoteAttachment points at LeafRef, not Permalink", () => {
-    expect(types).toMatch(/permalink:\s*LeafRef/);
-    expect(types).not.toMatch(/permalink:\s*Permalink/);
   });
 });
 

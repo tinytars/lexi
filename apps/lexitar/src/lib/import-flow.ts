@@ -200,3 +200,27 @@ export async function classifyUpload(client: Client, clientId: string, file: Fil
     return { status: "error", message: (e as Error).message || "Could not read this file." };
   }
 }
+
+export type ChatImportResult =
+  | { ok: false; message: string }
+  | { ok: true; kind: "report" | "source" | "pending"; id: string; originalName: string };
+
+// W-chat-attach — ImportTab's classify/store/save spine driven from the chat composer: no navigation,
+// just what landed, so the caller can build a reference-turn card. The raw store is injected because
+// the Node CLI imports this module and must never reach a relative-URL fetch.
+export interface ChatImportDeps {
+  storeOriginal: (clientId: string, storedFile: string, bytes: Uint8Array) => Promise<{ ok: boolean; status: number }>;
+  persist: (clientId: string, next: Client) => Promise<boolean>;
+}
+
+export async function importFileForChat(client: Client, clientId: string, file: File, deps: ChatImportDeps): Promise<ChatImportResult> {
+  const result = await classifyUpload(client, clientId, file);
+  if (result.status === "error") return { ok: false, message: result.message };
+  if (result.status === "duplicate") return { ok: true, kind: result.kind, id: result.existingId, originalName: file.name };
+  const nextClient =
+    result.status === "report" ? result.fold.client : result.status === "source" ? result.srcFold.client : result.pending.client;
+  const res = await deps.storeOriginal(clientId, result.storedFile, new Uint8Array(await file.arrayBuffer()));
+  if (!res.ok && res.status !== 204) return { ok: false, message: `storing the original failed (${res.status})` };
+  if (!(await deps.persist(clientId, nextClient))) return { ok: false, message: "No active client." };
+  return { ok: true, kind: result.status, id: result.id, originalName: file.name };
+}
