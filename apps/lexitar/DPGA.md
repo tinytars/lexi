@@ -39,7 +39,7 @@ A **Digital Public Good** is open-source software, open data, an open AI system,
 | 1 | **SDG Relevance** | ✅ Strong — SDG 3 (Health & Well-being) + SDG 10 (Reduced Inequalities); health literacy for low-literacy/LEP adults | Document the SDG mapping |
 | 2 | **Open Licensing** | ❌ **The hard gate** — core is currently private/proprietary | **Release the core LexiTar software under MIT or Apache 2.0** (`FOUND.md` §4). Biggest single blocker |
 | 3 | **Clear Ownership** | 🟡 Tiny Tars Foundation owns it, but the LLC↔charity IP split isn't formalized | Document ownership + the license/service arrangement (LLC keeps enterprise-integration sales; utility stays open) |
-| 4 | **Platform Independence** | 🟡 Runs on Cloudflare + depends on a proprietary LLM (Anthropic) | Show core function isn't locked to one closed platform; document the model dependency (and any open-model fallback) — the AI dependency is the nuance to address |
+| 4 | **Platform Independence** | 🟡 **Hosting half closed 2026-09-19** — the same `functions/` tree runs on Cloudflare Pages *or* a Node self-host (`node:sqlite` + filesystem blobs, also shipped as a Docker image); CI runs the full e2e suite on both, and a test forbids platform imports in `functions/`/`src/` (`../../ARCHITECTURE.md` §Cloudflare is one host). **Still open: the AI features depend on a proprietary LLM (Anthropic)** | Document the model dependency: the non-AI core (accounts, encrypted vault, markers, export) runs without a model key — the e2e suite stubs every AI route — and name an open-model fallback or state there is none |
 | 5 | **Documentation** | 🟡 Internal docs exist; not public/DPG-grade | Publish technical + user docs (install, API, contribution guide) |
 | 6 | **Non-PII Data Extraction** (export in a non-proprietary format) | ✅ **Likely already satisfied** — `src/lib/export.ts` ships CSV (`exportCsv`) and a structured JSON dump (`exportJson`) through `ExportTab.svelte`. The indicator asks for *a* non-proprietary format, not specifically FHIR | Document the existing CSV/JSON export as the evidence. FHIR remains a nice-to-have for Indicator 8, **not a blocker here** |
 | 7 | **Privacy & Applicable Laws** | 🟡 **Downgraded 2026-08-24; the engineering half closed 2026-08-25.** Six mandatory sub-requirements: data minimization, consent mechanisms, a *published* privacy policy, **deletion mechanisms**, retention transparency, governance/access-control docs. **Deletion now exists** — `POST /api/account/erase`, with an access-control policy that can be read in one place (`functions/_lib/capabilities.ts`). The remaining five are documentation, not code, and the honest caveat is that erasure reports itself `complete: false` for objects written before migration 0008 | Publish `/privacy`; document the other four; close the pre-0008 raw-object gap (`SECURITY.md` gap 1) so erasure is unconditionally complete |
@@ -48,7 +48,7 @@ A **Digital Public Good** is open-source software, open data, an open AI system,
 | 9B | **Do No Harm — Inappropriate/Illegal Content** | 🟡 LexiTar generates health explanations | Document the **education-not-medicine, fail-closed, no-diagnosis** safeguards (`BRANDING.md` §1/§7) as the content-harm control |
 | 9C | **Do No Harm — Protection from Harassment** | ✅ Effectively N/A — single-user self-service, no user-to-user/social surface | Note N/A with rationale |
 
-**Read:** LexiTar clears or nearly clears **7 of 9** on architecture alone (privacy/security/standards/SDG are its strengths). The real work is **Indicator 2 (open-source the core)**, then **3/4/5** (ownership docs, platform-independence/model nuance, public documentation), then formalizing **9B**.
+**Read:** LexiTar clears or nearly clears **7 of 9** on architecture alone (privacy/security/standards/SDG are its strengths). The real work is **Indicator 2 (open-source the core)**, then **3/4/5** (ownership docs, the model-dependency write-up for 4, public documentation), then formalizing **9B**.
 
 ---
 
@@ -68,7 +68,7 @@ Support / questions: `support@digitalpublicgoods.net`. Detailed evaluation crite
 1. **Open-source the core** (Indicator 2) — pick MIT or Apache 2.0; carve the public utility out from any proprietary LLC integrations (`FOUND.md` §4). *Prerequisite for everything.*
 2. **Formalize ownership + the LLC↔charity IP arrangement** (Indicator 3).
 3. **Publish DPG-grade documentation** — install/run, contribution guide, API (Indicator 5).
-4. **Resolve the model-dependency / platform-independence story** (Indicator 4) — document the LLM dependency and how core function is not locked to one proprietary platform.
+4. **Document the model dependency** (Indicator 4) — hosting is no longer locked to Cloudflare (§5c); what remains is writing up the LLM dependency and which functions work without it.
 5. **Ship + document the FHIR export** (Indicator 6) and **write up the do-no-harm content controls** (9B).
 
 ---
@@ -88,6 +88,22 @@ Re-checked against the code rather than against the previous row:
 
 Net: two indicators cheaper than believed, two more honest than believed, one unchanged blocker
 (Indicator 2, open licensing, which only the open-source release itself closes).
+
+## 5c. Platform independence, 2026-09-19
+
+Indicator 4's hosting half is closed with evidence an assessor can run, not a claim:
+
+- **One backend, two hosts.** The Pages Functions tree runs unmodified on a Node self-host
+  (`server/`): SQLite for D1, the filesystem for R2, the same migrations. `npm run serve:node`
+  or the `Dockerfile` (tinytars/lexi #43, #44, #53).
+- **Proven in CI on every PR:** unit suite against both storage backends, the full Playwright
+  e2e suite against both hosts, and the Docker image booted and probed.
+- **Enforced, not intended:** `tests/unit/platform-imports.test.ts` fails if a route or the UI
+  imports a Cloudflare, Miniflare or Wrangler module.
+- **Out of scope, stated plainly:** the deploy tooling (`wrangler`, backups, snapshots) stays
+  Cloudflare-specific, and the Node host is a working alternative rather than a second production.
+
+The remaining Indicator 4 item is the LLM dependency (§3 row 4).
 
 ## 6. Next actions
 - [ ] Run the **free eligibility test** to get an official readiness read against the 9 indicators.
