@@ -13,7 +13,7 @@
   --surface-2: #f4f4f5;
   --panel: #fbfcfd;
   --code-bg: #f4f6f8;
-  --tt-footer-accent: var(--accent);
+  --frame-footer-accent: var(--accent);
   --band: rgba(11, 107, 203, 0.08);
   --safe: #16a34a;
   --safe-band: rgba(22, 163, 74, 0.10);

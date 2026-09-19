@@ -17,10 +17,9 @@ export interface RequestLog {
   errorCode?: string; // short category (e.g. "unauthorized", "anthropic_error") — never a message body
   id?: string; // vault slug for /api/vault writes (W8d audit) — pseudonymous, already in the URL
   bytes?: number; // encrypted-blob size for a vault write (W8d) — a count, NEVER the bytes themselves
-  // W75 — which rawAccessFor() answer let this request through. `unclaimed` is a deliberately
-  // permitted residual (functions/_lib/raw-owner.ts, SECURITY.md §1); logging it is what makes the
-  // residual a number instead of an assumption. A kind, never an account id.
-  access?: "owner" | "granted" | "unclaimed" | "denied";
+  // W75 — the rawAccessFor() answer behind this request. An `orphaned` line is a refused patient the
+  // backfill missed — a number to drive to zero, not an assumption. A kind, never an account id.
+  access?: "owner" | "granted" | "unclaimed" | "orphaned" | "denied";
 }
 
 export function logRequest(entry: RequestLog): void {

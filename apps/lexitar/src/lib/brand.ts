@@ -1,8 +1,6 @@
-// Product identity + Foundation copy, vendored from the pre-migration @tars/brand package (which
-// stays in plover-code, still shared there with apps/tinytars — see the migration plan). This app
-// no longer has a sibling to share it with, so it's local source rather than a re-exported package.
-// User-facing copy is governed by apps/BRANDING.md.
-import { deriveLegalLinks, type LegalLink } from "@tinytars/frame/brand";
+// LexiTar product identity + the Tiny Tars Foundation's org identity. Values live here, not in
+// @tinytars/frame, which ships only their shape. User-facing copy is governed by apps/BRANDING.md.
+import type { OrgIdentity } from "@tinytars/frame/brand";
 
 export const PRODUCT_NAME = "LexiTar";
 export const PRODUCT_TAGLINE = "Health Literacy Utility";
@@ -10,14 +8,18 @@ export const PRODUCT_TITLE = `${PRODUCT_NAME} — ${PRODUCT_TAGLINE}`;
 export const PRODUCT_DESCRIPTION =
   "LexiTar translates lab jargon, maps biomarker reference ranges, and helps you prepare for doctor visits. Educational use only — not medical advice, diagnosis, or treatment.";
 
-export const FOUNDATION_NAME = "Tiny Tars Foundation";
-export const FOUNDATION_STATUS =
-  "Tiny Tars Foundation is a registered 501(c)(3) public charity. EIN: 39-2278196.";
-
-// The legal pages are routes on the tinytars site (non-discrimination/terms/privacy), served
-// under the Foundation domain. This app is on a different origin, so it links absolutely
-// (LEGAL_LINKS = LEGAL_BASE + path).
-export const LEGAL_BASE = "https://tinytars.foundation";
+// The legal pages are routes on the Foundation site, a different origin from this app, so links
+// are absolute (legalBase + path).
+export const FOUNDATION: OrgIdentity = {
+  name: "Tiny Tars Foundation",
+  status: "Tiny Tars Foundation is a registered 501(c)(3) public charity. EIN: 39-2278196.",
+  legalBase: "https://tinytars.foundation",
+  legalPaths: [
+    { path: "/non-discrimination", label: "Non-discrimination" },
+    { path: "/terms", label: "Terms of Service" },
+    { path: "/privacy", label: "Privacy Policy" },
+  ],
+};
 
 // Verbatim from the audited tinytars health-literacy page (AUDIT.md criteria 2–4 PASS). Single
 // source so the wording that passed compliance can't drift between the public site and dashboard.
@@ -36,14 +38,3 @@ export const PRIVACY_STATEMENT =
   "we maintain a zero-commercial-advertising environment. We do not use tracking cookies for personalized " +
   "medical remarketing. As a donor-supported public asset, we never sell, rent, or monetize your personal " +
   "or health data to third-party advertisers, pharmaceutical companies, or data brokers.";
-
-export type { LegalLink };
-
-export const LEGAL_PATHS: LegalLink[] = [
-  { path: "/non-discrimination", label: "Non-discrimination" },
-  { path: "/terms", label: "Terms of Service" },
-  { path: "/privacy", label: "Privacy Policy" },
-];
-
-// Absolute variant for consumers off the Foundation origin (the dashboard).
-export const LEGAL_LINKS = deriveLegalLinks(LEGAL_BASE, LEGAL_PATHS);

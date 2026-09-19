@@ -192,6 +192,7 @@ curl -s -o /dev/null -w '%{http_code}\n' -X POST "$BASE/api/chat" \
 | `CHAT_TOKEN` | — | **Deleted 2026-08-26.** `/api/chat` is session-gated (`requireSession`); no Function read this. |
 | `VAULT_TOKEN` | Pages secret (prod) / `.dev.vars` (local) | Same allowlist value — gates `PUT /api/vault/{id}`. |
 | `RAW_TOKEN` | — | **Deleted 2026-08-26.** `/api/raw` is gated by `hd_session` plus a per-record `rawAccessFor` check; this Function never read a bearer. |
+| `AZURE_SPEECH_KEY` / `AZURE_SPEECH_REGION` | Pages secrets / `.dev.vars` (local) | W84 — `/api/speak`'s Azure AI Speech key and region (`eastus`, resource group `lexitar-speech`). Unset, read-aloud uses the browser voice. |
 | `STORE_PREFIX` | Pages **var** (committed per-branch in `wrangler.jsonc`) | R2 key namespace per deployment (dev branch = `dev`). Not a secret. **Interim:** the adopted target is physically separate per-env buckets (`health-vault-dev`/`-prod`), retiring this var — see `VAULT.md` §8. |
 
 `.dev.vars` is gitignored and used only by `wrangler pages dev`. Production secrets are set
@@ -225,6 +226,7 @@ call as an inline error.
   new exposure is the public endpoint, closed (PoC-grade) by the bearer allowlist and the
   Cloudflare Access perimeter.
 - No secret appears in the deployed bundle; `ANTHROPIC_API_KEY` lives only in the Function env.
+- W84 — read-aloud text goes to Azure AI Speech (`/api/speak`), under Microsoft's HIPAA BAA.
 
 ## Logging
 
@@ -385,6 +387,37 @@ Not otherwise covered by this file, but touched by the org-recovery work above:
 
 ---
 
+## `POST /api/persona-adapt` (W84 — Kodi's retelling)
+
+Session-gated. Body `{ persona: "kodi", text }`: `text` is Lexi's finished answer, restated by the
+adapter prompt (`src/lib/persona-adapter-prompt.ts`) on `PERSONA_ADAPTER_MODEL`. A deterministic
+fidelity gate requires every number, unit and date from `text` in the output, retrying once; if it
+still fails the response is `{ kind: "fallback" }` and the client keeps Lexi's words, labeled Lexi.
+The adapter never sees the record, only the answer.
+
+```bash
+# → 200 {"kind":"adapted","persona":"kodi","text":"…"} | {"kind":"fallback"} ;  no session → 401
+#   unknown persona / empty text → 400 ;  text too long → 413
+```
+
+---
+
+## `POST /api/speak` (W84 — neural read-aloud)
+
+Session-gated. Body `{ voice?: "lexi" | "kodi", text }` (≤ 2000 chars; the client sends one chunk at a
+time). Relays SSML to **Azure AI Speech** (`AZURE_SPEECH_REGION`, the persona's fixed neural voice) and
+streams back `audio/mpeg`, `Cache-Control: no-store`. Nothing is stored or logged beyond shape and
+status. The text is answer text, i.e. PHI, so Azure AI Speech is a processor: it is covered by
+Microsoft's HIPAA BAA (Product Terms, in-scope service). When the relay fails the browser falls back
+to its own OS voice, which never leaves the device.
+
+```bash
+# → 200 audio/mpeg ;  no session → 401 ;  bad voice / empty text → 400 ;  > 2000 chars → 413
+#   secrets unset → 503 ;  Azure non-OK → 502
+```
+
+---
+
 ## `POST /api/client-error` (browser error reporting)
 
 `src/lib/error-reporter.ts` posts every uncaught error and unhandled rejection here (each distinct
@@ -418,18 +451,11 @@ predating G1 can still carry a display-cased key.
 > not read by this Function and is not in its `Env`. A doc that names a stronger gate than the code
 > implements is worse than no doc, because it is what a reviewer checks instead of the code.
 >
-> **Known gap, not yet fixed.** The route is authenticated but **not authorised**: `id`
-> is the vault's client key — a human display name — and is never compared against anything the
-> session owns. Any signed-up account can therefore read, overwrite or delete another patient's
-> plaintext originals, two accounts with a client of the same name share one namespace, and revoking
-> a clinician's vault envelope does not stop them reading the raw PDFs. `/api/document-extract` has
-> the identical shape and returns extracted plaintext. Neither writes to `phi_access_events`, so the
-> access is invisible to the patient's access-events screen and to any breach-scoping exercise.
->
-> Closing it means re-keying the namespace by `vaultId` rather than display name — the server cannot
-> resolve a display name to an owner, because client keys exist only inside the encrypted vault — and
-> migrating the existing R2 objects. That is a deliberate operation on the only authoritative copy of
-> patient data, so it is scoped as its own piece of work rather than folded in here.
+> **Authorised per client namespace** (W73/W76, `functions/_lib/raw-owner.ts`). `rawAccessFor` answers
+> `owner` or `granted` (a live vault envelope in either direction) for reads, deletes and extraction;
+> a write is also allowed into an **empty** namespace, which makes the writer its owner. A namespace
+> holding objects nobody owns is **orphaned** and refused on every route. Every refusal is a `404`, so
+> the route never confirms that a namespace exists.
 
 - **`GET /api/raw/{id}/{file}`** (`hd_session` cookie): `env.VAULT.get(storeKey(env,"raw",id,file))` →
   stream bytes with a content-type by extension (`pdf`/`xlsx`/`xls`/`json`, else octet-stream),
@@ -440,6 +466,12 @@ predating G1 can still carry a display-cased key.
   still `200`s. This is the web-delete shape: the browser runs the pure `removeSource()`,
   `PUT`s the re-encrypted vault, then `DELETE`s the raw object. (The CLI `--remove-source` does the
   equivalent server-side today, incl. deleting the processed artifact.)
+
+- **`POST /api/raw/claim`** (`hd_session` cookie, `functions/api/raw/claim.ts`): body
+  `{clientId, proofs: [{file, sha256}]}`, 1–5 proofs, each the full SHA-256 of a stored original under
+  `raw/{clientId}/{file}`. For an orphaned namespace, one matching proof records the caller as owner of
+  every object in it → `200 {claimed: n}`. `204` when the caller already owns or is granted it; `404`
+  for any other namespace or no match; `400` on a malformed body. The app calls it on vault open.
 
 ```bash
 # 200 — streams the original PDF (bearer = deriveBearerToken(passphrase))

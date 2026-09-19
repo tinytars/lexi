@@ -3,18 +3,29 @@
 //
 // Text is spoken one sentence at a time, and each chunk's `end` starts the next. Chromium silently
 // cuts off a single long utterance after ~15s, and chunking is also what makes progress possible.
-// Pause is cancel() plus a remembered position, not speechSynthesis.pause(), which is a no-op or broken
-// on Android Chrome and some Linux voices. The position comes from the voice's word `boundary`
-// events, and resume rewinds one word before it for context. A voice that sends no boundaries resumes
-// at the start of its current sentence instead.
+// Browser-voice pause is cancel() plus a remembered position, not speechSynthesis.pause(), which is a
+// no-op or broken on Android Chrome and some Linux voices. The position comes from the voice's word
+// `boundary` events, and resume rewinds one word before it for context. A voice that sends no
+// boundaries resumes at the start of its current sentence instead.
 //
 // The engine finishes or fails utterances on its own. cancel()'s `end` also arrives as a separate
 // task, after the call that caused it. So every utterance captures the `generation` it was spoken
 // under. Each pause, stop, or new play bumps that counter, which makes a late event from a
 // superseded chunk a no-op.
+//
+// An app may configure a SpeechEngine: each chunk is then synthesized to audio (a neural voice) and
+// played through an HTMLAudioElement, the next chunk prefetched while the current one plays. If the
+// engine or playback fails, the rest of that playback falls back to the browser voice. A playing clip
+// pauses for real and resumes REWIND_SECONDS back.
 export type SpeechStatus = "idle" | "playing" | "paused";
 
+export interface SpeechEngine {
+  synthesize(text: string, voice?: string): Promise<Blob>;
+  normalize?(text: string): string;
+}
+
 const MAX_CHUNK = 200;
+const REWIND_SECONDS = 1;
 
 const state = $state({
   id: null as string | null,
@@ -24,15 +35,24 @@ const state = $state({
   index: 0,
 });
 let generation = 0;
-// Character offset within the current chunk of the last word the voice reached.
+// Character offset within the current chunk of the last word the browser voice reached.
 let reached = 0;
+let engine: SpeechEngine | null = null;
+let voice: string | undefined;
+let neural = false;
+let audio: HTMLAudioElement | null = null;
+let clips = new Map<number, Promise<string>>();
+
+export function configureSpeech(e: SpeechEngine | null): void {
+  engine = e;
+}
 
 function synth(): SpeechSynthesis | undefined {
   return typeof window !== "undefined" ? window.speechSynthesis : undefined;
 }
 
 export function isSpeechSupported(): boolean {
-  return !!synth();
+  return !!engine || !!synth();
 }
 
 function pack(parts: string[]): string[] {
@@ -66,9 +86,18 @@ function oneWordBefore(text: string, at: number): number {
 function halt() {
   generation++;
   synth()?.cancel();
+  audio?.pause();
+  audio = null;
+}
+
+function releaseClips() {
+  for (const p of clips.values()) p.then((url) => URL.revokeObjectURL(url), () => {});
+  clips = new Map();
 }
 
 function reset() {
+  releaseClips();
+  neural = false;
   state.id = null;
   state.label = "";
   state.status = "idle";
@@ -76,22 +105,59 @@ function reset() {
   state.index = 0;
 }
 
+function advance(gen: number) {
+  if (gen !== generation) return;
+  if (state.index + 1 < state.chunks.length) {
+    state.index++;
+    speakCurrent();
+  } else {
+    reset();
+  }
+}
+
 function speakCurrent(from = 0) {
   const gen = ++generation;
+  if (neural) speakNeural(gen);
+  else speakBrowser(gen, from);
+}
+
+function speakBrowser(gen: number, from = 0) {
   reached = from;
   const utterance = new SpeechSynthesisUtterance(state.chunks[state.index].slice(from));
   utterance.onboundary = (e) => { if (gen === generation) reached = from + e.charIndex; };
-  utterance.onend = () => {
-    if (gen !== generation) return;
-    if (state.index + 1 < state.chunks.length) {
-      state.index++;
-      speakCurrent();
-    } else {
-      reset();
-    }
-  };
+  utterance.onend = () => advance(gen);
   utterance.onerror = () => { if (gen === generation) reset(); };
   synth()!.speak(utterance);
+}
+
+function clip(i: number): Promise<string> {
+  let p = clips.get(i);
+  if (!p) {
+    p = engine!.synthesize(state.chunks[i], voice).then((blob) => URL.createObjectURL(blob));
+    clips.set(i, p);
+  }
+  return p;
+}
+
+function speakNeural(gen: number) {
+  const i = state.index;
+  clip(i).then((url) => {
+    if (gen !== generation) return;
+    const a = new Audio(url);
+    audio = a;
+    a.onended = () => advance(gen);
+    a.onerror = () => fallBack(gen);
+    a.play().catch(() => fallBack(gen));
+    if (i + 1 < state.chunks.length) clip(i + 1).catch(() => {});
+  }, () => fallBack(gen));
+}
+
+function fallBack(gen: number) {
+  if (gen !== generation) return;
+  neural = false;
+  audio = null;
+  if (synth()) speakBrowser(gen);
+  else reset();
 }
 
 export const speechRegistry = {
@@ -101,25 +167,38 @@ export const speechRegistry = {
   current() {
     return { id: state.id, label: state.label, status: state.status, index: state.index, total: state.chunks.length };
   },
-  play(id: string, text: string, label: string): void {
-    const chunks = speechChunks(text);
-    if (!synth() || !chunks.length) return;
+  play(id: string, text: string, label: string, withVoice?: string): void {
+    const chunks = speechChunks(engine?.normalize ? engine.normalize(text) : text);
+    if (!isSpeechSupported() || !chunks.length) return;
     halt();
+    releaseClips();
+    voice = withVoice;
+    neural = !!engine;
     Object.assign(state, { id, label, status: "playing", chunks, index: 0 });
     speakCurrent();
   },
   pause(): void {
     if (state.status !== "playing") return;
-    halt();
+    if (neural && audio) {
+      audio.pause();
+      audio.currentTime = Math.max(0, audio.currentTime - REWIND_SECONDS);
+    } else {
+      halt();
+    }
     state.status = "paused";
   },
   resume(): void {
-    if (state.status !== "paused" || !synth()) return;
+    if (state.status !== "paused" || !isSpeechSupported()) return;
     state.status = "playing";
-    speakCurrent(oneWordBefore(state.chunks[state.index], reached));
+    if (neural && audio) {
+      const gen = generation;
+      audio.play().catch(() => fallBack(gen));
+    } else {
+      speakCurrent(oneWordBefore(state.chunks[state.index], reached));
+    }
   },
-  toggle(id: string, text: string, label: string): void {
-    if (state.id !== id) this.play(id, text, label);
+  toggle(id: string, text: string, label: string, withVoice?: string): void {
+    if (state.id !== id) this.play(id, text, label, withVoice);
     else if (state.status === "playing") this.pause();
     else this.resume();
   },

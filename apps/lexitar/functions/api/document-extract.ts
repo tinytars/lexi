@@ -5,7 +5,7 @@ import { requireSession } from "../_lib/session";
 import { logRequest } from "../_lib/log";
 import { classifyAnthropicError } from "../_lib/anthropic-errors";
 import { storeKey } from "../_lib/store";
-import { rawAccessFor, type RawAccess } from "../_lib/raw-owner";
+import { rawAccessFor, mayRead, type RawAccess } from "../_lib/raw-owner";
 import { readDocument, DOCUMENT_READ_FAILURE, type DocumentReading, type StoredExtraction } from "@pablotech/akesi/document-read";
 import { EXTRACT_MODEL } from "../../src/lib/extract-config";
 import type { ObjectBucket } from "../_lib/object-bucket";
@@ -24,7 +24,7 @@ import type { ObjectBucket } from "../_lib/object-bucket";
 // exactly the same sense raw/ already is, under the same session gate, in the same bucket.
 
 interface Env {
-  VAULT: Pick<ObjectBucket, "get" | "put">;
+  VAULT: Pick<ObjectBucket, "get" | "put" | "list">;
   ANTHROPIC_API_KEY?: string;
   RANGES_ANTHROPIC_API_KEY?: string;
   SESSION_SECRET: string;
@@ -97,8 +97,10 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
   // W73 (SECURITY.md gap 1). This route was the cleanest oracle of the two: its cache branch below
   // returns another patient's EXTRACTED PLAINTEXT before it ever touches raw/, so a cross-tenant read
   // cost nothing and billed nothing. The check therefore goes above the cache, not beside the fetch.
+  // Extraction READS an original, so it is held to the read rule: an empty namespace has nothing to
+  // extract and an orphaned one is nobody's to read (W76).
   const access = await rawAccessFor(env.DB, env, session.accountId, id);
-  if (access.kind === "denied") {
+  if (!mayRead(access)) {
     return finish(404, { error: "not found", errorCode: "not_found" }, { errorCode: "not_found" });
   }
 
@@ -191,8 +193,8 @@ export async function onRequestGet(context: { request: Request; env: Env }): Pro
   }
 
   const readAccess = await rawAccessFor(env.DB, env, session.accountId, id);
-  if (readAccess.kind === "denied") {
-    log(404, { errorCode: "not_owner" });
+  if (!mayRead(readAccess)) {
+    log(404, { errorCode: readAccess.kind === "denied" ? "not_owner" : readAccess.kind, access: readAccess.kind });
     return new Response(JSON.stringify({ error: "not found", errorCode: "not_found" }), { status: 404, headers: { "content-type": "application/json" } });
   }
 

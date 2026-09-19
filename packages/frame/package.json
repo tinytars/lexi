@@ -24,6 +24,7 @@
   "files": [
     "*.ts",
     "!*.test.ts",
+    "!vitest.config.ts",
     "*.svelte",
     "*.css"
   ],
@@ -45,6 +46,7 @@
     "./ExportTab.svelte": "./ExportTab.svelte",
     "./Field.svelte": "./Field.svelte",
     "./filter": "./filter.ts",
+    "./footer.css": "./footer.css",
     "./FormGrid.svelte": "./FormGrid.svelte",
     "./group-filter": "./group-filter.ts",
     "./LeafActionMenu.svelte": "./LeafActionMenu.svelte",
@@ -55,6 +57,7 @@
     "./Modal.svelte": "./Modal.svelte",
     "./ModalActions.svelte": "./ModalActions.svelte",
     "./Onboarding.svelte": "./Onboarding.svelte",
+    "./OrgFooter.svelte": "./OrgFooter.svelte",
     "./pdf-render": "./pdf-render.ts",
     "./PdfThumbnail.svelte": "./PdfThumbnail.svelte",
     "./persisted-json": "./persisted-json.ts",
@@ -67,6 +70,7 @@
     "./SidebarGroupList.svelte": "./SidebarGroupList.svelte",
     "./SidebarLeafList.svelte": "./SidebarLeafList.svelte",
     "./speech-registry.svelte": "./speech-registry.svelte.ts",
+    "./retell-registry.svelte": "./retell-registry.svelte.ts",
     "./SpeechControls.svelte": "./SpeechControls.svelte",
     "./support-access.svelte": "./support-access.svelte.ts",
     "./theme.css": "./theme.css",
