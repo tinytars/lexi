@@ -118,7 +118,7 @@ export function toChatRequest(body: RequestBody, provider: OpenAIProvider, strea
   if (body.tools?.length) {
     requireCap(provider, "tools", "tools");
     req.tools = body.tools.map((t) => {
-      if (!("input_schema" in t)) throw new ModelUnsupportedError(`the ${t.name} server tool`);
+      if (!("input_schema" in t)) throw new ModelUnsupportedError(`the ${t.type} server tool`);
       return { type: "function", function: { name: t.name, description: t.description, parameters: t.input_schema } };
     });
     const choice = toolChoice(body.tool_choice);
