@@ -3,7 +3,7 @@
 // at rest. adoptThreads() rebases the id/seq counter onto a restored set so new threads never
 // collide with hydrated ones.
 
-import type { PersonaId } from "./personas";
+import { readPersonaId, type PersonaId } from "./personas";
 import type { Permalink } from "./permalink";
 import type { ReferenceKind, ResolvedReference } from "./reference-resolver";
 import type { Attachment } from "./types";
@@ -91,9 +91,20 @@ export function seedNewThread(resolved: ResolvedReference): Thread {
 // row.turnIdx within one thread), so a silent duplicate is not cosmetic — it's an uncaught
 // each_key_duplicate crash on every future load of that account's chat tab.
 export function adoptThreads(threads: Thread[]): Thread[] {
-  const deduped = [...new Map(threads.map((t) => [t.id, t])).values()];
+  const deduped = [...new Map(threads.map((t) => [t.id, withCurrentPersonas(t)])).values()];
   for (const t of deduped) counter = Math.max(counter, t.seq);
   return deduped.length > 0 ? deduped : [newThread()];
+}
+
+// A turn saved under a renamed persona id reads as that persona today; one no longer offered shows
+// Lexi's original, which every adapted turn keeps.
+function withCurrentPersonas(thread: Thread): Thread {
+  if (!thread.turns.some((t) => t.adapted && t.adapted.persona !== readPersonaId(t.adapted.persona))) return thread;
+  const turns = thread.turns.map(({ adapted, ...turn }) => {
+    const persona = adapted && readPersonaId(adapted.persona);
+    return persona ? { ...turn, adapted: { ...adapted, persona } } : turn;
+  });
+  return { ...thread, turns };
 }
 
 // Pinned first, then most-recent-first (by lastActivityAt) within each group. Stable, pure.

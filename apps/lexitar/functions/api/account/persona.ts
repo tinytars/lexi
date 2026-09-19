@@ -2,7 +2,7 @@ import type { D1Database } from "../../_lib/identity-types";
 import { requireSession } from "../../_lib/session";
 import { logRequest } from "../../_lib/log";
 import { json } from "../../_lib/http";
-import { isPersonaId } from "../../../src/lib/personas";
+import { readPersonaId } from "../../../src/lib/personas";
 
 // W84 — the account's persona. Its own route rather than a field on /api/account because that route's
 // store is @tinytars/vault's domain-neutral D1AccountStore; a voice preference is this app's concern.
@@ -25,7 +25,7 @@ export async function onRequestGet({ request, env }: Ctx): Promise<Response> {
 
   const row = await env.DB.prepare("SELECT persona FROM accounts WHERE id = ?").bind(session.accountId).first<{ persona: string | null }>();
   log(200);
-  return json(200, { persona: isPersonaId(row?.persona) ? row.persona : null });
+  return json(200, { persona: readPersonaId(row?.persona) });
 }
 
 export async function onRequestPut({ request, env }: Ctx): Promise<Response> {
@@ -35,9 +35,10 @@ export async function onRequestPut({ request, env }: Ctx): Promise<Response> {
   if (session instanceof Response) { log(401, "unauthorized"); return session; }
 
   const body = (await request.json().catch(() => null)) as { persona?: unknown } | null;
-  if (!isPersonaId(body?.persona)) { log(400, "bad_persona"); return json(400, { error: "unknown persona" }); }
+  const persona = readPersonaId(body?.persona);
+  if (!persona) { log(400, "bad_persona"); return json(400, { error: "unknown persona" }); }
 
-  await env.DB.prepare("UPDATE accounts SET persona = ? WHERE id = ?").bind(body.persona, session.accountId).run();
+  await env.DB.prepare("UPDATE accounts SET persona = ? WHERE id = ?").bind(persona, session.accountId).run();
   log(200);
-  return json(200, { persona: body.persona });
+  return json(200, { persona });
 }

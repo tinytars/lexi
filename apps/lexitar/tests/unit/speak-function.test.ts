@@ -21,7 +21,7 @@ async function call(body: unknown, { auth = true, env = ENV }: { auth?: boolean;
 
 describe("/api/speak", () => {
   it("synthesizes the text in the persona's neural voice and returns mp3", async () => {
-    const res = await call({ voice: "kodi", text: "LDL is 113 & falling <slowly>." });
+    const res = await call({ voice: "cody", text: "LDL is 113 & falling <slowly>." });
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("audio/mpeg");
     expect(new Uint8Array(await res.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
@@ -35,6 +35,11 @@ describe("/api/speak", () => {
   it("uses Lexi's voice when no voice is given", async () => {
     await call({ text: "Hello." });
     expect((vendor.mock.calls[0][1] as RequestInit).body).toContain("en-US-AvaMultilingualNeural");
+  });
+
+  it("still voices Cody for a tab opened before the rename, which asks for Kodi", async () => {
+    await call({ voice: "kodi", text: "Hello." });
+    expect((vendor.mock.calls[0][1] as RequestInit).body).toContain("en-US-AndrewMultilingualNeural");
   });
 
   it("rejects a voice outside the persona registry instead of passing it to the vendor", async () => {

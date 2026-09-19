@@ -7,7 +7,7 @@ import { configureRetell } from "@tinytars/frame/retell-registry.svelte";
 
 const body = createRawSnippet(() => ({ render: () => "<p>LDL was 142 mg/dL on 2026-07-21.</p>" }));
 const asked: string[] = [];
-const kodi = { label: "Kodi's take", voice: "kodi", retell: async (text: string) => (asked.push(text), "Your LDL hit 142 mg/dL on 2026-07-21.") };
+const cody = { label: "Cody's take", voice: "cody", retell: async (text: string) => (asked.push(text), "Your LDL hit 142 mg/dL on 2026-07-21.") };
 
 afterEach(() => {
   configureRetell(null);
@@ -27,14 +27,14 @@ async function settle() {
 }
 
 it("retells the shown text in place, relabels it, and restores the original", async () => {
-  configureRetell(kodi);
+  configureRetell(cody);
   const el = render(PersonaBubble, { persona: "assistant" as const, label: "Lexi", children: body });
 
-  menuItem(el, "Kodi's take")!.click();
+  menuItem(el, "Cody's take")!.click();
   await settle();
   expect(asked).toEqual(["LDL was 142 mg/dL on 2026-07-21."]);
   expect(el.querySelector(".persona-body")!.textContent).toBe("Your LDL hit 142 mg/dL on 2026-07-21.");
-  expect(el.querySelector(".persona-tag")!.textContent).toBe("Kodi's take");
+  expect(el.querySelector(".persona-tag")!.textContent).toBe("Cody's take");
 
   menuItem(el, "Show original")!.click();
   flushSync();
@@ -43,27 +43,27 @@ it("retells the shown text in place, relabels it, and restores the original", as
 });
 
 it("keeps the original when the retelling fails", async () => {
-  configureRetell({ ...kodi, retell: async () => null });
+  configureRetell({ ...cody, retell: async () => null });
   const el = render(PersonaBubble, { persona: "assistant" as const, label: "Lexi", children: body });
 
-  menuItem(el, "Kodi's take")!.click();
+  menuItem(el, "Cody's take")!.click();
   await settle();
   expect(el.querySelector(".persona-body")!.textContent).toBe("LDL was 142 mg/dL on 2026-07-21.");
   expect(el.querySelector(".persona-tag")!.textContent).toBe("Lexi");
 });
 
 it("offers no retelling on a bubble that opts out, or on a non-assistant bubble", () => {
-  configureRetell(kodi);
-  const optedOut = render(PersonaBubble, { persona: "assistant" as const, label: "Kodi", retellable: false, children: body });
+  configureRetell(cody);
+  const optedOut = render(PersonaBubble, { persona: "assistant" as const, label: "Cody", retellable: false, children: body });
   const owner = render(PersonaBubble, { persona: "owner" as const, label: "You", children: body });
   expect(optedOut.querySelector(".leaf-menu-trigger")).toBeNull();
   expect(owner.querySelector(".leaf-menu-trigger")).toBeNull();
 });
 
 it("drops a shown retelling once the app stops offering it", async () => {
-  configureRetell(kodi);
+  configureRetell(cody);
   const el = render(PersonaBubble, { persona: "assistant" as const, label: "Lexi", children: body });
-  menuItem(el, "Kodi's take")!.click();
+  menuItem(el, "Cody's take")!.click();
   await settle();
 
   configureRetell(null);

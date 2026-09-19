@@ -2,7 +2,7 @@ import type { D1Database } from "../_lib/identity-types";
 import { requireSession } from "../_lib/session";
 import { logRequest } from "../_lib/log";
 import { json } from "../_lib/http";
-import { DEFAULT_PERSONA, PERSONAS, isPersonaId } from "../../src/lib/personas";
+import { DEFAULT_PERSONA, PERSONAS, readPersonaId } from "../../src/lib/personas";
 
 // W84 — neural read-aloud. A stateless relay to Azure AI Speech: the text is an answer about the
 // patient (PHI), so it is never logged or stored here. The browser speaks one sentence-sized chunk
@@ -30,8 +30,8 @@ export async function onRequestPost({ request, env }: { request: Request; env: E
   if (session instanceof Response) return fail(401, "unauthorized", "unauthorized");
 
   const body = (await request.json().catch(() => null)) as { voice?: unknown; text?: unknown } | null;
-  const persona = body?.voice ?? DEFAULT_PERSONA;
-  if (!isPersonaId(persona)) return fail(400, "unknown voice", "bad_voice");
+  const persona = body?.voice === undefined ? DEFAULT_PERSONA : readPersonaId(body.voice);
+  if (!persona) return fail(400, "unknown voice", "bad_voice");
   if (typeof body?.text !== "string" || !body.text.trim()) return fail(400, "text is required", "no_text");
   if (body.text.length > MAX_TEXT) return fail(413, "text too long to speak", "too_large");
   if (!env.AZURE_SPEECH_KEY || !env.AZURE_SPEECH_REGION) return fail(503, "speech is not configured", "not_configured");

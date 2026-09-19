@@ -463,7 +463,7 @@
       error = (e as Error).message;
     }
   }
-  // W84 — with Kodi selected, any assistant bubble offers "Kodi's take" on Lexi's words.
+  // W84 — with Cody selected, any assistant bubble offers "Cody's take" on Lexi's words.
   $effect(() => {
     const p = persona;
     configureRetell(p === "lexi" ? null : { label: `${PERSONAS[p].name}'s take`, voice: p, retell: (text) => personaTake(p, text) });

@@ -1,4 +1,4 @@
-// W84 — the deterministic half of "Kodi adds nothing and drops nothing". A persona may reword freely,
+// W84 — the deterministic half of "Cody adds nothing and drops nothing". A persona may reword freely,
 // but every number and date in Lexi's answer is a fact from the record, so each must survive into the
 // restatement verbatim. Semantic drift (a softened caveat) is past what a regex can see; that is what
 // the adapter prompt and the release-time second-model review are for.
