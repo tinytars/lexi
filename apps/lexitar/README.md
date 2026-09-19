@@ -30,6 +30,9 @@ npm run build
 STORE_PREFIX=local npm run serve:node   # reads .dev.vars; SQLite + blobs under .node-data/ (LEXI_DATA_DIR)
 ```
 
+The same host as an image, data on a volume — usage at the top of [`Dockerfile`](Dockerfile); CI's
+`lexitar-image` job builds and boots it.
+
 `.dev.vars.example` documents every secret a route needs — chat, provider-token, WebAuthn, Google
 OAuth — and why each is issued as a *distinct* value rather than shared across routes. Most local
 UI work needs none of them.
