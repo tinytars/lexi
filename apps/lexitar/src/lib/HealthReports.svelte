@@ -156,11 +156,12 @@
   }
   let editSource = $state<SourceRecord | null>(null);
   let editForm = $state<{ studyType: string; date: string } | null>(null);
-  let editDx = $state<{ diagnostic: string; date: string; summary: string; icdCodes: string }[]>([]);
+  let editDx = $state<{ id: string; diagnostic: string; date: string; summary: string; icdCodes: string }[]>([]);
   function openEditReport(s: SourceRecord) {
     editSource = s;
     editForm = { studyType: s.studyType ?? "", date: s[dateKeyOf(s)] ?? "" };
     editDx = diseasesForSource(s.id).map((d) => ({
+      id: d.id,
       diagnostic: d.diagnostic,
       date: d.date,
       summary: d.summary ?? "",
@@ -181,6 +182,7 @@
       studyType: s.kind === "imaging" ? editForm.studyType.trim() : undefined,
     };
     const dxPatches = editDx.map((d) => ({
+      id: d.id,
       diagnostic: d.diagnostic,
       date: d.date,
       summary: d.summary,
