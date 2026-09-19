@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Client, Vault, NoteAttachment, Attachment } from "./types";
+  import type { ChatImportResult } from "./import-flow";
   import type { UnitSystem } from "./units";
   import { buildChatContext, type ChatContext } from "./chat-context";
   import { runMarkerTool } from "./chat-tools";
@@ -47,12 +48,7 @@
     vault: Vault | null;
     onNavigate?: (patch: Partial<Permalink>) => void;
     onPersist: () => void;
-    onImportFile?: (
-      file: File,
-    ) => Promise<
-      | { ok: true; kind: "report" | "source" | "pending"; id: string; originalName: string }
-      | { ok: false; message: string }
-    >;
+    onImportFile?: (file: File) => Promise<ChatImportResult>;
     onCreateNote?: (attachment: NoteAttachment) => void;
   }
   let {

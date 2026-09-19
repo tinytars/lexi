@@ -51,8 +51,9 @@
   import { exportCsv, exportJson } from "./lib/export";
   import ImportTab from "./lib/ImportTab.svelte";
   import { createAuthFlow } from "./lib/auth-flow";
-  import { classifyUpload } from "./lib/import-flow";
+  import { importFileForChat, type ChatImportResult } from "./lib/import-flow";
   import { withClient } from "./lib/vault-clients";
+  import { putRaw } from "./lib/attachment-store";
   import { togglePinnedIn, renameIn, removeFrom, labelOf, type SidebarItemKind } from "./lib/vault-item-ops";
   import { pinnedQueries } from "@pablotech/akesi/pinned-queries";
   import Onboarding, { type OnboardingField } from "@tinytars/frame/Onboarding.svelte";
@@ -792,37 +793,16 @@
     }
   }
 
-  // W-chat-attach — same classify/PUT/save spine as handleImported, driven from the chat
-  // composer instead of the Import modal: no navigation, just report back what landed so
-  // the caller can build a reference-turn card.
-  async function importFileForChat(
-    file: File,
-  ): Promise<
-    | { ok: false; message: string }
-    | { ok: true; kind: "report" | "source" | "pending"; id: string; originalName: string }
-  > {
+  async function importChatFile(file: File): Promise<ChatImportResult> {
     if (!currentClient || !selectedClientId || !session.dek || !session.r2Id) return { ok: false, message: "No active client." };
-    const client = currentClient;
-    const clientId = selectedClientId;
-    const result = await classifyUpload(client, clientId, file);
-    if (result.status === "error") return { ok: false, message: result.message };
-    if (result.status === "duplicate") {
-      return { ok: true, kind: result.kind, id: result.existingId, originalName: file.name };
-    }
-    const nextClient =
-      result.status === "report" ? result.fold.client : result.status === "source" ? result.srcFold.client : result.pending.client;
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    const res = await fetch(`/api/raw/${normalizeClientId(clientId)}/${result.storedFile}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/octet-stream" },
-      body: bytes as BodyInit,
+    return importFileForChat(currentClient, selectedClientId, file, {
+      storeOriginal: putRaw,
+      persist: async (id, next) => {
+        if (!(await persistClient(id, next))) return false;
+        void fillMissingRanges(next);
+        return true;
+      },
     });
-    if (!res.ok && res.status !== 204) {
-      return { ok: false, message: `storing the original failed (${res.status})` };
-    }
-    if (!(await persistClient(clientId, nextClient))) return { ok: false, message: "No active client." };
-    void fillMissingRanges(nextClient);
-    return { ok: true, kind: result.status, id: result.id, originalName: file.name };
   }
 
   // W46 — first-run: a signed-in account with an empty vault ({clients:{}}) has no browser way
@@ -1435,7 +1415,7 @@
         onClose={() => (searchOpen = false)}
       />
     {:else if activeTab === "chat" && currentClient}
-      <ChatTab client={currentClient} dek={session.dek} clientId={selectedClientId} {unitSystem} activeId={section} bind:threads={chatSession.threads} {vault} onNavigate={navigate} onPersist={chatSession.persistChatThreads} onImportFile={importFileForChat} onCreateNote={createNoteFromAttachment} />
+      <ChatTab client={currentClient} dek={session.dek} clientId={selectedClientId} {unitSystem} activeId={section} bind:threads={chatSession.threads} {vault} onNavigate={navigate} onPersist={chatSession.persistChatThreads} onImportFile={importChatFile} onCreateNote={createNoteFromAttachment} />
     {:else if currentClient}
       <ReportSections client={currentClient} sections={ALL_SECTIONS} bind:active={section} clientId={selectedClientId} providerSession={roster.isProvider} canTranslate={roster.isProvider && !!providerToken} onTranslate={translateMarker} onCategorizeMarkers={handleCategorizeMarkers} {vault} {unitSystem} bind:windowYears onToggleWatchlist={toggleWatchlist} onTogglePinnedRatio={togglePinnedRatio} onSave={saveEdits} onSaved={(anchor) => navigate({ anchor })} onTriggerRegen={triggerLeafRegen} saved={vaultSave.saved} saveError={vaultSave.error} onStartChat={startChatFromLeaf} onCreateNote={createNoteFromAttachment} pendingSidebarAction={pendingSidebarAction} onConsumeSidebarAction={() => (pendingSidebarAction = null)} bind:activeGroup {activeLeaf} {pendingAnchor} onConsumeAnchor={() => (pendingAnchor = null)} pendingNoteAttachment={pendingNoteAttachment} onPendingNoteAttachmentConsumed={() => (pendingNoteAttachment = null)} onNavigate={navigate} />
     {/if}
