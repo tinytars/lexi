@@ -1,6 +1,6 @@
-// W84 — who answers. Lexi is the brain: every inference is generated in her voice. Kodi is an adapter
+// W84 — who answers. Lexi is the brain: every inference is generated in her voice. Cody is an adapter
 // that restates Lexi's finished answer (persona-adapter-prompt.ts); he never reasons over the record.
-export type PersonaId = "lexi" | "kodi";
+export type PersonaId = "lexi" | "cody";
 
 export interface Persona {
   id: PersonaId;
@@ -20,12 +20,12 @@ export const PERSONAS: Record<PersonaId, Persona> = {
     voice: "en-US-AvaMultilingualNeural",
     sample: "Hi, I'm Lexi. I lead with the answer, then give you just enough of the reasoning to trust it.",
   },
-  kodi: {
-    id: "kodi",
-    name: "Kodi",
-    blurb: "NYC cycling instructor. Same knowledge, told like your best friend at 4am over fries.",
+  cody: {
+    id: "cody",
+    name: "Cody",
+    blurb: "NYC cycling instructor. Hears what you're really asking, is fully in your corner, and still tells it like it is.",
     voice: "en-US-AndrewMultilingualNeural",
-    sample: "Hey, I'm Kodi. Same facts as Lexi, just told the way I'd tell you over fries at four in the morning.",
+    sample: "Hey, I'm Cody. I'm listening, I'm on your side, and I'll always give it to you straight.",
   },
 };
 
@@ -33,4 +33,12 @@ export const DEFAULT_PERSONA: PersonaId = "lexi";
 
 export function isPersonaId(v: unknown): v is PersonaId {
   return typeof v === "string" && Object.hasOwn(PERSONAS, v);
+}
+
+// Cody first shipped as "kodi"; account rows, saved chat turns, and still-open tabs may carry that id.
+const RENAMED: Record<string, PersonaId> = { kodi: "cody" };
+
+export function readPersonaId(v: unknown): PersonaId | null {
+  const id = typeof v === "string" && Object.hasOwn(RENAMED, v) ? RENAMED[v] : v;
+  return isPersonaId(id) ? id : null;
 }

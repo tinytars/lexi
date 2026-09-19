@@ -26,17 +26,27 @@ describe("/api/account/persona", () => {
 
   it("round-trips a PUT through GET", async () => {
     const cookie = await mkAccount();
-    expect((await put(cookie, { persona: "kodi" })).status).toBe(200);
-    expect(await (await get(cookie)).json()).toEqual({ persona: "kodi" });
+    expect((await put(cookie, { persona: "cody" })).status).toBe(200);
+    expect(await (await get(cookie)).json()).toEqual({ persona: "cody" });
   });
 
   it("is per account", async () => {
     const a = await mkAccount();
     const b = await mkAccount();
-    await put(a, { persona: "kodi" });
+    await put(a, { persona: "cody" });
     await put(b, { persona: "lexi" });
-    expect(await (await get(a)).json()).toEqual({ persona: "kodi" });
+    expect(await (await get(a)).json()).toEqual({ persona: "cody" });
     expect(await (await get(b)).json()).toEqual({ persona: "lexi" });
+  });
+
+  it("reads an account saved before the rename as Cody, and stores the new id from an old tab's PUT", async () => {
+    const id = crypto.randomUUID();
+    await createAccount(w.db, { id, displayName: "P", email: `${id}@x.test` });
+    const cookie = await cookieFor(id);
+    await w.db.prepare("UPDATE accounts SET persona = 'kodi' WHERE id = ?").bind(id).run();
+    expect(await (await get(cookie)).json()).toEqual({ persona: "cody" });
+    expect(await (await put(cookie, { persona: "kodi" })).json()).toEqual({ persona: "cody" });
+    expect(await w.db.prepare("SELECT persona FROM accounts WHERE id = ?").bind(id).first()).toEqual({ persona: "cody" });
   });
 
   it("rejects a persona that is not in the registry", async () => {
@@ -48,6 +58,6 @@ describe("/api/account/persona", () => {
 
   it("requires a session", async () => {
     expect((await get("")).status).toBe(401);
-    expect((await put("", { persona: "kodi" })).status).toBe(401);
+    expect((await put("", { persona: "cody" })).status).toBe(401);
   });
 });
