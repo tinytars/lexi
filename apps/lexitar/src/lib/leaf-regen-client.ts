@@ -134,7 +134,7 @@ export async function fetchLeafRegen(
   );
 
   // res.json(), not res.text(): the relay classifies every failure into a machine-readable errorCode
-  // (insufficient_credit / ai_busy / anthropic_error / invalid_leaf_regen), and reading the body as
+  // (insufficient_credit / ai_busy / model_error / invalid_leaf_regen), and reading the body as
   // text threw that away, leaving the UI to render raw JSON where it should render a sentence.
   const body = (await res.json().catch(() => null)) as { result?: unknown; error?: string; errorCode?: string } | null;
   if (!res.ok) {

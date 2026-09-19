@@ -1,7 +1,7 @@
-import Anthropic from "@anthropic-ai/sdk";
 import type { Client, InferenceMode, MarkerGrouping } from "../src/lib/types";
 import { systemOrder } from "@pablotech/akesi/system-groups";
-import { MODELS } from "./inference-config";
+import { modelId } from "../src/lib/model-config";
+import { modelFor } from "../functions/_lib/inference/resolve";
 import type { UsageAccumulator } from "./inference-cost";
 import { distinctMarkerNames, markerGroupsHashOf, runMarkerGroupingPasses } from "@pablotech/akesi/marker-groups-prompt";
 import { runGroupingPass } from "../src/lib/marker-groups-anthropic";
@@ -15,18 +15,10 @@ import { runGroupingPass } from "../src/lib/marker-groups-anthropic";
 //
 // M95 — the prompt/schema/convergence-loop pieces live in src/lib/marker-groups-prompt.ts
 // (isomorphic, shared with functions/api/refresh-marker-groups.ts); this file keeps only the
-// Node-specific Anthropic singleton and the glue that turns one grouping pass into the
+// Node-side model client and the glue that turns one grouping pass into the
 // injected `callModel`.
 
-let cachedClient: Anthropic | null = null;
-function anthropic(): Anthropic {
-  if (cachedClient) return cachedClient;
-  if (!process.env.ANTHROPIC_API_KEY) {
-    throw new Error("ANTHROPIC_API_KEY is not set. Required to generate marker groups.");
-  }
-  cachedClient = new Anthropic();
-  return cachedClient;
-}
+const anthropic = () => modelFor(process.env, "markerGroups").client;
 
 // One LLM grouping call over a given marker subset. Returns the raw model groups — the
 // Node-specific half of the injected `callModel`; the request itself is built from the
@@ -51,7 +43,7 @@ async function groupingPass(
 
 export async function generateMarkerGroups(
   client: Client,
-  model: string = MODELS.prod.ranges,
+  model: string = modelId("markerGroups"),
   mode: InferenceMode = "prod",
   usage?: UsageAccumulator,
 ): Promise<MarkerGrouping> {

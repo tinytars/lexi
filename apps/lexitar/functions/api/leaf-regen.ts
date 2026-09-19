@@ -1,7 +1,8 @@
 import type { D1Database } from "../_lib/identity-types";
 import { requireSession } from "../_lib/session";
 import { logRequest } from "../_lib/log";
-import { classifyAnthropicError } from "../_lib/anthropic-errors";
+import { modelErrorReply } from "../_lib/model-errors";
+import { modelFor } from "../_lib/inference/resolve";
 import { LEAF_REGEN_SPECS } from "../../src/lib/leaf-regen-registry";
 import { runLeafRegen } from "../../src/lib/leaf-regen-anthropic";
 import { capDocuments } from "@pablotech/akesi/document-read";
@@ -17,21 +18,16 @@ import { capDocuments } from "@pablotech/akesi/document-read";
 // `node`, modeled on /api/regroup's session-gate/body-cap/error-handling shape. Stateless like
 // /api/regroup: the browser holds the decrypted vault, assembles the DAG-driven inputs client-side,
 // this relay only calls Anthropic and validates the tool result — it never touches R2 or the
-// passphrase. Runs on the distinct chat key + Sonnet tier (regroup-config), same as /api/regroup.
+// passphrase. Runs on the "leafRegen" feature in inference.config.json.
 //
 // The actual Anthropic call (scoped tool schema, system prompt, messages.create, validate) lives in
 // src/lib/leaf-regen-anthropic.ts's runLeafRegen — shared with the treatmentAssessment backfill
 // script (scripts/ingest.ts), which has no session cookie to send this relay and so calls it
 // in-process instead. This file stays the thin, session-gated HTTP wrapper.
 //
-// Runs on RANGES_ANTHROPIC_API_KEY — the same key Markers' on-the-fly Translate uses
-// (refresh-range.ts:89). Both secrets are set on the dev Pages project, but only the Ranges one is
-// demonstrably good there: marker Translate works while every leaf-regen call came back
-// anthropic_error, which points at the VALUE behind ANTHROPIC_API_KEY, not a missing binding.
-// Keeps the old name as a fallback so any environment that only carries that one still works.
+// Its provider in inference.config.json reads RANGES_ANTHROPIC_API_KEY first, the key Markers'
+// on-the-fly Translate uses: on the dev Pages project only that one is demonstrably good.
 interface Env {
-  RANGES_ANTHROPIC_API_KEY?: string;
-  ANTHROPIC_API_KEY?: string;
   SESSION_SECRET: string;
   // W71 — requireSession reads accounts.sessions_valid_from, so every gated route needs the binding.
   DB: D1Database;
@@ -129,11 +125,10 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
 
   // Nothing to regenerate → a no-op result is trivially valid; skip the billable call.
   try {
-    const apiKey = env.RANGES_ANTHROPIC_API_KEY ?? env.ANTHROPIC_API_KEY ?? "";
     // request.signal upstream (mirrors refresh-finding.ts): a browser that disconnects — a
     // navigation, or the client-side deadline firing — stops the generation instead of leaving
     // the model producing tokens nobody will read.
-    const outcome = await runLeafRegen({ apiKey, node: body.node, inputs, targetLabels, images, documents, signal: request.signal });
+    const outcome = await runLeafRegen({ ...modelFor(env, "leafRegen"), node: body.node, inputs, targetLabels, images, documents, signal: request.signal });
     switch (outcome.kind) {
       case "empty":
         return finish(200, { result: null });
@@ -161,12 +156,7 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
         return finish(200, { result: outcome.result }, { usage: outcome.usage });
     }
   } catch (err) {
-    const { status, errorCode } = classifyAnthropicError(err);
-    const messagesByCode: Record<string, string> = {
-      insufficient_credit: "AI is temporarily unavailable: the account is out of credits.",
-      ai_busy: "The AI is busy right now — try again in a moment.",
-      anthropic_error: "leaf-regen backend error",
-    };
-    return finish(status, { error: messagesByCode[errorCode], errorCode }, { errorCode });
+    const { status, errorCode, error } = modelErrorReply(err, "leaf-regen backend error");
+    return finish(status, { error, errorCode }, { errorCode });
   }
 }

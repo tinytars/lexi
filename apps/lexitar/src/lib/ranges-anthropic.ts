@@ -20,6 +20,7 @@
 // different modules on purpose (see refresh-range.ts's note on module-graph isolation), so this
 // returns the range unstamped and each caller stamps it.
 import type Anthropic from "@anthropic-ai/sdk";
+import type { MessagesClient } from "@pablotech/akesi/model-client";
 import type { Client, PersonalizedRange } from "./types";
 import {
   systemPromptFor,
@@ -44,7 +45,7 @@ export class RangeValidationError extends Error {}
 export class NoMeasuredUnitError extends Error {}
 
 export interface RangeRequest {
-  anthropic: Anthropic;
+  anthropic: MessagesClient;
   marker: string;
   client: Client;
   model: string;

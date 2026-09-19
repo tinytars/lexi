@@ -37,6 +37,11 @@ The same host as an image, data on a volume — usage at the top of [`Dockerfile
 OAuth — and why each is issued as a *distinct* value rather than shared across routes. Most local
 UI work needs none of them.
 
+Which model each AI feature uses, and which provider, is set in
+[`inference.config.json`](inference.config.json). It can point at Anthropic, OpenAI, or a local open
+model through Ollama; [`INFERENCE.md`](INFERENCE.md) shows how. The file names env vars, never
+keys.
+
 ## Ingest CLI
 
 `scripts/ingest.ts` turns a lab file into vault content — full pipeline in [`INGEST.md`](INGEST.md),
@@ -78,7 +83,7 @@ needs a real credential, so the same suite runs unmodified in CI (`.github/workf
 
 The deployed app is two Cloudflare Pages projects (dev and prod), each built with `npm run build`
 from this directory. `wrangler.jsonc` binds the R2 bucket and the two D1 databases
-(`health-vault`, `health-identity-{dev,prod}`); Pages secrets (`ANTHROPIC_API_KEY`,
+(`health-vault`, `health-identity-{dev,prod}`); Pages secrets (the model keys `inference.config.json` names,
 `SESSION_SECRET`, `VAULT_TOKEN`, the provider tokens — full list in `.dev.vars.example`) are set
 via `wrangler pages secret put`, never committed.
 
@@ -87,6 +92,7 @@ via `wrangler pages secret put`, never committed.
 - [`VAULT.md`](VAULT.md) — the storage/encryption model in full detail.
 - [`AUTH.md`](AUTH.md) — accounts, credentials, and the audit trail.
 - [`API.md`](API.md) — the HTTP contract for `functions/`.
+- [`INFERENCE.md`](INFERENCE.md) — which model runs each AI feature, and how to switch providers.
 - [`INGEST.md`](INGEST.md), [`BLOOD.md`](BLOOD.md), [`DEXA.md`](DEXA.md), [`NARRATIVE.md`](NARRATIVE.md) —
   per-source ingest detail.
 - [`BACKUP.md`](BACKUP.md) — snapshot/restore.

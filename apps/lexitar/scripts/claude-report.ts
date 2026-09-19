@@ -1,10 +1,10 @@
 // W15/0b — the Node/CLI edge of report extraction. The schema, prompt, PDF/text
 // call, and validation now live in src/lib/report-extract.ts (pure, injected
-// client) so the Pages Function reuses them; this file keeps the env-keyed
-// Anthropic singleton and the CLI call signature unchanged.
-import Anthropic from "@anthropic-ai/sdk";
+// client) so the Pages Function reuses them; this file keeps the
+// model client from the inference config and the CLI call signature unchanged.
 import type { Client, InferenceMode } from "../src/lib/types";
-import { MODELS } from "./inference-config";
+import { modelId } from "../src/lib/model-config";
+import { modelFor } from "../functions/_lib/inference/resolve";
 import type { UsageAccumulator } from "./inference-cost";
 import { proposeFromReport as proposeFromReportCore } from "@pablotech/akesi/report-extract";
 
@@ -21,24 +21,16 @@ export {
 
 import type { ProposedReport } from "@pablotech/akesi/report-extract";
 
-let cachedClient: Anthropic | null = null;
-function anthropic(): Anthropic {
-  if (cachedClient) return cachedClient;
-  if (!process.env.ANTHROPIC_API_KEY) {
-    throw new Error("ANTHROPIC_API_KEY is not set. Required to import medical reports.");
-  }
-  cachedClient = new Anthropic();
-  return cachedClient;
-}
+const anthropic = () => modelFor(process.env, "extract").client;
 
 // `mode` is retained for call-site compatibility (it never affected extraction —
-// the model id is the only lever); the CLI passes MODELS[mode].report as `model`.
+// the model id is the only lever); the CLI passes modelId("extract", mode) as `model`.
 export async function proposeFromReport(
   reportText: string,
   sourceFile: string,
   client: Client,
   today: string,
-  model: string = MODELS.prod.report,
+  model: string = modelId("extract"),
   mode: InferenceMode = "prod",
   usage?: UsageAccumulator,
 ): Promise<ProposedReport> {

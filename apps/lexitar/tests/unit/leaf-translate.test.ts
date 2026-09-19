@@ -95,7 +95,7 @@ describe("createLeafTranslate", () => {
 
   it("never shows a patient a leaked JSON body", async () => {
     const { t } = harness(async () => {
-      throw new Error('{"error":"upstream exploded","errorCode":"anthropic_error"}');
+      throw new Error('{"error":"upstream exploded","errorCode":"model_error"}');
     });
     await t.run("note-3", "notes", []);
     expect(t.translateError).toBe("Couldn't translate — try again in a moment.");

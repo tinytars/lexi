@@ -172,8 +172,7 @@ finding + ranges + latest readings into the on-screen tables and the PDF;
 
 ## Models, modes, cost
 
-`scripts/inference-config.ts` is the single source of truth (shared by ranges and
-finding):
+`inference.config.json` is the single source of truth (see `INFERENCE.md`). Today:
 
 | Mode | Finding | Ranges |
 |------|---------|--------|

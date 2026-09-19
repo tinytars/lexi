@@ -5,7 +5,8 @@
 // three one-time migrations.
 
 import type { Client, InferenceMode } from "../../src/lib/types";
-import { MODELS } from "../inference-config";
+import { modelId } from "../../src/lib/model-config";
+import { modelFor } from "../../functions/_lib/inference/resolve";
 import type { UsageAccumulator } from "../inference-cost";
 import { generateFinding } from "../claude-finding";
 import { generateRange } from "../claude-ranges";
@@ -14,7 +15,6 @@ import { orchestrateRefresh, leafRegenOrder } from "../../src/lib/finding-refres
 import { dagNode } from "../../src/lib/finding-dag";
 import { leafContextFor, mergeLeafResult } from "../../src/lib/leaf-regen-registry";
 import { runLeafRegen } from "../../src/lib/leaf-regen-anthropic";
-import { REGROUP_MODEL } from "../../src/lib/regroup-config";
 import { nodeHashesOf, planFindingRefresh } from "../factors";
 import { mergeCriticalRatios } from "../../src/lib/marker-ratios";
 import { recommendedNamesFromFinding } from "../../src/lib/finding-render";
@@ -22,17 +22,16 @@ import { markerGroupsHashOf, distinctMarkerNames } from "@pablotech/akesi/marker
 import { systemAnalysisEstablished, systemOrder } from "@pablotech/akesi/system-groups";
 
 // The ONE way the CLI regenerates a leaf, used by both the selective path and the full refresh's
-// orchestrator. Runs on REGROUP_MODEL (the leaf tier) — the same model, prompt, tool schema and
+// orchestrator. Runs on the "leafRegen" feature (the leaf tier) — the same model, prompt, tool schema and
 // validation the browser's Translate button and /api/leaf-regen use, so a section cannot come back
 // two different ways depending on which entry point asked for it.
 export async function runLeaf(c: Client, node: string, usage: UsageAccumulator): Promise<Client> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set. Required to regenerate the Finding.");
-  const result = await runLeafRegen({ apiKey, node, inputs: leafContextFor(node, c) });
+  const llm = modelFor(process.env, "leafRegen");
+  const result = await runLeafRegen({ ...llm, node, inputs: leafContextFor(node, c) });
   if (result.kind === "empty") return c;
-  // Billed at the leaf tier, not the core's — attributing these to MODELS[mode].finding overstated
+  // Billed at the leaf tier, not the core's — attributing these to the core's model overstated
   // a refresh's cost fivefold, since Opus output is $75/M against Sonnet's $15/M.
-  usage.record(REGROUP_MODEL, { input_tokens: result.usage.input, output_tokens: result.usage.output });
+  usage.record(llm.model, { input_tokens: result.usage.input, output_tokens: result.usage.output });
   if (result.kind !== "ok") throw new Error(`${node}: ${result.kind}`);
   return mergeLeafResult(c, node, result.result);
 }
@@ -60,13 +59,13 @@ export async function refreshFindingFor(client: Client, force: boolean, mode: In
   }
   if (plan.kind === "leaf-only" && client.finding) {
     process.stdout.write(
-      `Selective refresh — only leaves are stale (${plan.leaves.join(", ")}); skipping the full ${MODELS[mode].finding} core regen.\n`,
+      `Selective refresh — only leaves are stale (${plan.leaves.join(", ")}); skipping the full ${modelId("finding", mode)} core regen.\n`,
     );
     // Dependency order, not the order staleness happened to report them in: a stale pair like
     // diseaseResults + treatmentAssessment must regenerate disease first, or the second reads the
     // previous run's group names. Same ordering the full refresh uses.
     for (const leaf of leafRegenOrder().filter((n) => plan.leaves.includes(n))) {
-      process.stdout.write(`  ${dagNode(leaf)?.label ?? leaf} (${REGROUP_MODEL})… `);
+      process.stdout.write(`  ${dagNode(leaf)?.label ?? leaf} (${modelId("leafRegen")})… `);
       try {
         const next = await runLeaf(client, leaf, usage);
         Object.assign(client, next);
@@ -89,7 +88,7 @@ export async function refreshFindingFor(client: Client, force: boolean, mode: In
   // re-run can add new ratios but never silently drop existing ones (removal is the
   // explicit --remove-ratio path).
   const priorRatios = client.finding?.criticalRatios ?? [];
-  process.stdout.write(`Generating Finding via Claude (${mode}/${MODELS[mode].finding})… `);
+  process.stdout.write(`Generating Finding via Claude (${mode}/${modelId("finding", mode)})… `);
   // W65 — core, then every leaf, through the SAME orchestrator the browser button uses. Before this
   // the CLI stopped at the core, so a `--refresh-finding` and a provider's refresh produced
   // different Findings from the same inputs — the exact divergence finding-refresh.ts exists to
@@ -99,7 +98,7 @@ export async function refreshFindingFor(client: Client, force: boolean, mode: In
   try {
     const outcome = await orchestrateRefresh(client, {
       generateCore: async () => {
-        const finding = await generateFinding(client, MODELS[mode].finding, mode, usage);
+        const finding = await generateFinding(client, modelId("finding", mode), mode, usage);
         process.stdout.write("done.\n");
         return finding;
       },
@@ -190,7 +189,7 @@ export async function refreshRangesFor(client: Client, args: RefreshRangesOption
     // Reported AFTER the skip/force filter, so this is the set that would actually be billed —
     // not the set that was asked for.
     process.stdout.write(
-      `DRY-RUN refresh-ranges: would generate ${work.length} range(s) on ${MODELS[mode].ranges}` +
+      `DRY-RUN refresh-ranges: would generate ${work.length} range(s) on ${modelId("ranges", mode)}` +
         `${work.length ? `: ${work.map((w) => w.marker).join(", ")}` : ""}` +
         ` (${skipped} up-to-date, ${failed} without data).\n`,
     );
@@ -199,7 +198,7 @@ export async function refreshRangesFor(client: Client, args: RefreshRangesOption
 
   async function runOne({ marker }: { marker: string }): Promise<void> {
     try {
-      const range = await generateRange(marker, "", client, MODELS[mode].ranges, mode, usage);
+      const range = await generateRange(marker, "", client, modelId("ranges", mode), mode, usage);
       client.personalizedRanges![marker] = range;
       const lo = range.low ?? "—";
       const hi = range.high ?? "—";
@@ -244,7 +243,7 @@ export async function autoGenerateRangesForNewMarkers(client: Client, newMarkers
 
   async function runOne({ marker }: { marker: string }): Promise<void> {
     try {
-      const range = await generateRange(marker, "", client, MODELS[mode].ranges, mode, usage);
+      const range = await generateRange(marker, "", client, modelId("ranges", mode), mode, usage);
       client.personalizedRanges![marker] = range;
       const lo = range.low ?? "—";
       const hi = range.high ?? "—";
@@ -279,13 +278,13 @@ export async function refreshMarkerGroupsFor(client: Client, force: boolean, mod
   }
   if (dryRun) {
     process.stdout.write(
-      `DRY-RUN refresh-marker-groups: would group ${markerNames.length} marker(s) on ${MODELS[mode].ranges}.\n`,
+      `DRY-RUN refresh-marker-groups: would group ${markerNames.length} marker(s) on ${modelId("markerGroups", mode)}.\n`,
     );
     return;
   }
-  process.stdout.write(`Grouping ${markerNames.length} markers by body system via Claude (${mode}/${MODELS[mode].ranges})… `);
+  process.stdout.write(`Grouping ${markerNames.length} markers by body system via Claude (${mode}/${modelId("markerGroups", mode)})… `);
   try {
-    client.markerGroups = await generateMarkerGroups(client, MODELS[mode].ranges, mode, usage);
+    client.markerGroups = await generateMarkerGroups(client, modelId("markerGroups", mode), mode, usage);
     process.stdout.write("done.\n");
     for (const g of client.markerGroups.groups) {
       process.stdout.write(`  · ${g.group}: ${g.markers.join(", ")}\n`);

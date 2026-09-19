@@ -1,8 +1,11 @@
 # Local secrets for `wrangler pages dev` (copy to .dev.vars, which is gitignored).
 # These mirror the Pages secrets set in production via `wrangler pages secret put`.
 
-# /api/chat (W4): the distinct Anthropic key. The route itself is session-gated (hd_session);
-# its CHAT_TOKEN bearer allowlist was deleted from both Pages projects 2026-08-26.
+# Model keys. inference.config.json names which env var each feature's provider reads; the three
+# below are the defaults. Add e.g. OPENAI_API_KEY here if you point a feature at OpenAI. See
+# INFERENCE.md. Keys go here or in Pages secrets, never in inference.config.json.
+#
+# The chat/persona/extract/treatment pool. The route itself is session-gated (hd_session).
 ANTHROPIC_API_KEY=sk-ant-...
 
 # /api/vault (W6): the vault-write bearer allowlist (`npm run allowlist` output). This is the
@@ -23,8 +26,8 @@ WEBAUTHN_RP_ID=localhost
 WEBAUTHN_RP_NAME=LexiTar
 WEBAUTHN_ORIGIN=http://localhost:8788
 
-# Provider Finding refresh (W15/3b): a DISTINCT Anthropic key so the money-spending Finding
-# regeneration can't exhaust the chat key's budget (functions/api/refresh-finding.ts).
+# Provider Finding refresh (W15/3b): a DISTINCT key so the money-spending Finding regeneration
+# can't exhaust the chat key's budget. Unset, it falls back to ANTHROPIC_API_KEY.
 FINDING_ANTHROPIC_API_KEY=sk-ant-...
 
 # Provider authorization token (W15/3b): the distinct secret handed to a proven clinician that
@@ -32,9 +35,8 @@ FINDING_ANTHROPIC_API_KEY=sk-ant-...
 # independently of the vault/chat tokens. Also gates /api/refresh-range (M59).
 PROVIDER_TOKEN=<random-string>
 
-# Provider Ranges refresh (M59/Phase 2): a DISTINCT Anthropic key so the money-spending
-# single-marker Ranges regeneration can't exhaust the Finding/chat keys' budget
-# (functions/api/refresh-range.ts).
+# Ranges, document-extract and leaf-regen (M59/Phase 2): a DISTINCT key so they can't exhaust the
+# Finding/chat keys' budget. Unset, it falls back to ANTHROPIC_API_KEY.
 RANGES_ANTHROPIC_API_KEY=sk-ant-...
 
 # Google OAuth (W45 §J). Provision a Web OAuth client in Google Cloud console; authorized redirect

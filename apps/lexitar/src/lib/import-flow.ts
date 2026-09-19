@@ -15,7 +15,7 @@ import {
   findSourceBySha,
 } from "@pablotech/akesi/ingest-core";
 import { applySourceReadings, type ApplyResult } from "@pablotech/akesi/report-merge";
-import { EXTRACT_MODEL } from "./extract-config";
+import { modelId } from "./model-config";
 import { parseRawFile } from "./parse-raw";
 import { normalizeClientId } from "./client-id";
 
@@ -74,7 +74,7 @@ export function foldReport(
     studyType: r.studyType,
     studyDate: r.diseases[0]?.date ?? r.markers[0]?.date,
     importedAt,
-    model: EXTRACT_MODEL,
+    model: modelId("extract"),
     extraction: r,
     diseaseCount: r.diseases.length,
     markerCount: r.markers.length,

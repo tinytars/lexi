@@ -7,7 +7,8 @@ vi.mock("@anthropic-ai/sdk", () => ({ default: class { messages = { create: crea
 
 import { onRequestPost } from "../../functions/api/treatment-infer";
 import { signSession } from "../../functions/_lib/session";
-import { MAX_TREATMENT_TEXT_CHARS, TREATMENT_IMAGE_MODEL, TREATMENT_TEXT_MODEL } from "../../src/lib/treatment-infer-config";
+import { MAX_TREATMENT_TEXT_CHARS } from "../../src/lib/treatment-infer-config";
+import { modelId } from "../../src/lib/model-config";
 
 const ENV = { ANTHROPIC_API_KEY: "k", SESSION_SECRET: "test-secret", DB: fakeSessionDb() };
 
@@ -61,9 +62,9 @@ describe("/api/treatment-infer model routing", () => {
   it("uses the vision model for photos and the cheaper one for text", async () => {
     createMock.mockResolvedValue(ok({ name: "A", kind: "drug" }));
     await post({ images: [IMG] });
-    expect(createMock.mock.calls.at(-1)![0].model).toBe(TREATMENT_IMAGE_MODEL);
+    expect(createMock.mock.calls.at(-1)![0].model).toBe(modelId("treatmentImage"));
     await post({ text: "Thyroid Support" });
-    expect(createMock.mock.calls.at(-1)![0].model).toBe(TREATMENT_TEXT_MODEL);
+    expect(createMock.mock.calls.at(-1)![0].model).toBe(modelId("treatmentText"));
   });
 
   it("returns the normalized record, unsafe links already stripped", async () => {
