@@ -6,6 +6,7 @@
 import type { MarkerResult, SourceRecord } from "./types";
 import { parseHealthmatters, isHealthmatters } from "./parsers/healthmatters";
 import { parseWeightApp, isWeightAppSheet } from "./parsers/weightapp";
+import { lazyImport } from "./lazy-import";
 
 // Pure — the parsers read the passed bytes, never disk.
 export async function parseRawFile(
@@ -20,7 +21,7 @@ export async function parseRawFile(
     throw new Error("unrecognized spreadsheet format");
   }
   if (ext === "pdf") {
-    const { parseDexa } = await import("./parsers/dexa");
+    const { parseDexa } = await lazyImport(() => import("./parsers/dexa"));
     return { kind: "dexa", rows: await parseDexa(bytes) };
   }
   throw new Error(`unsupported file extension: ${ext}`);

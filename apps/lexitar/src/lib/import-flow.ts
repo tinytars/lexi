@@ -18,6 +18,7 @@ import { applySourceReadings, type ApplyResult } from "@pablotech/akesi/report-m
 import { modelId } from "./model-config";
 import { parseRawFile } from "./parse-raw";
 import { normalizeClientId } from "./client-id";
+import { lazyImport } from "./lazy-import";
 
 // The minimized patient the report prompt needs — dob/gender + existing diagnosis
 // names for naming consistency. NOT the whole vault (the server only ever sees this).
@@ -179,7 +180,7 @@ export async function classifyUpload(client: Client, clientId: string, file: Fil
       return { status: "duplicate", existingId: (dupSrc ?? dupPend)!.id, kind: dupKind };
     }
     if (/\.pdf$/i.test(file.name)) {
-      const { extractReport } = await import("./extract-client");
+      const { extractReport } = await lazyImport(() => import("./extract-client"));
       const report = await extractReport(bytes, file.name, buildReportPatient(client));
       const fold = foldReport(client, clientId, sha256, id, report, file.name, new Date().toISOString());
       return { status: "report", id, fold, storedFile: fold.storedFile };

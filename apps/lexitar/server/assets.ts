@@ -1,9 +1,10 @@
 import { readFileSync, statSync } from "node:fs";
-import { extname, join, resolve, sep } from "node:path";
+import { dirname, extname, join, resolve, sep } from "node:path";
 
 // Static serving with Pages' semantics for the parts this app relies on: `_headers` rules applied to
-// asset responses, `dir/` → `dir/index.html`, and — there is no 404.html — every unknown path
-// answered with the SPA's index.html, the way Pages' single-page-app mode does.
+// asset responses, `dir/` → `dir/index.html`, a missing path answered 404 by the nearest ancestor
+// directory's 404.html, and every other unknown path answered with the SPA's index.html, the way
+// Pages' single-page-app mode does.
 
 const TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -53,7 +54,7 @@ export function assetServer(distDir: string): (request: Request) => Promise<Resp
   const headersFile = join(root, "_headers");
   const rules = isFile(headersFile) ? parseHeaders(readFileSync(headersFile, "utf8")) : [];
 
-  const locate = (pathname: string): string => {
+  const locate = (pathname: string): { file: string; status: number } => {
     let decoded: string;
     try {
       decoded = decodeURIComponent(pathname);
@@ -62,17 +63,20 @@ export function assetServer(distDir: string): (request: Request) => Promise<Resp
     }
     const target = resolve(root, "." + decoded);
     if (target === root || target.startsWith(root + sep)) {
-      for (const candidate of [target, join(target, "index.html"), target + ".html"]) if (isFile(candidate)) return candidate;
+      for (const candidate of [target, join(target, "index.html"), target + ".html"]) if (isFile(candidate)) return { file: candidate, status: 200 };
+      for (let dir = dirname(target); dir.startsWith(root + sep); dir = dirname(dir)) {
+        if (isFile(join(dir, "404.html"))) return { file: join(dir, "404.html"), status: 404 };
+      }
     }
-    return join(root, "index.html");
+    return { file: join(root, "index.html"), status: 200 };
   };
 
   return async (request) => {
     if (request.method !== "GET" && request.method !== "HEAD") return new Response(null, { status: 405, headers: { Allow: "GET, HEAD" } });
     const { pathname } = new URL(request.url);
-    const file = locate(pathname);
+    const { file, status } = locate(pathname);
     const headers = new Headers({ "Content-Type": TYPES[extname(file)] ?? "application/octet-stream" });
     for (const rule of rules) if (rule.pattern.test(pathname)) for (const [k, v] of rule.headers) headers.set(k, v);
-    return new Response(request.method === "HEAD" ? null : readFileSync(file), { headers });
+    return new Response(request.method === "HEAD" ? null : readFileSync(file), { status, headers });
   };
 }
