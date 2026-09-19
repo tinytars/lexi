@@ -2,6 +2,7 @@ import { requireSession } from "../../../_lib/session";
 import { logRequest } from "../../../_lib/log";
 import { loadGoogleKeyMaterial } from "../../../_lib/google";
 import type { D1Database } from "../../../_lib/identity-types";
+import { json } from "../../../_lib/http";
 
 // W45 §J — bootstrap the client after a Google login redirect (/?google=1). The session cookie is
 // already set; this returns the (server-unwrapped) PLAINTEXT private key + owner envelope so the
@@ -18,8 +19,6 @@ interface Ctx {
 }
 
 const ROUTE = "/api/auth/google/session";
-const json = (status: number, body: unknown): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 export async function onRequestGet(context: Ctx): Promise<Response> {
   const { request, env } = context;

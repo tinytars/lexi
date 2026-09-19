@@ -16,6 +16,20 @@ import { listMyProviders, lookupProvider, grantProvider, revokeProvider, type Pr
 import { approveSupport, approveSupportAsProvider } from "@tinytars/vault/auth-support";
 import { getVaultPrincipals, stageVaultRotation, rotateVault } from "@tinytars/vault/auth-recovery";
 
+const defaultApi = {
+  listMyProviders,
+  lookupProvider,
+  grantProvider,
+  revokeProvider,
+  approveSupport,
+  approveSupportAsProvider,
+  getVaultPrincipals,
+  stageVaultRotation,
+  rotateVault,
+};
+
+export type VaultPrincipalsApi = typeof defaultApi;
+
 export interface VaultPrincipalsDeps<V> {
   /** The decrypted record, read fresh — never captured. Still App's, along with the sink below. */
   getVault: () => V | null;
@@ -29,6 +43,8 @@ export interface VaultPrincipalsDeps<V> {
    * the Access modal is not mounted. Behaviour preserved from the extraction, not a new idea.
    */
   reportError: (message: string | null) => void;
+  /** The server calls, overridable so a test can pass fakes. Defaults to `@tinytars/vault`. */
+  api?: Partial<VaultPrincipalsApi>;
 }
 
 export interface VaultPrincipals {
@@ -67,6 +83,7 @@ export interface VaultPrincipals {
 }
 
 export function createVaultPrincipals<V>(deps: VaultPrincipalsDeps<V>): VaultPrincipals {
+  const api = { ...defaultApi, ...deps.api };
   let open = $state(false);
   let providers = $state<ProviderLinkView[]>([]);
   let newProviderEmail = $state("");
@@ -84,7 +101,7 @@ export function createVaultPrincipals<V>(deps: VaultPrincipalsDeps<V>): VaultPri
     report(null);
     try {
       await body();
-      providers = await listMyProviders();
+      providers = await api.listMyProviders();
     } catch (e) {
       report((e as Error).message);
     } finally {
@@ -98,7 +115,7 @@ export function createVaultPrincipals<V>(deps: VaultPrincipalsDeps<V>): VaultPri
     const vault = deps.getVault();
     const { session } = deps;
     if (!vault || !session.dek || !session.r2Id) return;
-    const principals = await getVaultPrincipals();
+    const principals = await api.getVaultPrincipals();
     const newDek = await generateDEK();
     // The blob goes to a NEW object, reserved here, and the envelope commit below doubles as the
     // pointer swap. This used to re-encrypt in place and commit the matching envelopes four round
@@ -106,7 +123,7 @@ export function createVaultPrincipals<V>(deps: VaultPrincipalsDeps<V>): VaultPri
     // mid-revoke — left every principal holding an envelope for a key the ciphertext no longer used.
     // An interruption before the commit now leaves the old blob and the old envelopes still agreeing,
     // and the abandoned object is ciphertext under a key nobody kept.
-    const newVaultId = await stageVaultRotation(principals.vaultId);
+    const newVaultId = await api.stageVaultRotation(principals.vaultId);
     await deps.saveVault(vault, newVaultId, newDek);
     const targets = [
       { accountId: principals.selfAccountId, publicKeyJwk: principals.selfPublicKeyJwk },
@@ -120,7 +137,7 @@ export function createVaultPrincipals<V>(deps: VaultPrincipalsDeps<V>): VaultPri
         return { principalAccountId: t.accountId, wrappedDEK: bytesToB64(e.wrappedDEK), ephemeralPublicKeyJwk: e.ephemeralPublicKeyJwk };
       }),
     );
-    await rotateVault({ vaultId: principals.vaultId, newVaultId, envelopes });
+    await api.rotateVault({ vaultId: principals.vaultId, newVaultId, envelopes });
     session.open(newVaultId, newDek);
   }
 
@@ -163,7 +180,7 @@ export function createVaultPrincipals<V>(deps: VaultPrincipalsDeps<V>): VaultPri
       open = true;
       error = null;
       try {
-        providers = await listMyProviders();
+        providers = await api.listMyProviders();
       } catch (e) {
         error = (e as Error).message;
       }
@@ -175,7 +192,7 @@ export function createVaultPrincipals<V>(deps: VaultPrincipalsDeps<V>): VaultPri
 
     async refreshQuietly() {
       try {
-        providers = await listMyProviders();
+        providers = await api.listMyProviders();
       } catch {
         /* non-fatal; the section just stays empty */
       }
@@ -188,16 +205,16 @@ export function createVaultPrincipals<V>(deps: VaultPrincipalsDeps<V>): VaultPri
       busy = true;
       error = null;
       try {
-        const provider = await lookupProvider(emailInput);
+        const provider = await api.lookupProvider(emailInput);
         // Not an exception, and deliberately not a reload either: a typo is an ordinary outcome, and
         // re-listing for it would be a round trip that changes nothing.
         if (!provider) {
           error = "No provider found with that email.";
           return;
         }
-        await grantProvider(dek, provider);
+        await api.grantProvider(dek, provider);
         newProviderEmail = "";
-        providers = await listMyProviders();
+        providers = await api.listMyProviders();
       } catch (e) {
         error = (e as Error).message;
       } finally {
@@ -207,7 +224,7 @@ export function createVaultPrincipals<V>(deps: VaultPrincipalsDeps<V>): VaultPri
 
     async revoke(p: ProviderLinkView) {
       await run(async () => {
-        await revokeProvider(p.linkId);
+        await api.revokeProvider(p.linkId);
         // True forward-secret revocation for SUPPORT: re-key the vault so a support agent
         // who cached the DEK can no longer decrypt it. Clinician revoke stays delete-only. Denying a
         // pending (never-active) support request needs no rotation — support never held the DEK.
@@ -219,18 +236,18 @@ export function createVaultPrincipals<V>(deps: VaultPrincipalsDeps<V>): VaultPri
       if (!deps.session.dek || !p.publicKeyJwk) return;
       const dek = deps.session.dek;
       const jwk = p.publicKeyJwk;
-      await run(() => approveSupport(p.linkId, dek, jwk, ttlHours).then(() => undefined), toPanel);
+      await run(() => api.approveSupport(p.linkId, dek, jwk, ttlHours).then(() => undefined), toPanel);
     },
 
     async approveAsProvider(p: ProviderLinkView) {
-      await run(() => approveSupportAsProvider(p.linkId, ttlHours).then(() => undefined), deps.reportError);
+      await run(() => api.approveSupportAsProvider(p.linkId, ttlHours).then(() => undefined), deps.reportError);
     },
 
     async revokeAsProvider(p: ProviderLinkView) {
       // No vault rotation, unlike the patient-side revoke: a provider owns nothing encrypted, and
       // support only ever held per-patient DEKs via separate patient grants, which are the patients'
       // to rotate.
-      await run(() => revokeProvider(p.linkId).then(() => undefined), deps.reportError);
+      await run(() => api.revokeProvider(p.linkId).then(() => undefined), deps.reportError);
     },
 
     rotateVaultKey,

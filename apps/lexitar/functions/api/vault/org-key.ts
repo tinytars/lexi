@@ -2,6 +2,7 @@ import type { D1Database } from "../../_lib/identity-types";
 import { getPublicKey } from "../../_lib/identity-credentials";
 import { logRequest } from "../../_lib/log";
 import { ORG_ACCOUNT_ID } from "../../_lib/org";
+import { json } from "../../_lib/http";
 
 // W55 P4 — unauthenticated by design: signup has no session yet to wrap the org-recovery envelope
 // against, and a public key is public regardless of who asks for it.
@@ -14,9 +15,6 @@ interface Ctx {
 }
 
 const ROUTE = "/api/vault/org-key";
-
-const json = (status: number, body: unknown): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 export async function onRequestGet(context: Ctx): Promise<Response> {
   const { env } = context;

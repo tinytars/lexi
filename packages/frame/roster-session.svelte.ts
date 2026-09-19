@@ -36,6 +36,20 @@ export interface EnteredAccount {
   rotationPending?: boolean;
 }
 
+const defaultApi = {
+  getAccountKey,
+  putAccountKey,
+  clearAccountKey,
+  resumeSession,
+  bootstrapGoogleSession,
+  getMyAccount,
+  revokeProvider,
+  // Wrapped, because a bare `fetch` invoked as `api.fetch` throws "Illegal invocation" in browsers.
+  fetch: (input: RequestInfo | URL, init?: RequestInit) => fetch(input, init),
+};
+
+export type RosterSessionApi = typeof defaultApi;
+
 export interface RosterSessionDeps {
   session: VaultSession;
   reportError: (message: string | null) => void;
@@ -54,6 +68,8 @@ export interface RosterSessionDeps {
   closeVault: () => void;
   /** The roster-removal confirmation. Injected so the dialog stays the host's. */
   confirmRemoval: (label: string) => boolean;
+  /** The server and key-store calls, overridable so a test can pass fakes. Defaults to `@tinytars/vault`. */
+  api?: Partial<RosterSessionApi>;
 }
 
 export interface RosterSession {
@@ -90,13 +106,14 @@ export interface RosterSession {
 }
 
 export function createRosterSession(deps: RosterSessionDeps): RosterSession {
+  const api = { ...defaultApi, ...deps.api };
   let isProvider = $state(false);
   let patients = $state<RosterPatient[]>([]);
   let enteredPatient = $state<{ email: string | null; displayName: string } | null>(null);
   let resuming = $state(false);
 
   async function loadPatients(): Promise<void> {
-    const res = await fetch("/api/providers/patients", { cache: "no-store" });
+    const res = await api.fetch("/api/providers/patients", { cache: "no-store" });
     // A failed fetch leaves the previous roster standing rather than blanking it. A provider whose
     // network blipped keeps the list they were working from; an empty roster would read as "you have
     // no patients", which is a different and wrong statement.
@@ -114,7 +131,7 @@ export function createRosterSession(deps: RosterSessionDeps): RosterSession {
     }
     deps.session.setProviderKey(r.privateKey);
     isProvider = true;
-    const acct = await getMyAccount();
+    const acct = await api.getMyAccount();
     if (acct.providerKind === "support") await deps.beginSupportSession();
     else {
       await loadPatients();
@@ -131,15 +148,15 @@ export function createRosterSession(deps: RosterSessionDeps): RosterSession {
   async function resumeFromStoredKey(): Promise<boolean> {
     let storedKey: CryptoKey | null = null;
     try {
-      storedKey = await getAccountKey();
+      storedKey = await api.getAccountKey();
     } catch {
       return false;
     }
     if (!storedKey) return false;
-    const r = await resumeSession();
+    const r = await api.resumeSession();
     if (!r) {
       try {
-        await clearAccountKey();
+        await api.clearAccountKey();
       } catch {
         /* best-effort */
       }
@@ -155,7 +172,7 @@ export function createRosterSession(deps: RosterSessionDeps): RosterSession {
   /** Google: no client-held key (server custody). A non-Google session 401s and stays locked. */
   async function resumeGoogle(): Promise<boolean> {
     try {
-      await enterAccount(await bootstrapGoogleSession());
+      await enterAccount(await api.bootstrapGoogleSession());
       return true;
     } catch {
       return false;
@@ -197,7 +214,7 @@ export function createRosterSession(deps: RosterSessionDeps): RosterSession {
 
     async persistSessionKey(privateKey: CryptoKey) {
       try {
-        await putAccountKey(privateKey);
+        await api.putAccountKey(privateKey);
         // Only once the key is genuinely stored. Setting the marker first would promise a resume that
         // private browsing cannot deliver, and the next load would probe, fail, and clear it anyway.
         localStorage.setItem(RESUME_MARKER, "key");
@@ -212,7 +229,7 @@ export function createRosterSession(deps: RosterSessionDeps): RosterSession {
       if (!deps.confirmRemoval(p.displayName)) return;
       deps.reportError(null);
       try {
-        await revokeProvider(p.linkId);
+        await api.revokeProvider(p.linkId);
         await loadPatients();
       } catch (e) {
         deps.reportError((e as Error).message);

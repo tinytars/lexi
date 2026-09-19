@@ -3,6 +3,7 @@ import { requireSession } from "../../_lib/session";
 import { logRequest } from "../../_lib/log";
 import { emitLifecycleEvent } from "../../_lib/lifecycle";
 import { isBillingDrivenEvent } from "../../../src/lib/lifecycle";
+import { json } from "../../_lib/http";
 
 // W44 P5 — the CRM event seam's HTTP entry (STUB). Records a lifecycle event for the caller's own
 // account via emitLifecycleEvent; NO external calls fire. This is where the future Stripe-webhook /
@@ -18,9 +19,6 @@ interface Ctx {
 }
 
 const ROUTE = "/api/crm/event";
-
-const json = (status: number, body: unknown): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 export async function onRequestPost(context: Ctx): Promise<Response> {
   const { request, env } = context;

@@ -26,6 +26,7 @@ import { requireSession } from "../../_lib/session";
 import { can, roleOf } from "../../_lib/capabilities";
 import { eraseAccount, type R2Like } from "../../_lib/erasure";
 import { logRequest } from "../../_lib/log";
+import { json } from "../../_lib/http";
 
 interface Env {
   DB: D1Database;
@@ -39,9 +40,6 @@ interface Ctx {
 }
 
 const ROUTE = "/api/account/erase";
-
-const json = (status: number, body: unknown): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 export async function onRequestPost(context: Ctx): Promise<Response> {
   const { request, env } = context;

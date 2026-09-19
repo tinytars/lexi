@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, vi, afterEach } from "vitest";
+import { describe, it, expect, beforeAll, vi } from "vitest";
 import { onRequestGet as start } from "../../functions/api/auth/google/start";
 import { onRequestGet as callback } from "../../functions/api/auth/google/callback";
 import { createAccount } from "../../functions/_lib/identity-accounts";
@@ -19,7 +19,6 @@ beforeAll(async () => {
   await createAccount(w.db, { id: ORG_ACCOUNT_ID, displayName: "Org" });
   await putPublicKey(w.db, { accountId: ORG_ACCOUNT_ID, publicKeyJwk: (await generateAccountKeypair()).publicKeyJwk });
 });
-afterEach(() => vi.unstubAllGlobals());
 
 const env = () => ({
   DB: w.db,

@@ -5,6 +5,7 @@ import { listPatientsForProvider } from "../../_lib/identity-providers";
 import { can, roleOf } from "../../_lib/capabilities";
 import { requireSession } from "../../_lib/session";
 import { logRequest } from "../../_lib/log";
+import { json } from "../../_lib/http";
 
 // W44 P4b — the support console's patient list: active, unexpired support grants only. No envelope is
 // returned here (listing is not access) — entering a patient goes through the audited /api/support/access.
@@ -18,9 +19,6 @@ interface Ctx {
 }
 
 const ROUTE = "/api/support/owners";
-
-const json = (status: number, body: unknown): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 export async function onRequestGet(context: Ctx): Promise<Response> {
   const { request, env } = context;

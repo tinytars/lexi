@@ -2,6 +2,7 @@ import { grantBreakGlass, type BreakGlassPolicy } from "@tinytars/vault/break-gl
 import type { Account, AuditStore, ProviderLinkStore } from "@tinytars/vault/stores";
 import { can, roleOf } from "../capabilities";
 import { logRequest } from "../log";
+import { json } from "../http";
 
 // W50 — a provider (clinician) approves a support agent's pending ROSTER request. Unlike the patient
 // approval (support-approve.ts), there is no vault/envelope: a provider owns nothing encrypted, so the
@@ -20,9 +21,6 @@ export interface ProvidersApproveSupportDeps {
 
 const ROUTE = "/api/providers/approve-support";
 const POLICY: BreakGlassPolicy = { defaultTtlHours: 72, maxTtlHours: 720 }; // 30 days
-
-const json = (status: number, body: unknown): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 export async function providersApproveSupportHandler(request: Request, deps: ProvidersApproveSupportDeps): Promise<Response> {
   const start = Date.now();

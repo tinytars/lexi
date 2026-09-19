@@ -4,6 +4,7 @@ import { expectedPrincipalIds } from "../../_lib/vault-principals";
 import { requireSession } from "../../_lib/session";
 import { storeKey } from "../../_lib/store";
 import { logRequest } from "../../_lib/log";
+import { json } from "../../_lib/http";
 
 // W44 P4c / W75 — commit a DEK rotation. TWO PHASES, because one phase cannot be made safe.
 //
@@ -32,9 +33,6 @@ interface Ctx {
 }
 
 const ROUTE = "/api/vault/rotate";
-
-const json = (status: number, body: unknown): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 // Throws on anything atob rejects. W71 — that throw is the whole reason this is called BEFORE the
 // first write rather than inside the write loop, where it used to fire after every envelope had

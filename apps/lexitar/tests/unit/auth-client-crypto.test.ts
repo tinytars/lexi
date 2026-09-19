@@ -60,7 +60,6 @@ function server(over: Record<string, (body: never) => unknown> = {}) {
 const signupBody = () => captured.find((c) => c.url.includes("/signup"))!.body as SignupBody;
 
 beforeEach(async () => {
-  vi.unstubAllGlobals();
   orgKeypair = await generateAccountKeypair();
 });
 

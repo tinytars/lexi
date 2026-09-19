@@ -9,26 +9,12 @@
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
-const r2 = vi.hoisted(() => new Map<string, Uint8Array>());
+const store = await vi.hoisted(async () => (await import("../support/object-store")).memoryObjectStore());
+const r2 = store.objects;
 
 vi.mock("../../scripts/vault-sync", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../scripts/vault-sync")>();
-  return {
-    ...actual,
-    getObject: async (bucket: string, key: string) => r2.get(`${bucket}::${key}`) ?? null,
-    putObject: async (bucket: string, key: string, body: Uint8Array) => {
-      r2.set(`${bucket}::${key}`, body);
-    },
-    listObjects: async (bucket: string, prefix?: string) => {
-      const p = `${bucket}::${prefix ?? ""}`;
-      return [...r2.keys()]
-        .filter((k) => k.startsWith(p))
-        .map((k) => ({ key: k.slice(bucket.length + 2), size: r2.get(k)!.length, etag: "x" }));
-    },
-    deleteObject: async (bucket: string, key: string) => {
-      r2.delete(`${bucket}::${key}`);
-    },
-  };
+  const { getObject, putObject, listObjects, deleteObject } = store;
+  return { ...(await importOriginal<typeof import("../../scripts/vault-sync")>()), getObject, putObject, listObjects, deleteObject };
 });
 
 import { BACKUP_BUCKET } from "../../scripts/vault-sync";
