@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tick } from "svelte";
   import { describeAiError } from "./ai-error";
-  import { renameAssessmentItems, assessmentFor } from "@pablotech/akesi/treatment-bucket";
+  import { assessmentFor } from "@pablotech/akesi/treatment-bucket";
   import { partitionByBucket } from "./treatment-sidebar";
   import { formatIngredient, hasProductData } from "@pablotech/akesi/treatment-product";
   import { computeConclusion, isConclusion, conclusionMessage, formatIngredientTotal } from "./treatment-conclusion";
@@ -30,9 +30,8 @@
   import { wasSavedThisSession } from "./treatment-session-guard";
   import { duplicateTreatment, clearExtractedData, togglePin, removeTreatmentsById, mirrorAttachments, removeAttachment, deleteTreatmentPrompt, deleteMedicinePrompt } from "./treatment-mutations";
   import { hasAnyDose as hasAnyDoseInTreatments, editIndexOf as editIndexOfRow } from "./treatment-row-lookup";
-  import { uploadPendingImages } from "./treatment-attachment-upload";
-  import { planMedicineFanout, applyMedicineFanoutPatch } from "./treatment-medicine-fanout";
-  import { fanoutReason } from "./treatment-reason-fanout";
+  import { uploadPendingImages, mergeUploadedImages } from "./treatment-attachment-upload";
+  import { planTreatmentSave, applyTreatmentSave, type TreatmentFieldScope as FieldScope } from "./treatment-save";
   import { appendAttachments, buildAttachmentKey, uploadAttachment, attachmentUrl, attachmentsOf, groupAttachmentsOf, attachFiles, MAX_VISION_ATTACHMENTS } from "./attachment-store";
   import { openAttachPicker, DEFAULT_ATTACH_ACCEPT } from "@tinytars/frame/attach-controller";
   import AttachmentStrip from "@tinytars/frame/AttachmentStrip.svelte";
@@ -87,9 +86,6 @@
   }: Props = $props();
 
   const today = todayISODate();
-  // "medicine" = Name/Reason/Kind (true of the drug); "entry" = dates/dose/timing (true of one dose
-  // period); "all" = both, for Add and for the temporal tabs.
-  type FieldScope = "all" | "medicine" | "entry";
   // M51 — patient and provider share one editable view; edit availability is purely whether a save
   // sink is wired (it always is from the shell). The read-only branch survives only for a no-onSave host.
   const canEdit = $derived(!!onSave);
@@ -505,15 +501,11 @@
     if (pendingImages.length > 0 && clientId) {
       savingNew = true;
       try {
-        const { attachments, rawCaptureKeys } = await uploadPendingImages(clientId, pendingImages, {
+        mergeUploadedImages(newTreatment, await uploadPendingImages(clientId, pendingImages, {
           compressImage,
           buildAttachmentKey,
           uploadAttachment,
-        });
-        newTreatment.attachments = appendAttachments(newTreatment.attachments, attachments);
-        if (rawCaptureKeys.length) {
-          newTreatment.rawCaptureAttachmentKeys = [...(newTreatment.rawCaptureAttachmentKeys ?? []), ...rawCaptureKeys];
-        }
+        }));
       } catch (err) {
         saveImageError = err instanceof Error ? err.message : "Couldn't save photos — try again.";
         savingNew = false;
@@ -521,88 +513,19 @@
       }
       savingNew = false;
     }
-    // M-medicine-fields — a medicine-scope save fans Name/Reason/Kind out across every dose row of
-    // the drug instead of writing one index, then exits early: the dates/dose fields weren't shown,
-    // so there is nothing per-row to write.
-    if (editScope === "medicine") {
-      const { name, reason, kind, description, maker, ingredients, links, administration, extracted, rawCaptureAttachmentKeys, rawCaptureText } = newTreatment;
-      const prev = editGroupName!.trim().toLowerCase();
-      // M-doseunit-relabel — administration.unit is what computeConclusion locks every sibling
-      // row's doseUnit against; identifyFrom() only ever updates THIS draft's doseUnit, so without
-      // this every other existing dose row keeps its old free-text unit forever and the Daily-total
-      // bubble refuses via unit-mismatch even after a successful re-extraction. doseAmount is left
-      // untouched deliberately: its existing numeric value is taken as already being a count of the
-      // new unit, not converted.
-      const prevAdministration = (draft!.factors?.treatments ?? []).find(
-        (x) => x.name.trim().toLowerCase() === prev,
-      )?.administration;
-      const { patch, relabelUnit } = planMedicineFanout(
-        { name, reason, kind, description, maker, ingredients, links, administration, extracted, rawCaptureAttachmentKeys, rawCaptureText, attachments: attachmentsOf(newTreatment) },
-        prevAdministration,
-      );
-      const apply = (c: Client) => {
-        // Rename the stored assessment with it, so the LexiTar turn doesn't vanish the moment the
-        // name changes and stay gone if the regen below fails.
-        renameAssessmentItems(c.finding?.treatment ?? [], editGroupName!, name);
-        applyMedicineFanoutPatch(c.factors?.treatments, prev, patch);
-      };
-      apply(draft!);
-      keepGroupOnNextAnchor = true;
-      persistNow(apply, treatmentAnchor(name));
-      if (hasAnyDose(name)) reportIfRegenFailed(onTriggerRegen?.("treatmentAssessment", [name]), name);
-      // The relabel above changes every row's treatmentLabel() (name + dose, unit included), which
-      // stale-matches the finding.treatmentGroups[].patient[] ref resolvePatientRef persisted under
-      // the OLD label — only reachable for a currently-planned row, but there's no cheap way to know
-      // that here. treatmentGroups has no per-drug scoping, so a forced full regen is the only way
-      // to rewrite it; skip it entirely when nothing was relabeled.
-      if (relabelUnit != null) onTriggerRegen?.("treatmentGroups", undefined, true);
-      addOpen = false;
-      newTreatment = null;
-      editScope = "all";
-      editGroupName = null;
-      revokePendingImages();
-      return;
-    }
-    // M57 — persists immediately once any photo upload above has landed, mirroring Study/Hypothesis's
-    // modal-Add. draft gets the same push so the row shows up without waiting on the resync round trip
-    // (which skipNextResync deliberately skips, to avoid clobbering another row's in-progress edit).
-    // M66 — editing an existing item writes it back by index instead of pushing.
-    // M-reason-in-dose-editor — reason moved here from the medicine-scope form (above), but it's
-    // still a medicine-level fact by convention, so this branch fans it out to every sibling row of
-    // the drug the same way the medicine-scope branch fans Name/Kind/product fields — this is now the
-    // ONLY branch that can change reason, so without the fan-out a sibling row would silently keep
-    // the OLD reason forever.
-    const savedId = newTreatment.id;
-    const savedName = newTreatment.name.trim().toLowerCase();
-    const savedReason = newTreatment.reason;
-    if (editingIndex !== null) {
-      draft!.factors!.treatments![editingIndex] = newTreatment;
-    } else {
-      draft!.factors!.treatments!.push(newTreatment);
-    }
-    fanoutReason(draft!.factors?.treatments, savedId, savedName, savedReason);
+    const plan = planTreatmentSave({
+      item: newTreatment, scope: editScope, editingIndex, editGroupName, rows: draft!.factors?.treatments ?? [],
+    });
+    // M57 — persists immediately; draft gets the same write so the row shows without waiting on the
+    // resync round trip (which skipNextResync deliberately skips).
+    applyTreatmentSave(draft!, plan);
     keepGroupOnNextAnchor = true;
-    persistNow((payload) => {
-      if (editingIndex !== null) {
-        payload.factors!.treatments![editingIndex] = { ...newTreatment! };
-      } else {
-        payload.factors!.treatments!.push(newTreatment!);
-      }
-      fanoutReason(payload.factors?.treatments, savedId, savedName, savedReason);
-    }, treatmentAnchor(newTreatment.name));
-    // M68 P4 — aiOnPlan stays holistic/unscoped (deliberately no targetLabels); only the
-    // treatmentAssessment branch narrows to the row that changed, keyed by the raw treatment name
-    // (the SCOPE OVERRIDE clause in leaf-regen.ts matches this against the model's own dose-annotated label).
-    // One node for every bucket: treatmentAssessment now answers per (drug, phase), so there is no
-    // bucket branch left to get wrong — and a planned Translate is scoped to the drug instead of
-    // regenerating the whole plan section the way aiOnPlan had to.
-    if (hasAnyDose(newTreatment.name)) reportIfRegenFailed(onTriggerRegen?.("treatmentAssessment", [newTreatment.name]), newTreatment.name);
-    addOpen = false;
-    newTreatment = null;
-    editingIndex = null;
-    editScope = "all";
-    editGroupName = null;
-    revokePendingImages();
+    persistNow((payload) => applyTreatmentSave(payload, plan), treatmentAnchor(plan.name));
+    // treatmentAssessment is keyed by the raw treatment name (leaf-regen.ts's SCOPE OVERRIDE matches
+    // it against the model's dose-annotated label) and answers per (drug, phase), so no bucket branch.
+    if (hasAnyDose(plan.name)) reportIfRegenFailed(onTriggerRegen?.("treatmentAssessment", [plan.name]), plan.name);
+    if (plan.kind === "medicine" && plan.regenGroups) onTriggerRegen?.("treatmentGroups", undefined, true);
+    cancelAddTreatment();
   }
   function cancelAddTreatment() {
     addOpen = false;

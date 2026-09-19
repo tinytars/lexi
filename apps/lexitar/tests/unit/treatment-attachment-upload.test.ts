@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import { uploadPendingImages, type AttachmentUploadDeps, type PendingImage } from "../../src/lib/treatment-attachment-upload";
+import { uploadPendingImages, mergeUploadedImages, type AttachmentUploadDeps, type PendingImage } from "../../src/lib/treatment-attachment-upload";
+import type { Attachment, TreatmentItem } from "../../src/lib/types";
 
 function deps(overrides: Partial<AttachmentUploadDeps> = {}): AttachmentUploadDeps {
   return {
@@ -58,5 +59,23 @@ describe("uploadPendingImages", () => {
       }),
     });
     await expect(uploadPendingImages("client-1", [image("a.jpg")], d)).rejects.toThrow("network down");
+  });
+});
+
+describe("mergeUploadedImages", () => {
+  const att = (key: string): Attachment => ({ key, name: key, mediaType: "image/jpeg", bytes: 1, addedAt: "t" });
+  const item = (overrides: Partial<TreatmentItem> = {}): TreatmentItem => ({ id: "i", name: "D3", start: "", ...overrides });
+
+  it("appends uploads de-duplicated and extends the raw-capture keys", () => {
+    const t = item({ attachments: [att("x"), att("a")], rawCaptureAttachmentKeys: ["a"] });
+    mergeUploadedImages(t, { attachments: [att("a"), att("b")], rawCaptureKeys: ["b"] });
+    expect(t.attachments!.map((a) => a.key)).toEqual(["x", "a", "b"]);
+    expect(t.rawCaptureAttachmentKeys).toEqual(["a", "b"]);
+  });
+
+  it("leaves raw-capture keys absent when no upload was used for Identify", () => {
+    const t = item();
+    mergeUploadedImages(t, { attachments: [att("a")], rawCaptureKeys: [] });
+    expect(t.rawCaptureAttachmentKeys).toBeUndefined();
   });
 });
