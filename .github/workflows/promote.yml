@@ -1,0 +1,85 @@
+name: promote
+
+# Opens the dev -> main promotion PR once dev has soaked (apps/lexitar/scripts/promotion-gate.ts),
+# keeping main's prod wrangler.jsonc exactly as every hand promotion has. claude-review.yml then
+# reviews and merges it like any other PR. Veto: label the PR `hold`, or set AUTOPILOT_PROMOTE=off.
+# Scheduled runs fire only from main, so the schedule is live once this file is promoted.
+
+on:
+  schedule:
+    - cron: "0 9 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: promote
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    if: vars.AUTOPILOT != 'off' && vars.AUTOPILOT_PROMOTE != 'off' && vars.AUTOPILOT_APP_ID != ''
+    runs-on: ubuntu-latest
+    steps:
+      - id: lexi
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.AUTOPILOT_APP_ID }}
+          private-key: ${{ secrets.AUTOPILOT_APP_KEY }}
+      - id: factory
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.AUTOPILOT_APP_ID }}
+          private-key: ${{ secrets.AUTOPILOT_APP_KEY }}
+          owner: pablo-tech
+          repositories: plover-factory
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ steps.lexi.outputs.token }}
+      - name: One promotion at a time
+        id: open
+        env:
+          GH_TOKEN: ${{ steps.lexi.outputs.token }}
+        run: |
+          n=$(gh pr list --base main --state open --json headRefName -q '[.[] | select(.headRefName | startswith("promote/"))] | length')
+          echo "open=$n" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@v7
+        if: steps.open.outputs.open == '0'
+        with:
+          node-version: 22
+      - if: steps.open.outputs.open == '0'
+        run: npm ci
+      - name: Soak gate
+        id: gate
+        if: steps.open.outputs.open == '0'
+        env:
+          GH_TOKEN: ${{ steps.factory.outputs.token }}
+        run: |
+          if npx tsx apps/lexitar/scripts/promotion-gate.ts pablo-tech/plover-factory origin/main origin/dev; then
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Open promotion PR
+        if: steps.gate.outputs.go == 'true'
+        env:
+          GH_TOKEN: ${{ steps.lexi.outputs.token }}
+        run: |
+          branch="promote/auto-$(date -u +%F)"
+          git config user.name "plover-autopilot[bot]"
+          git config user.email "plover-autopilot[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          if ! git merge --no-ff --no-commit origin/dev; then
+            git merge --abort
+            echo "::error::dev does not merge cleanly into main; promote by hand"
+            exit 1
+          fi
+          git checkout origin/main -- apps/lexitar/wrangler.jsonc
+          git commit -m "Promote dev to main after a quiet soak, keeping main's prod wrangler bindings"
+          git push origin "$branch"
+          gh pr create --base main --head "$branch" \
+            --title "Promote dev to main ($(date -u +%F))" \
+            --body "Automatic promotion: dev has soaked 24h, CI is green on its tip, and no plover-factory error report names a build in this range. \`apps/lexitar/wrangler.jsonc\` is main's, unchanged.
+
+          @pablo-tech: label this PR \`hold\` to stop it merging."
