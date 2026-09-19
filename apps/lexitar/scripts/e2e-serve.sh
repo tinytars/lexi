@@ -69,22 +69,34 @@ fi
 # where .githooks/pre-push runs it during a promotion. It failed as "TESTS FAILED" on a wrangler
 # error ("Couldn't find a D1 DB with the name or binding 'health-identity-dev'"), i.e. a config
 # mismatch wearing the costume of a broken test. Everything here is --local: no remote DB is touched.
+# E2E_HOST=node serves the same dist/ + functions/ from the Node self-host (server/node.ts) on SQLite
+# and a blob directory instead of wrangler's Miniflare — the suite proving the backend is portable.
+HOST="${E2E_HOST:-pages}"
+case "$HOST" in pages|node) ;; *) echo "e2e-serve: E2E_HOST must be pages or node, got '$HOST'" >&2; exit 1 ;; esac
+NODE_HOST=(node --env-file-if-exists=.dev.vars --import tsx server/node.ts)
+export LEXI_DATA_DIR="$STATE/node"
+
+if [ "$HOST" = pages ]; then
 D1_NAME="$(sed -E 's@^[[:space:]]*//.*$@@' wrangler.jsonc | jq -r '.d1_databases[0].database_name')"
 [ -n "$D1_NAME" ] && [ "$D1_NAME" != "null" ] || { echo "e2e-serve: cannot read d1_databases[0].database_name from wrangler.jsonc" >&2; exit 1; }
 echo "e2e-serve: local D1 = $D1_NAME (from wrangler.jsonc)"
+fi
+seed_sql() {
+  if [ "$HOST" = node ]; then "${NODE_HOST[@]}" seed "$1"; else npx wrangler d1 execute "$D1_NAME" --local --persist-to "$STATE" --file "$1"; fi
+}
 # Start from a clean local D1/R2 each boot so e2e is deterministic — no rows accumulate across runs
 # (the self-contained support flow writes phi_access_events/vault_envelopes that would otherwise pile
 # up). Migrations below re-seed the pilots (0002); R2 self-seeds vault blobs from dist on first GET.
 rm -rf "$STATE"
 # Seed the local identity DB (idempotent — wrangler's d1_migrations table skips already-applied
 # files). Same --persist-to as pages dev so both read one sqlite. wrangler is a local dep → npx.
-npx wrangler d1 migrations apply "$D1_NAME" --local --persist-to "$STATE"
+if [ "$HOST" = node ]; then "${NODE_HOST[@]}" seed; else npx wrangler d1 migrations apply "$D1_NAME" --local --persist-to "$STATE"; fi
 # W44 P4b — seed a LOGINABLE support agent (LOCAL only, idempotent) so the support-access e2e can drive
 # the full flow itself (support requests a fresh patient → patient approves). Fixed id + RESET so a
 # persisted .wrangler/state re-seeds cleanly across restarts.
 RESET=1 EMAIL=support@local.invalid PASSWORD=support ACCOUNT_ID=e2e5upp0-0000-4000-8000-000000000001 \
   npx tsx scripts/provision-support-account.ts > "$STATE/support-seed.sql"
-npx wrangler d1 execute "$D1_NAME" --local --persist-to "$STATE" --file "$STATE/support-seed.sql"
+seed_sql "$STATE/support-seed.sql"
 
 # W69 — one fully synthetic patient per Playwright worker (LOCAL only, idempotent).
 #
@@ -110,7 +122,7 @@ npx wrangler d1 execute "$D1_NAME" --local --persist-to "$STATE" --file "$STATE/
 E2E_WORKERS="${E2E_WORKERS:-4}"
 E2E_WORKERS="$E2E_WORKERS" OUT=dist npx tsx scripts/provision-e2e-patient.ts > "$STATE/e2e-world.sql" \
   || { echo "e2e-serve: FAILED to build the synthetic patients (provision-e2e-patient.ts)" >&2; exit 1; }
-npx wrangler d1 execute "$D1_NAME" --local --persist-to "$STATE" --file "$STATE/e2e-world.sql" \
+seed_sql "$STATE/e2e-world.sql" \
   || { echo "e2e-serve: FAILED to seed synthetic patients into D1 — see $STATE/e2e-world.sql" >&2; exit 1; }
 echo "e2e-serve: provisioned $E2E_WORKERS synthetic patient(s) + an e2e-only clinician"
 
@@ -123,6 +135,8 @@ echo "e2e-serve: provisioned $E2E_WORKERS synthetic patient(s) + an e2e-only cli
 # webServer that had already printed four screens of successful seeding. `require.resolve` is not an
 # option — wrangler's package `exports` does not expose ./bin/wrangler.js — so check both places npm
 # actually uses, and say which ones were tried when neither works.
+[ "$HOST" = node ] && STORE_PREFIX="${STORE_PREFIX:-e2e}" PORT="$PORT" exec "${NODE_HOST[@]}"
+
 WRANGLER_BIN="./node_modules/.bin/wrangler"
 [ -x "$WRANGLER_BIN" ] || WRANGLER_BIN="../../node_modules/.bin/wrangler"
 [ -x "$WRANGLER_BIN" ] || {
