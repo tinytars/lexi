@@ -3,6 +3,9 @@ import { afterEach } from "vitest";
 
 // jsdom has no layout, so nothing would ever be observed anyway.
 globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} };
+// jsdom implements <dialog> but not its modal API.
+HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) { this.open = true; };
+HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) { this.open = false; };
 
 const mounted: Record<string, unknown>[] = [];
 
