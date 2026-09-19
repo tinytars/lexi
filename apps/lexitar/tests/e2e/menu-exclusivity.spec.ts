@@ -2,7 +2,7 @@ import { test, expect } from "./_fixtures";
 import type { Page } from "@playwright/test";
 import { openSyntheticAsProvider, openSyntheticAsProviderAt, syntheticAt } from "./_synthetic";
 import { openLeafMenu, leafMenuPanel, menuPanelFor } from "./_leaf-menu";
-import { clickNav, setSidebarMode } from "./_nav";
+import { clickNav, setSidebarMode, navRow } from "./_nav";
 
 // Every popover shares one "which menu is open" signal (menu-registry.svelte.ts).
 
@@ -64,7 +64,7 @@ test("switching sidebar mode restores the last section visited in that mode, per
   await clickNav(page, "Treatment");
   await setSidebarMode(page, "investigator");
   await clickNav(page, "Exploration");
-  await expect(page.locator(".sidebar .nav-list .nav-item.active", { hasText: "Exploration" })).toBeVisible();
+  await expect(navRow(page, "Exploration")).toHaveClass(/active/);
 
   // Re-enter patientA's vault from a fresh, hash-less navigation (a provider session auto-resumes
   // straight to the roster — never back into a specific patient — so this, not page.reload(), is
@@ -76,12 +76,12 @@ test("switching sidebar mode restores the last section visited in that mode, per
   await page.click(`.roster-name:has-text("${patientA.name}")`);
   await page.waitForSelector(".sidebar .nav-item");
   await expect(page.locator(".sidebar .mode-toggle button.active", { hasText: "Investigator" })).toBeVisible();
-  await expect(page.locator(".sidebar .nav-list .nav-item.active", { hasText: "Exploration" })).toBeVisible();
+  await expect(navRow(page, "Exploration")).toHaveClass(/active/);
 
   // Flip back to Patient: jumps straight to Treatment (the section remembered for patientA/patient),
   // not just the first Patient row (Markers).
   await setSidebarMode(page, "patient");
-  await expect(page.locator(".sidebar .nav-list .nav-item.active", { hasText: "Treatment" })).toBeVisible();
+  await expect(navRow(page, "Treatment")).toHaveClass(/active/);
 
   // A different client's memory is independent — patientB has no remembered location yet, so
   // entering their vault lands on the plain chat default, not patientA's Exploration/Treatment.
@@ -91,5 +91,5 @@ test("switching sidebar mode restores the last section visited in that mode, per
   await page.click(`.roster-name:has-text("${patientB.name}")`);
   await page.waitForSelector(".sidebar .nav-item");
   await expect(page).not.toHaveURL(/exploration/);
-  await expect(page.locator(".sidebar .nav-list .nav-item.active", { hasText: "Chat" })).toBeVisible();
+  await expect(navRow(page, "Chat")).toHaveClass(/active/);
 });

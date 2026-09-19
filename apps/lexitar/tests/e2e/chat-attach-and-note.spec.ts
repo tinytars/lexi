@@ -1,4 +1,5 @@
 import { test, expect } from "./_fixtures";
+import { navRow } from "./_nav";
 import type { Page } from "@playwright/test";
 import { openSynthetic } from "./_synthetic";
 import { clickLeafMenuItem } from "./_leaf-menu";
@@ -168,7 +169,7 @@ test("a chat turn's 'Annotate' action seeds Notes' Add modal with a reference ba
   const turnCard = page.locator(".chat-tab .leaf-card").last();
   await clickLeafMenuItem(turnCard, "Annotate");
 
-  await expect(page.locator(".sidebar .nav-list .nav-item", { hasText: "Notes" })).toHaveClass(/active/);
+  await expect(navRow(page, "Notes")).toHaveClass(/active/);
   await expect(page.locator(".nt-modal")).toBeVisible();
   const attached = page.locator(".nt-modal .reference-card");
   await expect(attached).toBeVisible();

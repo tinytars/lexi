@@ -3,7 +3,7 @@ import type { Page } from "@playwright/test";
 import { loginAs } from "./_login";
 import { openSynthetic, openSyntheticAsProvider, mySynthetic, E2E_CLINICIAN } from "./_synthetic";
 import { clickLeafMenuItem } from "./_leaf-menu";
-import { clickNav, setSidebarMode } from "./_nav";
+import { clickNav, setSidebarMode, navRow } from "./_nav";
 
 // W11g/h: the primary navigation shell — hash deep-link / back-button, the on-screen Report, the
 // Import placeholder, and downloads. M82 Phase 3 flattened the old two-tier tab+accordion sidebar
@@ -33,14 +33,14 @@ async function navItemLabels(page: Page): Promise<string[]> {
 
 test("Chat is the landing tab", async ({ page }) => {
   await openSynthetic(page);
-  await expect(page.locator(".sidebar .nav-list .nav-item", { hasText: "Chat" })).toHaveClass(/active/);
+  await expect(navRow(page, "Chat")).toHaveClass(/active/);
   await expect(page.locator(".chat-tab textarea")).toBeVisible();
 });
 
 test("tabs switch and update the hash", async ({ page }) => {
   await openSynthetic(page);
   await clickNav(page, "Treatment");
-  await expect(page.locator(".sidebar .nav-list .nav-item", { hasText: "Treatment" })).toHaveClass(/active/);
+  await expect(navRow(page, "Treatment")).toHaveClass(/active/);
   await expect(page).toHaveURL(/#.*treatment/);
 
   // Investigator is provider-only (W35), so a patient switches between the two patient tabs.
@@ -54,7 +54,7 @@ test("deep-link to a tab via the hash", async ({ page }) => {
   await loginAs(page, who.email, who.password, "/#doctor");
   await page.waitForSelector(".sidebar .nav-item", { timeout: 10_000 });
   // The legacy "#doctor" hash resolves to Treatment via LEGACY_TAB_DEFAULT.
-  await expect(page.locator(".sidebar .nav-list .nav-item", { hasText: "Treatment" })).toHaveClass(/active/);
+  await expect(navRow(page, "Treatment")).toHaveClass(/active/);
   await expect(page.locator(".unified-treatment")).toBeVisible();
 });
 
@@ -66,7 +66,7 @@ test("the browser back button returns to the previous tab", async ({ page }) => 
   await expect(page).toHaveURL(/#.*chat/);
   await page.goBack();
   await expect(page).toHaveURL(/#.*treatment/);
-  await expect(page.locator(".sidebar .nav-list .nav-item", { hasText: "Treatment" })).toHaveClass(/active/);
+  await expect(navRow(page, "Treatment")).toHaveClass(/active/);
 });
 
 test("Investigator → Analysis consolidates the analytical sections; Study/Hypothesis/Exploration sit beside it (W34/M80)", async ({ page }) => {

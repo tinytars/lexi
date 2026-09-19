@@ -52,7 +52,7 @@ test("an Analysis search hit renders the same cell the section does", async ({ p
   const sectionWidth = await cardWidth(page, ".analysis .leaf-card");
   const label = (await page.locator(".analysis .leaf-card-head").first().innerText()).replace("🔗", "").trim();
 
-  await page.locator('.sidebar .nav-item, .sidebar .side-row').filter({ hasText: "Search" }).first().click();
+  await clickNav(page, "Search");
   const input = page.locator(".search-panel input").first();
   await input.fill(label);
 
@@ -77,7 +77,7 @@ test("a Reports search hit renders the same cell the section does", async ({ pag
   // The parts that make it a report cell rather than a generic card.
   await expect(card.locator(".persona-bubble.p-provider")).toBeVisible();
 
-  await page.locator('.sidebar .nav-item, .sidebar .side-row').filter({ hasText: "Search" }).first().click();
+  await clickNav(page, "Search");
   await page.locator(".search-panel input").first().fill(title);
 
   const hit = page.locator(".search-results .leaf-card").filter({ hasText: new RegExp(title.slice(0, 20), "i") }).first();
@@ -102,7 +102,7 @@ test("an Allergies search hit renders the turn its section does", async ({ page 
   await page.locator(".az-modal .btn.primary", { hasText: "Save" }).click();
   await expect(page.locator(".allergies .saved")).toBeVisible({ timeout: 10_000 });
 
-  await page.locator(".sidebar .nav-item, .sidebar .side-row").filter({ hasText: "Search" }).first().click();
+  await clickNav(page, "Search");
   await page.locator(".search-panel input").first().fill(allergen);
   const hit = page.locator(".search-results .leaf-card").filter({ hasText: allergen }).first();
   await expect(hit).toBeVisible({ timeout: 10_000 });

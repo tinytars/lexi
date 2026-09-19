@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { loginAs } from "./_login";
+import { clickNav } from "./_nav";
 import { syntheticTag, SYNTHETIC_WORKER_COUNT, FRESH_SEED } from "../fixtures/synthetic-patient";
 
 // Not the pilots' fam4, whose roster cover-render.spec.ts asserts exactly.
@@ -95,7 +96,7 @@ export const ALL_SYNTHETIC_NAMES: string[] = [
 
 // The cross-worker-leak canary: the patient's tag only renders in the Treatment body, never the sidebar.
 export async function expectOwnPatient(page: Page, who: Synthetic): Promise<void> {
-  await page.locator(".sidebar .nav-list .nav-item", { hasText: "Treatment" }).click();
+  await clickNav(page, "Treatment");
   const tagged = `Rosuvastatin ${who.tag}`;
   await expect
     .poll(async () => (await page.locator("body").innerText()).replace(/\s+/g, " "), {

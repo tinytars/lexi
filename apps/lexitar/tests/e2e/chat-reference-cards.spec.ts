@@ -1,7 +1,7 @@
 import { test, expect } from "./_fixtures";
 import type { Page } from "@playwright/test";
 import { openSynthetic, syntheticClientId, otherSyntheticIndex } from "./_synthetic";
-import { clickNav } from "./_nav";
+import { clickNav, navRow } from "./_nav";
 import { stubChatHistory, interceptChatHistory } from "./_stubs";
 import { waitForChatReady } from "./_chat";
 
@@ -72,7 +72,7 @@ test("pasting a marker and ratio permalink each render a reference card and navi
     // resolveAnchor's flash/scroll fires — so the target's presence is what proves navigation, not
     // the URL retaining the anchor segment).
     await card.evaluate((el) => (el as HTMLElement).click());
-    await expect(page.locator(".sidebar .nav-list .nav-item", { hasText: "Markers" })).toHaveClass(/active/);
+    await expect(navRow(page, "Markers")).toHaveClass(/active/);
     await expect(page).toHaveURL(new RegExp(`^http://localhost:8788/${myHash()}/markers`));
     await expect(page.locator(`[id="${anchorId}"]`)).toBeVisible();
   }
@@ -94,7 +94,7 @@ test("pasting a report permalink renders a reference card and navigates to it wi
   await card.evaluate((el) => (el as HTMLElement).click());
   // The client stays selected while the click leaves Chat.
   await expect(page).toHaveURL(new RegExp(`^http://localhost:8788/${myHash()}/healthReports`));
-  await expect(page.locator(".sidebar .nav-list .nav-item", { hasText: "Reports" })).toHaveClass(/active/);
+  await expect(navRow(page, "Reports")).toHaveClass(/active/);
   await expect(page.locator(`[id="${reportId}"]`)).toBeVisible();
 });
 
@@ -167,13 +167,13 @@ test("pasting a whole-tab and a section-level permalink render section cards tha
   // Whole-tab card resolves via LEGACY_TAB_DEFAULT to Markers, client stays selected.
   await page.locator(".reference-card").first().evaluate((el) => (el as HTMLElement).click());
   await expect(page).toHaveURL(new RegExp(`^http://localhost:8788/${myHash()}/markers`));
-  await expect(page.locator(".sidebar .nav-list .nav-item", { hasText: "Markers" })).toHaveClass(/active/);
+  await expect(navRow(page, "Markers")).toHaveClass(/active/);
 
   // Section-level card (still in the same thread) navigates to Treatment.
   await goToChat(page);
   await page.locator(".reference-card").nth(1).evaluate((el) => (el as HTMLElement).click());
   await expect(page).toHaveURL(new RegExp(`^http://localhost:8788/${myHash()}/treatment`));
-  await expect(page.locator(".sidebar .nav-list .nav-item", { hasText: "Treatment" })).toHaveClass(/active/);
+  await expect(navRow(page, "Treatment")).toHaveClass(/active/);
 });
 
 test("a follow-up chat send after pasting a marker reference includes that marker's data in CONTEXT.references", async ({ page }) => {

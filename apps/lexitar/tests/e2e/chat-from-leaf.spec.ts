@@ -2,7 +2,7 @@ import { test, expect } from "./_fixtures";
 import type { Page } from "@playwright/test";
 import { openSynthetic, openSyntheticAsProvider } from "./_synthetic";
 import { clickLeafMenuItem, openLeafMenu } from "./_leaf-menu";
-import { clickNav } from "./_nav";
+import { clickNav, navRow } from "./_nav";
 import { stubChatHistory } from "./_stubs";
 
 // M70 — every leaf grows a labeled "Chat" action (Phase 0-3) that seeds a brand-new assistant
@@ -34,7 +34,7 @@ async function openProviderTreatment(page: Page) {
 // Confirms the click landed on the Chat tab with a freshly seeded thread: one turn, rendered as a
 // ReferenceCard (chat-reference-cards.spec.ts's own idiom), titled from the leaf's preview.
 async function assertSeededChat(page: Page, expectedTitlePrefix: string, tag: string) {
-  await expect(page.locator(".sidebar .nav-list .nav-item", { hasText: "Chat" })).toHaveClass(/active/);
+  await expect(navRow(page, "Chat")).toHaveClass(/active/);
   await page.waitForSelector(".chat-tab textarea", { timeout: 10_000 });
   const card = page.locator(".reference-card").last();
   await expect(card).toBeVisible();
@@ -89,7 +89,7 @@ test.describe("phone viewport", () => {
       .filter({ has: page.locator(".leaf-menu-trigger") })
       .first();
     await clickLeafMenuItem(row, "Chat");
-    await expect(page.locator(".sidebar .nav-list .nav-item", { hasText: "Chat" })).toHaveClass(/active/);
+    await expect(navRow(page, "Chat")).toHaveClass(/active/);
     await page.waitForSelector(".chat-input", { timeout: 10_000 });
 
     const viewport = page.viewportSize();
