@@ -28,7 +28,13 @@
     // W63 — the ops CLI imports the shared knowledge-graph package by its workspace alias, exactly
     // as tsconfig.app.json does for src/. Without these, every scripts/ importer of it resolved to
     // nothing — which was invisible while scripts/ was outside `include` at all.
+    //
+    // The @anthropic-ai/sdk entries are the same dedupe tsconfig.app.json does, for the same
+    // reason: the root `overrides` pin leaves a second (older) copy hoisted for @pablotech/akesi's
+    // optional peer dep, and TS's nominal class identity then rejects handing our client to akesi.
     "paths": {
+      "@anthropic-ai/sdk": ["./node_modules/@anthropic-ai/sdk", "../../node_modules/@anthropic-ai/sdk"],
+      "@anthropic-ai/sdk/*": ["./node_modules/@anthropic-ai/sdk/*", "../../node_modules/@anthropic-ai/sdk/*"],
       "@pablotech/neuro-pil": ["../../brain/neuro-pil/index.ts"],
       "@pablotech/neuro-pil/hash-node": ["../../brain/neuro-pil/hash-node.ts"],
       "@pablotech/akesi-pil": ["../../brain/akesi-pil/index.ts"]
