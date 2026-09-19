@@ -1,5 +1,6 @@
 import { defineConfig } from "vitest/config";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
+import thresholds from "./coverage-thresholds.json" with { type: "json" };
 
 // Need a credential to run; `npm run test:data`, CI job `lexitar-data`. Excluded rather than skipIf'd:
 // a skip that goes green without its inputs is indistinguishable from a pass.
@@ -26,13 +27,14 @@ export default defineConfig({
     // Prompt builders derive values from the current date; an unpinned TZ makes goldens flaky.
     env: { TZ: "UTC" },
     reporters: ["default"],
-    // Measured in CI (`npm run coverage`); thresholds are a ratchet set from that measurement.
+    // Enforced in CI (`npm run coverage`); scripts/coverage-ratchet.ts stops a PR lowering them.
     coverage: {
       provider: "v8",
       include: ["src/**/*.ts", "src/**/*.svelte", "functions/**/*.ts", "scripts/**/*.ts"],
       exclude: ["**/*.d.ts", "scripts/_*.ts"],
       reporter: ["text-summary", "json-summary", "html"],
       reportsDirectory: "coverage",
+      thresholds,
     },
     // A stubbed global (fetch, localStorage) must not leak into the next test.
     unstubGlobals: true,
