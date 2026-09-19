@@ -5,7 +5,7 @@
   import { partitionByBucket } from "./treatment-sidebar";
   import { formatIngredient, hasProductData } from "@pablotech/akesi/treatment-product";
   import { computeConclusion, isConclusion, conclusionMessage, formatIngredientTotal } from "./treatment-conclusion";
-  import type { Attachment, Client, ClientFactors, LegacyFactors, NoteAttachment, TreatmentItem } from "./types";
+  import type { Attachment, Client, NoteAttachment, TreatmentItem } from "./types";
   import PersonaBubble, { type BubbleAction } from "@tinytars/frame/PersonaBubble.svelte";
   import { standardLeafActions, buildNoteAttachment } from "./leaf-actions";
   import LeafCard from "@tinytars/frame/LeafCard.svelte";
@@ -14,11 +14,12 @@
   import { treatmentAnchor, findByAnchor } from "./anchor";
   import { groupBySystem } from "@pablotech/akesi/system-groups";
   import { planActionSystems } from "./treatment-groups";
-  import { treatmentsOf, normalizeTreatments } from "@pablotech/akesi/treatment-normalize";
+  import { treatmentsOf } from "@pablotech/akesi/treatment-normalize";
+  import { foldLegacyTreatments, treatmentEditDraft } from "./treatment-legacy-fold";
   import { createDraftSync, createPersistNow } from "./draft-sync.svelte";
   import { bucketOf, collapseByName, treatmentLabel, todayISODate, BUCKET_LABEL, groupByName, dateGaps, formatDose, type NamedTreatmentGroup } from "@pablotech/akesi/treatment-bucket";
   import { sortPinnedFirst } from "./pin-sort";
-  import { endOfMonth, formatDay, isCompleteDate } from "@pablotech/akesi/dates";
+  import { formatDay, isCompleteDate } from "@pablotech/akesi/dates";
   import Modal from "@tinytars/frame/Modal.svelte";
   import Button from "@tinytars/frame/Button.svelte";
   import Field from "@tinytars/frame/Field.svelte";
@@ -94,29 +95,19 @@
   const canEdit = $derived(!!onSave);
 
   // Edit draft — always-on; createDraftSync resyncs it to the live client only when its identity
-  // changes (patient switch / post-save reload), folding any legacy vault into `treatments` on the
-  // way in.
+  // changes (patient switch / post-save reload).
   function build(c: Client): Client {
-    const d = structuredClone($state.snapshot(c)) as Client;
-    d.factors ??= {};
-    d.factors.treatments ??= normalizeTreatments(d.factors as ClientFactors & LegacyFactors);
-    // Coerce legacy month-only start/end to a full date (last day of month) so the type="date"
-    // inputs display them — a date picker can't render a bare "YYYY-MM". normalizeClientDraft applies
-    // the same coercion, so the baseline matches and this doesn't read as an unsaved change on load.
-    for (const t of d.factors.treatments) {
-      if (t.start) t.start = endOfMonth(t.start);
-      if (t.end) t.end = endOfMonth(t.end);
-    }
-    const legacy = d.factors as Partial<LegacyFactors>;
-    delete legacy.medications;
-    delete legacy.supplements;
-    delete legacy.plan;
-    return d;
+    return treatmentEditDraft(structuredClone($state.snapshot(c)) as Client);
+  }
+
+  // The immediate-persist payload must be folded like `draft`: `client.factors.treatments` may still
+  // be legacy-shaped while draft's index `i` assumes the already-folded array.
+  function treatmentBaseline(c: Client): Client {
+    return foldLegacyTreatments(structuredClone($state.snapshot(c)) as Client);
   }
 
   const ds = createDraftSync(() => client, build, () => saveError, () => canEdit);
   const draft = $derived(ds.draft);
-  // treatmentBaseline (not the default clone) — folds legacy factors the way `draft` does.
   const persistNow = createPersistNow(ds, () => client, onSave, onSaved, treatmentBaseline);
 
   // One lookup for every bucket — see assessmentFor. A drug can hold three assessments now, one per
@@ -354,16 +345,6 @@
   // W46 Phase 2/4 — canonical Edit → Chat → Annotate → Attach → Delete order via the shared
   // leaf-actions contract (was a hand-rolled array, no Annotate/Attach). Attach here now also
   // covers what used to be "photos only at treatment-creation time" — any existing row can attach.
-  // Builds an immediate-persist payload folded the same way the resync effect folds `draft`
-  // (normalizeTreatments) — required since M57 made Add persist immediately too, so
-  // `client.factors.treatments` may still be legacy-shaped while `draft`'s index `i` assumes the
-  // already-folded array.
-  function treatmentBaseline(): Client {
-    const payload = structuredClone($state.snapshot(client)) as Client;
-    payload.factors ??= {};
-    payload.factors.treatments ??= normalizeTreatments(payload.factors as ClientFactors & LegacyFactors);
-    return payload;
-  }
   // M56 — persists immediately, scoped to just this item (see Study.svelte's deleteEntry for the
   // full rationale).
   function deleteTreatment(t: TreatmentItem, i: number) {
