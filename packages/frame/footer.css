@@ -1,0 +1,37 @@
+/* Markup contract for OrgFooter.svelte, and for any non-Svelte host (e.g. an Astro site) rendering
+   the same .frame-footer markup. Every value falls back to a default, so it works without theme.css;
+   a host themes it through the --frame-footer-* properties or overrides the classes directly. */
+.frame-footer {
+  border-top: 1px solid var(--border, #e5e7eb);
+  color: var(--muted, #6b7280);
+  font-size: var(--frame-footer-font-size, 0.85rem);
+  font-family: var(--frame-font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif);
+  background: var(--frame-footer-bg, #fff);
+}
+
+.frame-footer__row {
+  max-width: var(--frame-footer-max, 64rem);
+  margin: 0 auto;
+  padding: 1.25rem 1.25rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.frame-footer__links {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.frame-footer__links a {
+  color: var(--muted, #6b7280);
+  text-decoration: none;
+}
+
+.frame-footer__links a:hover {
+  color: var(--frame-footer-accent, currentColor);
+  text-decoration: underline;
+}

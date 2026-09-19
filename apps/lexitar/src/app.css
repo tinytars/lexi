@@ -53,3 +53,10 @@ html, body, #app {
 
 /* The edit-modal title row (7 copies under 7 names). */
 .az-title, .ce-title, .fh-title, .fte-title, .nte-title, .pz-title, .ut-edit-title { display: flex; align-items: baseline; gap: 0.75rem; }
+
+/* frame's OrgFooter, drawn as a panel aligned with the Disclaimer boxes above it. */
+.frame-footer { max-width: var(--leaf-max); margin: 1.25rem auto 2rem; padding: 0 1.25rem; border-top: 0; background: none; }
+.frame-footer__row {
+  max-width: none; padding: 0.75rem 1rem; align-items: baseline; gap: 0.5rem; font-size: 0.78rem;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--panel);
+}
