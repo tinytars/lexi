@@ -39,7 +39,7 @@ A **Digital Public Good** is open-source software, open data, an open AI system,
 | 1 | **SDG Relevance** | ✅ Strong — SDG 3 (Health & Well-being) + SDG 10 (Reduced Inequalities); health literacy for low-literacy/LEP adults | Document the SDG mapping in the application |
 | 2 | **Open Licensing** | ✅ **Closed 2026-09-13** — repo public under MIT (`../../LICENSE`); `@tinytars/vault` and `@tinytars/frame` are open too | None. Cite the LICENSE and the public repo |
 | 3 | **Clear Ownership** | 🟡 LICENSE copyright and `../../README.md` both name the Tiny Tars Foundation; `../../CODEOWNERS` exists. What's still unwritten is the arrangement with the for-profit side (enterprise integrations sold separately; the utility stays open) | Write a short public ownership statement (Foundation owns the open utility; any commercial integration is separate and licensed from it) |
-| 4 | **Platform Independence** | 🟡 Hosting is Cloudflare Pages + R2 + D1. Every AI feature calls Anthropic (Claude Opus 4.7 / Sonnet 4.6 / Haiku 4.5) through `functions/api/*` with `ANTHROPIC_API_KEY`; there is no second provider or open-model fallback | Document which features work with no model at all (vault, markers, charts, export) vs. which need one, and state the model dependency plainly. An open-model fallback would strengthen this but isn't required to apply |
+| 4 | **Platform Independence** | 🟡 **Hosting: closed 2026-09-19.** The same `functions/` tree runs on Cloudflare Pages (D1 + R2) or a Node self-host (`node:sqlite` + filesystem blobs, `npm run serve:node` or the `Dockerfile`); CI runs the full e2e suite on both hosts and boots the image, and `tests/unit/platform-imports.test.ts` fails if a route or the UI imports a Cloudflare module (`../../ARCHITECTURE.md` §Cloudflare is one host). **Model: still single-provider.** Every AI feature calls Anthropic (Claude Opus 4.7 / Sonnet 4.6 / Haiku 4.5) through `functions/api/*` with `ANTHROPIC_API_KEY`; there is no second provider or open-model fallback | Document which features work with no model at all (vault, markers, charts, export) vs. which need one, and state the model dependency plainly. An open-model fallback would strengthen this but isn't required to apply |
 | 5 | **Documentation** | ✅ **Largely satisfied** — public `README.md`, `ARCHITECTURE.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `CHANGELOG.md` at the root; `API.md`, `AUTH.md`, `VAULT.md`, `docs/BUILDING.md` in this app | None blocking. Point the application at these |
 | 6 | **Non-PII Data Extraction** (export in a non-proprietary format) | ✅ `src/lib/export.ts` ships CSV (`exportCsv`) and structured JSON (`exportJson`), surfaced through `@tinytars/frame`'s `ExportTab.svelte`. The indicator asks for *a* non-proprietary format, not FHIR | Cite the export as evidence. FHIR stays a nice-to-have |
 | 7 | **Privacy & Applicable Laws** | 🟡 Six mandatory sub-requirements. **Published privacy policy: done** — `https://tinytars.foundation/privacy`, linked from the in-app disclaimer (`src/lib/Disclaimer.svelte`, `LEGAL_BASE` in `src/lib/brand.ts`). It covers retention and deletion-on-request, but says nothing about consent, data minimization, or governance/access control. **Deletion: API only** — `POST /api/account/erase` works (self-only, email-echo confirmation, `functions/_lib/erasure.ts`), but no UI calls it, so a user can't erase their account themselves | (a) Add a self-service "Delete account" action that calls `/api/account/erase`. (b) Extend the privacy policy to cover consent, minimization and governance, and point it at the self-service deletion. (c) Access control is already readable in one place (`functions/_lib/capabilities.ts`) — cite it |
@@ -67,7 +67,7 @@ Support / questions: `support@digitalpublicgoods.net`. Detailed evaluation crite
 ## 5. Gaps to close before applying (ranked)
 1. **Self-service account deletion in the UI** (Indicators 7/9A) — wire a confirmed "Delete account" action to `POST /api/account/erase`. The only remaining code gap.
 2. **Privacy policy coverage** (Indicator 7) — add consent, data minimization, and governance/access control; reference the self-service deletion.
-3. **Model-dependency / platform-independence write-up** (Indicator 4).
+3. **Model-dependency write-up** (Indicator 4) — hosting is no longer Cloudflare-bound; only the LLM dependency remains to document.
 4. **Ownership statement** (Indicator 3).
 5. **Do-no-harm write-up** (9B content controls).
 
@@ -83,6 +83,10 @@ Support / questions: `support@digitalpublicgoods.net`. Detailed evaluation crite
 - **Indicator 7's privacy policy is published** at `tinytars.foundation/privacy`, but coverage is partial.
 - **New finding:** erasure is implemented server-side but has no UI entry point, so it doesn't yet count as a user-facing deletion mechanism.
 - **Indicator 4 confirmed as a single-provider dependency** on Anthropic, with no fallback.
+- **Indicator 4's hosting half closed** (tinytars/lexi #43, #44, #53): a Node self-host and Docker
+  image run the unchanged backend, proven by the e2e suite on both hosts in CI. Deploy tooling
+  (wrangler, backups, snapshots) stays Cloudflare-specific, and the Node host is an alternative,
+  not a second production.
 
 **2026-08-24** — Indicators 6 and 8 moved to "already satisfied" (CSV/JSON export and WebAuthn/NIST crypto were live; FHIR had never been required). Indicators 7 and 9A moved *down* to 🟡 once the six privacy sub-requirements were cross-walked and deletion turned out not to exist; deletion was built 2026-08-25.
 
