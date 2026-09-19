@@ -14,36 +14,34 @@
 //
 //   ORG_KEY_PASSPHRASE=… npm run raw:backfill              # report only
 //   ORG_KEY_PASSPHRASE=… npm run raw:backfill -- --confirm # write the rows
+//
+// W76 — `--assign <client>=<accountId>` (repeatable) attributes a namespace the org key cannot open,
+// for an owner confirmed out of band. Everything left unattributed is ORPHANED and refused by every
+// route until its owner reclaims it (POST /api/raw/claim) or scripts/orphan-sweep.ts removes it.
 
 import "./load-creds";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
+import { d1, q, D1 } from "./d1-remote";
 import { loadOrgPrivateKey } from "./org-key";
-import { wranglerTarget } from "./target";
 import { listObjects, LIVE_BUCKET, getObject, resolveStore } from "./vault-sync";
 import { unwrapDEKWithPrivateKey, decryptVaultV2 } from "@tinytars/vault/crypto";
 import { ORG_ACCOUNT_ID } from "../functions/_lib/org";
 import type { Vault } from "../src/lib/types";
 import { normalizeClientId } from "../src/lib/client-id";
+import { clientIdOfObjectKey } from "../functions/_lib/raw-owner";
 import { isMain } from "./is-main";
 
-const execFileAsync = promisify(execFile);
-const here = dirname(fileURLToPath(import.meta.url));
-const APP = resolve(here, "..");
-const WRANGLER = resolve(here, "wrangler.sh");
-const D1 = wranglerTarget().database;
 const STORE = resolveStore();
 
-const q = (s: string) => `'${s.replace(/'/g, "''")}'`;
-
-async function d1<T>(sql: string): Promise<T[]> {
-  const { stdout } = await execFileAsync("bash", [WRANGLER, "d1", "execute", D1, "--remote", "--json", "--command", sql], {
-    cwd: APP,
-    maxBuffer: 128 * 1024 * 1024,
+/** `--assign <client>=<accountId>`, repeatable. */
+function assignments(argv = process.argv): Array<[string, string]> {
+  const out: Array<[string, string]> = [];
+  argv.forEach((a, i) => {
+    if (a !== "--assign") return;
+    const [clientId, accountId] = (argv[i + 1] ?? "").split("=");
+    if (!clientId || !accountId) throw new Error("--assign expects <client>=<accountId>");
+    out.push([normalizeClientId(clientId), accountId]);
   });
-  return (JSON.parse(stdout) as Array<{ results: T[] }>)[0].results;
+  return out;
 }
 
 async function main(): Promise<void> {
@@ -57,10 +55,12 @@ async function main(): Promise<void> {
   const live = [
     ...(await listObjects(LIVE_BUCKET, `${STORE}/raw/`)),
     ...(await listObjects(LIVE_BUCKET, `${STORE}/text/`)),
+    // The chat blob claims its namespace too (raw-owner.ts); left out, a chat-only patient is orphaned.
+    ...(await listObjects(LIVE_BUCKET, `${STORE}/chat-`)),
   ].map((o: { key: string }) => o.key);
 
   process.stdout.write(`Target: ${D1} / ${LIVE_BUCKET} (store "${STORE}")\n`);
-  process.stdout.write(`Vaults: ${vaults.length}   live raw+text objects: ${live.length}   already attributed: ${owned.size}\n\n`);
+  process.stdout.write(`Vaults: ${vaults.length}   live raw+text+chat objects: ${live.length}   already attributed: ${owned.size}\n\n`);
 
   const orgKey = await loadOrgPrivateKey();
   const clientToOwner = new Map<string, string>();
@@ -98,8 +98,15 @@ async function main(): Promise<void> {
   // tool otherwise cannot reach at all — a patient who revoked org recovery has no envelope for us to
   // use, and would otherwise be locked out of their own originals by the very check meant to protect
   // them.
-  for (const a of await d1<{ id: string }>("SELECT id FROM accounts WHERE deleted_at IS NULL")) {
-    if (!clientToOwner.has(normalizeClientId(a.id))) clientToOwner.set(normalizeClientId(a.id), a.id);
+  const liveAccounts = new Set((await d1<{ id: string }>("SELECT id FROM accounts WHERE deleted_at IS NULL")).map((a) => a.id));
+  for (const id of liveAccounts) {
+    if (!clientToOwner.has(normalizeClientId(id))) clientToOwner.set(normalizeClientId(id), id);
+  }
+
+  for (const [clientId, accountId] of assignments()) {
+    if (!liveAccounts.has(accountId)) throw new Error(`--assign ${clientId}=${accountId}: no such live account`);
+    clientToOwner.set(clientId, accountId);
+    process.stdout.write(`  = ${clientId} assigned to ${accountId} (--assign)\n`);
   }
 
   process.stdout.write(`\nClient namespaces resolved: ${clientToOwner.size}\n`);
@@ -108,9 +115,7 @@ async function main(): Promise<void> {
   const orphans: string[] = [];
   for (const key of live) {
     if (owned.has(key)) continue;
-    // `{store}/raw/{clientId}/{file}` and `{store}/text/{clientId}/{file}.json`
-    const rawClientId = key.split("/")[2];
-    const clientId = rawClientId ? normalizeClientId(rawClientId) : undefined;
+    const clientId = clientIdOfObjectKey(key);
     const accountId = clientId ? clientToOwner.get(clientId) : undefined;
     if (accountId) toInsert.push({ key, accountId });
     else orphans.push(key);
@@ -138,10 +143,10 @@ async function main(): Promise<void> {
   }
 
   process.stdout.write(
-    `\nDone. ${orphans.length} object(s) remain unattributed. Their namespaces read as UNCLAIMED, which is\n` +
-    `ALLOWED (see functions/_lib/raw-owner.ts): an unclaimed namespace has no owner to protect, and\n` +
-    `refusing it would lock a patient out of their own files. Each one self-heals the next time anything\n` +
-    `writes there. Worth listing them anyway — an orphan usually means a vault this tool could not open.\n`,
+    `\nDone. ${orphans.length} object(s) remain unattributed. Their namespaces are ORPHANED: every route\n` +
+    `refuses them (functions/_lib/raw-owner.ts). The owner reclaims one by opening their vault, which\n` +
+    `proves a stored file's hash to POST /api/raw/claim; a confirmed owner can be set with --assign; and\n` +
+    `scripts/orphan-sweep.ts removes what nobody claims after its grace period.\n`,
   );
 }
 

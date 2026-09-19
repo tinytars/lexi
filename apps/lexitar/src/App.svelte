@@ -53,6 +53,7 @@
   import { createAuthFlow } from "./lib/auth-flow";
   import { importFileForChat, type ChatImportResult } from "./lib/import-flow";
   import { withClient } from "./lib/vault-clients";
+  import { reclaimOrphans } from "./lib/orphan-claim";
   import { putRaw } from "./lib/attachment-store";
   import { togglePinnedIn, renameIn, removeFrom, labelOf, type SidebarItemKind } from "./lib/vault-item-ops";
   import { pinnedQueries } from "@pablotech/akesi/pinned-queries";
@@ -549,7 +550,10 @@
   // Open the signed-in owner's own vault with the DEK returned by login.
   async function openOwnVault(r2Key: string, d: CryptoKey) {
     const id = vaultIdFromR2Key(r2Key)!;
-    vault = await openVault<Vault>(session, id, d, fetchVaultBlob);
+    const opened = await openVault<Vault>(session, id, d, fetchVaultBlob);
+    // Before anything reads attachments or chat, so a reclaimed namespace is readable on first load.
+    await reclaimOrphans(opened);
+    vault = opened;
     const ids = Object.keys(vault.clients);
     selectedClientId = ids.length === 1 ? ids[0] : null;
     if (pendingNav) { applyNav(pendingNav); pendingNav = null; }
