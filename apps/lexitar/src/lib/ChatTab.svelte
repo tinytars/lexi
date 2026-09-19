@@ -43,6 +43,7 @@
     activeId: string | null;
     // Bindable — App.svelte owns the array; send()/onPaste() append turns straight back through it.
     threads: Thread[];
+    hydrated: boolean;
     // M69 — pasted-permalink reference cards: vault to resolve against, onNavigate to reuse
     // App.svelte's navigate() when a card is clicked.
     vault: Vault | null;
@@ -58,6 +59,7 @@
     unitSystem = "imperial",
     activeId,
     threads = $bindable(),
+    hydrated,
     vault,
     onNavigate,
     onPersist,
@@ -376,7 +378,7 @@
   }
 </script>
 
-<div class="chat-tab" bind:this={chatTabEl}>
+<div class="chat-tab" data-testid="chat-tab" data-hydrated={hydrated} bind:this={chatTabEl}>
   <section class="conversation">
     <div class="chat-body">
       {#if current.turns.length === 0}

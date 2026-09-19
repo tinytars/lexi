@@ -30,6 +30,7 @@ export interface ChatThreadSessionDeps {
 
 export interface ChatThreadSession {
   threads: Thread[];
+  readonly hydrated: boolean;
   renamingId: string | null;
   renameText: string;
   startNewChatThread(): void;
@@ -146,6 +147,9 @@ export function createChatThreadSession(deps: ChatThreadSessionDeps): ChatThread
     },
     set threads(v: Thread[]) {
       chatThreads = v;
+    },
+    get hydrated() {
+      return chatHydrated;
     },
     get renamingId() {
       return chatRenamingId;

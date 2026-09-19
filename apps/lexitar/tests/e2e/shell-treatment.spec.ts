@@ -130,10 +130,13 @@ test("Treatment: saving an edit from the Past view stays in Past, even when the 
   const group = page.locator(".med-group", { hasText: marker });
   await group.locator(".med-table td.med-actions .btn", { hasText: "Edit" }).first().click();
   await page.locator(".tedit .field", { hasText: "Amount" }).locator("input").fill(String(Date.now() % 100000));
+  const anchorId = await group.locator(".permalink-heading").first().getAttribute("id");
+  await watchFlashes(page);
   await page.locator(".tedit-actions .btn.primary", { hasText: "Save" }).click();
   await expect(page.locator(".unified-treatment .saved")).toBeVisible({ timeout: 10_000 });
 
-  await page.waitForTimeout(1000);
+  // The post-save anchor flash is the last step of the navigation that used to jump to Ongoing.
+  await expectFlashed(page, anchorId);
   await expect(page.locator(".sidebar .group-list .sub-item.active")).toHaveText(/Past/);
 
   await gotoTreatmentBucket(page, "All");

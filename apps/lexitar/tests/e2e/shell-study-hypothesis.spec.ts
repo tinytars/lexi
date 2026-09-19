@@ -12,11 +12,6 @@ import { validLeafPayload } from "./_leaf-payloads";
 // own, which is what most of these assert. The stale-draft clobber test (M55/M56) belongs here
 // rather than with the leaf-regen triggers: what it protects is the DELETE, against a background
 // regen landing mid-edit.
-//
-// W74 — one of the seven files `shell-nav.spec.ts` became. It was 1437 lines and 53 tests, and
-// `--shard` partitions by FILE: whichever shard held it ran ~56 tests against a single workerd while
-// every other shard ran 19, which made it the gate's chronic red. Helpers shared by more than one of
-// the seven live in `_shell.ts`; a helper with one caller stayed with its caller.
 
 test("Investigator → Hypothesis shows weighed hypotheses (no committed Plan) with the AI's take (W20/W21/W23/W25)", async ({ page }) => {
   const who = await openSyntheticAsProvider(page);
@@ -57,35 +52,22 @@ test("Investigator → Study is its own subsection with in-place CRUD, pairing p
 
 test("a Study delete survives a background /api/leaf-regen (treatmentGroups) landing mid-edit — stale-draft clobber fix (M55/M56)", async ({ page }) => {
   page.on("dialog", (d) => d.accept()); // Study's delete confirm()
-  // Unique per run — avoids colliding with a prior (e.g. retried) run's persisted leftovers.
   const marker = `M55 race-test ${Date.now()}`;
 
-  // Delay the background leaf-regen relay's response — valid content, just late — so there's an
-  // observable window where a queued local delete could get clobbered. M66 P5/P7 — treatmentGroups
-  // shares this one generic relay with 4 other nodes now (was its own /api/regroup); only that
-  // node's request is answered here, and any other falls through untouched.
-  //
-  // W76 — this was the suite's only `route.fetch()` pass-through, and on a runner with no Anthropic
-  // key it made the test VACUOUS: the relay answered anthropic_error, leaf-regen-queue settled it
-  // `failed`, and no result was ever merged — so the clobber path this test exists to guard was
-  // never reached. A valid 200 is what actually arms it. The payload comes from the shared builder,
-  // derived from this request's own inputs and checked against the real validateLeafResult by
-  // leaf-payloads.test.ts, so it cannot drift from the contract the way a hand-rolled one would.
+  // Held until the delete has persisted, so the regen's merge deterministically lands after it.
+  let release!: () => void;
+  const held = new Promise<void>((r) => (release = r));
   let groupsRegen = 0;
   await page.route("**/api/leaf-regen", async (route) => {
     const body = route.request().postDataJSON() as { node?: string; inputs?: Record<string, unknown> };
     if (body.node !== "treatmentGroups") return route.fallback();
     groupsRegen++;
     const result = validLeafPayload("treatmentGroups", body.inputs ?? {}, { text: "M55 stub group" });
-    await new Promise((r) => setTimeout(r, 800));
+    await held;
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ result }) });
   });
 
-  // The window this test arms only exists if the dose edit actually leaves treatmentGroups stale and
-  // the regen fires; `regen()` skips a leaf whose computed ancestors are stale. A DEFAULT synthetic
-  // patient has `nodeHashes` unset, so staleNodes() returns nothing and the dose edit never arms this —
-  // the fresh synthetic patient sets `nodeHashes: {}`, so treatmentGroups reads as drifted and can fire
-  // (same reasoning as translate-scope.spec.ts's W62 patient-translate test).
+  // The fresh patient opens every node stale, so the dose edit below can arm the regen.
   const who = await openFreshSyntheticAsProvider(page);
 
   // Persist a genuine Study row first (so its later removal is an actual diff from baseline). M57 —
@@ -96,9 +78,7 @@ test("a Study delete survives a background /api/leaf-regen (treatmentGroups) lan
   await page.locator(".study-modal .btn.primary", { hasText: "Save" }).click();
   await expect(page.locator(".study .saved")).toBeVisible({ timeout: 10_000 });
 
-  // Arm the background regroup (App.svelte:277-308): a dose-only edit leaves treatmentGroups the
-  // sole stale node, so persisting it (M66 — via the Edit modal's Save) fires the delayed
-  // /api/leaf-regen above. The value must differ from whatever's on record — Date.now() guarantees that.
+  // A dose-only edit leaves treatmentGroups the sole stale node, firing the held regen above.
   await clickNav(page, "Treatment");
   await gotoTreatmentBucket(page, "Ongoing");
   await editFirstDoseEntry(page);
@@ -106,20 +86,19 @@ test("a Study delete survives a background /api/leaf-regen (treatmentGroups) lan
   await page.locator(".tedit-actions .btn.primary", { hasText: "Save" }).click();
   await expect(page.locator(".unified-treatment .saved")).toBeVisible({ timeout: 10_000 });
 
-  // While the regroup response is still in flight, delete the Study row. M56 — this now persists
-  // immediately on confirm(); no explicit Save click for this action at all.
+  await expect.poll(() => groupsRegen, { message: "no treatmentGroups regen fired — the clobber window was never armed" }).toBeGreaterThan(0);
+
+  const vaultPut = () => page.waitForRequest((r) => r.method() === "PUT" && r.url().includes("/api/vault/"));
   await clickNav(page, "Study");
   const row = page.locator(".study .leaf-card", { hasText: marker });
+  const deleted = vaultPut();
   await clickLeafMenuItem(row, "Delete");
   await expect(page.locator(".study")).not.toContainText(marker);
+  await deleted;
 
-  // Wait past the regroup delay — the vault reassigns here; the clobber bug (or a skipNextResync
-  // regression) would resurrect the row.
-  await page.waitForTimeout(1200);
-  // The arming check. Everything below passes just as well when no regen ever fired — which is the
-  // state this test sat in for months. If the dose edit stops leaving treatmentGroups stale, this
-  // fails loudly instead of the suite quietly going green on nothing.
-  expect(groupsRegen, "no treatmentGroups regen fired — the clobber window was never armed").toBeGreaterThan(0);
+  const merged = vaultPut();
+  release();
+  await merged;
   await expect(page.locator(".study")).not.toContainText(marker);
 
   // Reload with NO Save click at all — the delete's own immediate persist is what's under test.

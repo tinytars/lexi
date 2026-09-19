@@ -199,7 +199,6 @@ test("a #docInference permalink lands on Notes with Questions selected", async (
     const client = window.location.hash.replace(/^#/, "").split("/")[0];
     window.location.hash = `#${client}/docInference`;
   });
-  await page.waitForTimeout(1200);
   await expect(page.locator(".sidebar .nav-item.active")).toContainText("Notes");
   await expect(page.locator(".sidebar .group-list .sub-item.active")).toHaveText(/Questions/);
 });
