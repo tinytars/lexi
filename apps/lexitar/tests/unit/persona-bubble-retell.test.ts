@@ -28,7 +28,7 @@ async function settle() {
 
 it("retells the shown text in place, relabels it, and restores the original", async () => {
   configureRetell(kodi);
-  const el = render(PersonaBubble, { persona: "assistant", label: "Lexi", children: body });
+  const el = render(PersonaBubble, { persona: "assistant" as const, label: "Lexi", children: body });
 
   menuItem(el, "Kodi's take")!.click();
   await settle();
@@ -44,7 +44,7 @@ it("retells the shown text in place, relabels it, and restores the original", as
 
 it("keeps the original when the retelling fails", async () => {
   configureRetell({ ...kodi, retell: async () => null });
-  const el = render(PersonaBubble, { persona: "assistant", label: "Lexi", children: body });
+  const el = render(PersonaBubble, { persona: "assistant" as const, label: "Lexi", children: body });
 
   menuItem(el, "Kodi's take")!.click();
   await settle();
@@ -54,15 +54,15 @@ it("keeps the original when the retelling fails", async () => {
 
 it("offers no retelling on a bubble that opts out, or on a non-assistant bubble", () => {
   configureRetell(kodi);
-  const optedOut = render(PersonaBubble, { persona: "assistant", label: "Kodi", retellable: false, children: body });
-  const owner = render(PersonaBubble, { persona: "owner", label: "You", children: body });
+  const optedOut = render(PersonaBubble, { persona: "assistant" as const, label: "Kodi", retellable: false, children: body });
+  const owner = render(PersonaBubble, { persona: "owner" as const, label: "You", children: body });
   expect(optedOut.querySelector(".leaf-menu-trigger")).toBeNull();
   expect(owner.querySelector(".leaf-menu-trigger")).toBeNull();
 });
 
 it("drops a shown retelling once the app stops offering it", async () => {
   configureRetell(kodi);
-  const el = render(PersonaBubble, { persona: "assistant", label: "Lexi", children: body });
+  const el = render(PersonaBubble, { persona: "assistant" as const, label: "Lexi", children: body });
   menuItem(el, "Kodi's take")!.click();
   await settle();
 
