@@ -32,33 +32,10 @@ import { listEnvelopesForPrincipal, listVaultsForOwner, type VaultRow } from "./
 import { listPatientsForProvider, listProvidersForPatient } from "./identity-providers";
 import { deleteRawObjectsForAccount, listRawObjectsForAccount } from "./identity-audit";
 import { storeKey, type StoreEnv } from "./store";
-import type { ObjectBucket } from "./object-bucket";
+import { listAllKeys, type ObjectBucket } from "./object-bucket";
 import { vaultIdFromR2Key } from "../../src/lib/client-id";
 
 export type ErasableBucket = Pick<ObjectBucket, "delete" | "list">;
-
-/**
- * Every key under a prefix, following the cursor.
- *
- * W73 correction to W72. The original called `list()` once and counted what came back. R2 caps a page
- * at 1000 objects and `health-vault` already holds 1259 (docs/HANDOFF.md), so on a store of any size
- * the count silently stopped early — and because the count is what decides `complete`, an erasure that
- * had left objects behind could report `complete: true`. That is precisely the claim the field exists
- * to make honestly, so getting it wrong was worse than not having it.
- *
- * The same 1000-object cap already cost this project a five-night silent backup failure
- * (`scripts/vault-sync.ts:253` paginates for that reason). Second time.
- */
-async function listAll(bucket: ErasableBucket, prefix: string): Promise<string[]> {
-  const keys: string[] = [];
-  let cursor: string | undefined;
-  do {
-    const page = await bucket.list(cursor ? { prefix, cursor } : { prefix });
-    for (const o of page.objects) keys.push(o.key);
-    cursor = page.truncated ? page.cursor : undefined;
-  } while (cursor);
-  return keys;
-}
 
 export interface ErasureEnv extends StoreEnv {
   DB: D1Database;
@@ -162,7 +139,7 @@ export async function eraseAccount(env: ErasureEnv, accountId: string, now: Date
   for (const prefix of ["raw", "text"]) {
     const root = storeKey(env, prefix) + "/";
     for (const ns of namespaces) {
-      for (const k of await listAll(env.VAULT, root + ns + "/")) {
+      for (const k of await listAllKeys(env.VAULT, root + ns + "/")) {
         if (!deleted.has(k)) unattributable += 1;
       }
     }

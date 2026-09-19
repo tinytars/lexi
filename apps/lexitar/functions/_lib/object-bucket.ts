@@ -28,3 +28,19 @@ export interface ObjectBucket {
   delete(key: string): Promise<void>;
   list(options: { prefix: string; cursor?: string; limit?: number }): Promise<ObjectListing>;
 }
+
+/**
+ * Every key under a prefix, following the cursor. R2 caps a page at 1000 objects, and reading one page
+ * as the whole answer has already cost this project a silent backup failure and a false
+ * `complete: true` erasure (W73).
+ */
+export async function listAllKeys(bucket: Pick<ObjectBucket, "list">, prefix: string): Promise<string[]> {
+  const keys: string[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await bucket.list(cursor ? { prefix, cursor } : { prefix });
+    for (const o of page.objects) keys.push(o.key);
+    cursor = page.truncated ? page.cursor : undefined;
+  } while (cursor);
+  return keys;
+}

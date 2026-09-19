@@ -151,9 +151,18 @@ The manual env dance above is now wrapped so it reproduces on a fresh clone / ne
   to a patient who revoked org recovery, so nothing can open their vault to resolve it); **prod 35 of 35,
   zero orphans.** Re-running is a no-op — `INSERT OR IGNORE`, and it reports `already attributed`.
 
-  Run it again after any bulk import that predates ownership recording. An unattributed object is not a
-  breakage — an unclaimed namespace is allowed by design (`functions/_lib/raw-owner.ts`) — it is simply
-  readable by any authenticated account until something claims it.
+  Run it again after any bulk import that predates ownership recording. An unattributed object makes its
+  namespace **orphaned** (W76, `functions/_lib/raw-owner.ts`): every route refuses it, owner included,
+  and only an empty namespace can be claimed by a first write. An orphan is resolved in this order:
+  the backfill (now covering `chat-{client}.enc` too); the owner reclaiming it on vault open, which
+  proves a stored original's full SHA-256 to `POST /api/raw/claim`; `raw:backfill -- --assign
+  <client>=<accountId>` for an owner confirmed out of band; and finally `npm run orphan:sweep`, which
+  dates orphans (`--record`, the `orphan-sweep` op in `ops.yml`) and deletes those unclaimed for 90
+  days (`--delete`, an operator decision — irreversible outside the backup window). An `access:
+  "orphaned"` log line is a refused patient the backfill missed.
+
+  `migrations/0013_orphaned_namespaces.sql` (the sweep's `first_seen` dates) — additive, applied to
+  both databases 2026-09-19; nothing but the sweep reads it.
 
   Previously: `migrations/0008_account_erasure.sql` — needs applying to BOTH databases. It adds
   `accounts.deleted_at` and the `raw_objects` ownership table. Until it is applied, `POST
