@@ -12,7 +12,7 @@
 import "./load-creds";
 import { d1, q, D1 } from "./d1-remote";
 import { listObjects, deleteObject, LIVE_BUCKET, resolveStore, type R2ObjectInfo } from "./vault-sync";
-import { clientIdOfObjectKey } from "../functions/_lib/raw-owner";
+import { clientIdOfObjectKey } from "../functions/_lib/namespace-key";
 import { isMain } from "./is-main";
 
 const DAY_MS = 24 * 60 * 60 * 1000;

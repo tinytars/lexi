@@ -27,7 +27,7 @@ import { unwrapDEKWithPrivateKey, decryptVaultV2 } from "@tinytars/vault/crypto"
 import { ORG_ACCOUNT_ID } from "../functions/_lib/org";
 import type { Vault } from "../src/lib/types";
 import { normalizeClientId } from "../src/lib/client-id";
-import { clientIdOfObjectKey } from "../functions/_lib/raw-owner";
+import { clientIdOfObjectKey } from "../functions/_lib/namespace-key";
 import { isMain } from "./is-main";
 
 const STORE = resolveStore();

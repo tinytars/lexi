@@ -56,12 +56,6 @@ export function namespacePrefixes(env: StoreEnv, clientId: string): string[] {
   return [`${storeKey(env, "raw", slug)}/`, `${storeKey(env, "text", slug)}/`, storeKey(env, `chat-${slug}.enc`)];
 }
 
-/** The inverse of namespacePrefixes: which client namespace an object key belongs to, or null if none. */
-export function clientIdOfObjectKey(key: string): string | null {
-  const m = /^[^/]+\/(?:(?:raw|text)\/([^/]+)\/.+|chat-(.+)\.enc)$/.exec(key);
-  return m ? normalizeClientId(m[1] ?? m[2]) : null;
-}
-
 /**
  * The account that owns everything belonging to `clientId`, or null when nothing has claimed it yet.
  * First writer wins: a backfill or claim can add rows for a second account and must never flip the owner.
