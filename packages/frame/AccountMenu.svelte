@@ -38,7 +38,7 @@
     // About is app-level, not provider/patient-specific, so it's offered in both modes.
     onAbout?: () => void;
     // Copy, all domain-flavorable — defaults are generic, callers override with their own vocabulary
-    // (e.g. LexiTar's "patient"/"roster"/"Translation") rather than this package assuming one.
+    // (e.g. "patient"/"roster") rather than this package assuming one.
     providerBadgeLabel?: string;
     subjectFallback?: string;
     viewingSubjectLabel?: string;

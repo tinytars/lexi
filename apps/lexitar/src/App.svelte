@@ -76,8 +76,8 @@
   import type { RefreshStage } from "./lib/finding-refresh";
   import { refreshMarkerGroups } from "./lib/marker-groups-client";
   import { timeAgo } from "@tinytars/frame/time-ago";
-  import { PRODUCT_NAME } from "./lib/brand";
-  import Footer from "./lib/Footer.svelte";
+  import { PRODUCT_NAME, FOUNDATION } from "./lib/brand";
+  import OrgFooter from "@tinytars/frame/OrgFooter.svelte";
   import Disclaimer from "./lib/Disclaimer.svelte";
   import { runWithConcurrency } from "@tinytars/frame/concurrency";
   import { loadSidebarMode, modeForSection } from "./lib/sidebar-mode";
@@ -955,7 +955,7 @@
      footer.spec.ts's "renders on every state" coverage still holds. -->
 {#snippet appChrome()}
   <Disclaimer />
-  <Footer />
+  <OrgFooter org={FOUNDATION} />
 {/snippet}
 
 <div class="app-shell">

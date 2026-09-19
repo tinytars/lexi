@@ -5,7 +5,7 @@ import { E2E_CLINICIAN, openSynthetic } from "./_synthetic";
 
 // Content lives in tests/unit/footer.test.ts; this proves the shared shell mounts it on every screen.
 async function expectChrome(page: Page) {
-  await expect(page.locator("footer.tt-footer")).toBeVisible();
+  await expect(page.locator("footer.frame-footer")).toBeVisible();
   await expect(page.locator("section.disclaimer")).toBeVisible();
 }
 

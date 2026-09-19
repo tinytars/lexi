@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { MEDICAL_DISCLAIMER, PRIVACY_STATEMENT, LEGAL_BASE } from "./brand";
+  import { MEDICAL_DISCLAIMER, PRIVACY_STATEMENT, FOUNDATION } from "./brand";
 </script>
 
 <section class="disclaimer" aria-label="Medical disclaimer and privacy">
@@ -9,8 +9,8 @@
   <div class="disclaimer-box">
     <p>
       <strong>Privacy &amp; Data Security:</strong> {PRIVACY_STATEMENT}
-      Read our full <a href={`${LEGAL_BASE}/privacy`} target="_blank" rel="noopener">Privacy Policy</a>
-      and <a href={`${LEGAL_BASE}/terms`} target="_blank" rel="noopener">Terms of Service</a>.
+      Read our full <a href={`${FOUNDATION.legalBase}/privacy`} target="_blank" rel="noopener">Privacy Policy</a>
+      and <a href={`${FOUNDATION.legalBase}/terms`} target="_blank" rel="noopener">Terms of Service</a>.
     </p>
   </div>
 </section>

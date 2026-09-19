@@ -5,7 +5,7 @@
 export type AttachMode = "camera" | "library" | "files";
 
 // Everything. A leaf's Attach is storage, not import: whatever you attach is kept, shown, and — if
-// it is a PDF or a text file — read so LexiTar can quote it. Anything else simply attaches and sits
+// it is a PDF or a text file — read so the host app can quote it. Anything else simply attaches and sits
 // there, which is strictly better than a file picker that greys the file out with no explanation.
 //
 // The narrow "image/*,application/pdf,.xlsx,.xls" this replaces meant a .docx, a .csv or a .heic
