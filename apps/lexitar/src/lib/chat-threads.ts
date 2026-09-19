@@ -3,6 +3,7 @@
 // at rest. adoptThreads() rebases the id/seq counter onto a restored set so new threads never
 // collide with hydrated ones.
 
+import type { PersonaId } from "./personas";
 import type { Permalink } from "./permalink";
 import type { ReferenceKind, ResolvedReference } from "./reference-resolver";
 import type { Attachment } from "./types";
@@ -23,6 +24,9 @@ export type Turn = {
   // a SourceRecord/pendingUpload, and never reaches the Finding pipeline (see leaf-actions.ts /
   // decision #4 in docs/health-dash/plans/46-w46-attachments-and-previews.md).
   attachments?: Attachment[];
+  // W84 — an assistant turn restated by a persona adapter. `text` stays Lexi's canonical answer: it is
+  // what history replays to the brain, so the model only ever reads its own words back.
+  adapted?: { persona: PersonaId; text: string };
 };
 
 export type Thread = {
@@ -100,4 +104,10 @@ export function sortThreads(threads: Thread[]): Thread[] {
   return sortPinnedFirst(threads).sort((a, b) =>
     a.pinned === b.pinned ? (b.lastActivityAt ?? b.seq) - (a.lastActivityAt ?? a.seq) : 0,
   );
+}
+
+// W84 — the words an assistant turn shows, and whose they are. The adapted rendering wins unless the
+// reader asked for the original; a turn with no adaptation is always Lexi's own answer.
+export function shownReply(turn: Turn, showOriginal: boolean): { persona: PersonaId; text: string } {
+  return turn.adapted && !showOriginal ? turn.adapted : { persona: "lexi", text: turn.text };
 }

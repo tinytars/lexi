@@ -6,8 +6,8 @@
 // that caused it. The fake engine below models exactly that, so a stale `end` from a chunk that was
 // paused or superseded is delivered the way a real browser delivers it.
 
-import { describe, it, expect, beforeEach, vi } from "vitest";
-import { speechRegistry, speechChunks, isSpeechSupported } from "@tinytars/frame/speech-registry.svelte";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { speechRegistry, speechChunks, isSpeechSupported, configureSpeech } from "@tinytars/frame/speech-registry.svelte";
 
 class FakeUtterance {
   onend: (() => void) | null = null;
@@ -219,5 +219,120 @@ describe("stop", () => {
     speechRegistry.stop();
     Object.defineProperty(window, "speechSynthesis", { value: undefined, configurable: true });
     expect(() => speechRegistry.stop()).not.toThrow();
+  });
+});
+
+// The neural path: each chunk is synthesized to a Blob by the app's engine and played through an
+// audio element. The fake audio element below plays only when told to, like the fake engine above.
+class FakeAudio {
+  static played: FakeAudio[] = [];
+  static refusePlay = false;
+  onended: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  paused = false;
+  constructor(public src: string) {}
+  play() {
+    if (FakeAudio.refusePlay) return Promise.reject(new Error("NotAllowedError"));
+    FakeAudio.played.push(this);
+    return Promise.resolve();
+  }
+  pause() { this.paused = true; }
+}
+
+const settle = () => new Promise<void>((r) => setTimeout(r, 0));
+
+describe("neural engine", () => {
+  let synthesized: { text: string; voice?: string }[];
+  let failSynthesis: boolean;
+  let revoked: string[];
+
+  beforeEach(() => {
+    synthesized = [];
+    failSynthesis = false;
+    revoked = [];
+    FakeAudio.played = [];
+    FakeAudio.refusePlay = false;
+    vi.stubGlobal("Audio", FakeAudio);
+    let n = 0;
+    URL.createObjectURL = () => `blob:${n++}`;
+    URL.revokeObjectURL = (u: string) => { revoked.push(u); };
+    configureSpeech({
+      synthesize: async (text, voice) => {
+        synthesized.push({ text, voice });
+        if (failSynthesis) throw new Error("503");
+        return new Blob([text]);
+      },
+    });
+  });
+
+  afterEach(() => {
+    speechRegistry.stop();
+    configureSpeech(null);
+  });
+
+  it("synthesizes with the requested voice, prefetches the next chunk, and plays chunks in order", async () => {
+    speechRegistry.play("a", LONG, "Kodi", "voice-k");
+    await settle();
+    expect(FakeAudio.played).toHaveLength(1);
+    expect(synthesized.map((s) => s.text.split(" ")[0])).toEqual(["One", "Two"]);
+    expect(synthesized.every((s) => s.voice === "voice-k")).toBe(true);
+    FakeAudio.played[0].onended!();
+    await settle();
+    FakeAudio.played[1].onended!();
+    await settle();
+    expect(synthesized.map((s) => s.text.split(" ")[0])).toEqual(["One", "Two", "Three"]);
+    FakeAudio.played[2].onended!();
+    await settle();
+    expect(speechRegistry.statusOf("a")).toBe("idle");
+    expect(synth.spoken).toHaveLength(0);
+    expect(revoked.sort()).toEqual(["blob:0", "blob:1", "blob:2"]);
+  });
+
+  it("is supported with an engine even when the browser has no voice", () => {
+    Object.defineProperty(window, "speechSynthesis", { value: undefined, configurable: true });
+    expect(isSpeechSupported()).toBe(true);
+  });
+
+  it("normalizes text before chunking, on both paths", async () => {
+    configureSpeech({ synthesize: async () => { throw new Error("down"); }, normalize: (t) => t.replace("mg/dL", "milligrams per deciliter") });
+    speechRegistry.play("a", "It is 92 mg/dL.", "Lexi");
+    await settle();
+    expect(synth.spoken.map((u) => u.text)).toEqual(["It is 92 milligrams per deciliter."]);
+  });
+
+  it("falls back to the browser voice for the rest of playback when synthesis fails", async () => {
+    failSynthesis = true;
+    speechRegistry.play("a", LONG, "Lexi");
+    await settle();
+    expect(synth.spoken.map((u) => u.text.split(" ")[0])).toEqual(["One"]);
+    synth.finish();
+    expect(synth.spoken.map((u) => u.text.split(" ")[0])).toEqual(["One", "Two"]);
+    expect(FakeAudio.played).toHaveLength(0);
+  });
+
+  it("falls back when the browser refuses to play the audio", async () => {
+    FakeAudio.refusePlay = true;
+    speechRegistry.play("a", "hello", "Lexi");
+    await settle();
+    expect(synth.spoken.map((u) => u.text)).toEqual(["hello"]);
+    expect(speechRegistry.statusOf("a")).toBe("playing");
+  });
+
+  it("a clip that arrives after pause is not played, and resume replays the paused chunk", async () => {
+    speechRegistry.play("a", LONG, "Lexi");
+    speechRegistry.pause();
+    await settle();
+    expect(FakeAudio.played).toHaveLength(0);
+    speechRegistry.resume();
+    await settle();
+    expect(FakeAudio.played).toHaveLength(1);
+    expect(synthesized.filter((s) => s.text.startsWith("One"))).toHaveLength(1);
+  });
+
+  it("pausing stops the audio element", async () => {
+    speechRegistry.play("a", LONG, "Lexi");
+    await settle();
+    speechRegistry.pause();
+    expect(FakeAudio.played[0].paused).toBe(true);
   });
 });
