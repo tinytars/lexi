@@ -12,7 +12,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-const dir = process.env.PLOVER_CREDENTIALS_DIR ?? join(homedir(), ".claude", "infra", "cloud", "credentials");
+const dir = process.env.PLOVER_CREDENTIALS_DIR ?? join(homedir(), "PabloTech", "plover-keys");
 
 for (const file of ["health-dash.env", "cloudflare.env"]) {
   const path = join(dir, file);

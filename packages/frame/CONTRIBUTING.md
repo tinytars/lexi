@@ -33,13 +33,14 @@ vault mutation logic to a controller in this package, it's misplaced — this pa
   earns its place only by explaining a non-obvious *why* (a hidden constraint, a workaround, an
   invariant a reader could otherwise violate by "fixing" the code).
 - No dependencies beyond `@tinytars/vault` and `svelte` without discussion first.
-- This package has no test suite yet — a PR that adds meaningful new controller logic should add
-  a first one rather than extending the gap.
+- Pure modules are tested beside their source (`*.test.ts`, `npm test` here). The rune
+  controllers are exercised from `apps/lexitar/tests/unit`, which compiles `.svelte.ts`; new
+  controller logic lands with a test in either place.
 
 ## Releases
 
 Merging to `main` auto-bumps the patch version and tags/releases it — CI's `release` job in
-[`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) does this after typecheck passes, and
+[`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) does this once every CI job (frame, `lexitar`, `lexitar-data`) passes, and
 its own commit carries `[skip ci]` so it doesn't trigger itself again. Don't hand-edit the
 `version` field in `package.json` — the automation owns patch.
 

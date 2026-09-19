@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Thin shim: the shared size/agent-memory/credentials guards live in plover-context, never copied here.
+# Opt in with `git config core.hooksPath .githooks`; external contributors are unaffected.
+GUARD="${PLOVER_GIT_HOOKS:-$HOME/.claude/infra/git-hooks}/guards.sh"
+
+if [ ! -x "$GUARD" ]; then
+  echo "pre-commit: shared guards not found at $GUARD"
+  echo "pre-commit:   clone pablo-tech/plover-context to ~/.claude, or set PLOVER_GIT_HOOKS."
+  exit 1
+fi
+
+exec "$GUARD"
