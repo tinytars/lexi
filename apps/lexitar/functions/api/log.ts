@@ -1,6 +1,7 @@
 import { requireBearer } from "../_lib/guard";
 import { auditor, type AuditEvent } from "../_lib/audit";
 import { json } from "../_lib/http";
+import type { ObjectBucket } from "../_lib/object-bucket";
 
 // W39/Phase 3 — client loop-event beacon. The retry loop lives browser-side (refresh-client.ts), so
 // its decisions (why it retried, when it gave up, a cancel) are invisible to the server half of the
@@ -12,12 +13,9 @@ import { json } from "../_lib/http";
 // so a correction string (model prose about the patient) cannot slip through even if a buggy client
 // sent one.
 
-interface R2Bucket {
-  put(key: string, value: string, options?: unknown): Promise<unknown>;
-}
 interface Env {
   PROVIDER_TOKEN: string;
-  VAULT?: R2Bucket;
+  VAULT?: Pick<ObjectBucket, "put">;
   STORE_PREFIX: string;
 }
 

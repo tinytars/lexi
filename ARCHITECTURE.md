@@ -130,6 +130,23 @@ the `phi_access_events` audit log; R2 holds only ciphertext. Both are environmen
 just namespace-isolated, so a dev-environment bug cannot reach production data through a shared
 store.
 
+### Cloudflare is one host, not a dependency
+
+Production runs on Cloudflare Pages, but nothing in `functions/` or `src/` imports a Cloudflare
+module — `tests/unit/platform-imports.test.ts` fails if one does. A route sees only its Pages-shaped
+context (`request`, `env`, `params`, `waitUntil`) and two storage ports: `env.DB`, `@tinytars/vault`'s
+structural `D1Database` (SQL is plain SQLite, so `migrations/` run anywhere SQLite does), and
+`env.VAULT`, the `ObjectBucket` blob port in `functions/_lib/object-bucket.ts`.
+
+`apps/lexitar/server/` is a second host that proves it: `node:http` serving the same `dist/` and the
+same `functions/` tree — Pages' file-based routing and `_headers` reproduced — over `node:sqlite`
+(`sqlite-d1.ts`) and a directory of blobs (`fs-bucket.ts`). Conformance suites
+(`tests/unit/{d1,object-bucket}-conformance.test.ts`) run one set of cases against real workerd D1/R2
+and the Node adapters, and CI runs the unit and e2e suites on both hosts. The Node host is a
+portability proof, not a second production: no TLS, backups, or secret management beyond
+`process.env`. Ops tooling (`wrangler.sh`, `d1-migrate.sh`, `r2-ops`, snapshots) stays
+Cloudflare-specific.
+
 ## Two things worth reading before you adapt this
 
 **The server never holds a key, but it does hold policy.** `functions/` decides *who* may read a

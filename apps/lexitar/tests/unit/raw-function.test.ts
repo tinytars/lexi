@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { onRequestGet, onRequestPut, onRequestDelete } from "../../functions/api/raw/[[path]]";
 import { signSession } from "../../functions/_lib/session";
 import { fakeSessionDb } from "../support/session-db";
+import { storedObject } from "../../server/fs-bucket";
 
 // W73 — the routes now resolve who owns a client namespace before touching R2. These tests are about
 // content types, etags and path handling, so they seed "acct-1 owns the fixture namespaces" and leave
@@ -32,8 +33,8 @@ function makeEnv(seed: Record<string, Uint8Array<ArrayBuffer>> = {}) {
     DB: ownedDb(),
     STORE_PREFIX: "dev",
     VAULT: {
-      get: async (k: string) => (store.has(k) ? { body: new Response(store.get(k)!).body! } : null),
-      put: async (k: string, v: Uint8Array<ArrayBuffer>) => { store.set(k, new Uint8Array(v)); },
+      get: async (k: string) => (store.has(k) ? storedObject(store.get(k)!) : null),
+      put: async (k: string, v: Uint8Array<ArrayBuffer>) => { store.set(k, new Uint8Array(v)); return { etag: k }; },
       delete: async (k: string) => { store.delete(k); },
     },
   };

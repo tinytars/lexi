@@ -8,6 +8,7 @@ import { storeKey } from "../_lib/store";
 import { rawAccessFor, type RawAccess } from "../_lib/raw-owner";
 import { readDocument, DOCUMENT_READ_FAILURE, type DocumentReading, type StoredExtraction } from "@pablotech/akesi/document-read";
 import { EXTRACT_MODEL } from "../../src/lib/extract-config";
+import type { ObjectBucket } from "../_lib/object-bucket";
 
 // Read one ALREADY-UPLOADED attachment as text, and cache the result forever.
 //
@@ -21,16 +22,9 @@ import { EXTRACT_MODEL } from "../../src/lib/extract-config";
 // PDF's transcription in a vault blob would be re-encrypted and rewritten on every unrelated edit;
 // the vault keeps metadata only (Attachment.extracted, types.ts). The sidecar is plaintext PHI in
 // exactly the same sense raw/ already is, under the same session gate, in the same bucket.
-interface R2ObjectBody {
-  arrayBuffer(): Promise<ArrayBuffer>;
-  text(): Promise<string>;
-}
-interface R2Bucket {
-  get(key: string): Promise<R2ObjectBody | null>;
-  put(key: string, value: string | Uint8Array): Promise<unknown>;
-}
+
 interface Env {
-  VAULT: R2Bucket;
+  VAULT: Pick<ObjectBucket, "get" | "put">;
   ANTHROPIC_API_KEY?: string;
   RANGES_ANTHROPIC_API_KEY?: string;
   SESSION_SECRET: string;
