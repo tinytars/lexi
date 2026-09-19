@@ -15,7 +15,20 @@
      */
     "allowJs": true,
     "checkJs": true,
-    "moduleDetection": "force"
+    "moduleDetection": "force",
+
+    // The root package.json pins @anthropic-ai/sdk via `overrides` to satisfy @pablotech/akesi's
+    // optional peer range, so npm installs a SECOND copy next to this workspace's own (newer)
+    // direct dependency. akesi only ever does `import type Anthropic` — there is no duplicate at
+    // runtime — but TS treats the two `Anthropic` classes as distinct nominal types (they carry
+    // `#private`), so every `proposeFromReport(client, …)` call failed to typecheck. Point both
+    // copies' importers at the one this app actually constructs and ships. The workspace-local
+    // copy is listed first and the hoisted one second, so a single identity wins whichever way npm
+    // decides to lay the two out.
+    "paths": {
+      "@anthropic-ai/sdk": ["./node_modules/@anthropic-ai/sdk", "../../node_modules/@anthropic-ai/sdk"],
+      "@anthropic-ai/sdk/*": ["./node_modules/@anthropic-ai/sdk/*", "../../node_modules/@anthropic-ai/sdk/*"]
+    }
   },
   // W63 — functions/ (every Pages Function, i.e. all of prod's API surface) was checked by NOTHING:
   // not this config, not `build` (vite bundles src/ only), not vitest (transpile-only). It belongs
