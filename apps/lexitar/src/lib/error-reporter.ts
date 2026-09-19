@@ -28,7 +28,14 @@ function send(payload: ClientErrorPayload): void {
   }).catch(() => {});
 }
 
-export function installErrorReporter(target: EventTarget = window, report: (p: ClientErrorPayload) => void = send): void {
+// index.html's boot guard defines it: reload once onto the current build, loop-guarded.
+const reloadForCurrentBuild = () => (globalThis as { reloadForCurrentBuild?: () => void }).reloadForCurrentBuild?.();
+
+export function installErrorReporter(
+  target: EventTarget = window,
+  report: (p: ClientErrorPayload) => void = send,
+  reload: () => void = reloadForCurrentBuild,
+): void {
   const seen = new Set<string>();
   const capture = (err: unknown) => {
     // A cross-origin script error arrives as a bare "Script error." with no Error object — nothing to act on.
@@ -41,5 +48,8 @@ export function installErrorReporter(target: EventTarget = window, report: (p: C
   };
   target.addEventListener("error", (ev) => capture((ev as ErrorEvent).error));
   target.addEventListener("unhandledrejection", (ev) => capture((ev as PromiseRejectionEvent).reason));
-  onLazyImportFailure(capture);
+  onLazyImportFailure((err) => {
+    capture(err);
+    reload();
+  });
 }
