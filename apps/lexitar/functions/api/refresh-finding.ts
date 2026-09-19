@@ -1,9 +1,8 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { requireBearer } from "../_lib/guard";
 import { logRequest } from "../_lib/log";
 import { auditor } from "../_lib/audit";
 import { buildUserMessage, SYSTEM_PROMPT, correctionSuffix } from "@pablotech/akesi/finding-generate";
-import { FINDING_MODEL } from "../../src/lib/finding-config";
+import { modelFor } from "../_lib/inference/resolve";
 import { findingRequestParams } from "@pablotech/akesi/finding-generate";
 import type { ObjectBucket } from "../_lib/object-bucket";
 
@@ -11,10 +10,9 @@ import type { ObjectBucket } from "../_lib/object-bucket";
 // /api/provider-token). A Finding call runs minutes, so we STREAM Opus text to the browser
 // headers-first (validated no-524 by the 3b.2 probe): the browser accumulates → extractJson →
 // validate → assembleFinding → merge → PUT /api/vault. Retry-with-correction is browser-driven (it
-// re-POSTs with `correction`). Runs on a DISTINCT FINDING_ANTHROPIC_API_KEY (a Finding-pool key,
-// separate from the chat/extract key). PHI-free logging (id/status only, never the client or prose).
+// re-POSTs with `correction`). Runs on the Finding-pool key (the "finding" feature in
+// inference.config.json, separate from the chat/extract key). PHI-free logging (id/status only, never the client or prose).
 interface Env {
-  FINDING_ANTHROPIC_API_KEY: string;
   PROVIDER_TOKEN: string;
   // W39/Phase 3 — persist the PHI-free audit trail to R2. Optional so a test/local env without the
   // binding degrades to console-only logging.
@@ -56,16 +54,15 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
       : [];
   const attempt = typeof body.attempt === "number" ? body.attempt : undefined;
 
-  const anthropic = new Anthropic({ apiKey: env.FINDING_ANTHROPIC_API_KEY });
   // W72 — one definition, in finding-generate.ts, and it takes EVERY prior rejection rather than the
   // latest. This route used to carry its own singular "fix exactly this problem" wording: the exact
   // behaviour W67 measured burning six full Opus generations on one refresh, fixed in the CLI at the
   // time and left live on the browser path, which is the one patients use.
   const userContent = buildUserMessage(client as never) + correctionSuffix(corrections);
-  const model = FINDING_MODEL;
+  const { client: anthropic, model } = modelFor(env, "finding");
   // W64 — one definition, in finding-generate.ts. Both the adaptive-thinking heuristic and the
   // token budget were restated here verbatim; a change to either had to be made twice or the web
-  // Finding stopped matching the CLI Finding, which is the invariant finding-config.ts guards.
+  // Finding stopped matching the CLI Finding, which is the invariant inference.config.json keeps by giving both one entry.
   const requestParams = findingRequestParams(model);
 
   // Committing to a 200 stream. Audit the accepted request now (PHI-free, persisted to R2); once

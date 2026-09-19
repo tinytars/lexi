@@ -10,6 +10,7 @@
 import "./load-creds";
 import { leafContextFor } from "../src/lib/leaf-regen-registry";
 import { runLeafRegen } from "../src/lib/leaf-regen-anthropic";
+import { modelFor } from "../functions/_lib/inference/resolve";
 import { pullDeployedVault } from "./vault-ops";
 import { resolveStore } from "./vault-sync";
 import { isMain } from "./is-main";
@@ -44,9 +45,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set. Required to diagnose.");
-  const outcome = await runLeafRegen({ apiKey, node, inputs: leafContextFor(node, client, targetLabels), targetLabels });
+  const outcome = await runLeafRegen({ ...modelFor(process.env, "leafRegen"), node, inputs: leafContextFor(node, client, targetLabels), targetLabels });
   process.stdout.write(`${id}: diagnose ${node} targetLabels=${JSON.stringify(targetLabels ?? null)}\n${JSON.stringify(outcome, null, 2)}\n`);
 }
 

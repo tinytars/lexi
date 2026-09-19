@@ -1,12 +1,11 @@
 import type { D1Database } from "../_lib/identity-types";
-import Anthropic from "@anthropic-ai/sdk";
 import { requireBearer } from "../_lib/guard";
 import { requireSession } from "../_lib/session";
 import { logRequest } from "../_lib/log";
 import { auditor } from "../_lib/audit";
 import { distinctMarkerNames, markerGroupsHashOf, runMarkerGroupingPasses } from "@pablotech/akesi/marker-groups-prompt";
 import { runGroupingPass } from "../../src/lib/marker-groups-anthropic";
-import { MARKER_GROUPS_MODEL } from "../../src/lib/marker-groups-config";
+import { modelFor } from "../_lib/inference/resolve";
 import { systemOrder } from "@pablotech/akesi/system-groups";
 import type { Client, MarkerGrouping } from "../../src/lib/types";
 import type { ObjectBucket } from "../_lib/object-bucket";
@@ -18,9 +17,8 @@ import type { ObjectBucket } from "../_lib/object-bucket";
 // vault. Unlike refresh-range, a full run is up to 4 sequential Opus calls (initial pass + up
 // to 3 completeness re-passes, same shape as scripts/claude-marker-groups.ts), so this streams
 // like refresh-finding.ts to avoid an idle-timeout 524 during a long generation. Runs on the
-// shared ANTHROPIC_API_KEY (on-demand, user-triggered — not worth a dedicated pooled key).
+// shared key (on-demand, user-triggered — not worth a dedicated pooled key).
 interface Env {
-  ANTHROPIC_API_KEY: string;
   PROVIDER_TOKEN: string;
   SESSION_SECRET: string;
   // W71 — requireSession reads accounts.sessions_valid_from, so every gated route needs the binding.
@@ -86,7 +84,7 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
           return;
         }
 
-        const anthropic = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+        const { client: anthropic, model } = modelFor(env, "markerGroups");
         let passes = 0;
         let inputTokens = 0;
         let outputTokens = 0;
@@ -98,7 +96,7 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
             anthropic,
             client: typedClient,
             markers,
-            model: MARKER_GROUPS_MODEL,
+            model,
             leftover,
             signal: request.signal,
             onPass: (u: { input_tokens?: number | null; output_tokens?: number | null }) => {
@@ -116,7 +114,7 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
           groups,
           markerGroupsHash: hash,
           generatedAt: new Date().toISOString(),
-          generatedBy: { mode: "prod", model: MARKER_GROUPS_MODEL },
+          generatedBy: { mode: "prod", model },
         };
         await audit({
           event: "success",

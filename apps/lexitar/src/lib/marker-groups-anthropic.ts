@@ -10,6 +10,7 @@
 // AbortSignal and enqueues a `[[PASS]] n` chunk into its stream; the CLI records usage into its
 // accumulator. Everything else is one implementation.
 import type Anthropic from "@anthropic-ai/sdk";
+import type { MessagesClient } from "@pablotech/akesi/model-client";
 import type { Client } from "./types";
 import { SYSTEM_PROMPT, GROUPS_SCHEMA, contextBlock, type GroupsAIResponse } from "@pablotech/akesi/marker-groups-prompt";
 
@@ -17,7 +18,7 @@ import { SYSTEM_PROMPT, GROUPS_SCHEMA, contextBlock, type GroupsAIResponse } fro
 export const MARKER_GROUPS_MAX_TOKENS = 8192;
 
 export interface GroupingPassParams {
-  anthropic: Anthropic;
+  anthropic: MessagesClient;
   client: Client;
   markers: string[];
   model: string;

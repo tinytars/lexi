@@ -9,7 +9,8 @@ describe("describeAiError", () => {
   it.each([
     ["insufficient_credit", "out of credits"],
     ["ai_busy", "busy right now"],
-    ["anthropic_error", "returned an error"],
+    ["model_error", "returned an error"],
+    ["model_unsupported", "kind of input"],
     ["no_tool_use", "usable answer"],
     ["invalid_leaf_regen", "expected shape"],
     ["truncated", "cut off"],
@@ -25,7 +26,7 @@ describe("describeAiError", () => {
   });
 
   it("never renders a raw JSON body — the bug that showed patients relay internals", () => {
-    const leaked = new Error('{"error":"leaf-regen backend error","errorCode":"anthropic_error"}');
+    const leaked = new Error('{"error":"leaf-regen backend error","errorCode":"model_error"}');
     expect(describeAiError(leaked)).not.toContain("{");
     expect(describeAiError(leaked)).toContain("Couldn't translate");
   });

@@ -39,7 +39,7 @@ A **Digital Public Good** is open-source software, open data, an open AI system,
 | 1 | **SDG Relevance** | ✅ Strong — SDG 3 (Health & Well-being) + SDG 10 (Reduced Inequalities); health literacy for low-literacy/LEP adults | Document the SDG mapping in the application |
 | 2 | **Open Licensing** | ✅ **Closed 2026-09-13** — repo public under MIT (`../../LICENSE`); `@tinytars/vault` and `@tinytars/frame` are open too | None. Cite the LICENSE and the public repo |
 | 3 | **Clear Ownership** | 🟡 LICENSE copyright and `../../README.md` both name the Tiny Tars Foundation; `../../CODEOWNERS` exists. What's still unwritten is the arrangement with the for-profit side (enterprise integrations sold separately; the utility stays open) | Write a short public ownership statement (Foundation owns the open utility; any commercial integration is separate and licensed from it) |
-| 4 | **Platform Independence** | 🟡 **Hosting: closed 2026-09-19.** The same `functions/` tree runs on Cloudflare Pages (D1 + R2) or a Node self-host (`node:sqlite` + filesystem blobs, `npm run serve:node` or the `Dockerfile`); CI runs the full e2e suite on both hosts and boots the image, and `tests/unit/platform-imports.test.ts` fails if a route or the UI imports a Cloudflare module (`../../ARCHITECTURE.md` §Cloudflare is one host). **Model: still single-provider.** Every AI feature calls Anthropic (Claude Opus 4.7 / Sonnet 4.6 / Haiku 4.5) through `functions/api/*` with `ANTHROPIC_API_KEY`; there is no second provider or open-model fallback | Document which features work with no model at all (vault, markers, charts, export) vs. which need one, and state the model dependency plainly. An open-model fallback would strengthen this but isn't required to apply |
+| 4 | **Platform Independence** | ✅ **Closed 2026-09-19.** **Hosting:** the same `functions/` tree runs on Cloudflare Pages (D1 + R2) or a Node self-host (`node:sqlite` + filesystem blobs, `npm run serve:node` or the `Dockerfile`); CI runs the full e2e suite on both hosts and boots the image, and `tests/unit/platform-imports.test.ts` fails if a route or the UI imports a Cloudflare module (`../../ARCHITECTURE.md` §Cloudflare is one host). **Model:** every inference is configured in one file, `inference.config.json`, which names a provider, model and key env var per feature. Anthropic is the default; any OpenAI-compatible endpoint works too, including OpenAI and a local open model through Ollama, vLLM or LM Studio (`INFERENCE.md`). Features that need no model (vault, sign-in, manual entry, markers and charts, export) are listed there with the ones that do. The remaining single-vendor piece is optional: read-aloud uses Azure Speech and falls back to the browser voice | Cite `INFERENCE.md` and `tests/unit/openai-adapter.test.ts` |
 | 5 | **Documentation** | ✅ **Largely satisfied** — public `README.md`, `ARCHITECTURE.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `CHANGELOG.md` at the root; `API.md`, `AUTH.md`, `VAULT.md`, `docs/BUILDING.md` in this app | None blocking. Point the application at these |
 | 6 | **Non-PII Data Extraction** (export in a non-proprietary format) | ✅ `src/lib/export.ts` ships CSV (`exportCsv`) and structured JSON (`exportJson`), surfaced through `@tinytars/frame`'s `ExportTab.svelte`. The indicator asks for *a* non-proprietary format, not FHIR | Cite the export as evidence. FHIR stays a nice-to-have |
 | 7 | **Privacy & Applicable Laws** | 🟡 Six mandatory sub-requirements. **Published privacy policy: done** — `https://tinytars.foundation/privacy`, linked from the in-app disclaimer (`src/lib/Disclaimer.svelte`, `LEGAL_BASE` in `src/lib/brand.ts`). It covers retention and deletion-on-request, but says nothing about consent, data minimization, or governance/access control. **Deletion: API only** — `POST /api/account/erase` works (self-only, email-echo confirmation, `functions/_lib/erasure.ts`), but no UI calls it, so a user can't erase their account themselves | (a) Add a self-service "Delete account" action that calls `/api/account/erase`. (b) Extend the privacy policy to cover consent, minimization and governance, and point it at the self-service deletion. (c) Access control is already readable in one place (`functions/_lib/capabilities.ts`) — cite it |
@@ -48,7 +48,7 @@ A **Digital Public Good** is open-source software, open data, an open AI system,
 | 9B | **Do No Harm — Inappropriate/Illegal Content** | 🟡 Safeguards exist in code: the audited `MEDICAL_DISCLAIMER` (`src/lib/brand.ts`) shown in-app, education-not-medicine framing, no diagnosis/triage/treatment recommendations | Write up the content-harm controls (disclaimer, framing, fail-closed generation) as one section the application can cite |
 | 9C | **Do No Harm — Protection from Harassment** | ✅ Effectively N/A — single-user self-service, no user-to-user/social surface | Note N/A with rationale |
 
-**Read:** 5 of 9 are satisfied (1, 2, 5, 6, 8). Indicators 3 and 4 need writing only. Indicators 7 and 9 need a small piece of UI (self-service deletion), a fuller privacy policy, and a 9B write-up; 9C is N/A.
+**Read:** 6 of 9 are satisfied (1, 2, 4, 5, 6, 8). Indicator 3 needs writing only. Indicators 7 and 9 need a small piece of UI (self-service deletion), a fuller privacy policy, and a 9B write-up; 9C is N/A.
 
 ---
 
@@ -67,15 +67,17 @@ Support / questions: `support@digitalpublicgoods.net`. Detailed evaluation crite
 ## 5. Gaps to close before applying (ranked)
 1. **Self-service account deletion in the UI** (Indicators 7/9A) — wire a confirmed "Delete account" action to `POST /api/account/erase`. The only remaining code gap.
 2. **Privacy policy coverage** (Indicator 7) — add consent, data minimization, and governance/access control; reference the self-service deletion.
-3. **Model-dependency write-up** (Indicator 4) — hosting is no longer Cloudflare-bound; only the LLM dependency remains to document.
-4. **Ownership statement** (Indicator 3).
-5. **Do-no-harm write-up** (9B content controls).
+3. **Ownership statement** (Indicator 3).
+4. **Do-no-harm write-up** (9B content controls).
 
 ---
 
 ## 5b. Verified status history
 
 **2026-09-19** — re-checked against `tinytars/lexi` at `main`:
+
+- **Indicator 4 closed.** Inference moved to one config file with an OpenAI-compatible adapter, so
+  a deployer can run any feature on OpenAI or a local open model (`INFERENCE.md`).
 
 - **Indicator 2 closed.** Repo public under MIT since 2026-09-13.
 - **Indicator 5 moves to ✅.** The public doc set (README, ARCHITECTURE, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, CHANGELOG, API, AUTH, VAULT, BUILDING) is in place.
@@ -94,7 +96,7 @@ Support / questions: `support@digitalpublicgoods.net`. Detailed evaluation crite
 - [ ] Run the **free eligibility test** to get an official readiness read against the 9 indicators.
 - [ ] Ship the **self-service "Delete account"** UI over `/api/account/erase`.
 - [ ] Extend the **privacy policy** (consent, minimization, governance, self-service deletion).
-- [ ] Write the **ownership**, **model-dependency**, and **do-no-harm** statements.
+- [ ] Write the **ownership** and **do-no-harm** statements.
 - [ ] Only after the above: submit at `app.digitalpublicgoods.net/signup` as the Tiny Tars Foundation.
 - [ ] Until submitted, keep all copy at **"developed as a Digital Public Good"** — never "certified".
 

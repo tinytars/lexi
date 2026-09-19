@@ -82,7 +82,7 @@ Organized around one central derived-reasoning graph, not a flat page-per-featur
 - **The Finding DAG** (`finding-dag.ts`, the largest hand-written file in the app) is the
   AI-generated reasoning layer: a node graph with its own staleness tracking
   (`staleness.ts`/`stale-guard.ts`, driven by an inputs-hash scheme) and a generic
-  "regenerate one derived leaf via Anthropic" engine (`leaf-regen-registry.ts` and friends) that
+  "regenerate one derived leaf via the model" engine (`leaf-regen-registry.ts` and friends) that
   markers, ranges, treatment reasoning, and marker-groups all ride on rather than each shipping
   their own regeneration logic.
 - **Sidebar** (`Sidebar.svelte`, the largest Svelte file in the app) is a dispatch table over
@@ -90,7 +90,7 @@ Organized around one central derived-reasoning graph, not a flat page-per-featur
   treatment, recommended-markers — each with its own `*-sidebar-groups.ts` module rather than one
   shared branch of conditionals.
 - **Chat** is an in-app assistant layer (`chat-store.ts`, `chat-tools.ts`, `ChatTab.svelte`) with
-  its own thread/turn model, separate from the Finding DAG's own regeneration calls to Anthropic.
+  its own thread/turn model, separate from the Finding DAG's own regeneration calls to the model.
 - **Markers/ranges** (`MarkersTab.svelte`, `MarkerChart.svelte`) is the quantitative view over
   ingest output — charts, per-marker detail, reference-range eligibility and generation.
 - **Treatment** (`UnifiedTreatment.svelte`, the single largest file in the app) reasons over
@@ -116,7 +116,7 @@ management (`identity-accounts.ts`, `identity-credentials.ts`, `webauthn.ts`, `g
 `vault-principals.ts`, `store.ts`, `raw-owner.ts`), audit (`audit.ts`, `identity-audit.ts`,
 `log.ts`), and AI-backed endpoints (`chat.ts`, `refresh-finding.ts`, `refresh-range.ts`,
 `refresh-marker-groups.ts`, `leaf-regen.ts`, `treatment-infer.ts`, `extract.ts`,
-`document-extract.ts`) that call out to Anthropic but never touch a vault key. All of it composes
+`document-extract.ts`) that call out to the configured model provider but never touch a vault key. All of it composes
 `@tinytars/vault`'s `D1EnvelopeStore` and `resolveEnvelopeAccess` rather than reimplementing
 envelope CRUD or access resolution locally — `identity-vault.ts` is a thin re-export shim over the
 package for exactly that reason, keeping every existing import site unchanged while the actual
@@ -146,6 +146,18 @@ and the Node adapters, and CI runs the unit and e2e suites on both hosts. The No
 portability proof, not a second production: no TLS, backups, or secret management beyond
 `process.env`. Ops tooling (`wrangler.sh`, `d1-migrate.sh`, `r2-ops`, snapshots) stays
 Cloudflare-specific.
+
+### Anthropic is one model provider, not a dependency
+
+The model gets the same treatment. Every call core takes an injected `MessagesClient`
+(`@pablotech/akesi/model-client`), the subset of Anthropic's Messages API they use (`create` and
+`stream`), and nothing constructs a client except `functions/_lib/inference/resolve.ts`'s
+`modelFor(env, feature)`. That resolver reads `apps/lexitar/inference.config.json`, the one file
+naming each feature's provider, model and key env var. It returns either the Anthropic SDK or
+`inference/openai.ts`, an adapter that speaks the same port over any OpenAI-compatible
+`/chat/completions` endpoint (OpenAI, Ollama, vLLM, LM Studio). The adapter refuses input a model's
+declared `caps` can't take before sending anything. `tests/unit/model-ids-single-source.test.ts`
+fails if a source file names a model id outside the config. Setup: `apps/lexitar/INFERENCE.md`.
 
 ## Two things worth reading before you adapt this
 

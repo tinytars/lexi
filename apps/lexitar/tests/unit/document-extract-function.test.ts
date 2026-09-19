@@ -180,7 +180,7 @@ describe("/api/document-extract reading", () => {
   });
 
   it("maps a credit exhaustion to 402, not to 422", async () => {
-    // The shape classifyAnthropicError actually reads: status 400 + a "credit balance" message.
+    // The shape classifyModelError actually reads: status 400 + a "credit balance" message.
     create.mockRejectedValueOnce({ status: 400, type: "invalid_request_error", message: "Your credit balance is too low" });
     const env = makeEnv({ "test/raw/alex/ab12cd34-report.pdf": new Uint8Array([0x25]) });
     const res = await call(env, { auth: "valid" });

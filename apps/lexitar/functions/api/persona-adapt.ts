@@ -3,8 +3,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { requireSession } from "../_lib/session";
 import { logRequest } from "../_lib/log";
 import { json } from "../_lib/http";
-import { classifyAnthropicError } from "../_lib/anthropic-errors";
-import { CHAT_MODEL } from "../../src/lib/chat-config";
+import { classifyModelError } from "../_lib/model-errors";
+import { modelFor } from "../_lib/inference/resolve";
 import { CODY_ADAPTER_PROMPT, adapterMessage } from "../../src/lib/persona-adapter-prompt";
 import { readPersonaId } from "../../src/lib/personas";
 import { missingFacts } from "../../src/lib/persona-fidelity";
@@ -13,7 +13,6 @@ import { missingFacts } from "../../src/lib/persona-fidelity";
 // and the patient's question are PHI, so neither is logged or stored here. When the restatement cannot
 // be trusted to carry every fact, the reply is `fallback` and the browser shows Lexi's own words instead.
 interface Env {
-  ANTHROPIC_API_KEY: string;
   SESSION_SECRET: string;
   DB: D1Database;
 }
@@ -41,14 +40,14 @@ export async function onRequestPost({ request, env }: { request: Request; env: E
   if (source.length > MAX_TEXT || (question?.length ?? 0) > MAX_QUESTION) return finish(413, { error: "answer too long to adapt" }, "too_large");
 
   try {
-    const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+    const { client, model } = modelFor(env, "persona");
     let missing: string[] = [];
     for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
       const reminder = missing.length
         ? `\n\nYour previous restatement dropped or changed these facts; every one must appear exactly as written: ${missing.join(", ")}`
         : "";
       const message = await client.messages.create({
-        model: CHAT_MODEL,
+        model,
         max_tokens: 4096,
         system: CODY_ADAPTER_PROMPT,
         messages: [{ role: "user", content: adapterMessage(source, question) + reminder }],
@@ -65,7 +64,7 @@ export async function onRequestPost({ request, env }: { request: Request; env: E
     }
     return finish(200, { kind: "fallback" }, "fidelity");
   } catch (err) {
-    const { status, errorCode } = classifyAnthropicError(err);
+    const { status, errorCode } = classifyModelError(err);
     return finish(status, { error: "could not restate the answer", errorCode }, errorCode);
   }
 }

@@ -21,7 +21,6 @@
 //   npx tsx scripts/brain-benchmark.ts --regime failure     # or production, or both (default)
 import "./load-creds";
 import { appendFile } from "node:fs/promises";
-import Anthropic from "@anthropic-ai/sdk";
 import { compareBrains } from "@pablotech/neuro/compare";
 import {
   CASES,
@@ -36,14 +35,17 @@ import {
   withReplicates,
   type RetryOutcome,
 } from "@pablotech/akesi/benchmarks/retry-corrections";
-import { MODELS, WEAKEST_MODEL } from "./inference-config";
+import { modelId, type Feature } from "../src/lib/model-config";
+import type { InferenceMode } from "../src/lib/types";
+import { modelFor } from "../functions/_lib/inference/resolve";
 
-const REGIMES = {
+const REGIMES: Record<"failure" | "production", { feature: Feature; mode: InferenceMode; replicates: number }> = {
   // The weakest model available, chosen so the validators fire often enough to resolve anything.
-  failure: { model: WEAKEST_MODEL, replicates: 2 },
+  failure: { feature: "benchmarkWeakest", mode: "prod", replicates: 2 },
   // What Ranges actually runs on. Small n: this is external validity, not the primary measurement.
-  production: { model: MODELS.dev.ranges, replicates: 1 },
-} as const;
+  production: { feature: "ranges", mode: "dev", replicates: 1 },
+};
+const regimeModel = (name: RegimeName) => modelId(REGIMES[name].feature, REGIMES[name].mode);
 
 type RegimeName = keyof typeof REGIMES;
 
@@ -53,7 +55,7 @@ function report(name: RegimeName, versions: { version: { label: string }; scores
   const discordant = pairs.filter(([x, y]) => x !== y);
   const wins = discordant.filter(([x, y]) => x < y).length;
   const lines = [
-    `### ${name} — ${REGIMES[name].model}, n=${a.scores.length}`,
+    `### ${name} — ${regimeModel(name)}, n=${a.scores.length}`,
     "",
     "| strategy | mean attempts | valid within 3 | 95% CI | scores |",
     "|---|---|---|---|---|",
@@ -79,7 +81,7 @@ async function main(): Promise<void> {
     for (const name of names) {
       const n = CASES.length * REGIMES[name].replicates;
       process.stdout.write(
-        `${name}: model=${REGIMES[name].model}, ${n} cases × ${VERSIONS.length} strategies × up to ` +
+        `${name}: model=${regimeModel(name)}, ${n} cases × ${VERSIONS.length} strategies × up to ` +
           `${MAX_ATTEMPTS} attempts = at most ${n * VERSIONS.length * MAX_ATTEMPTS} calls. ` +
           `Best case — every pair discordant — needs ${minimumDetectableWins(n)} wins of ${n} for p<0.05; ` +
           `every tie costs power, so the real threshold can only be harder.\n`,
@@ -89,11 +91,10 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (!process.env.ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY is not set.");
-  const anthropic = new Anthropic();
 
   for (const name of names) {
-    const { model, replicates } = REGIMES[name];
+    const { feature, mode, replicates } = REGIMES[name];
+    const { client: anthropic, model } = modelFor(process.env, feature, mode);
     const cases = withReplicates(CASES, replicates);
     const result = await compareBrains<(typeof cases)[number], (typeof VERSIONS)[number], RetryOutcome>(
       cases,

@@ -10,7 +10,6 @@
 // one-off plover-code CLI scripts against the local plaintext mirror, now reimplemented against
 // R2/D1 directly below.
 
-import Anthropic from "@anthropic-ai/sdk";
 import type { Client, InferenceMode, PendingUpload, TreatmentItem } from "../../src/lib/types";
 import { UsageAccumulator } from "../inference-cost";
 import { recordOrgKeyUse } from "../access-log";
@@ -24,8 +23,8 @@ import { parseRawFile } from "../../src/lib/parse-raw";
 import { staleNodes } from "../../src/lib/staleness";
 import { leafContextFor, mergeLeafResult } from "../../src/lib/leaf-regen-registry";
 import { runLeafRegen } from "../../src/lib/leaf-regen-anthropic";
-import { REGROUP_MODEL } from "../../src/lib/regroup-config";
-import { TREATMENT_IMAGE_MODEL, TREATMENT_INFER_MAX_TOKENS } from "../../src/lib/treatment-infer-config";
+import { modelFor } from "../../functions/_lib/inference/resolve";
+import { TREATMENT_INFER_MAX_TOKENS } from "../../src/lib/treatment-infer-config";
 import { inferTreatment, type ProposedTreatment } from "@pablotech/akesi/treatment-infer";
 import { administrationUnitChanged } from "@pablotech/akesi/treatment-product";
 
@@ -187,11 +186,10 @@ export function staleLeafNodes(stale: ReadonlySet<string>): string[] {
 // abort the whole regen): a backfill sweep must keep nodes already filled earlier in the same run
 // rather than losing them to one bad node's uncaught throw.
 async function regenerateLeaf(client: Client, node: string, usage: UsageAccumulator): Promise<void> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set. Required to regenerate the Finding.");
-  const result = await runLeafRegen({ apiKey, node, inputs: leafContextFor(node, client) });
+  const llm = modelFor(process.env, "leafRegen");
+  const result = await runLeafRegen({ ...llm, node, inputs: leafContextFor(node, client) });
   if (result.kind === "empty") return;
-  usage.record(REGROUP_MODEL, { input_tokens: result.usage.input, output_tokens: result.usage.output });
+  usage.record(llm.model, { input_tokens: result.usage.input, output_tokens: result.usage.output });
   if (result.kind !== "ok") throw new Error(`${node}: ${result.kind}`);
   const next = mergeLeafResult(client, node, result.result);
   Object.assign(client, next);
@@ -292,8 +290,7 @@ export async function opTreatmentPhotoExtract(args: OpArgs, extract: PhotoExtrac
     const rowIds = rows.map((r) => r.id);
     if (args.dryRun) return { rowIds };
 
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set. Required to extract from photos.");
+    const { client: anthropic, model } = modelFor(process.env, "treatmentImage");
     const images = await Promise.all(
       extract.keys.map(async (key) => {
         const rawKey = r2RawKeyFor(args.store, args.vaultId, key);
@@ -304,8 +301,7 @@ export async function opTreatmentPhotoExtract(args: OpArgs, extract: PhotoExtrac
       }),
     );
 
-    const anthropic = new Anthropic({ apiKey });
-    const proposed = await inferTreatment(anthropic, { images }, TREATMENT_IMAGE_MODEL, TREATMENT_INFER_MAX_TOKENS, usage);
+    const proposed = await inferTreatment(anthropic, { images }, model, TREATMENT_INFER_MAX_TOKENS, usage);
     applyPhotoExtractPatch(rows, proposed);
     return { rowIds, proposed };
   });
