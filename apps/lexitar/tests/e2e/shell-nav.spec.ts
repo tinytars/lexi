@@ -50,15 +50,10 @@ test("tabs switch and update the hash", async ({ page }) => {
 });
 
 test("deep-link to a tab via the hash", async ({ page }) => {
-  // Preserve the "#doctor" hash across login — openSynthetic() re-navs to "/" and would drop it.
   const who = mySynthetic();
-  await page.goto("/#doctor", { waitUntil: "networkidle" });
-  await page.fill('input[type="email"]', who.email);
-  await page.fill('input[type="password"]', who.password);
-  await page.click('button[type="submit"]');
+  await loginAs(page, who.email, who.password, "/#doctor");
   await page.waitForSelector(".sidebar .nav-item", { timeout: 10_000 });
-  // M82 Phase 5 — the legacy "#doctor" tab hash now resolves via LEGACY_TAB_DEFAULT to the
-  // Treatment section (Patient's own default), not a "Patient tab" landing.
+  // The legacy "#doctor" hash resolves to Treatment via LEGACY_TAB_DEFAULT.
   await expect(page.locator(".sidebar .nav-list .nav-item", { hasText: "Treatment" })).toHaveClass(/active/);
   await expect(page.locator(".unified-treatment")).toBeVisible();
 });

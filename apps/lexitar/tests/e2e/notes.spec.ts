@@ -1,6 +1,6 @@
 import { test, expect } from "./_fixtures";
 import type { Page } from "@playwright/test";
-import { openSyntheticAsProvider, openFreshSyntheticAsProvider, mySynthetic } from "./_synthetic";
+import { openSyntheticAsProvider, openFreshSyntheticAsProvider, reloadOntoPatient } from "./_synthetic";
 import { clickLeafMenuItem } from "./_leaf-menu";
 import { clickNav } from "./_nav";
 import { validLeafPayload } from "./_leaf-payloads";
@@ -17,7 +17,6 @@ test("modal-Add, modal-Edit, and Delete all persist immediately (M66)", async ({
   page.on("dialog", (d) => d.accept());
   const marker = `M63 note ${Date.now()}`;
   const edited = `M63 note edited ${Date.now()}`;
-  const patientName = mySynthetic().name;
 
   await openNotes(page);
 
@@ -37,10 +36,7 @@ test("modal-Add, modal-Edit, and Delete all persist immediately (M66)", async ({
   await page.locator(".nt-modal .btn.primary", { hasText: "Save" }).click();
   await expect(page.locator(".notes .saved")).toBeVisible({ timeout: 10_000 });
 
-  await page.reload();
-  await page.waitForSelector(".roster-list");
-  await page.click(`.roster-name:has-text("${patientName}")`);
-  await page.waitForSelector('.sidebar .nav-item');
+  await reloadOntoPatient(page);
   await clickNav(page, "Notes");
   await expect(page.locator(".notes")).toContainText(edited);
   await expect(page.locator(".notes")).not.toContainText(marker);
