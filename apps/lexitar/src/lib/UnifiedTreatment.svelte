@@ -86,7 +86,6 @@
   }: Props = $props();
 
   const today = todayISODate();
-  const todayDate = new Date().toISOString().slice(0, 10);
   // "medicine" = Name/Reason/Kind (true of the drug); "entry" = dates/dose/timing (true of one dose
   // period); "all" = both, for Add and for the temporal tabs.
   type FieldScope = "all" | "medicine" | "entry";
@@ -883,7 +882,7 @@
       <Field label="End">
         <div class="end-row">
           <input type="date" bind:value={t.end} bind:this={endDateInput} />
-          {#if !t.end}<Button class="end-now" title="mark discontinued today" onclick={() => (t.end = todayDate)}>End now</Button>{/if}
+          {#if !t.end}<Button class="end-now" title="mark discontinued today" onclick={() => (t.end = today)}>End now</Button>{/if}
         </div>
       </Field>
     </div>

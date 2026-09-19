@@ -2,17 +2,18 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { loadLastSection, saveLastSection, loadLastGroup, saveLastGroup } from "../../src/lib/nav-memory";
 
 const store = new Map<string, string>();
-vi.stubGlobal("localStorage", {
+const fakeStorage = {
   getItem: (key: string) => store.get(key) ?? null,
   setItem: (key: string, value: string) => void store.set(key, value),
   removeItem: (key: string) => void store.delete(key),
   clear: () => store.clear(),
   key: () => null,
   length: 0,
-} as Storage);
+} as Storage;
 
 beforeEach(() => {
   store.clear();
+  vi.stubGlobal("localStorage", fakeStorage);
 });
 
 describe("last section (per client, per mode)", () => {

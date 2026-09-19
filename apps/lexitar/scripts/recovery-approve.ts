@@ -29,6 +29,7 @@ import {
 } from "@tinytars/vault/crypto";
 import { ORG_ACCOUNT_ID } from "../functions/_lib/org";
 import { sha256Base64Url } from "../functions/_lib/verifier";
+import { isMain } from "./is-main";
 
 const execFileAsync = promisify(execFile);
 const here = dirname(fileURLToPath(import.meta.url));
@@ -171,8 +172,7 @@ async function main(): Promise<void> {
   );
 }
 
-const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
-if (isMain) {
+if (isMain(import.meta.url)) {
   main().catch((e) => {
     process.stderr.write(`\n${(e as Error).message}\n`);
     process.exit(1);

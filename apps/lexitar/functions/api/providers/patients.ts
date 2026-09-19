@@ -4,6 +4,7 @@ import { getEnvelope, listVaultsForOwner } from "../../_lib/identity-vault";
 import { listPatientsForProvider } from "../../_lib/identity-providers";
 import { requireSession } from "../../_lib/session";
 import { logRequest } from "../../_lib/log";
+import { json } from "../../_lib/http";
 
 // W44 cutover — the provider's patient list, replacing the old fam4 `data.enc` roster. Returns
 // each active patient the session provider can actually open: their display name, vault id/r2 key,
@@ -26,9 +27,6 @@ function bytesToBase64(bytes: Uint8Array): string {
   for (const b of bytes) bin += String.fromCharCode(b);
   return btoa(bin);
 }
-
-const json = (status: number, body: unknown): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 export async function onRequestGet(context: Ctx): Promise<Response> {
   const { request, env } = context;

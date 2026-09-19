@@ -9,7 +9,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // half of the rule lived in a `disabled` attribute, which is an affordance rather than an invariant —
 // nothing asserted it, and nothing would have noticed it going away. These do.
 
-const auth = vi.hoisted(() => ({
+import { createAccountMethods, type AccountMethodsDeps } from "@tinytars/frame/account-methods.svelte";
+
+const auth = {
   getMyAccount: vi.fn(),
   listMethods: vi.fn(),
   updateProfile: vi.fn(),
@@ -17,20 +19,8 @@ const auth = vi.hoisted(() => ({
   addPasskeyMethod: vi.fn(),
   addGoogleMethod: vi.fn(),
   removeMethod: vi.fn(),
-}));
-vi.mock("@tinytars/vault/auth-client", () => ({
-  getMyAccount: auth.getMyAccount,
-  addPasskeyMethod: auth.addPasskeyMethod,
-  addGoogleMethod: auth.addGoogleMethod,
-}));
-vi.mock("@tinytars/vault/auth-recovery", () => ({
-  listMethods: auth.listMethods,
-  updateProfile: auth.updateProfile,
-  addPasswordMethod: auth.addPasswordMethod,
-  removeMethod: auth.removeMethod,
-}));
-
-import { createAccountMethods, type AccountMethodsDeps } from "@tinytars/frame/account-methods.svelte";
+  fetch: vi.fn(),
+};
 
 const EXTRACTABLE = { extractable: true } as unknown as CryptoKey;
 const RESUMED = { extractable: false } as unknown as CryptoKey;
@@ -52,6 +42,7 @@ function harness(over: Partial<AccountMethodsDeps> = {}) {
     loadOwnerBlocks: async () => {
       host.ownerBlocks++;
     },
+    api: auth,
     ...over,
   };
   return { account: createAccountMethods(deps), host };
@@ -66,7 +57,7 @@ beforeEach(() => {
   auth.addPasskeyMethod.mockResolvedValue(undefined);
   auth.addGoogleMethod.mockResolvedValue(undefined);
   auth.removeMethod.mockResolvedValue(undefined);
-  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("{}")));
+  auth.fetch.mockResolvedValue(new Response("{}"));
 });
 
 describe("never leaving the account with no way in", () => {

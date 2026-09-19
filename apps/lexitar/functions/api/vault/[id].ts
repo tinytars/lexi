@@ -6,6 +6,7 @@ import type { D1Database } from "../../_lib/identity-types";
 import { getEnvelope, getVaultByR2Key, getVaultByStagingR2Key } from "../../_lib/identity-vault";
 import type { BlobConditional } from "@tinytars/vault/blob-store";
 import { R2BlobStore, type R2Bucket } from "@tinytars/vault/adapters/r2";
+import { json } from "../../_lib/http";
 
 interface Env {
   VAULT: R2Bucket;
@@ -34,9 +35,6 @@ const r2Key = (env: Env, id: string) => storeKey(env, assetName(id));
 
 /** An `If-Match` header value is quoted (`"abc"`); BlobStore's ifMatch wants the bare token. */
 const unquote = (v: string): string => v.trim().replace(/^W\//, "").replace(/^"|"$/g, "");
-
-const json = (status: number, body: unknown): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 // PUT — store an already-encrypted HD1 blob. Guarded; never decrypts.
 export async function onRequestPut(context: Ctx): Promise<Response> {

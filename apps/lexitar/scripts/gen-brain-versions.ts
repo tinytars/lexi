@@ -10,6 +10,7 @@ import { writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { sha256hex12 } from "@pablotech/neuro/hash-node";
 import { brainSourceFor, brainKeys } from "../src/lib/brain-source";
+import { isMain } from "./is-main";
 
 export function brainVersions(): Record<string, string> {
   return Object.fromEntries(brainKeys().map((k) => [k, sha256hex12(brainSourceFor(k))]));
@@ -33,8 +34,7 @@ export function renderModule(versions: Record<string, string>): string {
   ].join("\n");
 }
 
-const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
-if (isMain) {
+if (isMain(import.meta.url)) {
   const versions = brainVersions();
   writeFileSync(fileURLToPath(new URL("../src/lib/brain-versions.ts", import.meta.url)), renderModule(versions));
   process.stdout.write(`wrote ${Object.keys(versions).length} brain versions to src/lib/brain-versions.ts\n`);

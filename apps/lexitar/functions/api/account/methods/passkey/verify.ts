@@ -12,6 +12,7 @@ import {
   type WebauthnEnv,
 } from "../../../../_lib/webauthn";
 import type { RegistrationResponseJSON } from "@simplewebauthn/server";
+import { jsonWithCookies } from "../../../../_lib/http";
 
 // W44 P8 — add-a-passkey, step 2 (session-gated). Verifies the attestation and ATTACHES the passkey to
 // the existing account: the browser wrapped the account's existing private key under the new passkey's
@@ -41,11 +42,6 @@ function base64ToBytes(b64: string): Uint8Array {
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out;
 }
-function jsonResponse(status: number, body: unknown, cookies: string[] = []): Response {
-  const headers = new Headers({ "content-type": "application/json" });
-  for (const c of cookies) headers.append("set-cookie", c);
-  return new Response(JSON.stringify(body), { status, headers });
-}
 
 export async function onRequestPost(context: Ctx): Promise<Response> {
   const { request, env } = context;
@@ -58,23 +54,23 @@ export async function onRequestPost(context: Ctx): Promise<Response> {
   const body = (await request.json().catch(() => null)) as Partial<VerifyBody> | null;
   if (!body?.attestationResponse || !body.wrappedPrivateKey || !body.prfSaltHex) {
     log(400, "missing_fields");
-    return jsonResponse(400, { error: "missing required fields" });
+    return jsonWithCookies(400, { error: "missing required fields" });
   }
-  if (await getCredential(env.DB, session.accountId, "passkey")) { log(409, "passkey_exists"); return jsonResponse(409, { error: "a passkey is already set" }); }
+  if (await getCredential(env.DB, session.accountId, "passkey")) { log(409, "passkey_exists"); return jsonWithCookies(409, { error: "a passkey is already set" }); }
 
   // W73 gap 5 — a session cookie alone used to be enough to mint a passkey, and a passkey outlives the
   // cookie that created it. Challenge the current password when there is one; when there is not, the
   // notice below is the only control available and it always fires. See _lib/step-up.ts.
   const stepUp = await stepUpForMethodChange(env.DB, session.accountId, (body as { currentAuthHash?: unknown }).currentAuthHash);
-  if (!stepUp.ok) { log(stepUp.status, stepUp.errorCode); return jsonResponse(stepUp.status, { error: stepUp.message, errorCode: stepUp.errorCode }); }
+  if (!stepUp.ok) { log(stepUp.status, stepUp.errorCode); return jsonWithCookies(stepUp.status, { error: stepUp.message, errorCode: stepUp.errorCode }); }
 
   const challenge = await readChallengeCookie(env, request);
-  if (!challenge) { log(400, "bad_challenge"); return jsonResponse(400, { error: "missing or expired challenge" }); }
+  if (!challenge) { log(400, "bad_challenge"); return jsonWithCookies(400, { error: "missing or expired challenge" }); }
 
   const verification = await verifyRegistrationResponse(env, body.attestationResponse, challenge.challenge);
   if (!verification.verified || !verification.registrationInfo) {
     log(400, "verification_failed");
-    return jsonResponse(400, { error: "passkey registration could not be verified" });
+    return jsonWithCookies(400, { error: "passkey registration could not be verified" });
   }
 
   const { credential } = verification.registrationInfo;
@@ -95,5 +91,5 @@ export async function onRequestPost(context: Ctx): Promise<Response> {
   await notifyMethodAdded(context, env, session.accountId, "passkey");
 
   log(200);
-  return jsonResponse(200, { ok: true, method: "passkey" }, [clearChallengeCookie()]);
+  return jsonWithCookies(200, { ok: true, method: "passkey" }, [clearChallengeCookie()]);
 }

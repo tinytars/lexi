@@ -34,6 +34,9 @@ export default defineConfig({
       reporter: ["text-summary", "json-summary", "html"],
       reportsDirectory: "coverage",
     },
+    // A stubbed global (fetch, localStorage) must not leak into the next test.
+    unstubGlobals: true,
+    unstubEnvs: true,
     setupFiles: ["./tests/setup.ts"],
   },
 });

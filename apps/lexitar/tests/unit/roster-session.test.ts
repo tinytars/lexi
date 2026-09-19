@@ -8,33 +8,23 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // because both outcomes look like a lock screen. Same for the drill-in: switching patients must not
 // leave the previous patient's data key reachable, and a DEK in memory renders nothing.
 
-const auth = vi.hoisted(() => ({
+import { createRosterSession, RESUME_MARKER, type RosterSessionDeps, type RosterPatient } from "@tinytars/frame/roster-session.svelte";
+import { createVaultSession, type VaultEntry } from "@tinytars/frame/vault-session.svelte";
+import { generateAccountKeypair, generateDEK, wrapDEKForPublicKey } from "@tinytars/vault/crypto";
+import { bytesToB64 } from "@tinytars/vault/base64";
+
+const auth = {
   resumeSession: vi.fn(),
   bootstrapGoogleSession: vi.fn(),
   getMyAccount: vi.fn(),
   revokeProvider: vi.fn(),
-}));
-vi.mock("@tinytars/vault/auth-client", () => ({
-  resumeSession: auth.resumeSession,
-  bootstrapGoogleSession: auth.bootstrapGoogleSession,
-  getMyAccount: auth.getMyAccount,
-}));
-vi.mock("@tinytars/vault/auth-grants", () => ({
-  revokeProvider: auth.revokeProvider,
-}));
-
-const keyStore = vi.hoisted(() => ({
+};
+const keyStore = {
   getAccountKey: vi.fn(),
   putAccountKey: vi.fn(),
   clearAccountKey: vi.fn(),
-}));
-vi.mock("@tinytars/vault/key-store", () => keyStore);
-
-const crypto_ = vi.hoisted(() => ({ unwrapDEKWithPrivateKey: vi.fn() }));
-vi.mock("@tinytars/vault/crypto", () => crypto_);
-
-import { createRosterSession, RESUME_MARKER, type RosterSessionDeps, type RosterPatient } from "@tinytars/frame/roster-session.svelte";
-import { createVaultSession, type VaultEntry } from "@tinytars/frame/vault-session.svelte";
+};
+const fakeFetch = vi.fn();
 
 const OWNER_KEY = { id: "owner" } as unknown as CryptoKey;
 const PROVIDER_KEY = { id: "provider" } as unknown as CryptoKey;
@@ -49,6 +39,8 @@ const PATIENT: RosterPatient = {
   r2Key: "vaults/vault-blair.enc",
   envelope: { wrappedDEK: "wrapped", ephemeralPublicKeyJwk: { kid: "eph" } as JsonWebKey },
 };
+
+const rawKey = async (k: CryptoKey) => new Uint8Array(await crypto.subtle.exportKey("raw", k));
 
 /** A localStorage that is real enough to hold the resume marker, since the marker IS the test. */
 function fakeStorage() {
@@ -91,6 +83,7 @@ function harness(over: Partial<RosterSessionDeps> = {}) {
     },
     closeVault: () => void host.closedVault++,
     confirmRemoval: () => host.confirm,
+    api: { ...auth, ...keyStore, fetch: fakeFetch },
     ...over,
   };
   return { roster: createRosterSession(deps), host, session };
@@ -99,7 +92,7 @@ function harness(over: Partial<RosterSessionDeps> = {}) {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.stubGlobal("localStorage", fakeStorage());
-  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ patients: [PATIENT] }), { status: 200 })));
+  fakeFetch.mockImplementation(async () => new Response(JSON.stringify({ patients: [PATIENT] }), { status: 200 }));
   auth.getMyAccount.mockResolvedValue({ id: "acct-dr", providerKind: "clinician" });
 });
 
@@ -131,7 +124,7 @@ describe("enterAccount routing", () => {
     await roster.enterAccount({ vaultId: null, r2Key: null, privateKey: PROVIDER_KEY, dek: null });
     expect(host.support).toBe(1);
     expect(host.clinician).toBe(0);
-    expect(fetch).not.toHaveBeenCalled();
+    expect(fakeFetch).not.toHaveBeenCalled();
   });
 
   it("clears the login form on every path", async () => {
@@ -167,19 +160,22 @@ describe("cold-load resume", () => {
   });
 
   it("resumes from the stored key, unwrapping the owner envelope", async () => {
+    const owner = await generateAccountKeypair();
+    const dek = await generateDEK();
+    const envelope = await wrapDEKForPublicKey(dek, owner.publicKeyJwk);
     localStorage.setItem(RESUME_MARKER, "key");
-    keyStore.getAccountKey.mockResolvedValue(OWNER_KEY);
+    keyStore.getAccountKey.mockResolvedValue(owner.privateKey);
     auth.resumeSession.mockResolvedValue({
       vaultId: "v",
       r2Key: "vaults/v.enc",
-      ownerEnvelope: { wrappedDEK: "d3Jh", ephemeralPublicKeyJwk: {} },
+      ownerEnvelope: { wrappedDEK: bytesToB64(envelope.wrappedDEK), ephemeralPublicKeyJwk: envelope.ephemeralPublicKeyJwk },
       rotationPending: false,
     });
-    crypto_.unwrapDEKWithPrivateKey.mockResolvedValue(DEK);
     const { roster, host, session } = harness();
     await roster.bootResume();
-    expect(host.ownVaults).toEqual([{ r2Key: "vaults/v.enc", dek: DEK }]);
-    expect(session.ownerKey).toBe(OWNER_KEY);
+    expect(host.ownVaults.map((v) => v.r2Key)).toEqual(["vaults/v.enc"]);
+    expect(await rawKey(host.ownVaults[0].dek)).toEqual(await rawKey(dek));
+    expect(session.ownerKey).toBe(owner.privateKey);
     expect(localStorage.getItem(RESUME_MARKER)).toBe("key");
   });
 
@@ -247,7 +243,7 @@ describe("the roster", () => {
     const { roster } = harness();
     await roster.loadPatients();
     expect(roster.patients).toEqual([PATIENT]);
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("nope", { status: 500 })));
+    fakeFetch.mockImplementation(async () => new Response("nope", { status: 500 }));
     await roster.loadPatients();
     expect(roster.patients).toEqual([PATIENT]);
   });
@@ -262,7 +258,7 @@ describe("the roster", () => {
     const { roster } = harness();
     await roster.removeFromRoster(PATIENT);
     expect(auth.revokeProvider).toHaveBeenCalledWith("link-1");
-    expect(fetch).toHaveBeenCalled();
+    expect(fakeFetch).toHaveBeenCalled();
   });
 
   it("reports a failed revocation instead of silently leaving the row", async () => {

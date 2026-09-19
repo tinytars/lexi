@@ -1,6 +1,7 @@
 import { grantBreakGlass, type BreakGlassPolicy } from "@tinytars/vault/break-glass";
 import type { AuditStore, EnvelopeStore, ProviderLinkStore, VaultRow } from "@tinytars/vault/stores";
 import { logRequest } from "../log";
+import { json } from "../http";
 
 // W44 P4b — the patient approves a pending support request: wraps their in-memory DEK to the support
 // agent's public key client-side (zero-knowledge) and posts the opaque envelope + a time-box. Server
@@ -19,9 +20,6 @@ export interface SupportApproveDeps {
 
 const ROUTE = "/api/support/approve";
 const POLICY: BreakGlassPolicy = { defaultTtlHours: 72, maxTtlHours: 720 }; // 30 days
-
-const json = (status: number, body: unknown): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 function base64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64);

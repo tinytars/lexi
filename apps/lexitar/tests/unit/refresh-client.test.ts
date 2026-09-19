@@ -34,11 +34,11 @@ const attempts = (...bodies: string[]) => {
 };
 
 const fetchMock = vi.fn();
-vi.stubGlobal("fetch", fetchMock);
 const bodyOf = (i: number) => JSON.parse((fetchMock.mock.calls[i][1] as RequestInit).body as string);
 
 beforeEach(() => {
   fetchMock.mockReset();
+  vi.stubGlobal("fetch", fetchMock);
 });
 
 describe("refreshFinding — terminal vs. retryable", () => {

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // attachFiles is the one path every leaf's Attach goes through, and this file covers what the
 // documents milestone added to it: the page cap that runs BEFORE the upload, and the read-once
@@ -25,7 +25,6 @@ beforeEach(() => {
   });
   vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 204 })));
 });
-afterEach(() => vi.unstubAllGlobals());
 
 describe("attachFiles — reading a document at attach time", () => {
   it("stamps extraction metadata onto the attachment, and keeps the TEXT out of it", async () => {

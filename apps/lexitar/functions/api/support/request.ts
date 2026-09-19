@@ -6,6 +6,7 @@ import { insertAccessEvent } from "../../_lib/identity-audit";
 import { can, roleOf } from "../../_lib/capabilities";
 import { requireSession } from "../../_lib/session";
 import { logRequest } from "../../_lib/log";
+import { json } from "../../_lib/http";
 
 // W44 P4b — a support agent requests access to a patient. This creates a PENDING (invited) support
 // link only — no envelope, so support has no key until the patient approves (§D consented access).
@@ -20,9 +21,6 @@ interface Ctx {
 }
 
 const ROUTE = "/api/support/request";
-
-const json = (status: number, body: unknown): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 export async function onRequestPost(context: Ctx): Promise<Response> {
   const { request, env } = context;

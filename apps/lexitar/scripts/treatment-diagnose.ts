@@ -8,11 +8,11 @@
 //   npx tsx scripts/treatment-diagnose.ts --client Pablo --node treatmentAssessment \
 //     [--target-labels "Fish Oil,Vitamin D"] [--dry-run]
 import "./load-creds";
-import { fileURLToPath } from "node:url";
 import { leafContextFor } from "../src/lib/leaf-regen-registry";
 import { runLeafRegen } from "../src/lib/leaf-regen-anthropic";
 import { pullDeployedVault } from "./vault-ops";
 import { resolveStore } from "./vault-sync";
+import { isMain } from "./is-main";
 
 export function parseTargetLabels(arg: string | undefined): string[] | undefined {
   if (!arg) return undefined;
@@ -50,8 +50,7 @@ async function main(): Promise<void> {
   process.stdout.write(`${id}: diagnose ${node} targetLabels=${JSON.stringify(targetLabels ?? null)}\n${JSON.stringify(outcome, null, 2)}\n`);
 }
 
-const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
-if (isMain) {
+if (isMain(import.meta.url)) {
   main().catch((e) => {
     process.stderr.write(`treatment-diagnose failed: ${(e as Error).message}\n`);
     process.exit(1);

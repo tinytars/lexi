@@ -21,6 +21,20 @@ export interface AccountInfo {
   emailConfirmed: boolean;
 }
 
+const defaultApi = {
+  getMyAccount,
+  listMethods,
+  updateProfile,
+  addPasswordMethod,
+  addPasskeyMethod,
+  addGoogleMethod,
+  removeMethod,
+  // Wrapped, because a bare `fetch` invoked as `api.fetch` throws "Illegal invocation" in browsers.
+  fetch: (input: RequestInfo | URL, init?: RequestInit) => fetch(input, init),
+};
+
+export type AccountMethodsApi = typeof defaultApi;
+
 export interface AccountMethodsDeps {
   /**
    * The in-memory account private key — `session.ownerKey ?? session.providerKey`, read fresh because
@@ -33,6 +47,8 @@ export interface AccountMethodsDeps {
   applyUnitSystem: (u: "metric" | "imperial") => void;
   /** Vault principals + access events. App's, because App owns the recovery controller they feed. */
   loadOwnerBlocks: () => Promise<void>;
+  /** The server calls, overridable so a test can pass fakes. Defaults to `@tinytars/vault`. */
+  api?: Partial<AccountMethodsApi>;
 }
 
 export interface AccountMethods {
@@ -86,6 +102,7 @@ export interface AccountMethods {
 }
 
 export function createAccountMethods(deps: AccountMethodsDeps): AccountMethods {
+  const api = { ...defaultApi, ...deps.api };
   let open = $state(false);
   let busy = $state(false);
   let error = $state<string | null>(null);
@@ -113,7 +130,7 @@ export function createAccountMethods(deps: AccountMethodsDeps): AccountMethods {
   }
 
   async function refresh(): Promise<void> {
-    const [account, list] = await Promise.all([getMyAccount(), listMethods()]);
+    const [account, list] = await Promise.all([api.getMyAccount(), api.listMethods()]);
     info = { email: account.email, displayName: account.displayName, emailConfirmed: account.emailConfirmed };
     methods = list;
     deps.applyUnitSystem(account.unitSystem ?? "imperial");
@@ -202,7 +219,7 @@ export function createAccountMethods(deps: AccountMethodsDeps): AccountMethods {
       open = true;
       error = null;
       try {
-        const [account, list] = await Promise.all([getMyAccount(), listMethods()]);
+        const [account, list] = await Promise.all([api.getMyAccount(), api.listMethods()]);
         info = { email: account.email, displayName: account.displayName, emailConfirmed: account.emailConfirmed };
         methods = list;
         editEmail = account.email ?? "";
@@ -225,7 +242,7 @@ export function createAccountMethods(deps: AccountMethodsDeps): AccountMethods {
     // worth a red line across a panel the person opened to do something else.
     async resendVerification() {
       try {
-        await fetch("/api/account/email/send-verification", { method: "POST" });
+        await api.fetch("/api/account/email/send-verification", { method: "POST" });
         emailVerifyNote = "sent";
       } catch {
         /* best-effort */
@@ -234,7 +251,7 @@ export function createAccountMethods(deps: AccountMethodsDeps): AccountMethods {
 
     async saveProfile() {
       error = null;
-      await mutate(() => updateProfile({ email: editEmail.trim() || undefined, displayName: editDisplayName.trim() || undefined }));
+      await mutate(() => api.updateProfile({ email: editEmail.trim() || undefined, displayName: editDisplayName.trim() || undefined }));
     },
 
     async addPassword() {
@@ -244,7 +261,7 @@ export function createAccountMethods(deps: AccountMethodsDeps): AccountMethods {
       if (!pk) return;
       const password = newPassword;
       await mutate(async () => {
-        await addPasswordMethod(pk, password);
+        await api.addPasswordMethod(pk, password);
         // Cleared inside the try: a rejected password (too short, step-up refused) must stay in the
         // field, or the retry is a re-entry of something the person already typed once.
         newPassword = "";
@@ -255,7 +272,7 @@ export function createAccountMethods(deps: AccountMethodsDeps): AccountMethods {
       error = null;
       const pk = ensureExtractableKey();
       if (!pk) return;
-      await mutate(() => addPasskeyMethod(pk));
+      await mutate(() => api.addPasskeyMethod(pk));
     },
 
     async remove(method: RemovableMethod) {
@@ -265,7 +282,7 @@ export function createAccountMethods(deps: AccountMethodsDeps): AccountMethods {
         error = blocked;
         return;
       }
-      await mutate(() => removeMethod(method));
+      await mutate(() => api.removeMethod(method));
     },
 
     // OAuth runs in a POPUP so this SPA (and the in-memory key the server needs to wrap)
@@ -294,7 +311,7 @@ export function createAccountMethods(deps: AccountMethodsDeps): AccountMethods {
                 : "Google sign-in failed.";
           return;
         }
-        await mutate(() => addGoogleMethod(pk));
+        await mutate(() => api.addGoogleMethod(pk));
       };
       window.addEventListener("message", onMessage);
     },

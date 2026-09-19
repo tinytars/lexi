@@ -4,6 +4,7 @@ import { getCredential } from "../../../../_lib/identity-credentials";
 import { requireSession } from "../../../../_lib/session";
 import { logRequest } from "../../../../_lib/log";
 import { generateRegistrationOptions, setChallengeCookie, bytesToHex, type WebauthnEnv } from "../../../../_lib/webauthn";
+import { json } from "../../../../_lib/http";
 
 // W44 P8 — add-a-passkey, step 1 (session-gated). Mints WebAuthn creation options + PRF salt for the
 // LOGGED-IN account (no email-exists check — the account already exists). One passkey per account
@@ -17,9 +18,6 @@ interface Ctx {
 }
 
 const ROUTE = "/api/account/methods/passkey/options";
-
-const json = (status: number, body: unknown, headers: Record<string, string> = {}): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", ...headers } });
 
 export async function onRequestPost(context: Ctx): Promise<Response> {
   const { request, env } = context;

@@ -4,6 +4,7 @@ import { requireSession } from "../_lib/session";
 import { logRequest } from "../_lib/log";
 import type { EmailEnv } from "../_lib/email";
 import { sendVerificationEmail, sendEmailChangedNotice } from "../_lib/email";
+import { json } from "../_lib/http";
 
 // W44 P2 — session-gated account profile read/update.
 interface Env extends EmailEnv {
@@ -17,9 +18,6 @@ interface Ctx {
 }
 
 const ROUTE = "/api/account";
-
-const json = (status: number, body: unknown): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 function serialize(account: NonNullable<Awaited<ReturnType<typeof getAccount>>>) {
   return {

@@ -4,6 +4,7 @@ import { insertAccessEvent } from "../../_lib/identity-audit";
 import { requireSession } from "../../_lib/session";
 import { logRequest } from "../../_lib/log";
 import { ORG_ACCOUNT_ID } from "../../_lib/org";
+import { json } from "../../_lib/http";
 
 // W55 P4 — mint or revoke the org-recovery envelope for the caller's own vault. Minting is what makes
 // password/passkey loss recoverable without the patient; revoking is the informed opt-out — the patient
@@ -18,9 +19,6 @@ interface Ctx {
 }
 
 const ROUTE = "/api/vault/recovery-envelope";
-
-const json = (status: number, body: unknown): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 function base64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64);

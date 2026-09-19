@@ -3,6 +3,7 @@ import { getAccountByEmail } from "../../../_lib/identity-accounts";
 import { getCredential } from "../../../_lib/identity-credentials";
 import { logRequest } from "../../../_lib/log";
 import { decoySalt, KDF_ITERATIONS } from "../../../_lib/decoy-salt";
+import { json } from "../../../_lib/http";
 
 // W44 P2 — the KDF salt is public (not secret); the client needs it before it can derive
 // authHash for login, so it's looked up by email ahead of the login POST. Never returns
@@ -19,9 +20,6 @@ interface Ctx {
 }
 
 const ROUTE = "/api/auth/password/salt";
-
-const json = (status: number, body: unknown): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 export async function onRequestGet(context: Ctx): Promise<Response> {
   const { request, env } = context;

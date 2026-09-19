@@ -9,6 +9,7 @@ import {
   type WebauthnEnv,
 } from "../../../../_lib/webauthn";
 import type { AuthenticatorTransport } from "@simplewebauthn/server";
+import { json } from "../../../../_lib/http";
 
 // W44 P3 — passkey login, step 1: look up the account's stored passkey credential and mint
 // WebAuthn request options (with the PRF extension, using the SAME prfSalt stored at
@@ -23,9 +24,6 @@ interface Ctx {
 }
 
 const ROUTE = "/api/auth/passkey/login/options";
-
-const json = (status: number, body: unknown, headers: Record<string, string> = {}): Response =>
-  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", ...headers } });
 
 export async function onRequestPost(context: Ctx): Promise<Response> {
   const { request, env } = context;
