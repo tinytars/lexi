@@ -3,6 +3,8 @@
   import { ALL_GROUP_KEY } from "./lib/sidebar-labels";
   import type { Vault, Client, NoteAttachment } from "./lib/types";
   import type { UnitSystem } from "./lib/units";
+  import { DEFAULT_PERSONA, type PersonaId } from "./lib/personas";
+  import { loadPersona, savePersona } from "./lib/persona-client";
   import { saveVaultV2, vaultSink, rememberVaultEtag, VaultConflictError, setVaultConflictHandler } from "@tinytars/vault/vault-sink";
   import { getMyAccount, loginPassword, loginPasskey, signupPassword, signupPasskey, bootstrapGoogleSession } from "@tinytars/vault/auth-client";
   import { updateProfile, getVaultPrincipals, getAccessEvents, type AccessEventRow } from "@tinytars/vault/auth-recovery";
@@ -127,16 +129,16 @@
     afterOwnerEnter: async (rotationPending) => {
       await ensureOrgRecoveryEnvelope(session);
       // W47 — load account info so the top-right account menu can show the email + verification state.
-      try { await account.refresh(); } catch { /* menu falls back to no email */ }
+      try { await refreshAccount(); } catch { /* menu falls back to no email */ }
       // W44 P4c — a support grant expired while offline; complete the deferred DEK rotation now.
       if (rotationPending) { try { await vaultAccess.rotateVaultKey(); } catch (e) { error = (e as Error).message; } }
     },
     beginSupportSession: async () => {
-      try { await account.refresh(); } catch { /* menu falls back to no email */ }
+      try { await refreshAccount(); } catch { /* menu falls back to no email */ }
       await support.beginSession();
     },
     beginClinicianSession: async () => {
-      try { await account.refresh(); } catch { /* menu falls back to no email */ }
+      try { await refreshAccount(); } catch { /* menu falls back to no email */ }
       fetchProviderToken();
       // W50 — a clinician may have pending support-agent roster requests to approve.
       await vaultAccess.refreshQuietly();
@@ -162,7 +164,7 @@
     session,
     getEmail: () => email,
     ensureExtractableKey: () => account.ensureExtractableKey(),
-    refreshAccount: () => account.refresh(),
+    refreshAccount,
     setAccountBusy: (b) => account.setBusy(b),
     reportAccountError: (m) => account.setError(m),
     setUnlocking: (b) => (unlocking = b),
@@ -338,7 +340,7 @@
     if (googleReturn) queueMicrotask(() => authFlow.handleGoogleReturn(googleReturn.error));
     if (boot.emailVerify) {
       account.emailVerifyNote = boot.emailVerify;
-      if (boot.emailVerify === "ok") queueMicrotask(() => { void account.refresh().catch(() => {}); });
+      if (boot.emailVerify === "ok") queueMicrotask(() => { void refreshAccount().catch(() => {}); });
     }
     // W49 — not deferred: bootResume raises roster.resuming synchronously, and anything that lowers
     // it later would let the lock screen paint first.
@@ -442,9 +444,24 @@
 
   // M93 — the measurement system is an account-level display preference (not per-patient — a
   // provider drilling into multiple patients needs their own consistent setting, independent
-  // of whichever patient's vault they're viewing). Loaded via account.refresh() at login/resume;
+  // of whichever patient's vault they're viewing). Loaded via refreshAccount() at login/resume;
   // all consumers (Markers/Chat/Export) read it from here.
   let unitSystem = $state<UnitSystem>("imperial");
+  // W84 — the persona that voices chat answers and read-aloud; account-level like unitSystem.
+  let persona = $state<PersonaId>(DEFAULT_PERSONA);
+  async function setPersona(next: PersonaId) {
+    persona = next;
+    try {
+      await savePersona(next);
+    } catch (e) {
+      error = (e as Error).message;
+    }
+  }
+  // Every login path re-reads the account; the persona rides along so no path can forget it.
+  async function refreshAccount() {
+    const [, p] = await Promise.all([account.refresh(), loadPersona()]);
+    persona = p;
+  }
   async function setUnitSystem(next: UnitSystem) {
     unitSystem = next; // optimistic — the toggle reflects the click immediately
     try {
@@ -1353,6 +1370,8 @@
     onOpenDag={() => (dagModalOpen = true)}
     {unitSystem}
     onSetUnitSystem={setUnitSystem}
+    {persona}
+    onSetPersona={setPersona}
   >
     {#snippet accountArea()}
       {#if roster.isProvider}
@@ -1426,7 +1445,7 @@
         onClose={() => (searchOpen = false)}
       />
     {:else if activeTab === "chat" && currentClient}
-      <ChatTab client={currentClient} dek={session.dek} clientId={selectedClientId} {unitSystem} activeId={section} bind:threads={chatSession.threads} hydrated={chatSession.hydrated} {vault} onNavigate={navigate} onPersist={chatSession.persistChatThreads} onImportFile={importChatFile} onCreateNote={createNoteFromAttachment} />
+      <ChatTab client={currentClient} dek={session.dek} clientId={selectedClientId} {unitSystem} {persona} activeId={section} bind:threads={chatSession.threads} hydrated={chatSession.hydrated} {vault} onNavigate={navigate} onPersist={chatSession.persistChatThreads} onImportFile={importChatFile} onCreateNote={createNoteFromAttachment} />
     {:else if currentClient}
       <ReportSections client={currentClient} sections={ALL_SECTIONS} bind:active={section} clientId={selectedClientId} providerSession={roster.isProvider} canTranslate={roster.isProvider && !!providerToken} onTranslate={translateMarker} onCategorizeMarkers={handleCategorizeMarkers} {vault} {unitSystem} bind:windowYears onToggleWatchlist={toggleWatchlist} onTogglePinnedRatio={togglePinnedRatio} onSave={saveEdits} onSaved={(anchor) => navigate({ anchor })} onTriggerRegen={triggerLeafRegen} saved={vaultSave.saved} saveError={vaultSave.error} onStartChat={startChatFromLeaf} onCreateNote={createNoteFromAttachment} pendingSidebarAction={pendingSidebarAction} onConsumeSidebarAction={() => (pendingSidebarAction = null)} bind:activeGroup {activeLeaf} {pendingAnchor} onConsumeAnchor={() => (pendingAnchor = null)} pendingNoteAttachment={pendingNoteAttachment} onPendingNoteAttachmentConsumed={() => (pendingNoteAttachment = null)} onNavigate={navigate} />
     {/if}

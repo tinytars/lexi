@@ -2,6 +2,7 @@
   import type { Snippet } from "svelte";
   import type { Client, Vault } from "./types";
   import type { UnitSystem } from "./units";
+  import { DEFAULT_PERSONA, PERSONAS, type PersonaId } from "./personas";
   import type { RefreshStage } from "./finding-refresh";
   import type { RefreshProgress } from "./refresh-client";
   import { SECTION_TAB, type Permalink } from "./permalink";
@@ -71,6 +72,8 @@ import { pinnedQueries } from "@pablotech/akesi/pinned-queries";
     // accountArea — the pre-vault login/roster screens pass neither.
     unitSystem?: UnitSystem;
     onSetUnitSystem?: (s: UnitSystem) => void;
+    persona?: PersonaId;
+    onSetPersona?: (p: PersonaId) => void;
     // M78 Phase 10 — brand + patient/family switcher, a fixed (non-scrolling) area at the top of
     // the sidebar, moved verbatim from the header.
     productName?: string;
@@ -106,7 +109,7 @@ import { pinnedQueries } from "@pablotech/akesi/pinned-queries";
     onFreshSearch,
     windowYears = $bindable(1),
     accountArea,
-    unitSystem = "imperial", onSetUnitSystem,
+    unitSystem = "imperial", onSetUnitSystem, persona = DEFAULT_PERSONA, onSetPersona,
     productName = "", vault = null, selectedClientId = null,
     providerToken = null, refreshing = false, refreshProgress = null, refreshStage = null, refreshError = null,
     saveError = null, onRetrySave = undefined,
@@ -490,6 +493,14 @@ import { pinnedQueries } from "@pablotech/akesi/pinned-queries";
             onclick={() => onSetUnitSystem("imperial")}>US</button>
           <button type="button" title="Metric units (kg, mmol/L)" class:active={unitSystem === "metric"}
             onclick={() => onSetUnitSystem("metric")}>Metric</button>
+        </div>
+      {/if}
+      {#if onSetPersona}
+        <div class="unit-toggle" role="group" aria-label="Who answers">
+          {#each Object.values(PERSONAS) as p (p.id)}
+            <button type="button" title={p.blurb} class:active={persona === p.id} aria-pressed={persona === p.id}
+              onclick={() => onSetPersona(p.id)}>{p.name}</button>
+          {/each}
         </div>
       {/if}
       {@render accountArea()}

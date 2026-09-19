@@ -4,7 +4,8 @@
   import type { UnitSystem } from "./units";
   import { buildChatContext, type ChatContext } from "./chat-context";
   import { runMarkerTool } from "./chat-tools";
-  import { titleFor, buildReferenceTurn, type Thread } from "./chat-threads";
+  import { titleFor, buildReferenceTurn, shownReply, type Thread } from "./chat-threads";
+  import { DEFAULT_PERSONA, PERSONAS, type PersonaId } from "./personas";
   import HeadingAnchor from "./HeadingAnchor.svelte";
   import ReferenceCard from "./ReferenceCard.svelte";
   import LeafCard from "@tinytars/frame/LeafCard.svelte";
@@ -39,6 +40,7 @@
     dek: CryptoKey | null;
     clientId: string | null;
     unitSystem?: UnitSystem;
+    persona?: PersonaId;
     // W38 — the active thread id (App.svelte's `section`, reused as-is — no new concept needed).
     activeId: string | null;
     // Bindable — App.svelte owns the array; send()/onPaste() append turns straight back through it.
@@ -57,6 +59,7 @@
     dek,
     clientId,
     unitSystem = "imperial",
+    persona = DEFAULT_PERSONA,
     activeId,
     threads = $bindable(),
     hydrated,
@@ -135,10 +138,23 @@
     );
   }
 
+  // W84 — replies the reader flipped back to Lexi's original, by turn index. View state only.
+  let showOriginal = $state<Record<number, boolean>>({});
+
   function turnActions(row: ChatRow): LeafMenuItem[] {
-    return standardLeafActions({
+    const items = standardLeafActions({
       annotate: onCreateNote ? () => onCreateNote!(buildAttachment(row)) : undefined,
     });
+    const adapted = row.reply?.adapted;
+    if (!adapted) return items;
+    const original = !!showOriginal[row.turnIdx];
+    return [
+      ...items,
+      {
+        label: original ? `Show ${PERSONAS[adapted.persona].name}'s version` : `Show ${PERSONAS.lexi.name}'s original`,
+        onClick: () => (showOriginal = { ...showOriginal, [row.turnIdx]: !original }),
+      },
+    ];
   }
 
   // M92 Phase 6 — the pane no longer self-scrolls (one native page scrollbar now, composer kept
@@ -404,13 +420,15 @@
             <AttachmentStrip attachments={row.turn.attachments ?? []} {clientId} {attachmentUrl} productName={PRODUCT_NAME} />
           {/if}
         {/snippet}
-        {#snippet aiTurn()}<span class="turn-text">{row.reply!.text}</span>{/snippet}
+        {@const shown = row.reply ? shownReply(row.reply, !!showOriginal[row.turnIdx]) : null}
+        {#snippet aiTurn()}<span class="turn-text">{shown!.text}</span>{/snippet}
         <TurnCard
           anchor={messageAnchor(current.id, row.turnIdx)}
           titleContent={turnTitle}
           items={turnActions(row)}
           patient={patientTurn}
           ai={row.reply ? aiTurn : undefined}
+          aiLabel={PERSONAS[shown?.persona ?? persona].name}
           aiPending={showPending}
           aiPendingText={pending ?? "…"}
           aiEmpty="No reply yet."
@@ -479,7 +497,7 @@
         bind:value={input}
         onkeydown={onKeydown}
         onpaste={onPaste}
-        placeholder="e.g. what changed since my last echo?"
+        placeholder={`Ask ${PERSONAS[persona].name}… e.g. what changed since my last echo?`}
         aria-label="Ask a question about this record"
         rows="2"
       ></textarea>
