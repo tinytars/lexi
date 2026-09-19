@@ -498,7 +498,7 @@ import { pinnedQueries } from "@pablotech/akesi/pinned-queries";
         </div>
       {/if}
       {#if onSetPersona}
-        <div class="unit-toggle" role="group" aria-label="Who answers">
+        <div class="unit-toggle persona-toggle" role="group" aria-label="Who answers">
           {#each Object.values(PERSONAS) as p (p.id)}
             <button type="button" title={p.blurb} class:active={persona === p.id} aria-pressed={persona === p.id}
               onclick={() => onSetPersona(p.id)}>{p.name}</button>

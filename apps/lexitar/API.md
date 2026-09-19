@@ -192,6 +192,7 @@ curl -s -o /dev/null -w '%{http_code}\n' -X POST "$BASE/api/chat" \
 | `CHAT_TOKEN` | — | **Deleted 2026-08-26.** `/api/chat` is session-gated (`requireSession`); no Function read this. |
 | `VAULT_TOKEN` | Pages secret (prod) / `.dev.vars` (local) | Same allowlist value — gates `PUT /api/vault/{id}`. |
 | `RAW_TOKEN` | — | **Deleted 2026-08-26.** `/api/raw` is gated by `hd_session` plus a per-record `rawAccessFor` check; this Function never read a bearer. |
+| `AZURE_SPEECH_KEY` / `AZURE_SPEECH_REGION` | Pages secrets / `.dev.vars` (local) | W84 — `/api/speak`'s Azure AI Speech key and region (`eastus`, resource group `lexitar-speech`). Unset, read-aloud uses the browser voice. |
 | `STORE_PREFIX` | Pages **var** (committed per-branch in `wrangler.jsonc`) | R2 key namespace per deployment (dev branch = `dev`). Not a secret. **Interim:** the adopted target is physically separate per-env buckets (`health-vault-dev`/`-prod`), retiring this var — see `VAULT.md` §8. |
 
 `.dev.vars` is gitignored and used only by `wrangler pages dev`. Production secrets are set
@@ -225,6 +226,7 @@ call as an inline error.
   new exposure is the public endpoint, closed (PoC-grade) by the bearer allowlist and the
   Cloudflare Access perimeter.
 - No secret appears in the deployed bundle; `ANTHROPIC_API_KEY` lives only in the Function env.
+- W84 — read-aloud text goes to Azure AI Speech (`/api/speak`), under Microsoft's HIPAA BAA.
 
 ## Logging
 
@@ -382,6 +384,37 @@ Not otherwise covered by this file, but touched by the org-recovery work above:
 - `POST /api/auth/password/signup` and `POST /api/auth/passkey/register/verify` request bodies
   gain a required `orgEnvelope: { wrappedDEK, ephemeralPublicKeyJwk }`, mirroring `ownerEnvelope`
   — signup now writes two envelopes, not one.
+
+---
+
+## `POST /api/persona-adapt` (W84 — Kodi's retelling)
+
+Session-gated. Body `{ persona: "kodi", text }`: `text` is Lexi's finished answer, restated by the
+adapter prompt (`src/lib/persona-adapter-prompt.ts`) on `PERSONA_ADAPTER_MODEL`. A deterministic
+fidelity gate requires every number, unit and date from `text` in the output, retrying once; if it
+still fails the response is `{ kind: "fallback" }` and the client keeps Lexi's words, labeled Lexi.
+The adapter never sees the record, only the answer.
+
+```bash
+# → 200 {"kind":"adapted","persona":"kodi","text":"…"} | {"kind":"fallback"} ;  no session → 401
+#   unknown persona / empty text → 400 ;  text too long → 413
+```
+
+---
+
+## `POST /api/speak` (W84 — neural read-aloud)
+
+Session-gated. Body `{ voice?: "lexi" | "kodi", text }` (≤ 2000 chars; the client sends one chunk at a
+time). Relays SSML to **Azure AI Speech** (`AZURE_SPEECH_REGION`, the persona's fixed neural voice) and
+streams back `audio/mpeg`, `Cache-Control: no-store`. Nothing is stored or logged beyond shape and
+status. The text is answer text, i.e. PHI, so Azure AI Speech is a processor: it is covered by
+Microsoft's HIPAA BAA (Product Terms, in-scope service). When the relay fails the browser falls back
+to its own OS voice, which never leaves the device.
+
+```bash
+# → 200 audio/mpeg ;  no session → 401 ;  bad voice / empty text → 400 ;  > 2000 chars → 413
+#   secrets unset → 503 ;  Azure non-OK → 502
+```
 
 ---
 
