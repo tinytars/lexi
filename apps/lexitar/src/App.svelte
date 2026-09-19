@@ -50,6 +50,7 @@
   import { exportCsv, exportJson } from "./lib/export";
   import ImportTab from "./lib/ImportTab.svelte";
   import { classifyUpload } from "./lib/import-flow";
+  import { withClient } from "./lib/vault-clients";
   import { togglePinnedIn, renameIn, removeFrom, labelOf, type SidebarItemKind } from "./lib/vault-item-ops";
   import { pinnedQueries } from "@pablotech/akesi/pinned-queries";
   import Onboarding, { type OnboardingField } from "@tinytars/frame/Onboarding.svelte";
@@ -480,14 +481,9 @@
     // and save in the meantime, and merging onto the old snapshot would silently revert it once this
     // regen's own save follows.
     persist: async (pending, id) => {
-      const liveVault = vault;
-      const liveClient = selectedClientId === id ? liveVault?.clients[id] : undefined;
+      const liveClient = selectedClientId === id ? vault?.clients[id] : undefined;
       if (!liveClient || !session.dek || !session.r2Id) return false;
-      const updated = await applyLeafRegen(liveClient, pending, "translate");
-      const next: Vault = { clients: { ...liveVault!.clients, [id]: updated } };
-      await saveVaultV2(next, session.r2Id, session.dek, vaultSink);
-      vault = next;
-      return true;
+      return persistClient(id, await applyLeafRegen(liveClient, pending, "translate"));
     },
   });
 
@@ -666,8 +662,6 @@
     if (!vault || !currentClient || !selectedClientId || !session.dek || !session.r2Id || !providerToken) return;
     const c = currentClient;
     const id = selectedClientId;
-    const d = session.dek;
-    const vid = session.r2Id;
     refreshing = true;
     refreshError = null;
     refreshProgress = null;
@@ -683,9 +677,7 @@
         signal: refreshController.signal,
         save: async (updated) => {
           if (patientSwitchedMidRequest(currentClient, c)) return; // provider switched patients mid-run
-          const next: Vault = { clients: { ...vault!.clients, [id]: updated } };
-          await saveVaultV2(next, vid, d, vaultSink);
-          vault = next;
+          await persistClient(id, updated);
         },
       });
       // A failed leaf is not a failed refresh: the core and every other leaf are saved. Name them so
@@ -740,6 +732,15 @@
     error = null;
   }
 
+  // The awaited save: the vault changes only once the write lands, so a failed save leaves it as it was.
+  async function persistClient(id: string, client: Client): Promise<boolean> {
+    if (!vault || !session.dek || !session.r2Id) return false;
+    const next = withClient(vault, id, client);
+    await saveVaultV2(next, session.r2Id, session.dek, vaultSink);
+    vault = next;
+    return true;
+  }
+
   // M57 — every section's Add/Edit/Delete now persists immediately (no more outer Save queuing up
   // a whole-client draft), so it's normal for a second edit to fire before the first's network PUT
   // resolves. Apply the vault update OPTIMISTICALLY (synchronously, before the await) so that second
@@ -750,7 +751,7 @@
   // completions can't roll back a newer optimistic state.
   function saveEdits(updated: Client): void {
     if (!vault || !selectedClientId || !session.dek || !session.r2Id) return;
-    const next: Vault = { clients: { ...vault.clients, [selectedClientId]: updated } };
+    const next = withClient(vault, selectedClientId, updated);
     const r2id = session.r2Id;
     const key = session.dek;
     vault = next; // updates currentClient → children see the new baseline on this same tick
@@ -842,10 +843,7 @@
   // persist it exactly like an edit (re-encrypt + sink), then swap it into the vault
   // so Health Reports + the stale chips recompute. ImportTab handles the raw PUT.
   async function handleImported(updated: Client, reportId?: string) {
-    if (!vault || !selectedClientId || !session.dek || !session.r2Id) return;
-    const next: Vault = { clients: { ...vault.clients, [selectedClientId]: updated } };
-    await saveVaultV2(next, session.r2Id, session.dek, vaultSink);
-    vault = next;
+    if (!selectedClientId || !(await persistClient(selectedClientId, updated))) return;
     void fillMissingRanges(updated);
     // W38/5 — headline case: after a report import, close the modal and auto-follow to it in
     // Reports, highlighted (no confirming click).
@@ -883,9 +881,7 @@
     if (!res.ok && res.status !== 204) {
       return { ok: false, message: `storing the original failed (${res.status})` };
     }
-    const next: Vault = { clients: { ...vault!.clients, [clientId]: nextClient } };
-    await saveVaultV2(next, session.r2Id, session.dek, vaultSink);
-    vault = next;
+    if (!(await persistClient(clientId, nextClient))) return { ok: false, message: "No active client." };
     void fillMissingRanges(nextClient);
     return { ok: true, kind: result.status, id: result.id, originalName: file.name };
   }
@@ -895,7 +891,7 @@
   // provider can resolve it, App.svelte enterPatient), persist like an edit, select it, then open
   // Import so the user lands in "import files to get started".
   async function createFirstClient(info: Record<string, unknown>) {
-    if (!vault || !session.dek || !session.r2Id) return;
+    if (!vault) return;
     const birthYear = info.birthYear as number | undefined;
     const gender = info.gender as "male" | "female";
     const { id } = await getMyAccount();
@@ -905,9 +901,7 @@
     // skipped year is an empty dob (age renders as null, no clinical default).
     const dob = birthYear ? `${birthYear}-01-01` : "";
     const client: Client = { displayName: "My records", dob, gender, watchlist: [], results: [] };
-    const next: Vault = { clients: { ...vault.clients, [clientId]: client } };
-    await saveVaultV2(next, session.r2Id, session.dek, vaultSink);
-    vault = next;
+    if (!(await persistClient(clientId, client))) return;
     selectedClientId = clientId;
     importOpen = true;
   }
