@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, afterEach } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   buildAttachmentKey, attachmentUrl, attachmentsOf, attachFiles, MAX_ATTACHMENT_BYTES,
 } from "../../src/lib/attachment-store";
@@ -55,8 +55,6 @@ describe("attachmentsOf", () => {
 });
 
 describe("attachFiles", () => {
-  afterEach(() => vi.unstubAllGlobals());
-
   it("uploads each file via PUT and returns one Attachment per file", async () => {
     const puts: string[] = [];
     vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit) => {

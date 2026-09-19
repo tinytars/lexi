@@ -42,10 +42,9 @@ function multiChunk(chunks: string[]): Response {
 }
 
 const fetchMock = vi.fn();
-vi.stubGlobal("fetch", fetchMock);
-
 beforeEach(() => {
   fetchMock.mockReset();
+  vi.stubGlobal("fetch", fetchMock);
   vi.mocked(validateFindingWithInputs).mockReset();
 });
 

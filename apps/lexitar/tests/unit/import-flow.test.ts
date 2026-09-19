@@ -96,8 +96,10 @@ describe("foldSource", () => {
 // file-attach path — one set of tests covers both callers.
 describe("classifyUpload", () => {
   const fetchMock = vi.fn();
-  vi.stubGlobal("fetch", fetchMock);
-  beforeEach(() => fetchMock.mockReset());
+  beforeEach(() => {
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+  });
 
   // W69 — was a real panel from records/private/. classifyUpload is being tested here, not that
   // patient; the bytes only need to be a recognizable spreadsheet.
