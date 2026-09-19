@@ -1,35 +1,26 @@
-import { applyMigrations } from "./_migrate";
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { Miniflare } from "miniflare";
+import { describe, it, expect, beforeAll } from "vitest";
 import { onRequestPost as mintEnvelope, onRequestDelete as revokeEnvelope } from "../../functions/api/vault/recovery-envelope";
 import { createAccount } from "../../functions/_lib/identity-accounts";
 import { createVault, getEnvelope, getVault, setOrgRecoveryRevoked } from "../../functions/_lib/identity-vault";
 import { listAccessEventsForSubject } from "../../functions/_lib/identity-audit";
-import { signSession } from "../../functions/_lib/session";
 import { ORG_ACCOUNT_ID } from "../../functions/_lib/org";
 import { generateAccountKeypair, generateDEK, wrapDEKForPublicKey } from "@tinytars/vault/crypto";
+import { useWorkerd } from "../support/miniflare";
+import { SESSION_SECRET, cookieFor } from "../support/session";
 
-let mf: Miniflare;
-let db: any;
-const SECRET = "test-secret";
-
+const w = useWorkerd();
 beforeAll(async () => {
-  mf = new Miniflare({ modules: true, script: "export default { fetch() { return new Response('ok'); } }", d1Databases: { DB: "test-recovery-envelope" } });
-  db = await mf.getD1Database("DB");
-  await applyMigrations(db as unknown as import("../../functions/_lib/identity-types").D1Database);
-  await createAccount(db, { id: ORG_ACCOUNT_ID, displayName: "Org" });
+  await createAccount(w.db, { id: ORG_ACCOUNT_ID, displayName: "Org" });
 });
-afterAll(async () => { await mf.dispose(); });
 
-const makeEnv = () => ({ DB: db, SESSION_SECRET: SECRET }) as any;
-const cookieFor = async (id: string) => `hd_session=${await signSession({ SESSION_SECRET: SECRET }, id)}`;
+const makeEnv = () => ({ DB: w.db, SESSION_SECRET }) as any;
 const b64 = (b: Uint8Array) => Buffer.from(b).toString("base64");
 
 async function seedVault() {
   const ownerId = crypto.randomUUID();
-  await createAccount(db, { id: ownerId, displayName: "Owner" });
+  await createAccount(w.db, { id: ownerId, displayName: "Owner" });
   const vaultId = crypto.randomUUID();
-  await createVault(db, { vaultId, ownerAccountId: ownerId, r2Key: `data-${ownerId}.enc`, hd1Version: 2 });
+  await createVault(w.db, { vaultId, ownerAccountId: ownerId, r2Key: `data-${ownerId}.enc`, hd1Version: 2 });
   return { ownerId, vaultId };
 }
 
@@ -65,9 +56,9 @@ describe("POST /api/vault/recovery-envelope", () => {
     expect(res.status).toBe(201);
     expect(await res.json()).toEqual({ status: "created" });
 
-    expect(await getEnvelope(db, vaultId, ORG_ACCOUNT_ID)).not.toBeNull();
+    expect(await getEnvelope(w.db, vaultId, ORG_ACCOUNT_ID)).not.toBeNull();
 
-    const events = await listAccessEventsForSubject(db, ownerId);
+    const events = await listAccessEventsForSubject(w.db, ownerId);
     const minted = events.find((e) => e.action === "org_recovery_minted");
     expect(minted).toBeTruthy();
     expect(minted!.vaultId).toBe(vaultId);
@@ -86,7 +77,7 @@ describe("POST /api/vault/recovery-envelope", () => {
 
   it("409s once org_recovery_revoked_at is set", async () => {
     const { ownerId, vaultId } = await seedVault();
-    await setOrgRecoveryRevoked(db, vaultId, new Date().toISOString());
+    await setOrgRecoveryRevoked(w.db, vaultId, new Date().toISOString());
 
     const res = await mintEnvelope({ request: postReq(await cookieFor(ownerId), await envelopeBody()), env: makeEnv() });
     expect(res.status).toBe(409);
@@ -103,7 +94,7 @@ describe("DELETE /api/vault/recovery-envelope", () => {
     const { ownerId, vaultId } = await seedVault();
     const cookie = await cookieFor(ownerId);
     await mintEnvelope({ request: postReq(cookie, await envelopeBody()), env: makeEnv() });
-    expect(await getEnvelope(db, vaultId, ORG_ACCOUNT_ID)).not.toBeNull();
+    expect(await getEnvelope(w.db, vaultId, ORG_ACCOUNT_ID)).not.toBeNull();
 
     const res = await revokeEnvelope({ request: deleteReq(cookie), env: makeEnv() });
     expect(res.status).toBe(200);
@@ -111,10 +102,10 @@ describe("DELETE /api/vault/recovery-envelope", () => {
     expect(body.status).toBe("revoked");
     expect(body.revokedAt).toBeTruthy();
 
-    expect(await getEnvelope(db, vaultId, ORG_ACCOUNT_ID)).toBeNull();
-    expect((await getVault(db, vaultId))!.orgRecoveryRevokedAt).toBe(body.revokedAt);
+    expect(await getEnvelope(w.db, vaultId, ORG_ACCOUNT_ID)).toBeNull();
+    expect((await getVault(w.db, vaultId))!.orgRecoveryRevokedAt).toBe(body.revokedAt);
 
-    const events = await listAccessEventsForSubject(db, ownerId);
+    const events = await listAccessEventsForSubject(w.db, ownerId);
     expect(events.map((e) => e.action)).toContain("org_recovery_revoked");
   });
 

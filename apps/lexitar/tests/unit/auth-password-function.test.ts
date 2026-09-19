@@ -1,7 +1,5 @@
-import { applyMigrations } from "./_migrate";
 import { onRequestGet as pwSalt } from "../../functions/api/auth/password/salt";
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { Miniflare } from "miniflare";
+import { describe, it, expect, beforeAll } from "vitest";
 import { onRequestPost as signup } from "../../functions/api/auth/password/signup";
 import { onRequestPost as login } from "../../functions/api/auth/password/login";
 import { createAccount, getAccountByEmail } from "../../functions/_lib/identity-accounts";
@@ -17,27 +15,16 @@ import {
   encryptVaultV2,
   wrapDEKForPublicKey,
 } from "@tinytars/vault/crypto";
+import { useWorkerd } from "../support/miniflare";
+import { SESSION_SECRET } from "../support/session";
 
-let mf: Miniflare;
-let db: any; // D1Database
+const w = useWorkerd();
 let orgPublicKeyJwk: JsonWebKey;
 
 beforeAll(async () => {
-  mf = new Miniflare({
-    modules: true,
-    script: "export default { fetch() { return new Response('ok'); } }",
-    d1Databases: { DB: "test-auth" },
-  });
-  db = await mf.getD1Database("DB");
-  await applyMigrations(db as unknown as import("../../functions/_lib/identity-types").D1Database);
-  // W55 P4 — signup now writes a second envelope to ORG_ACCOUNT_ID; the FK on
-  // vault_envelopes.principal_account_id requires the row to exist first.
-  await createAccount(db, { id: ORG_ACCOUNT_ID, displayName: "Org" });
+  // Signup also writes an org-recovery envelope, whose FK needs the org account row.
+  await createAccount(w.db, { id: ORG_ACCOUNT_ID, displayName: "Org" });
   orgPublicKeyJwk = (await generateAccountKeypair()).publicKeyJwk;
-});
-
-afterAll(async () => {
-  await mf.dispose();
 });
 
 function bytesToBase64(bytes: Uint8Array): string {
@@ -52,14 +39,14 @@ const rand = (n: number) => globalThis.crypto.getRandomValues(new Uint8Array(n))
 
 function makeEnv(store: Map<string, Uint8Array>) {
   return {
-    DB: db,
+    DB: w.db,
     VAULT: {
       put: async (k: string, v: Uint8Array) => {
         store.set(k, new Uint8Array(v));
       },
     },
     STORE_PREFIX: "test",
-    SESSION_SECRET: "test-secret",
+    SESSION_SECRET,
   };
 }
 
@@ -119,22 +106,22 @@ describe("POST /api/auth/password/signup", () => {
 
     const { accountId, vaultId } = (await res.json()) as { accountId: string; vaultId: string };
 
-    const account = await getAccountByEmail(db, "alex@example.com");
+    const account = await getAccountByEmail(w.db, "alex@example.com");
     expect(account?.id).toBe(accountId);
 
-    const vaults = await listVaultsForOwner(db, accountId);
+    const vaults = await listVaultsForOwner(w.db, accountId);
     expect(vaults.map((v) => v.vaultId)).toEqual([vaultId]);
 
-    const envelope = await getEnvelope(db, vaultId, accountId);
+    const envelope = await getEnvelope(w.db, vaultId, accountId);
     expect(envelope).not.toBeNull();
 
-    // W55 P4 — signup mints exactly two envelopes: the owner's and the org-recovery one.
-    const envelopes = await listEnvelopesForVault(db, vaultId);
+    // Exactly two envelopes: the owner's and the org-recovery one.
+    const envelopes = await listEnvelopesForVault(w.db, vaultId);
     expect(envelopes.map((e) => e.principalAccountId).sort()).toEqual([accountId, ORG_ACCOUNT_ID].sort());
 
     expect(store.has(`test/${vaults[0].r2Key}`)).toBe(true);
 
-    const cred = await getCredential(db, accountId, "password");
+    const cred = await getCredential(w.db, accountId, "password");
     expect(cred).not.toBeNull();
     expect((cred!.kdfParams as { authHashSha256: string }).authHashSha256).toBeTruthy();
   });
@@ -192,9 +179,7 @@ describe("POST /api/auth/password/login", () => {
     expect(res.status).toBe(401);
   });
 
-  // W71 — login's uniform 401 was undone by the salt lookup that runs in front of it: 404 for an
-  // unknown address, 200 for a registered one. Unauthenticated, unlogged, and on a health application
-  // the question it answers is "is this person a patient here".
+  // A 404-vs-200 salt lookup would undo login's uniform 401 by answering "is this person a patient here".
   describe("the salt lookup in front of login gives nothing away", () => {
     const saltFor = (env: ReturnType<typeof makeEnv>, email: string) =>
       pwSalt({ request: new Request(`http://x/api/auth/password/salt?email=${encodeURIComponent(email)}`), env });

@@ -1,23 +1,8 @@
 import type { D1Database } from "../../functions/_lib/identity-types";
 
-/**
- * The smallest D1 a session-gated route needs.
- *
- * W71 made `requireSession` read `accounts.sessions_valid_from` on every authenticated request, so a
- * route test now needs a DB binding whether or not revocation is its subject. W73 added a second such
- * query: the raw/text/chat routes resolve who owns a client namespace before touching R2.
- *
- * It answers those two and nothing else — deliberately. A fake broad enough to stand in for the schema
- * would start being trusted for things only the real thing can settle, which is what the Miniflare
- * harnesses (`identity.test.ts`, `raw-authorization.test.ts`) are for. In particular the OWNERSHIP
- * MATRIX — owner vs provider vs stranger, live vs revoked link — is settled against a real D1 in
- * `raw-authorization.test.ts`; what this fake gives the route tests is only "someone owns it", so they
- * can go on being about content types and etags.
- *
- * Accounts are un-revoked and present unless `revoke()` says otherwise, which is the state every real
- * account is in. Namespaces are UNOWNED unless `own()` says otherwise, which is the state every
- * pre-migration-0008 object is in.
- */
+// Answers only the two lookups every session-gated route makes (revocation, namespace owner), so
+// route tests can stay about their own subject. Anything broader belongs against a real D1
+// (`useD1`); the ownership matrix is settled there in raw-authorization.test.ts.
 export function fakeSessionDb(): D1Database & {
   revoke(accountId: string, at?: Date): void;
   own(r2KeyOrPrefix: string, accountId: string): void;

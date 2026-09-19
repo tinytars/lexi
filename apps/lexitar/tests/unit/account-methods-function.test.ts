@@ -1,28 +1,16 @@
-import { applyMigrations } from "./_migrate";
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { Miniflare } from "miniflare";
+import { describe, it, expect } from "vitest";
 import { onRequestGet as listM, onRequestPost as addM, onRequestDelete as delM } from "../../functions/api/account/methods";
 import { onRequestPost as pwLogin } from "../../functions/api/auth/password/login";
 import { onRequestGet as pwSalt } from "../../functions/api/auth/password/salt";
 import { createAccount } from "../../functions/_lib/identity-accounts";
 import { addIdentity, getCredential, putCredential } from "../../functions/_lib/identity-credentials";
-import { signSession } from "../../functions/_lib/session";
 import { generateAccountKeypair, deriveKekFromPassword, wrapPrivateKey, deriveAuthHash } from "@tinytars/vault/crypto";
+import { useWorkerd } from "../support/miniflare";
+import { SESSION_SECRET, cookieFor } from "../support/session";
 
-let mf: Miniflare;
-let db: any;
-const SECRET = "test-secret";
+const w = useWorkerd();
 const KDF_ITERATIONS = 200_000;
-
-beforeAll(async () => {
-  mf = new Miniflare({ modules: true, script: "export default { fetch() { return new Response('ok'); } }", d1Databases: { DB: "test-account-methods" } });
-  db = await mf.getD1Database("DB");
-  await applyMigrations(db as unknown as import("../../functions/_lib/identity-types").D1Database);
-});
-afterAll(async () => { await mf.dispose(); });
-
-const makeEnv = () => ({ DB: db, SESSION_SECRET: SECRET }) as any;
-const cookieFor = async (id: string) => `hd_session=${await signSession({ SESSION_SECRET: SECRET }, id)}`;
+const makeEnv = () => ({ DB: w.db, SESSION_SECRET }) as any;
 const bytesToBase64 = (b: Uint8Array) => Buffer.from(b).toString("base64");
 const bytesToHex = (b: Uint8Array) => Buffer.from(b).toString("hex");
 const hexToBytes = (h: string) => Uint8Array.from(Buffer.from(h, "hex"));
@@ -30,12 +18,12 @@ const rand = (n: number) => crypto.getRandomValues(new Uint8Array(n));
 
 async function mkAccount(email: string) {
   const id = crypto.randomUUID();
-  await createAccount(db, { id, displayName: "A", email });
+  await createAccount(w.db, { id, displayName: "A", email });
   return id;
 }
 async function seedPasskey(accountId: string) {
-  await addIdentity(db, { accountId, method: "passkey", credentialId: `cred-${accountId}` });
-  await putCredential(db, { accountId, method: "passkey", wrappedPrivateKey: rand(48), kdfParams: { credentialID: `cred-${accountId}` } });
+  await addIdentity(w.db, { accountId, method: "passkey", credentialId: `cred-${accountId}` });
+  await putCredential(w.db, { accountId, method: "passkey", wrappedPrivateKey: rand(48), kdfParams: { credentialID: `cred-${accountId}` } });
 }
 async function addPasswordBody(privateKey: CryptoKey, password: string) {
   const salt = rand(16);
@@ -74,10 +62,7 @@ describe("account methods", () => {
     expect(login.status).toBe(200);
   });
 
-  // W71 — replacing the password used to need only a session cookie, so a stolen cookie was a silent,
-  // permanent account takeover: set a new password and the real owner is locked out of their own
-  // health record with nothing to notice. Session revocation shortens how long a stolen cookie stays
-  // useful; it does not stop that cookie seizing the account inside the window.
+  // Otherwise a stolen session cookie alone could silently replace the password and lock the owner out.
   describe("replacing a password requires proving you know the current one", () => {
     /** An account that already has a password, plus a helper to prove it. */
     async function withPassword(password: string) {
@@ -158,8 +143,8 @@ describe("account methods", () => {
 
     const res = await delM({ request: new Request("http://x/api/account/methods", { method: "DELETE", headers: { "content-type": "application/json", cookie: await cookieFor(id) }, body: JSON.stringify({ method: "password" }) }), env: makeEnv() });
     expect(res.status).toBe(200);
-    expect(await getCredential(db, id, "password")).toBeNull();
-    expect(await getCredential(db, id, "passkey")).not.toBeNull();
+    expect(await getCredential(w.db, id, "password")).toBeNull();
+    expect(await getCredential(w.db, id, "passkey")).not.toBeNull();
   });
 
   it("refuses to remove the only login method (409, no lockout)", async () => {
@@ -167,6 +152,6 @@ describe("account methods", () => {
     await seedPasskey(id);
     const res = await delM({ request: new Request("http://x/api/account/methods", { method: "DELETE", headers: { "content-type": "application/json", cookie: await cookieFor(id) }, body: JSON.stringify({ method: "passkey" }) }), env: makeEnv() });
     expect(res.status).toBe(409);
-    expect(await getCredential(db, id, "passkey")).not.toBeNull();
+    expect(await getCredential(w.db, id, "passkey")).not.toBeNull();
   });
 });

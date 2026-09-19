@@ -12,7 +12,7 @@ vi.mock("@anthropic-ai/sdk", () => ({
 
 import { onRequestPost, onRequestGet } from "../../functions/api/document-extract";
 import { signSession } from "../../functions/_lib/session";
-import { fakeSessionDb } from "./_session-db";
+import { fakeSessionDb } from "../support/session-db";
 
 // W73 — the routes now resolve who owns a client namespace before touching R2. These tests are about
 // content types, etags and path handling, so they seed "acct-1 owns the fixture namespaces" and leave
