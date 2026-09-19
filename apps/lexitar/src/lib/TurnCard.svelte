@@ -42,6 +42,10 @@
     patientMeta?: string;
     aiMeta?: string;
     aiLabel?: string;
+    /** Read-aloud voice for the AI bubble (a persona id); absent means the default voice. */
+    aiVoice?: string;
+    /** False when the AI text is already in the chosen persona's telling (chat replies). */
+    aiRetellable?: boolean;
     /** Content inside the column but BELOW the bubble — a reference card, a translate error. */
     patientAfter?: Snippet;
     aiAfter?: Snippet;
@@ -58,7 +62,7 @@
     items = [], pinned = false, onTogglePin,
     patient, ai, patientEmpty = "No patient question.",
     aiEmpty = `No ${PRODUCT_NAME} result yet — regenerate the Translation.`,
-    patientMeta, aiMeta, aiLabel = PRODUCT_NAME, patientAfter, aiAfter,
+    patientMeta, aiMeta, aiLabel = PRODUCT_NAME, aiVoice, aiRetellable = true, patientAfter, aiAfter,
     aiPending = false, aiPendingText = "…",
   }: Props = $props();
 
@@ -85,11 +89,11 @@
     </div>
     <div class="rg-col">
       {#if aiPending}
-        <PersonaBubble persona="assistant" label={aiLabel} meta={aiMeta}>
+        <PersonaBubble persona="assistant" label={aiLabel} meta={aiMeta} retellable={false}>
           <span class="turn-pending">{aiPendingText}</span>
         </PersonaBubble>
       {:else if ai}
-        <PersonaBubble persona="assistant" label={aiLabel} meta={aiMeta}>{@render ai()}</PersonaBubble>
+        <PersonaBubble persona="assistant" label={aiLabel} meta={aiMeta} voice={aiVoice} retellable={aiRetellable}>{@render ai()}</PersonaBubble>
       {:else}
         <p class="leaf-row-empty">{aiEmpty}</p>
       {/if}

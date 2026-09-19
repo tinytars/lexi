@@ -70,6 +70,8 @@
     "./SidebarGroupList.svelte": "./SidebarGroupList.svelte",
     "./SidebarLeafList.svelte": "./SidebarLeafList.svelte",
     "./speech-registry.svelte": "./speech-registry.svelte.ts",
+    "./retell-registry.svelte": "./retell-registry.svelte.ts",
+    "./SpeechControls.svelte": "./SpeechControls.svelte",
     "./support-access.svelte": "./support-access.svelte.ts",
     "./theme.css": "./theme.css",
     "./time-ago": "./time-ago.ts",
