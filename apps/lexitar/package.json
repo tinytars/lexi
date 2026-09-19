@@ -35,6 +35,7 @@
     "brain:versions": "tsx scripts/gen-brain-versions.ts",
     "recovery:approve": "tsx scripts/recovery-approve.ts",
     "raw:backfill": "tsx scripts/raw-backfill.ts",
+    "orphan:sweep": "tsx scripts/orphan-sweep.ts",
     "r2-ops": "tsx scripts/r2-ops-cli.ts",
     "serve:node": "node --env-file-if-exists=.dev.vars --import tsx server/node.ts"
   },

@@ -4,7 +4,7 @@ import { requireSession } from "../../_lib/session";
 import { logRequest } from "../../_lib/log";
 import { normalizeClientId } from "../../../src/lib/client-id";
 import { storeKey } from "../../_lib/store";
-import { rawAccessFor, mayDestroy, type RawAccess } from "../../_lib/raw-owner";
+import { rawAccessFor, mayRead, mayWrite, mayDestroy, type RawAccess } from "../../_lib/raw-owner";
 import { json } from "../../_lib/http";
 import type { ObjectBucket } from "../../_lib/object-bucket";
 
@@ -15,7 +15,7 @@ import type { ObjectBucket } from "../../_lib/object-bucket";
 // raw is stored unencrypted under {store}/raw/{id}/, gated only by that pair.
 
 interface Env {
-  VAULT: Pick<ObjectBucket, "get" | "put" | "delete">;
+  VAULT: Pick<ObjectBucket, "get" | "put" | "delete" | "list">;
   SESSION_SECRET: string;
   // W71 — requireSession reads accounts.sessions_valid_from, so every gated route needs the binding.
   DB: D1Database;
@@ -46,6 +46,8 @@ const contentTypeFor = (file: string): string => {
   return "application/octet-stream";
 };
 
+const refusal = (access: RawAccess): string => (access.kind === "denied" ? "not_owner" : access.kind);
+
 export async function onRequestGet(context: Ctx): Promise<Response> {
   const { request, env, params } = context;
   const start = Date.now();
@@ -71,9 +73,10 @@ export async function onRequestGet(context: Ctx): Promise<Response> {
   // W73 (SECURITY.md gap 1) — authenticated is not authorised. Until now `session.accountId` was read
   // and never compared to anything, so any signed-up account could fetch another patient's plaintext
   // PDFs. 404 rather than 403 for a namespace that is not yours: a 403 would confirm the object exists.
+  // An ORPHANED namespace is refused too (W76): owned by nobody is not the same as readable by anybody.
   const access = await rawAccessFor(env.DB, env, session.accountId, id);
-  if (access.kind === "denied") {
-    log(404, { errorCode: "not_owner" });
+  if (!mayRead(access)) {
+    log(404, { errorCode: refusal(access), access: access.kind });
     return json(404, { error: "not found" });
   }
 
@@ -126,12 +129,12 @@ export async function onRequestPut(context: Ctx): Promise<Response> {
     return json(400, { error: "empty body" });
   }
 
-  // An UNCLAIMED namespace is allowed through: that is how a new client's first upload has always
-  // worked, and recordRawObject below makes this caller its owner. A claimed one must be theirs, or
-  // an attacker could squat a key inside someone else's folder and own it forever.
+  // An EMPTY namespace is allowed through: that is how a new client's first upload works, and
+  // recordRawObject below makes this caller its owner. An orphaned one is not (W76) — its first writer
+  // would become owner of objects that are not theirs — and a claimed one must be theirs.
   const access = await rawAccessFor(env.DB, env, session.accountId, id);
-  if (access.kind === "denied") {
-    log(404, { errorCode: "not_owner" });
+  if (!mayWrite(access)) {
+    log(404, { errorCode: refusal(access), access: access.kind });
     return json(404, { error: "not found" });
   }
 
@@ -169,13 +172,12 @@ export async function onRequestDelete(context: Ctx): Promise<Response> {
     return json(400, { error: "expected /api/raw/{id}/{file}" });
   }
 
-  // W75 — DELETE requires a real claim, not merely "not denied". The permissive-unclaimed rule is an
-  // argument about reads and about a first write that claims the namespace; a delete is neither. On
-  // prod, which had no ownership backfill when this shipped, every namespace was unclaimed as soon as
-  // objects appeared — so any signed-up account could destroy any patient's originals, permanently.
+  // W75 — DELETE requires a real claim. On prod, which had no ownership backfill when this shipped,
+  // every namespace was unclaimed as soon as objects appeared — so "not denied" let any signed-up
+  // account destroy any patient's originals, permanently.
   const access = await rawAccessFor(env.DB, env, session.accountId, id);
   if (!mayDestroy(access)) {
-    log(404, { errorCode: access.kind === "unclaimed" ? "unclaimed" : "not_owner" });
+    log(404, { errorCode: refusal(access), access: access.kind });
     return json(404, { error: "not found" });
   }
 

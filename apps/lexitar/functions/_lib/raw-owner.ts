@@ -21,85 +21,88 @@
 
 import type { D1Database } from "./identity-types";
 import { getEnvelope, listVaultsForOwner } from "./identity-vault";
+import { recordRawObject } from "./identity-audit";
+import { listAllKeys, type ObjectBucket } from "./object-bucket";
 import { storeKey, type StoreEnv } from "./store";
 import { normalizeClientId } from "../../src/lib/client-id";
 
+// `unclaimed` and `orphaned` both mean "no owner row", and they are split because they deserve opposite
+// answers. An EMPTY namespace has nothing to protect, and a first write is how a new client is born, so
+// it may be claimed. An ORPHANED one holds someone's objects without saying whose (pre-0008 writes, an
+// incomplete erasure), so nobody may read, write or delete it — letting the first writer claim it made
+// it readable by a guess and squattable by a single PUT (W76). Orphans are resolved deliberately, never
+// by whoever arrives first: `scripts/raw-backfill.ts` (org key or `--assign`), `POST /api/raw/claim`
+// (proof of a stored file's full hash), and `scripts/orphan-sweep.ts` for what nobody claims.
 export type RawAccess =
   | { kind: "owner" }
   | { kind: "granted"; ownerAccountId: string }
   | { kind: "unclaimed" }
+  | { kind: "orphaned" }
   | { kind: "denied"; ownerAccountId: string };
+
+export interface NamespaceEnv extends StoreEnv {
+  VAULT: Pick<ObjectBucket, "list">;
+}
+
+/**
+ * The three key shapes one client's namespace occupies: originals under `raw/{id}/`, their extracted
+ * text under `text/{id}/`, and the flat `chat-{id}.enc` blob. Every question about a namespace — who
+ * owns it, is it empty, what does claiming it cover — is asked of all three together, because letting
+ * them disagree is how an ownership gap reappears one route at a time. The chat key is used as a list
+ * PREFIX like the other two, which matches exactly that key.
+ */
+export function namespacePrefixes(env: StoreEnv, clientId: string): string[] {
+  const slug = normalizeClientId(clientId);
+  return [`${storeKey(env, "raw", slug)}/`, `${storeKey(env, "text", slug)}/`, storeKey(env, `chat-${slug}.enc`)];
+}
 
 /**
  * The account that owns everything belonging to `clientId`, or null when nothing has claimed it yet.
- *
- * One namespace, three shapes: the originals under `raw/{id}/`, their extracted text under
- * `text/{id}/`, and the flat `chat-{id}.enc` blob. They are answered together on purpose — they are
- * the same patient's same client, and letting the three disagree about who owns them is how a gap
- * like this reappears one route at a time.
+ * First writer wins: a backfill or claim can add rows for a second account and must never flip the owner.
  */
-export async function ownerOfClientNamespace(
-  db: D1Database,
-  env: StoreEnv,
-  clientId: string,
-): Promise<string | null> {
-  const slug = normalizeClientId(clientId);
+export async function ownerOfClientNamespace(db: D1Database, env: StoreEnv, clientId: string): Promise<string | null> {
+  const [raw, text, chat] = namespacePrefixes(env, clientId);
   const row = await db
-    .prepare("SELECT account_id FROM raw_objects WHERE r2_key LIKE ?1 OR r2_key LIKE ?2 OR r2_key = ?3 LIMIT 1")
-    .bind(
-      `${storeKey(env, "raw", slug)}/%`,
-      `${storeKey(env, "text", slug)}/%`,
-      // The chat blob is a FLAT key, not a folder, and it claims the namespace too. Without it a
-      // patient who has chatted but never uploaded an attachment owns nothing — so their own chat
-      // history would read as unclaimed and 404 on them. Chat is usually the first thing that happens.
-      storeKey(env, `chat-${slug}.enc`),
-    )
+    .prepare("SELECT account_id FROM raw_objects WHERE r2_key LIKE ?1 OR r2_key LIKE ?2 OR r2_key = ?3 ORDER BY created_at LIMIT 1")
+    .bind(`${raw}%`, `${text}%`, chat)
     .first<{ account_id: string }>();
   return row?.account_id ?? null;
 }
 
-/**
- * Decides what `accountId` may do with `clientId`'s objects.
- *
- * `unclaimed` is a distinct answer from `denied`, and callers ALLOW it. That is a deliberate, measured
- * trade rather than an oversight:
- *
- *   - Refusing it would close nothing that matters. The vulnerability was cross-tenant access to a
- *     namespace someone OWNS; an unclaimed one has no owner to protect.
- *   - Refusing it would break real people. Ownership recording began 2026-08-25, and the backfill
- *     (`scripts/raw-backfill.ts`) resolves a namespace by decrypting the vault with the org key — which
- *     cannot be done for a patient who REVOKED org recovery. On dev that is one object belonging to one
- *     such patient. Refusing unclaimed reads would take their own attachment away from them as the
- *     price of protecting nobody.
- *   - It shrinks to nothing on its own. The first write to a namespace claims it, so any object that
- *     matters is claimed the next time its owner touches it.
- *
- * The residual is that an authenticated stranger who GUESSES an unclaimed client key can read it. It is
- * recorded in SECURITY.md rather than left implicit, and every route that calls this logs `access` so
- * the residual is countable rather than assumed small (W75 — the claim that they did was previously
- * false; `log(200)` recorded no access kind and no route wrote a `phi_access_events` row).
- *
- * NONE OF THAT ARGUMENT EXTENDS TO DELETE (W75). Every clause above is about a read or a first write:
- * an unclaimed namespace has no owner to protect, and the first WRITE claims it, so the window closes
- * itself. A delete has no such shape — there is no "first deleter", nothing self-heals, and the object
- * destroyed is plaintext PHI with no undo. Callers that destroy must use `mayDestroy`.
- */
-/**
- * May this access DESTROY the object? Stricter than the read/write rule on purpose — see the note in
- * rawAccessFor's doc comment. On prod, where no backfill had run, EVERY namespace was unclaimed the
- * moment objects appeared, which made every patient's originals deletable by any signed-up account.
- */
-export const mayDestroy = (access: RawAccess): access is { kind: "owner" } | { kind: "granted"; ownerAccountId: string } =>
+async function namespaceIsEmpty(env: NamespaceEnv, clientId: string): Promise<boolean> {
+  for (const prefix of namespacePrefixes(env, clientId)) {
+    if ((await env.VAULT.list({ prefix, limit: 1 })).objects.length > 0) return false;
+  }
+  return true;
+}
+
+/** Every object in `clientId`'s namespace, attributed to `accountId`. INSERT OR IGNORE, so it never reassigns. */
+export async function claimNamespace(db: D1Database, env: NamespaceEnv, clientId: string, accountId: string): Promise<string[]> {
+  const keys: string[] = [];
+  for (const prefix of namespacePrefixes(env, clientId)) keys.push(...(await listAllKeys(env.VAULT, prefix)));
+  for (const key of keys) await recordRawObject(db, key, accountId);
+  return keys;
+}
+
+/** May this access see the namespace's objects? Only its owner or someone holding a live grant. */
+export const mayRead = (access: RawAccess): access is { kind: "owner" } | { kind: "granted"; ownerAccountId: string } =>
   access.kind === "owner" || access.kind === "granted";
 
+/** Destroying is held to the read rule: there is no "first deleter", and plaintext PHI has no undo (W75). */
+export const mayDestroy = mayRead;
+
+/** Writing additionally allows an EMPTY namespace, whose first write claims it. Never an orphaned one. */
+export const mayWrite = (access: RawAccess): boolean => mayRead(access) || access.kind === "unclaimed";
+
+/** Decides what `accountId` may do with `clientId`'s objects; the routes apply mayRead/mayWrite/mayDestroy. */
 export async function rawAccessFor(
   db: D1Database,
-  env: StoreEnv,
+  env: NamespaceEnv,
   accountId: string,
   clientId: string,
 ): Promise<RawAccess> {
   const ownerAccountId = await ownerOfClientNamespace(db, env, clientId);
-  if (!ownerAccountId) return { kind: "unclaimed" };
+  if (!ownerAccountId) return (await namespaceIsEmpty(env, clientId)) ? { kind: "unclaimed" } : { kind: "orphaned" };
   if (ownerAccountId === accountId) return { kind: "owner" };
 
   // Access is a live envelope between these two accounts, checked in BOTH directions.

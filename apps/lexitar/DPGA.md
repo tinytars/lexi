@@ -1,18 +1,18 @@
 # DPGA.md — Digital Public Goods Alliance: what it is & how LexiTar gets certified
 
-**Created:** 2026-07-11 · **Folder:** `apps/lexitar/`
-**Why this doc:** LexiTar's positioning (`../BRANDING.md` §1) and its funding strategy — kept with the Foundation's records, not in this repo — both hinge on LexiTar being **developed as a Digital Public Good (DPG)** and the Tiny Tars Foundation **pursuing DPGA registration**. This doc explains what that means and the concrete path to it.
+**Created:** 2026-07-11 · **Last verified against code:** 2026-09-19 · **Folder:** `apps/lexitar/`
+**Why this doc:** LexiTar's positioning and its funding strategy — both kept with the Foundation's records, not in this repo — hinge on LexiTar being **developed as a Digital Public Good (DPG)** and the Tiny Tars Foundation **pursuing DPGA registration**. This doc explains what that means and the concrete path to it.
 
-> **Claim discipline (`../BRANDING.md` §1):** say LexiTar is **"developed as a Digital Public Good."** Do **not** say "certified," "DPG-certified," or "certified-ready" until the Foundation has actually submitted a DPGA application. Once submitted, LexiTar is a **"nominee"**; only after full review is it a **recognized DPG**.
+> **Claim discipline:** say LexiTar is **"developed as a Digital Public Good."** Do **not** say "certified," "DPG-certified," or "certified-ready" until the Foundation has actually submitted a DPGA application. Once submitted, LexiTar is a **"nominee"**; only after full review is it a **recognized DPG**.
 
 ---
 
 ## 0. TL;DR
 
 - **DPGA = Digital Public Goods Alliance** — a UNICEF/Norad-rooted, multilateral body (members incl. UNICEF, UNESCO, GitHub, national governments) that **certifies** open-source software/data/AI/content as **Digital Public Goods** against the **DPG Standard (9 indicators)** and lists them in a public **Registry**.
-- **It doesn't (mostly) fund** — it certifies and connects. Registration is a **free credibility badge** that de-risks every philanthropic ask (`FOUND.md` §2E/§3) and can open DPGA-facilitated funders (e.g. Co-Develop).
+- **It doesn't (mostly) fund** — it certifies and connects. Registration is a **free credibility badge** that de-risks every philanthropic ask and can open DPGA-facilitated funders (e.g. Co-Develop).
 - **Process:** free 5-min eligibility test → apply at `app.digitalpublicgoods.net/signup` → two-stage technical review (~30 days) → recognized DPG on the Registry → **annual renewal.**
-- **LexiTar is unusually well-aligned** on privacy/security/standards (its architecture was built for exactly this), **but the one hard gate is Indicator 2: the core LexiTar software must be released under an approved open-source license** (MIT / Apache 2.0 — see `FOUND.md` §4). That, plus ownership + documentation, is the work.
+- **The former hard gate is closed:** `tinytars/lexi` has been public under the MIT license (`../../LICENSE`, copyright Tiny Tars Foundation) since 2026-09-13, satisfying Indicator 2. What remains is mostly writing — privacy-policy coverage, ownership, the model-dependency story — plus one piece of code: a user-facing way to trigger the erasure the API already implements.
 
 ---
 
@@ -20,15 +20,15 @@
 
 A **Digital Public Good** is open-source software, open data, an open AI system, or open content that (a) is **relevant to the UN Sustainable Development Goals (SDGs)**, (b) uses **approved open licenses**, and (c) is designed to **do no harm** — and does all of it in a way that's platform-independent, documented, and privacy-respecting. The **DPGA** maintains the **DPG Standard**, reviews nominees against it, and publishes recognized DPGs in the **DPG Registry** (a discovery surface funders, governments, and multilaterals actually shop from).
 
-**Scoping note for LexiTar:** the DPG is the **LexiTar public software** (the open, community-owned Health Literacy Utility) — **not** the private patient data or the internal health-dash vault. The certification is about the *code/system*, which must be open-licensed; **individual users' PHI is never the DPG and stays private, client-encrypted, and out of scope.**
+**Scoping note for LexiTar:** the DPG is the **LexiTar public software** (this repo — `apps/lexitar` and `packages/frame`, plus the `@tinytars/vault` primitives it builds on) — **not** any user's data. Individual users' health data is never the DPG and stays private, client-encrypted, and out of scope (`../../SECURITY.md`).
 
 ---
 
 ## 2. Why LexiTar pursues DPG status
 
-1. **Funding credibility (`FOUND.md`):** a recognized-DPG badge signals genuine non-commercial public good — it strengthens *every* foundation/AI-for-good application and opens DPGA-facilitated funders.
-2. **Brand positioning (`BRANDING.md` §1):** "developed as a Digital Public Good" is the canonical positioning, satisfying the Google Ad Grant non-commercial requirement while signaling privacy-by-design / data-minimization / purpose-limitation.
-3. **Private-benefit defense:** DPG open-licensing is also the operational answer to foundation lawyers' private-benefit concern (the charity's core asset is open + community-owned, not a founder's proprietary product — `FOUND.md` §4).
+1. **Funding credibility:** a recognized-DPG badge signals genuine non-commercial public good — it strengthens *every* foundation/AI-for-good application and opens DPGA-facilitated funders.
+2. **Brand positioning:** "developed as a Digital Public Good" is the canonical positioning, satisfying the Google Ad Grant non-commercial requirement while signaling privacy-by-design / data-minimization / purpose-limitation.
+3. **Private-benefit defense:** DPG open-licensing is also the operational answer to foundation lawyers' private-benefit concern — the charity's core asset is open and community-owned, not a founder's proprietary product.
 
 ---
 
@@ -36,19 +36,19 @@ A **Digital Public Good** is open-source software, open data, an open AI system,
 
 | # | Indicator | LexiTar status | Gap / action |
 |---|---|---|---|
-| 1 | **SDG Relevance** | ✅ Strong — SDG 3 (Health & Well-being) + SDG 10 (Reduced Inequalities); health literacy for low-literacy/LEP adults | Document the SDG mapping |
-| 2 | **Open Licensing** | ❌ **The hard gate** — core is currently private/proprietary | **Release the core LexiTar software under MIT or Apache 2.0** (`FOUND.md` §4). Biggest single blocker |
-| 3 | **Clear Ownership** | 🟡 Tiny Tars Foundation owns it, but the LLC↔charity IP split isn't formalized | Document ownership + the license/service arrangement (LLC keeps enterprise-integration sales; utility stays open) |
-| 4 | **Platform Independence** | 🟡 **Hosting half closed 2026-09-19** — the same `functions/` tree runs on Cloudflare Pages *or* a Node self-host (`node:sqlite` + filesystem blobs, also shipped as a Docker image); CI runs the full e2e suite on both, and a test forbids platform imports in `functions/`/`src/` (`../../ARCHITECTURE.md` §Cloudflare is one host). **Still open: the AI features depend on a proprietary LLM (Anthropic)** | Document the model dependency: the non-AI core (accounts, encrypted vault, markers, export) runs without a model key — the e2e suite stubs every AI route — and name an open-model fallback or state there is none |
-| 5 | **Documentation** | 🟡 Internal docs exist; not public/DPG-grade | Publish technical + user docs (install, API, contribution guide) |
-| 6 | **Non-PII Data Extraction** (export in a non-proprietary format) | ✅ **Likely already satisfied** — `src/lib/export.ts` ships CSV (`exportCsv`) and a structured JSON dump (`exportJson`) through `ExportTab.svelte`. The indicator asks for *a* non-proprietary format, not specifically FHIR | Document the existing CSV/JSON export as the evidence. FHIR remains a nice-to-have for Indicator 8, **not a blocker here** |
-| 7 | **Privacy & Applicable Laws** | 🟡 **Downgraded 2026-08-24; the engineering half closed 2026-08-25.** Six mandatory sub-requirements: data minimization, consent mechanisms, a *published* privacy policy, **deletion mechanisms**, retention transparency, governance/access-control docs. **Deletion now exists** — `POST /api/account/erase`, with an access-control policy that can be read in one place (`functions/_lib/capabilities.ts`). The remaining five are documentation, not code, and the honest caveat is that erasure reports itself `complete: false` for objects written before migration 0008 | Publish `/privacy`; document the other four; close the pre-0008 raw-object gap (`SECURITY.md` gap 1) so erasure is unconditionally complete |
-| 8 | **Open Standards & Best Practices** | ✅ **Already satisfied by shipped mechanisms** — WebAuthn/FIDO2 (passkeys, live), NIST-standard AES-GCM-256 and PBKDF2-SHA256, ECDH-ES over P-256, HMAC-SHA256, all via WebCrypto | Cite these rather than blocking on FHIR. See `SECURITY.md` §Cryptographic choices |
-| 9A | **Do No Harm — Data Privacy & Security** | 🟡 **Same six sub-requirements as Indicator 7; deletion closed 2026-08-25.** The architecture is strong and written down (`SECURITY.md`), *including* the authorisation gaps that remain open — `/api/raw` is authenticated but not authorised, and `chat-history` PUT is unscoped. The missing primitive for the first has been built (`raw_objects` ownership rows) without yet enforcing it on reads | `SECURITY.md` is the architecture document; the two named gaps must close before an application, not after |
-| 9B | **Do No Harm — Inappropriate/Illegal Content** | 🟡 LexiTar generates health explanations | Document the **education-not-medicine, fail-closed, no-diagnosis** safeguards (`BRANDING.md` §1/§7) as the content-harm control |
+| 1 | **SDG Relevance** | ✅ Strong — SDG 3 (Health & Well-being) + SDG 10 (Reduced Inequalities); health literacy for low-literacy/LEP adults | Document the SDG mapping in the application |
+| 2 | **Open Licensing** | ✅ **Closed 2026-09-13** — repo public under MIT (`../../LICENSE`); `@tinytars/vault` and `@tinytars/frame` are open too | None. Cite the LICENSE and the public repo |
+| 3 | **Clear Ownership** | 🟡 LICENSE copyright and `../../README.md` both name the Tiny Tars Foundation; `../../CODEOWNERS` exists. What's still unwritten is the arrangement with the for-profit side (enterprise integrations sold separately; the utility stays open) | Write a short public ownership statement (Foundation owns the open utility; any commercial integration is separate and licensed from it) |
+| 4 | **Platform Independence** | 🟡 **Hosting: closed 2026-09-19.** The same `functions/` tree runs on Cloudflare Pages (D1 + R2) or a Node self-host (`node:sqlite` + filesystem blobs, `npm run serve:node` or the `Dockerfile`); CI runs the full e2e suite on both hosts and boots the image, and `tests/unit/platform-imports.test.ts` fails if a route or the UI imports a Cloudflare module (`../../ARCHITECTURE.md` §Cloudflare is one host). **Model: still single-provider.** Every AI feature calls Anthropic (Claude Opus 4.7 / Sonnet 4.6 / Haiku 4.5) through `functions/api/*` with `ANTHROPIC_API_KEY`; there is no second provider or open-model fallback | Document which features work with no model at all (vault, markers, charts, export) vs. which need one, and state the model dependency plainly. An open-model fallback would strengthen this but isn't required to apply |
+| 5 | **Documentation** | ✅ **Largely satisfied** — public `README.md`, `ARCHITECTURE.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `CHANGELOG.md` at the root; `API.md`, `AUTH.md`, `VAULT.md`, `docs/BUILDING.md` in this app | None blocking. Point the application at these |
+| 6 | **Non-PII Data Extraction** (export in a non-proprietary format) | ✅ `src/lib/export.ts` ships CSV (`exportCsv`) and structured JSON (`exportJson`), surfaced through `@tinytars/frame`'s `ExportTab.svelte`. The indicator asks for *a* non-proprietary format, not FHIR | Cite the export as evidence. FHIR stays a nice-to-have |
+| 7 | **Privacy & Applicable Laws** | 🟡 Six mandatory sub-requirements. **Published privacy policy: done** — `https://tinytars.foundation/privacy`, linked from the in-app disclaimer (`src/lib/Disclaimer.svelte`, `LEGAL_BASE` in `src/lib/brand.ts`). It covers retention and deletion-on-request, but says nothing about consent, data minimization, or governance/access control. **Deletion: API only** — `POST /api/account/erase` works (self-only, email-echo confirmation, `functions/_lib/erasure.ts`), but no UI calls it, so a user can't erase their account themselves | (a) Add a self-service "Delete account" action that calls `/api/account/erase`. (b) Extend the privacy policy to cover consent, minimization and governance, and point it at the self-service deletion. (c) Access control is already readable in one place (`functions/_lib/capabilities.ts`) — cite it |
+| 8 | **Open Standards & Best Practices** | ✅ WebAuthn/FIDO2 passkeys, AES-GCM-256, PBKDF2-SHA256, ECDH-ES over P-256, HMAC-SHA256 — all via WebCrypto (`@tinytars/vault`'s `ARCHITECTURE.md`) | Cite these |
+| 9A | **Do No Harm — Data Privacy & Security** | 🟡 → **nearly ✅.** Both authorisation gaps an assessor would have found are now closed (W73): `/api/raw` authorises per client namespace through `functions/_lib/raw-owner.ts` (`rawAccessFor`, with the stricter `mayDestroy` on delete), and `chat-history` GET/PUT require a session and go through the same ownership check. Erasure reports `complete: false` when objects in the account's namespaces can't be attributed to it (`erasure.ts`), rather than claiming a clean erase. No residual (W76): a namespace with no owner is claimable only while empty; one holding unattributed objects is refused on every route until its owner reclaims it by proving a stored file's hash, the operator assigns it, or the retention sweep removes it | Also shares Indicator 7's deletion-UI and privacy-policy gaps |
+| 9B | **Do No Harm — Inappropriate/Illegal Content** | 🟡 Safeguards exist in code: the audited `MEDICAL_DISCLAIMER` (`src/lib/brand.ts`) shown in-app, education-not-medicine framing, no diagnosis/triage/treatment recommendations | Write up the content-harm controls (disclaimer, framing, fail-closed generation) as one section the application can cite |
 | 9C | **Do No Harm — Protection from Harassment** | ✅ Effectively N/A — single-user self-service, no user-to-user/social surface | Note N/A with rationale |
 
-**Read:** LexiTar clears or nearly clears **7 of 9** on architecture alone (privacy/security/standards/SDG are its strengths). The real work is **Indicator 2 (open-source the core)**, then **3/4/5** (ownership docs, the model-dependency write-up for 4, public documentation), then formalizing **9B**.
+**Read:** 5 of 9 are satisfied (1, 2, 5, 6, 8). Indicators 3 and 4 need writing only. Indicators 7 and 9 need a small piece of UI (self-service deletion), a fuller privacy policy, and a 9B write-up; 9C is N/A.
 
 ---
 
@@ -65,55 +65,41 @@ Support / questions: `support@digitalpublicgoods.net`. Detailed evaluation crite
 ---
 
 ## 5. Gaps to close before applying (ranked)
-1. **Open-source the core** (Indicator 2) — pick MIT or Apache 2.0; carve the public utility out from any proprietary LLC integrations (`FOUND.md` §4). *Prerequisite for everything.*
-2. **Formalize ownership + the LLC↔charity IP arrangement** (Indicator 3).
-3. **Publish DPG-grade documentation** — install/run, contribution guide, API (Indicator 5).
-4. **Document the model dependency** (Indicator 4) — hosting is no longer locked to Cloudflare (§5c); what remains is writing up the LLM dependency and which functions work without it.
-5. **Ship + document the FHIR export** (Indicator 6) and **write up the do-no-harm content controls** (9B).
+1. **Self-service account deletion in the UI** (Indicators 7/9A) — wire a confirmed "Delete account" action to `POST /api/account/erase`. The only remaining code gap.
+2. **Privacy policy coverage** (Indicator 7) — add consent, data minimization, and governance/access control; reference the self-service deletion.
+3. **Model-dependency write-up** (Indicator 4) — hosting is no longer Cloudflare-bound; only the LLM dependency remains to document.
+4. **Ownership statement** (Indicator 3).
+5. **Do-no-harm write-up** (9B content controls).
 
 ---
 
-## 5b. Verified status, 2026-08-24
+## 5b. Verified status history
 
-Re-checked against the code rather than against the previous row:
+**2026-09-19** — re-checked against `tinytars/lexi` at `main`:
 
-- **Indicator 6 moves from "once FHIR ships" to "likely already satisfied."** CSV and JSON export
-  exist and ship today. This was a self-inflicted blocker: the indicator never required FHIR.
-- **Indicator 8 likewise** — WebAuthn and NIST primitives are live and citable now.
-- **Indicators 7 and 9A move DOWN, from ✅ to 🟡.** Not because anything regressed, but because the
-  six sub-requirements were not previously cross-walked, and one of them — a deletion mechanism —
-  does not exist. Marking these green would have failed an assessor's first check.
-- **Indicator 5** now has `SECURITY.md`, `LINTING.md` and `ARCHITECTURE.md` in-repo; the public-grade
-  README/CONTRIBUTING set followed from open-sourcing the repo.
+- **Indicator 2 closed.** Repo public under MIT since 2026-09-13.
+- **Indicator 5 moves to ✅.** The public doc set (README, ARCHITECTURE, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, CHANGELOG, API, AUTH, VAULT, BUILDING) is in place.
+- **9A's two authorisation gaps closed** (W73, `raw-owner.ts`), and the unclaimed-namespace residual with them (W76): orphaned namespaces are refused until reclaimed (`POST /api/raw/claim`), assigned (`raw-backfill --assign`) or swept (`orphan-sweep`), so there is nothing left to disclose.
+- **Indicator 7's privacy policy is published** at `tinytars.foundation/privacy`, but coverage is partial.
+- **New finding:** erasure is implemented server-side but has no UI entry point, so it doesn't yet count as a user-facing deletion mechanism.
+- **Indicator 4 confirmed as a single-provider dependency** on Anthropic, with no fallback.
+- **Indicator 4's hosting half closed** (tinytars/lexi #43, #44, #53): a Node self-host and Docker
+  image run the unchanged backend, proven by the e2e suite on both hosts in CI. Deploy tooling
+  (wrangler, backups, snapshots) stays Cloudflare-specific, and the Node host is an alternative,
+  not a second production.
 
-Net: two indicators cheaper than believed, two more honest than believed, one unchanged blocker
-(Indicator 2, open licensing, which only the open-source release itself closes).
-
-## 5c. Platform independence, 2026-09-19
-
-Indicator 4's hosting half is closed with evidence an assessor can run, not a claim:
-
-- **One backend, two hosts.** The Pages Functions tree runs unmodified on a Node self-host
-  (`server/`): SQLite for D1, the filesystem for R2, the same migrations. `npm run serve:node`
-  or the `Dockerfile` (tinytars/lexi #43, #44, #53).
-- **Proven in CI on every PR:** unit suite against both storage backends, the full Playwright
-  e2e suite against both hosts, and the Docker image booted and probed.
-- **Enforced, not intended:** `tests/unit/platform-imports.test.ts` fails if a route or the UI
-  imports a Cloudflare, Miniflare or Wrangler module.
-- **Out of scope, stated plainly:** the deploy tooling (`wrangler`, backups, snapshots) stays
-  Cloudflare-specific, and the Node host is a working alternative rather than a second production.
-
-The remaining Indicator 4 item is the LLM dependency (§3 row 4).
+**2026-08-24** — Indicators 6 and 8 moved to "already satisfied" (CSV/JSON export and WebAuthn/NIST crypto were live; FHIR had never been required). Indicators 7 and 9A moved *down* to 🟡 once the six privacy sub-requirements were cross-walked and deletion turned out not to exist; deletion was built 2026-08-25.
 
 ## 6. Next actions
 - [ ] Run the **free eligibility test** to get an official readiness read against the 9 indicators.
-- [ ] Decide the **open-source license** (MIT vs Apache 2.0) + scope exactly which code is the open utility vs. the LLC's proprietary integrations.
-- [ ] Draft the **ownership + IP** documentation (Foundation owns the open utility; LLC licenses enterprise integrations).
+- [ ] Ship the **self-service "Delete account"** UI over `/api/account/erase`.
+- [ ] Extend the **privacy policy** (consent, minimization, governance, self-service deletion).
+- [ ] Write the **ownership**, **model-dependency**, and **do-no-harm** statements.
 - [ ] Only after the above: submit at `app.digitalpublicgoods.net/signup` as the Tiny Tars Foundation.
-- [ ] Until submitted, keep all copy at **"developed as a Digital Public Good"** — never "certified" (`BRANDING.md` §1).
+- [ ] Until submitted, keep all copy at **"developed as a Digital Public Good"** — never "certified".
 
 ---
 
 ## Sources
 - DPGA — [DPG Standard (9 indicators)](https://www.digitalpublicgoods.net/standard) · [Submission Guide](https://www.digitalpublicgoods.net/submission-guide) · [FAQ](https://www.digitalpublicgoods.net/frequently-asked-questions) · [Registry](https://www.digitalpublicgoods.net/registry) · [DPG Standard on GitHub](https://github.com/DPGAlliance/DPG-Standard)
-- Related internal docs — `../BRANDING.md` §1 (claim discipline), `FEATURES.md` (the 4 DPG pillars). The funding role, open-source IP position and LexiTar's scope/population live with the Foundation's records rather than here.
+- Related docs in this repo — `FEATURES.md` (the 4 DPG pillars), `LIABILITY.md` (the non-commercial utility's legal posture), `../../SECURITY.md`, `../../ARCHITECTURE.md`. The funding role, open-source IP position, brand/claim guidelines, and LexiTar's scope/population live with the Foundation's records rather than here.

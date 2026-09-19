@@ -72,7 +72,7 @@ test("US|Metric is an always-visible sidebar toggle that switches displayed unit
   };
 
   // Start from whichever side the account is on rather than assuming US.
-  const unitToggle = page.locator(".sidebar .unit-toggle");
+  const unitToggle = page.locator(".sidebar .unit-toggle:not(.persona-toggle)");
   const startsOnMetric = await unitToggle.getByRole("button", { name: "Metric" }).evaluate((el) => el.classList.contains("active"));
   const [startUnit, targetLabel, targetUnit] = startsOnMetric ? ["mmol/L", "US", "mg/dL"] : ["mg/dL", "Metric", "mmol/L"];
 
@@ -92,7 +92,7 @@ test("a provider's own unit toggle persists to their own account, independent of
   const { getCaptured } = await routeAccountPatch(page, "provider", "clinician");
   await openSyntheticAsProvider(page);
 
-  const unitToggle = page.locator(".sidebar .unit-toggle");
+  const unitToggle = page.locator(".sidebar .unit-toggle:not(.persona-toggle)");
   const startsOnMetric = await unitToggle.getByRole("button", { name: "Metric" }).evaluate((el) => el.classList.contains("active"));
   const targetLabel = startsOnMetric ? "US" : "Metric";
 
