@@ -1,11 +1,12 @@
 // The one shared read-aloud player. It mirrors menu-registry.svelte.ts's singleton shape: playing one
 // thing stops whatever else was playing.
 //
-// Text is spoken one chunk (roughly one sentence) at a time, and each chunk's `end` starts the next.
-// Chromium silently cuts off a single long utterance after ~15s, and chunking is also what makes
-// progress and resume possible. Pause is cancel() plus a remembered index, not
-// speechSynthesis.pause(), which is a no-op or broken on Android Chrome and some Linux voices. Resume
-// restarts the current chunk.
+// Text is spoken one sentence at a time, and each chunk's `end` starts the next. Chromium silently
+// cuts off a single long utterance after ~15s, and chunking is also what makes progress possible.
+// Pause is cancel() plus a remembered position, not speechSynthesis.pause(), which is a no-op or broken
+// on Android Chrome and some Linux voices. The position comes from the voice's word `boundary`
+// events, and resume rewinds one word before it for context. A voice that sends no boundaries resumes
+// at the start of its current sentence instead.
 //
 // The engine finishes or fails utterances on its own. cancel()'s `end` also arrives as a separate
 // task, after the call that caused it. So every utterance captures the `generation` it was spoken
@@ -23,6 +24,8 @@ const state = $state({
   index: 0,
 });
 let generation = 0;
+// Character offset within the current chunk of the last word the voice reached.
+let reached = 0;
 
 function synth(): SpeechSynthesis | undefined {
   return typeof window !== "undefined" ? window.speechSynthesis : undefined;
@@ -51,7 +54,13 @@ function pack(parts: string[]): string[] {
 export function speechChunks(text: string): string[] {
   const sentences = Array.from(new Intl.Segmenter(undefined, { granularity: "sentence" }).segment(text), (s) => s.segment.trim())
     .filter(Boolean);
-  return pack(sentences.flatMap((s) => (s.length > MAX_CHUNK ? pack(s.split(/\s+/)) : [s])));
+  return sentences.flatMap((s) => (s.length > MAX_CHUNK ? pack(s.split(/\s+/)) : [s]));
+}
+
+function oneWordBefore(text: string, at: number): number {
+  const starts = Array.from(text.matchAll(/\S+/g), (m) => m.index);
+  const current = starts.findLastIndex((i) => i <= at);
+  return starts[Math.max(current - 1, 0)] ?? 0;
 }
 
 function halt() {
@@ -67,9 +76,11 @@ function reset() {
   state.index = 0;
 }
 
-function speakCurrent() {
+function speakCurrent(from = 0) {
   const gen = ++generation;
-  const utterance = new SpeechSynthesisUtterance(state.chunks[state.index]);
+  reached = from;
+  const utterance = new SpeechSynthesisUtterance(state.chunks[state.index].slice(from));
+  utterance.onboundary = (e) => { if (gen === generation) reached = from + e.charIndex; };
   utterance.onend = () => {
     if (gen !== generation) return;
     if (state.index + 1 < state.chunks.length) {
@@ -105,7 +116,7 @@ export const speechRegistry = {
   resume(): void {
     if (state.status !== "paused" || !synth()) return;
     state.status = "playing";
-    speakCurrent();
+    speakCurrent(oneWordBefore(state.chunks[state.index], reached));
   },
   toggle(id: string, text: string, label: string): void {
     if (state.id !== id) this.play(id, text, label);

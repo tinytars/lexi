@@ -12,6 +12,7 @@ import { speechRegistry, speechChunks, isSpeechSupported } from "@tinytars/frame
 class FakeUtterance {
   onend: (() => void) | null = null;
   onerror: (() => void) | null = null;
+  onboundary: ((e: { name: string; charIndex: number }) => void) | null = null;
   constructor(public text: string) {}
 }
 
@@ -37,6 +38,10 @@ function fakeSynth() {
       current = null;
       u?.onend?.();
     },
+    /** The engine reporting it has reached the word starting at `charIndex` of the current utterance. */
+    boundary(charIndex: number) {
+      current?.onboundary?.({ name: "word", charIndex });
+    },
     fail() {
       const u = current;
       current = null;
@@ -58,13 +63,8 @@ beforeEach(() => {
 });
 
 describe("speechChunks", () => {
-  it("keeps short text as one chunk", () => {
-    expect(speechChunks("Hello there. How are you?")).toEqual(["Hello there. How are you?"]);
-  });
-
-  it("splits at sentence boundaries once a chunk would exceed the limit", () => {
-    const s = "A".repeat(150) + ".";
-    expect(speechChunks(`${s} ${s} ${s}`)).toEqual([s, s, s]);
+  it("gives each sentence its own chunk, so a voice without word boundaries still resumes mid-text", () => {
+    expect(speechChunks("Hello there. How are you?")).toEqual(["Hello there.", "How are you?"]);
   });
 
   it("hard-splits a single overlong sentence at whitespace", () => {
@@ -140,6 +140,59 @@ describe("playing", () => {
 });
 
 describe("pause and resume", () => {
+  const ONE = "The quick brown fox jumps over the lazy dog";
+
+  it("resumes one word before the word it paused on, not from the start", async () => {
+    speechRegistry.play("a", ONE, "A");
+    synth.boundary(ONE.indexOf("fox"));
+    synth.boundary(ONE.indexOf("jumps"));
+    speechRegistry.pause();
+    await flush();
+    speechRegistry.resume();
+    expect(synth.spoken.at(-1)!.text).toBe("fox jumps over the lazy dog");
+  });
+
+  it("keeps rewinding correctly across a second pause, since boundaries then index the resumed slice", async () => {
+    speechRegistry.play("a", ONE, "A");
+    synth.boundary(ONE.indexOf("jumps"));
+    speechRegistry.pause();
+    await flush();
+    speechRegistry.resume();
+    const resumed = synth.spoken.at(-1)!.text;
+    synth.boundary(resumed.indexOf("lazy"));
+    speechRegistry.pause();
+    await flush();
+    speechRegistry.resume();
+    expect(synth.spoken.at(-1)!.text).toBe("the lazy dog");
+  });
+
+  it("resumes from the start of the current sentence when the voice reports no boundaries", async () => {
+    speechRegistry.play("a", THREE, "A");
+    synth.finish();
+    speechRegistry.pause();
+    await flush();
+    speechRegistry.resume();
+    expect(synth.spoken.at(-1)!.text).toBe("Second sentence here.");
+  });
+
+  it("a boundary from a cancelled utterance does not move the resume point", async () => {
+    speechRegistry.play("a", ONE, "A");
+    const first = synth.spoken[0];
+    speechRegistry.pause();
+    first.onboundary?.({ name: "word", charIndex: ONE.indexOf("lazy") });
+    await flush();
+    speechRegistry.resume();
+    expect(synth.spoken.at(-1)!.text).toBe(ONE);
+  });
+
+  it("plays from the very start again after a stop", () => {
+    speechRegistry.play("a", ONE, "A");
+    synth.boundary(ONE.indexOf("lazy"));
+    speechRegistry.stop();
+    speechRegistry.toggle("a", ONE, "A");
+    expect(synth.spoken.at(-1)!.text).toBe(ONE);
+  });
+
   it("resumes from the paused chunk, not from the start", async () => {
     speechRegistry.play("a", LONG, "A");
     synth.finish();
