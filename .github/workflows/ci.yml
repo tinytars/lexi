@@ -39,6 +39,14 @@ jobs:
       - run: npm run lint
       - run: npm run build
       - run: npm run coverage
+      - name: Coverage thresholds only rise
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git fetch --depth=1 origin "$BASE_REF"
+          git show FETCH_HEAD:apps/lexitar/coverage-thresholds.json > "$RUNNER_TEMP/base-thresholds.json" 2>/dev/null || echo '{}' > "$RUNNER_TEMP/base-thresholds.json"
+          npx tsx scripts/coverage-ratchet.ts "$RUNNER_TEMP/base-thresholds.json" coverage-thresholds.json
       - uses: actions/upload-artifact@v7
         if: always()
         with:
