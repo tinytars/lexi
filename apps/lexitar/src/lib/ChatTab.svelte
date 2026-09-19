@@ -6,6 +6,7 @@
   import { runMarkerTool } from "./chat-tools";
   import { titleFor, buildReferenceTurn, shownReply, type Thread } from "./chat-threads";
   import { DEFAULT_PERSONA, PERSONAS, type PersonaId } from "./personas";
+  import { adaptAnswer } from "./persona-client";
   import HeadingAnchor from "./HeadingAnchor.svelte";
   import ReferenceCard from "./ReferenceCard.svelte";
   import LeafCard from "@tinytars/frame/LeafCard.svelte";
@@ -272,8 +273,12 @@
         error = { code: "anthropic_error", text: "the assistant could not complete the request" };
         return;
       }
+      if (persona !== DEFAULT_PERSONA) pending = `${PERSONAS[persona].name} is putting it in plain talk…`;
+      const adapted = await adaptAnswer(persona, answer);
       threads = threads.map((t) =>
-        t.id === threadId ? { ...t, turns: [...t.turns, { role: "assistant" as const, text: answer! }], lastActivityAt: Date.now() } : t,
+        t.id === threadId
+          ? { ...t, turns: [...t.turns, { role: "assistant" as const, text: answer!, ...(adapted ? { adapted } : {}) }], lastActivityAt: Date.now() }
+          : t,
       );
       onPersist();
     } catch (e) {
