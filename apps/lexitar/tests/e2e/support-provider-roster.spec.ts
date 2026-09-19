@@ -2,14 +2,21 @@ import { test, expect } from "./_fixtures";
 import { loginAs, ownerSignOut } from "./_login";
 import { E2E_CLINICIAN, E2E_SUPPORT } from "./_synthetic";
 
-// W50 — support→provider roster access, end to end and re-runnable (cleans up the grant it creates):
-// the support agent requests access to the provider by email; the provider logs in, sees the pending
-// request on the roster, and approves it; support then sees the provider under "Providers", opens its
-// roster, and finds the provider's patients present but NOT openable (no per-patient consent); finally
-// the provider revokes the grant so the next run starts clean. Uses the dedicated e2e clinician (its
-// own synthetic patients), never fam4 — the support agent identity is already synthetic/LOCAL-only
-// (provision-support-account.ts), so nothing here reaches for a real seeded account.
-test("support requests a provider's roster, provider approves, support views it (records gated)", async ({ page }) => {
+// The grant is real D1 state the vault guard cannot capture, so teardown revokes it even when the body fails.
+test.afterEach(async ({ page }) => {
+  await page.context().clearCookies();
+  await loginAs(page, E2E_CLINICIAN.email, E2E_CLINICIAN.password);
+  await page.locator(".roster-list").waitFor();
+  await page.evaluate(async (name) => {
+    const { providers } = (await (await fetch("/api/providers", { cache: "no-store" })).json()) as {
+      providers: { linkId: string; kind: string; displayName: string }[];
+    };
+    for (const p of providers.filter((l) => l.kind === "support" && l.displayName === name))
+      await fetch(`/api/providers/${encodeURIComponent(p.linkId)}`, { method: "DELETE" });
+  }, E2E_SUPPORT.name);
+});
+
+test("support requests a provider's roster, provider approves, support views it (records gated), provider revokes", async ({ page }) => {
   // 1) support console → request access to the provider by email.
   await loginAs(page, E2E_SUPPORT.email, E2E_SUPPORT.password);
   await expect(page.locator(".account-trigger")).toBeVisible();
@@ -35,7 +42,7 @@ test("support requests a provider's roster, provider approves, support views it 
   await expect(page.locator(".roster-name-disabled").first()).toBeVisible(); // record not openable (no patient consent)
   await ownerSignOut(page);
 
-  // 4) cleanup — provider revokes the grant so the test is re-runnable.
+  // 4) provider revokes the grant.
   await loginAs(page, E2E_CLINICIAN.email, E2E_CLINICIAN.password);
   await page.locator(".access-pending", { hasText: "Support agents with roster access" }).locator(".access-revoke").click();
   await expect(page.locator(".access-pending", { hasText: "Support agents with roster access" })).toHaveCount(0);

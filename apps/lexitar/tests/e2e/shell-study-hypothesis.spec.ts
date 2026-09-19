@@ -1,5 +1,5 @@
 import { test, expect } from "./_fixtures";
-import { openSyntheticAsProvider, openFreshSyntheticAsProvider } from "./_synthetic";
+import { openSyntheticAsProvider, openFreshSyntheticAsProvider, reloadOntoPatient } from "./_synthetic";
 import { clickLeafMenuItem } from "./_leaf-menu";
 import { clickNav } from "./_nav";
 import { watchFlashes, expectFlashed } from "./_flash";
@@ -102,10 +102,7 @@ test("a Study delete survives a background /api/leaf-regen (treatmentGroups) lan
   await expect(page.locator(".study")).not.toContainText(marker);
 
   // Reload with NO Save click at all — the delete's own immediate persist is what's under test.
-  await page.reload();
-  await page.waitForSelector(".roster-list");
-  await page.click(`.roster-name:has-text("${who.name}")`);
-  await page.waitForSelector(".sidebar .nav-item");
+  await reloadOntoPatient(page, who);
   await clickNav(page, "Study");
   await expect(page.locator(".study")).not.toContainText(marker);
 });
@@ -132,10 +129,7 @@ test("Study has no outer Save button — Add (modal) and Delete both persist imm
   await expect(page.locator(".study")).not.toContainText(marker);
   await expect(page.locator(".study .saved")).toBeVisible({ timeout: 10_000 });
 
-  await page.reload();
-  await page.waitForSelector(".roster-list");
-  await page.click(`.roster-name:has-text("${who.name}")`);
-  await page.waitForSelector(".sidebar .nav-item");
+  await reloadOntoPatient(page, who);
   await clickNav(page, "Study");
   await expect(page.locator(".study")).not.toContainText(marker);
 });
@@ -161,19 +155,10 @@ test("editing a Study row persists immediately via the Edit modal, no outer Save
   await expect(page.locator(".study .saved")).toBeVisible({ timeout: 10_000 });
 
   // Reload with no outer Save click ever — the modal's own Save is what's under test.
-  await page.reload();
-  await page.waitForSelector(".roster-list");
-  await page.click(`.roster-name:has-text("${who.name}")`);
-  await page.waitForSelector(".sidebar .nav-item");
+  await reloadOntoPatient(page, who);
   await clickNav(page, "Study");
   await expect(page.locator(".study")).toContainText(edited);
   await expect(page.locator(".study")).not.toContainText(marker);
-
-  // Clean up — delete the throwaway row so repeat runs don't accumulate. Delete is a direct row
-  // action now (mirrors Treatment/FutureTreatment), not gated behind opening Edit.
-  const editedRow = page.locator(".study .leaf-card", { hasText: edited });
-  await clickLeafMenuItem(editedRow, "Delete");
-  await expect(page.locator(".study")).not.toContainText(edited);
 });
 
 test("Hypothesis has no outer Save button — Add (modal), modal-Edit, and Delete all persist immediately (M66)", async ({ page }) => {
@@ -210,10 +195,7 @@ test("Hypothesis has no outer Save button — Add (modal), modal-Edit, and Delet
   await expectFlashed(page, editedAnchorId);
   await expect(page.locator(".future-treatment .saved")).toBeVisible({ timeout: 10_000 });
 
-  await page.reload();
-  await page.waitForSelector(".roster-list");
-  await page.click(`.roster-name:has-text("${who.name}")`);
-  await page.waitForSelector(".sidebar .nav-item");
+  await reloadOntoPatient(page, who);
   await clickNav(page, "Hypothesis");
   await expect(page.locator(".future-treatment")).toContainText(edited);
   await expect(page.locator(".future-treatment")).not.toContainText(marker);
@@ -223,10 +205,7 @@ test("Hypothesis has no outer Save button — Add (modal), modal-Edit, and Delet
   await clickLeafMenuItem(editedRow, "Delete");
   await expect(page.locator(".future-treatment")).not.toContainText(edited);
 
-  await page.reload();
-  await page.waitForSelector(".roster-list");
-  await page.click(`.roster-name:has-text("${who.name}")`);
-  await page.waitForSelector(".sidebar .nav-item");
+  await reloadOntoPatient(page, who);
   await clickNav(page, "Hypothesis");
   await expect(page.locator(".future-treatment")).not.toContainText(edited);
 });

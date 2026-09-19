@@ -12,7 +12,6 @@ const myHash = () => `#${syntheticClientId(test.info().parallelIndex)}`;
 // glossary, doctor questions.
 
 test("sidebar search finds a note by its text and navigates to it (M85)", async ({ page }) => {
-  page.on("dialog", (d) => d.accept());
   const marker = `M85 search note ${Date.now()}`;
   await openSyntheticAsProvider(page);
 
@@ -35,11 +34,6 @@ test("sidebar search finds a note by its text and navigates to it (M85)", async 
   await expect(page.locator(".notes .permalink-flash")).toBeVisible({ timeout: 5_000 });
   await expect(page.locator(".notes")).toContainText(marker);
 
-  // Real, unmocked write to the shared vault — clean up so later e2e files (shell-treatment.spec.ts's
-  // staleness-node tests) don't start from an unexpectedly-stale patientAssessment.
-  const row = page.locator(".notes .leaf-card", { hasText: marker });
-  await clickLeafMenuItem(row, /Delete/);
-  await expect(page.locator(".notes")).not.toContainText(marker);
 });
 
 test("sidebar search finds a clinical report by its title (M85)", async ({ page }) => {
@@ -52,7 +46,6 @@ test("sidebar search finds a clinical report by its title (M85)", async ({ page 
 });
 
 test("sidebar search finds an allergy by its text (M85)", async ({ page }) => {
-  page.on("dialog", (d) => d.accept());
   const marker = `M85 search allergen ${Date.now()}`;
   await openSyntheticAsProvider(page);
   await clickProfileSub(page, "Allergies");
@@ -68,14 +61,9 @@ test("sidebar search finds an allergy by its text (M85)", async ({ page }) => {
   await clickLeafMenuItem(searchRow, "Open");
   await expect(page.locator(".allergies .permalink-flash")).toBeVisible({ timeout: 5_000 });
 
-  // Real, unmocked write to the shared vault — clean up (see notes test above).
-  const row = page.locator(".allergies .leaf-card", { hasText: marker });
-  await clickLeafMenuItem(row, /Delete/);
-  await expect(page.locator(".allergies")).not.toContainText(marker);
 });
 
 test("sidebar search finds a family history entry by its text (M85)", async ({ page }) => {
-  page.on("dialog", (d) => d.accept());
   const marker = `M85 search relative ${Date.now()}`;
   await openSyntheticAsProvider(page);
   await clickProfileSub(page, "Family");
@@ -92,14 +80,9 @@ test("sidebar search finds a family history entry by its text (M85)", async ({ p
   await clickLeafMenuItem(searchRow, "Open");
   await expect(page.locator(".family .permalink-flash")).toBeVisible({ timeout: 5_000 });
 
-  // Real, unmocked write to the shared vault — clean up (see notes test above).
-  const row = page.locator(".family .leaf-card", { hasText: marker });
-  await clickLeafMenuItem(row, /Delete/);
-  await expect(page.locator(".family")).not.toContainText(marker);
 });
 
 test("sidebar search finds a study topic by its text (M85)", async ({ page }) => {
-  page.on("dialog", (d) => d.accept());
   await openSyntheticAsProvider(page);
   const marker = `M85 search topic ${Date.now()}`;
   await clickNav(page, "Study");
@@ -114,10 +97,6 @@ test("sidebar search finds a study topic by its text (M85)", async ({ page }) =>
   await clickLeafMenuItem(row, "Open");
   await expect(page.locator(".study .permalink-flash")).toBeVisible({ timeout: 5_000 });
 
-  // Real, unmocked write to the shared vault — clean up (see notes test above).
-  const cleanupRow = page.locator(".study .leaf-card", { hasText: marker });
-  await clickLeafMenuItem(cleanupRow, /Delete/);
-  await expect(page.locator(".study")).not.toContainText(marker);
 });
 
 test("sidebar search finds a glossary term (M85)", async ({ page }) => {

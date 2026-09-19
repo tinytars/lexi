@@ -1,5 +1,5 @@
 import { test, expect } from "./_fixtures";
-import { openSyntheticAsProvider, openSynthetic, mySynthetic } from "./_synthetic";
+import { openSyntheticAsProvider, openSynthetic, reloadOntoPatient } from "./_synthetic";
 import { clickNav } from "./_nav";
 import { openAllRow } from "./_sidebar-group";
 import { openLeafMenu } from "./_leaf-menu";
@@ -150,16 +150,7 @@ test("Notes offers Pin but no Rename — free text has no title field to rename"
   await expect(page.getByRole("menuitem", { name: "Delete" })).toBeVisible();
 });
 
-// Study is Investigator-only, so this needs the provider session — a patient session has no mode
-// toggle at all and clickNav would wait on one forever (the trap pin-persistence.spec.ts hit too).
-// W64 — two problems, both about the restore. `renameFirstTo` re-resolved `.side-row` `.first()` on
-// EACH call, so the restore ran after the first rename had re-rendered the list: if the renamed row
-// were no longer first, it renamed a DIFFERENT study back to this one's title — and with
-// playwright.config.ts's `workers: 1` against one shared vault, that corruption reaches every later
-// spec. It now holds the row by the text it is currently showing.
-//
-// The name also claimed more than the body checked: there was no reload, so nothing about
-// persistence was exercised. There is one now.
+// Study is Investigator-only, so this needs the provider session.
 test("Study offers inline Rename from the sidebar row, and it persists", async ({ page }) => {
   await openSyntheticAsProvider(page);
   await clickNav(page, "Study");
@@ -183,32 +174,12 @@ test("Study offers inline Rename from the sidebar row, and it persists", async (
     await expect(page.locator(".sidebar .group-children .leaf-list .sub-item", { hasText: next })).toBeVisible();
   }
 
-  try {
-    await renameRowShowing(original, renamed);
+  await renameRowShowing(original, renamed);
 
-    // "and it persists" — reload and confirm the new label came back from the vault, not just the
-    // DOM. Verified load-bearing by stubbing the vault PUT to discard the write: this line then
-    // fails, so it is really reading back what was saved.
-    await page.reload();
-    await page.waitForSelector(".roster-list");
-    await page.locator(".roster-name", { hasText: mySynthetic().name }).click();
-    await clickNav(page, "Study");
-    await expect(page.locator(".sidebar .group-children .leaf-list .sub-item", { hasText: renamed })).toBeVisible();
-  } finally {
-    // W65 — the restore MUST run even when the body fails, and it did not: proving the persistence
-    // assertion could fail (by discarding the write) meant the test threw at the reload check and
-    // skipped the rename-back entirely. With `workers: 1` against one shared vault, a rename this
-    // test made and did not undo is then the first Study row every later spec sees.
-    await restoreTo(renamed, original);
-  }
-
-  /** Rename `from` back to `to`, tolerating a body that failed before the rename ever landed. */
-  async function restoreTo(from: string, to: string) {
-    const stale = rows().filter({ has: page.locator(".sub-item", { hasText: from }) });
-    if ((await stale.count()) === 0) return; // the rename never took — nothing to put back
-    await renameRowShowing(from, to);
-    await expect(page.locator(".sidebar .group-children .leaf-list .sub-item", { hasText: to })).toBeVisible();
-  }
+  // Load-bearing: discarding the vault PUT makes this fail, so it reads back what was saved.
+  await reloadOntoPatient(page);
+  await clickNav(page, "Study");
+  await expect(page.locator(".sidebar .group-children .leaf-list .sub-item", { hasText: renamed })).toBeVisible();
 });
 
 
@@ -249,10 +220,7 @@ test("Hypothesis has an All row spanning every system, and its patient ideas pin
 
   // It survives a reload — which a pin addressed to a positional key never would.
   await expect.poll(wasCaptured, { timeout: 10_000 }).toBe(true);
-  await page.reload({ waitUntil: "networkidle" });
-  await page.waitForSelector(".roster-list", { timeout: 15_000 });
-  await page.locator(".roster-name", { hasText: mySynthetic().name }).click();
-  await page.waitForSelector(".sidebar .nav-item", { timeout: 10_000 });
+  await reloadOntoPatient(page);
   await clickNav(page, "Hypothesis");
   await openAllRow(page);
   await expect(

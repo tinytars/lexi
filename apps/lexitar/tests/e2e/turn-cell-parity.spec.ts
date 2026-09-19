@@ -2,7 +2,6 @@ import { test, expect } from "./_fixtures";
 import type { Page } from "@playwright/test";
 import { openSyntheticAsProvider } from "./_synthetic";
 import { clickNav, clickProfileSub } from "./_nav";
-import { clickLeafMenuItem } from "./_leaf-menu";
 
 // W62 — measured, not eyeballed. A turn cell is a TWO-column card, but several sections still wrapped
 // theirs in `.leaf-side` — a single-column max-width left over from when they were lone AI bubbles.
@@ -109,9 +108,4 @@ test("an Allergies search hit renders the turn its section does", async ({ page 
   await expect(hit).toBeVisible({ timeout: 10_000 });
   await expect(hit.locator(".persona-bubble.p-owner")).toBeVisible();
   await expect(hit).toContainText("Hives");
-
-  // Leave the shared fixture as we found it.
-  await clickProfileSub(page, "Allergies");
-  await clickLeafMenuItem(page.locator(".allergies .leaf-card", { hasText: allergen }), "Delete");
-  await expect(page.locator(".allergies")).not.toContainText(allergen);
 });

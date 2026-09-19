@@ -1,13 +1,10 @@
 import { test, expect } from "./_fixtures";
 import type { Page } from "@playwright/test";
 import { openSyntheticAsProvider, openSyntheticAsProviderAt, syntheticAt } from "./_synthetic";
-import { openLeafMenu, clickLeafMenuItem, leafMenuPanel, menuPanelFor } from "./_leaf-menu";
+import { openLeafMenu, leafMenuPanel, menuPanelFor } from "./_leaf-menu";
 import { clickNav, setSidebarMode } from "./_nav";
 
-// M104 — LeafActionMenu (every leaf row's ⋮) and AccountMenu each used to own fully independent
-// open/closed state; opening one never closed another. menu-registry.svelte.ts makes every
-// popover in the app share one "which menu is open" signal instead. Adds its own two Notes rows
-// (cleaned up at the end) rather than depending on real seeded data having 2+ rows on one tab.
+// Every popover shares one "which menu is open" signal (menu-registry.svelte.ts).
 
 async function addNote(page: Page, text: string) {
   await page.getByTitle("Add note").click();
@@ -17,7 +14,6 @@ async function addNote(page: Page, text: string) {
 }
 
 test("opening any menu closes whichever other menu (leaf or account) was open, in both directions", async ({ page }) => {
-  page.on("dialog", (d) => d.accept());
   const a = `M104 menu-a ${Date.now()}`;
   const b = `M104 menu-b ${Date.now()}`;
 
@@ -56,12 +52,6 @@ test("opening any menu closes whichever other menu (leaf or account) was open, i
   await openLeafMenu(rowA);
   await expect(panelA).toBeVisible();
   await expect(accountPanel).not.toBeVisible();
-
-  await page.keyboard.press("Escape");
-  await clickLeafMenuItem(rowA, /Delete/);
-  await clickLeafMenuItem(rowB, /Delete/);
-  await expect(page.locator(".notes")).not.toContainText(a);
-  await expect(page.locator(".notes")).not.toContainText(b);
 });
 
 // M105 — the sidebar's Patient/Investigator toggle only ever swapped which row list was shown; it
