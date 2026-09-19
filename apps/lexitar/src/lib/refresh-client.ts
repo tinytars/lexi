@@ -14,7 +14,8 @@ import {
   type FindingAIResponse,
 } from "@pablotech/akesi/finding-assemble";
 import { findingInputsHash, nodeHashes } from "./staleness";
-import { FINDING_MODEL, CORE_BRAIN } from "./finding-config";
+import { CORE_BRAIN } from "./finding-config";
+import { modelId } from "./model-config";
 import { BRAIN_VERSIONS } from "./brain-versions";
 import { plannedLabels, populatedNoteEntries } from "@pablotech/akesi/finding-generate";
 
@@ -203,7 +204,7 @@ export async function refreshFinding(
         generatedAt: new Date().toISOString(),
         inputsHash,
         nodeHashes: nh,
-        generatedBy: { mode: "prod", model: FINDING_MODEL },
+        generatedBy: { mode: "prod", model: modelId("finding") },
         noteIds: expected.noteIds,
         promptVersions: { [CORE_BRAIN]: BRAIN_VERSIONS[CORE_BRAIN] },
       });

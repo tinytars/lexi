@@ -1,20 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-
-// Same mocking approach as tests/unit/leaf-regen-function.test.ts — runLeafRegen is the extracted
-// core that Function test already exercises indirectly; these tests cover the outcome kinds
-// (empty/no_tool_use/invalid/ok) directly, which the HTTP-wrapper tests don't isolate.
-const { createMock } = vi.hoisted(() => ({ createMock: vi.fn() }));
-vi.mock("@anthropic-ai/sdk", () => ({
-  default: class {
-    // runLeafRegen streams (LEAF_REGEN_MAX_TOKENS is only requestable that way), but it still reads
-    // one final message — so the mock stays a plain resolved response and createMock keeps receiving
-    // the same params object the assertions below inspect.
-    messages = { stream: (...args: unknown[]) => ({ finalMessage: () => createMock(...args) }) };
-  },
-}));
-
 import { runLeafRegen } from "../../src/lib/leaf-regen-anthropic";
 import { LEAF_REGEN_MAX_TOKENS } from "../../src/lib/leaf-regen-config";
+import { modelId } from "../../src/lib/model-config";
+
+// runLeafRegen is the extracted core the Function test already exercises indirectly; these tests
+// cover the outcome kinds
+// (empty/no_tool_use/invalid/ok) directly, which the HTTP-wrapper tests don't isolate.
+const createMock = vi.fn();
+// runLeafRegen streams (LEAF_REGEN_MAX_TOKENS is only requestable that way), but it still reads one
+// final message — so the fake stays a plain resolved response and createMock keeps receiving the same
+// params object the assertions below inspect.
+const llm = {
+  client: { messages: { stream: (...args: unknown[]) => ({ finalMessage: () => createMock(...args) }) } } as never,
+  model: modelId("leafRegen"),
+};
 
 function toolResponse(input: unknown, name = "emit_study_results") {
   return {
@@ -30,7 +29,7 @@ beforeEach(() => createMock.mockReset());
 
 describe("runLeafRegen", () => {
   it("returns kind 'empty' without calling Anthropic when the node's context is empty", async () => {
-    const result = await runLeafRegen({ apiKey: "k", node: "studyResults", inputs: { pursuedStudy: { entries: [] } } });
+    const result = await runLeafRegen({ ...llm, node: "studyResults", inputs: { pursuedStudy: { entries: [] } } });
     expect(result).toEqual({ kind: "empty" });
     expect(createMock).not.toHaveBeenCalled();
   });
@@ -38,7 +37,7 @@ describe("runLeafRegen", () => {
   it("returns kind 'ok' with the validated result and usage on a valid tool call", async () => {
     createMock.mockResolvedValueOnce(toolResponse({ items: [{ study: "x", result: "y", group: "g" }] }));
     const result = await runLeafRegen({
-      apiKey: "k", node: "studyResults", inputs: { pursuedStudy: { entries: [{ focus: "x", detail: "y" }] } },
+      ...llm, node: "studyResults", inputs: { pursuedStudy: { entries: [{ focus: "x", detail: "y" }] } },
     });
     expect(result.kind).toBe("ok");
     if (result.kind === "ok") {
@@ -50,7 +49,7 @@ describe("runLeafRegen", () => {
   it("returns kind 'no_tool_use' when the model emits no tool_use block", async () => {
     createMock.mockResolvedValueOnce({ content: [{ type: "text", text: "oops" }], usage: { input_tokens: 1, output_tokens: 1 } });
     const result = await runLeafRegen({
-      apiKey: "k", node: "studyResults", inputs: { pursuedStudy: { entries: [{ focus: "x", detail: "y" }] } },
+      ...llm, node: "studyResults", inputs: { pursuedStudy: { entries: [{ focus: "x", detail: "y" }] } },
     });
     expect(result.kind).toBe("no_tool_use");
   });
@@ -65,7 +64,7 @@ describe("runLeafRegen", () => {
       stop_reason: "max_tokens",
     });
     const result = await runLeafRegen({
-      apiKey: "k", node: "studyResults", inputs: { pursuedStudy: { entries: [{ focus: "x", detail: "y" }] } },
+      ...llm, node: "studyResults", inputs: { pursuedStudy: { entries: [{ focus: "x", detail: "y" }] } },
     });
     expect(result.kind).toBe("truncated");
     expect(createMock).toHaveBeenCalledTimes(1);
@@ -75,7 +74,7 @@ describe("runLeafRegen", () => {
   it("returns kind 'invalid' with debug info when BOTH attempts fail validate", async () => {
     createMock.mockResolvedValue(toolResponse({ items: "not-an-array" }));
     const result = await runLeafRegen({
-      apiKey: "k", node: "studyResults", inputs: { pursuedStudy: { entries: [{ focus: "x", detail: "y" }] } },
+      ...llm, node: "studyResults", inputs: { pursuedStudy: { entries: [{ focus: "x", detail: "y" }] } },
     });
     expect(result.kind).toBe("invalid");
     if (result.kind === "invalid") {
@@ -96,7 +95,7 @@ describe("runLeafRegen", () => {
     const good = { items: [{ study: "x", result: "y", group: "g" }] };
     createMock.mockResolvedValueOnce(toolResponse({ items: "not-an-array" })).mockResolvedValueOnce(toolResponse(good));
     const result = await runLeafRegen({
-      apiKey: "k", node: "studyResults", inputs: { pursuedStudy: { entries: [{ focus: "x", detail: "y" }] } },
+      ...llm, node: "studyResults", inputs: { pursuedStudy: { entries: [{ focus: "x", detail: "y" }] } },
     });
     expect(result.kind).toBe("ok");
     expect(createMock).toHaveBeenCalledTimes(2);
@@ -108,13 +107,13 @@ describe("runLeafRegen", () => {
 
   it("does not retry when the model ignored the tool entirely — there is nothing to correct", async () => {
     createMock.mockResolvedValue({ content: [{ type: "text", text: "no tool" }], usage: { input_tokens: 1, output_tokens: 1 }, stop_reason: "end_turn" });
-    const result = await runLeafRegen({ apiKey: "k", node: "studyResults", inputs: { pursuedStudy: { entries: [{ focus: "x", detail: "y" }] } } });
+    const result = await runLeafRegen({ ...llm, node: "studyResults", inputs: { pursuedStudy: { entries: [{ focus: "x", detail: "y" }] } } });
     expect(result.kind).toBe("no_tool_use");
     expect(createMock).toHaveBeenCalledTimes(1);
   });
 
   it("throws for an unknown node", async () => {
-    await expect(runLeafRegen({ apiKey: "k", node: "notANode", inputs: {} })).rejects.toThrow(/no LEAF_REGEN_SPECS entry/);
+    await expect(runLeafRegen({ ...llm, node: "notANode", inputs: {} })).rejects.toThrow(/no LEAF_REGEN_SPECS entry/);
   });
 
   // The ceiling is the reason this call streams at all: at 8192 a whole-section regen came back
@@ -123,11 +122,11 @@ describe("runLeafRegen", () => {
   it("requests the configured ceiling, scoped or not", async () => {
     const inputs = { pursuedStudy: { entries: [{ focus: "x", detail: "y" }] } };
     createMock.mockResolvedValueOnce(toolResponse({ items: [{ study: "x", result: "y", group: "g" }] }));
-    await runLeafRegen({ apiKey: "k", node: "studyResults", inputs });
+    await runLeafRegen({ ...llm, node: "studyResults", inputs });
     expect(createMock.mock.calls.at(-1)![0].max_tokens).toBe(LEAF_REGEN_MAX_TOKENS);
 
     createMock.mockResolvedValueOnce(toolResponse({ items: [{ study: "x", result: "y", group: "g" }] }));
-    await runLeafRegen({ apiKey: "k", node: "studyResults", inputs, targetLabels: ["x"] });
+    await runLeafRegen({ ...llm, node: "studyResults", inputs, targetLabels: ["x"] });
     expect(createMock.mock.calls.at(-1)![0].max_tokens).toBe(LEAF_REGEN_MAX_TOKENS);
   });
 
@@ -137,7 +136,7 @@ describe("runLeafRegen", () => {
     const ctrl = new AbortController();
     createMock.mockResolvedValueOnce(toolResponse({ items: [{ study: "x", result: "y", group: "g" }] }));
     await runLeafRegen({
-      apiKey: "k", node: "studyResults",
+      ...llm, node: "studyResults",
       inputs: { pursuedStudy: { entries: [{ focus: "x", detail: "y" }] } },
       signal: ctrl.signal,
     });
@@ -151,7 +150,7 @@ describe("runLeafRegen attachments", () => {
 
   it("folds an attached document's text into the message, alongside the JSON inputs", async () => {
     createMock.mockResolvedValueOnce(okResponse());
-    await runLeafRegen({ apiKey: "k", node: "studyResults", inputs, documents: [{ name: "trial.pdf", text: "LDL fell 40%" }] });
+    await runLeafRegen({ ...llm, node: "studyResults", inputs, documents: [{ name: "trial.pdf", text: "LDL fell 40%" }] });
     const content = createMock.mock.calls.at(-1)![0].messages[0].content;
     expect(content).toContain("BEGIN DOCUMENT: trial.pdf");
     expect(content).toContain("LDL fell 40%");
@@ -161,14 +160,14 @@ describe("runLeafRegen attachments", () => {
 
   it("sends documents as TEXT, never as document blocks — they were transcribed once already", async () => {
     createMock.mockResolvedValueOnce(okResponse());
-    await runLeafRegen({ apiKey: "k", node: "studyResults", inputs, documents: [{ name: "a.pdf", text: "t" }] });
+    await runLeafRegen({ ...llm, node: "studyResults", inputs, documents: [{ name: "a.pdf", text: "t" }] });
     const content = createMock.mock.calls.at(-1)![0].messages[0].content;
     expect(typeof content).toBe("string");
   });
 
   it("leaves the message byte-identical when there are no documents", async () => {
     createMock.mockResolvedValueOnce(okResponse());
-    await runLeafRegen({ apiKey: "k", node: "studyResults", inputs });
+    await runLeafRegen({ ...llm, node: "studyResults", inputs });
     expect(createMock.mock.calls.at(-1)![0].messages[0].content).toBe(JSON.stringify(inputs));
   });
 
@@ -178,7 +177,7 @@ describe("runLeafRegen attachments", () => {
     // opaque API error rather than the photo simply being left out.
     createMock.mockResolvedValueOnce(okResponse());
     await runLeafRegen({
-      apiKey: "k", node: "studyResults", inputs,
+      ...llm, node: "studyResults", inputs,
       images: [{ mediaType: "image/heic", base64: "AAA" }, { mediaType: "image/png", base64: "BBB" }],
     });
     const content = createMock.mock.calls.at(-1)![0].messages[0].content;
@@ -189,7 +188,7 @@ describe("runLeafRegen attachments", () => {
 
   it("falls back to a plain-string message when every image was unusable", async () => {
     createMock.mockResolvedValueOnce(okResponse());
-    await runLeafRegen({ apiKey: "k", node: "studyResults", inputs, images: [{ mediaType: "image/heic", base64: "AAA" }] });
+    await runLeafRegen({ ...llm, node: "studyResults", inputs, images: [{ mediaType: "image/heic", base64: "AAA" }] });
     expect(typeof createMock.mock.calls.at(-1)![0].messages[0].content).toBe("string");
   });
 });

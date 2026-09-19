@@ -2,14 +2,14 @@ import type { D1Database } from "../_lib/identity-types";
 import Anthropic from "@anthropic-ai/sdk";
 import { requireSession } from "../_lib/session";
 import { logRequest } from "../_lib/log";
-import { classifyAnthropicError } from "../_lib/anthropic-errors";
+import { modelErrorReply } from "../_lib/model-errors";
+import { modelFor } from "../_lib/inference/resolve";
 // W76 — the declaration and its executor are ONE object. This route used to hand-copy the schema,
 // under a comment claiming a Pages Function cannot import the CLI's tsconfig; chat-tools.ts is in
 // src/lib, which twenty Functions already import from, and the copy had silently dropped the
 // per-property descriptions and the "answer latest-value questions without a call" instruction —
 // so the relayed schema was inviting billable tool calls the shared one discourages.
 import { GET_MARKER_READINGS_TOOL } from "../../src/lib/chat-tools";
-import { CHAT_MODEL } from "../../src/lib/chat-config";
 // W76 — the prompt is shared, not inline, so brain-versions.test.ts can see it drift. Every other
 // prompt in the app lives in a src/lib/*-prompt.ts under that stamp; this one was fifteen lines of
 // clinical instruction — treatment-date causality, unit labelling, "do not diagnose" — authored in a
@@ -17,7 +17,6 @@ import { CHAT_MODEL } from "../../src/lib/chat-config";
 import { chatSystemPrompt } from "../../src/lib/chat-prompt";
 
 interface Env {
-  ANTHROPIC_API_KEY: string;
   SESSION_SECRET: string;
   // W71 — requireSession reads accounts.sessions_valid_from, so every gated route needs the binding.
   DB: D1Database;
@@ -91,9 +90,9 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
   const withTools = body.final !== true;
 
   try {
-    const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+    const { client, model } = modelFor(env, "chat");
     const message = await client.messages.create({
-      model: CHAT_MODEL,
+      model,
       max_tokens: 4096,
       system: chatSystemPrompt(today, unitSystem),
       ...(withTools ? { tools: [GET_MARKER_READINGS_TOOL] } : {}),
@@ -128,12 +127,7 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
   } catch (err) {
     // Distinguish credits-exhausted / rate-limit / overload from a generic failure
     // so the browser can show a recovery path (e.g. a billing link) — W7f.
-    const { status, errorCode } = classifyAnthropicError(err);
-    const messagesByCode: Record<string, string> = {
-      insufficient_credit: "AI is temporarily unavailable: the account is out of credits.",
-      ai_busy: "The AI is busy right now — try again in a moment.",
-      anthropic_error: "chat backend error",
-    };
-    return finish(status, { error: messagesByCode[errorCode], errorCode }, { errorCode });
+    const { status, errorCode, error } = modelErrorReply(err, "chat backend error");
+    return finish(status, { error, errorCode }, { errorCode });
   }
 }

@@ -3,12 +3,12 @@
 // of round-tripping through the session-gated relay, which has no CLI-usable auth. Kept in one
 // place so the CLI and the browser can never end up answering the same prompt two different ways.
 // functions/api/leaf-regen.ts stays the thin, session-gated HTTP wrapper: request parsing, body-size
-// cap, and error→status-code mapping (classifyAnthropicError) remain there, HTTP-specific.
+// cap, and error→status-code mapping (classifyModelError) remain there, HTTP-specific.
 
-import Anthropic from "@anthropic-ai/sdk";
+import type Anthropic from "@anthropic-ai/sdk";
+import type { MessagesClient } from "@pablotech/akesi/model-client";
 import { LEAF_REGEN_SPECS, validateLeafResult } from "./leaf-regen-registry";
 import { BASE_SYSTEM_PROMPT } from "./leaf-regen-prompts";
-import { REGROUP_MODEL } from "./regroup-config";
 import { LEAF_REGEN_MAX_TOKENS } from "./leaf-regen-config";
 import { documentsPromptBlock, type DocumentText } from "@pablotech/akesi/document-read";
 
@@ -58,7 +58,8 @@ export type LeafRegenOutcome =
   | { kind: "invalid"; error: Error; usage: LeafRegenUsage; debug: LeafRegenInvalidDebug };
 
 export interface RunLeafRegenParams {
-  apiKey: string;
+  client: MessagesClient;
+  model: string;
   node: string;
   inputs: Record<string, unknown>;
   targetLabels?: string[];
@@ -73,7 +74,7 @@ export interface RunLeafRegenParams {
 
 // Throws on an unknown node (caller's responsibility to pass a valid one) or on an Anthropic SDK
 // error (rate limit, credit exhaustion, etc.) — callers that need HTTP status mapping should wrap
-// this in classifyAnthropicError (functions/_lib/anthropic-errors.ts) themselves, same as before.
+// this in classifyModelError (functions/_lib/model-errors.ts) themselves, same as before.
 export async function runLeafRegen(params: RunLeafRegenParams): Promise<LeafRegenOutcome> {
   const spec = LEAF_REGEN_SPECS[params.node];
   if (!spec) throw new Error(`no LEAF_REGEN_SPECS entry for node "${params.node}"`);
@@ -167,8 +168,6 @@ export async function runLeafRegen(params: RunLeafRegenParams): Promise<LeafRege
   // way to report why. This is the first tool-use call in the repo to stream — the other .stream()
   // sites are plain text — but forced tool_choice is unaffected, and the tool block is read from
   // finalMessage() exactly as it was read from the non-streaming response.
-  const client = new Anthropic({ apiKey: params.apiKey });
-
   // W67 — ONE retry, with the rejection fed back. The id/coverage checks in validateLeafResult are
   // strict by design, and a leaf that trips one on a whole-Finding refresh used to lose its section
   // for the run: the orchestrator records the failure and moves on, so the only recovery was a human
@@ -189,9 +188,9 @@ export async function runLeafRegen(params: RunLeafRegenParams): Promise<LeafRege
                 text: `\n\n=== CORRECTION — your previous answer was REJECTED ===\n${correction}\nAnswer again, fixing this and keeping everything else valid.`,
               },
             ];
-    const stream = client.messages.stream(
+    const stream = params.client.messages.stream(
       {
-        model: REGROUP_MODEL,
+        model: params.model,
         max_tokens: LEAF_REGEN_MAX_TOKENS,
         system: `${BASE_SYSTEM_PROMPT}\n\n${scopeInstruction}${spec.systemPromptExtra}`,
         tools: [toolSchema],

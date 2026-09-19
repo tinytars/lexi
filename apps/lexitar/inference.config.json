@@ -1,0 +1,39 @@
+{
+  "$doc": "Every model call the app and its CLI make. Holds env var NAMES only, never a key. See INFERENCE.md.",
+  "providers": {
+    "anthropic": {
+      "api": "anthropic",
+      "keyEnv": ["ANTHROPIC_API_KEY"],
+      "billingUrl": "https://console.anthropic.com/settings/billing"
+    },
+    "anthropic-finding": {
+      "api": "anthropic",
+      "keyEnv": ["FINDING_ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY"],
+      "billingUrl": "https://console.anthropic.com/settings/billing"
+    },
+    "anthropic-ranges": {
+      "api": "anthropic",
+      "keyEnv": ["RANGES_ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY"],
+      "billingUrl": "https://console.anthropic.com/settings/billing"
+    }
+  },
+  "features": {
+    "chat": { "provider": "anthropic", "model": "claude-sonnet-4-6" },
+    "persona": { "provider": "anthropic", "model": "claude-sonnet-4-6" },
+    "extract": { "provider": "anthropic", "model": "claude-opus-4-7" },
+    "document": { "provider": "anthropic-ranges", "model": "claude-opus-4-7" },
+    "treatmentImage": { "provider": "anthropic", "model": "claude-opus-4-7" },
+    "treatmentText": { "provider": "anthropic", "model": "claude-sonnet-4-6" },
+    "finding": { "provider": "anthropic-finding", "model": "claude-opus-4-7" },
+    "ranges": { "provider": "anthropic-ranges", "model": "claude-opus-4-7" },
+    "markerGroups": { "provider": "anthropic", "model": "claude-opus-4-7" },
+    "leafRegen": { "provider": "anthropic-ranges", "model": "claude-sonnet-4-6" },
+    "benchmarkWeakest": { "provider": "anthropic", "model": "claude-haiku-4-5-20251001" }
+  },
+  "dev": {
+    "extract": "claude-sonnet-4-6",
+    "finding": "claude-sonnet-4-6",
+    "ranges": "claude-sonnet-4-6",
+    "markerGroups": "claude-sonnet-4-6"
+  }
+}

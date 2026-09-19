@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { RANGES_MODEL } from "../../src/lib/ranges-config";
+import { modelId } from "../../src/lib/model-config";
 
 // Mock the SDK so the Function's guard + non-streamed generation are exercised with no billable
 // call. Unlike refresh-finding's mocked `.stream`, this Function calls `.create` directly.
@@ -127,10 +127,10 @@ describe("/api/refresh-range generation", () => {
     expect(parsed.marker).toBe("hsCRP");
     expect(parsed.range).toMatchObject({ low: 0.5, high: 1.5, unit: "mg/L" });
     expect(parsed.range.factorsHash).toEqual(expect.any(String));
-    expect(parsed.range.generatedBy).toEqual({ mode: "prod", model: RANGES_MODEL });
+    expect(parsed.range.generatedBy).toEqual({ mode: "prod", model: modelId("ranges") });
 
     const args = createMock.mock.calls[0][0];
-    expect(args.model).toBe(RANGES_MODEL);
+    expect(args.model).toBe(modelId("ranges"));
     expect(args.max_tokens).toBe(1024);
     expect(args.output_config.format.type).toBe("json_schema");
     expect(args.messages[0].content).toContain("Marker: hsCRP");
