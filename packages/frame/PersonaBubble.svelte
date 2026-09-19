@@ -28,22 +28,21 @@
   }
   let { persona, label, meta, id, pinned = false, onTogglePin, pinDisplay = "auto", actions, children }: Props = $props();
 
-  // Every assistant-generated bubble gets Speak for free: reads bodyEl's own rendered text at click
-  // time rather than a prop threaded through every one of this component's call sites, so no
-  // existing caller needs to change. speechRegistry is the shared "only one thing speaks at a time"
-  // singleton (mirrors menu-registry.svelte.ts); clicking the currently-speaking bubble's own button
-  // again toggles it off (speechRegistry.speak handles that toggle internally).
+  // Every assistant-generated bubble gets read-aloud for free. It reads bodyEl's rendered text at
+  // click time instead of taking a prop, so no caller has to change. speechRegistry is the shared
+  // player, and SpeechControls keeps playback controllable after this bubble unmounts.
   const uid = $props.id();
   const bubbleId = `${persona}-${uid}`;
   const speakable = $derived(persona === "assistant" && isSpeechSupported());
-  const speaking = $derived(speechRegistry.isSpeaking(bubbleId));
+  const speech = $derived(speechRegistry.statusOf(bubbleId));
+  const speakTitle = $derived(speech === "playing" ? "Pause reading" : speech === "paused" ? "Resume reading" : "Read aloud");
   let bodyEl: HTMLDivElement | undefined;
   function toggleSpeak() {
-    speechRegistry.speak(bubbleId, bodyEl?.textContent ?? "");
+    speechRegistry.toggle(bubbleId, bodyEl?.textContent ?? "", meta ? `${label} · ${meta}` : label);
   }
 </script>
 
-<div class="persona-bubble p-{persona}" {id}>
+<div class="persona-bubble p-{persona}" {id} data-speech-id={speakable ? bubbleId : undefined}>
   <div class="persona-head">
     <span class="persona-head-left">
       <span class="persona-tag">{label}</span>
@@ -55,12 +54,20 @@
           <button
             type="button"
             class="persona-speak"
-            class:speaking
-            title={speaking ? "Stop reading" : "Read aloud"}
-            aria-label={speaking ? "Stop reading" : "Read aloud"}
-            aria-pressed={speaking}
+            class:active={speech !== "idle"}
+            title={speakTitle}
+            aria-label={speakTitle}
             onclick={toggleSpeak}
-          >{speaking ? "⏸" : "🔊"}</button>
+          >{speech === "playing" ? "⏸\uFE0E" : "▶\uFE0E"}</button>
+          {#if speech !== "idle"}
+            <button
+              type="button"
+              class="persona-speak"
+              title="Stop reading"
+              aria-label="Stop reading"
+              onclick={() => speechRegistry.stop()}
+            >⏹&#xFE0E;</button>
+          {/if}
         {/if}
         {#if actions?.length || onTogglePin}
           <LeafActionMenu items={actions ?? []} {pinned} {onTogglePin} {pinDisplay} />
@@ -77,5 +84,5 @@
     font-size: 0.95rem; line-height: 1; padding: 0.3rem; border-radius: 6px; color: var(--muted);
   }
   .persona-speak:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--fg); }
-  .persona-speak.speaking { color: var(--accent); }
+  .persona-speak.active { color: var(--accent); }
 </style>

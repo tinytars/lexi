@@ -1,13 +1,28 @@
-// The one shared "who's currently speaking" registry, mirroring menu-registry.svelte.ts's
-// singleton shape: starting a new utterance stops whatever else was speaking, and clicking the
-// currently-speaking bubble's own button again stops it (toggle) — the same "only one thing
-// active" convention a popover-heavy UI wants for this too.
+// The one shared read-aloud player. It mirrors menu-registry.svelte.ts's singleton shape: playing one
+// thing stops whatever else was playing.
 //
-// speechSynthesis is a real, global, OS-level engine — it can finish an utterance (or fail) entirely
-// on its own, not just via a manual stop() call. `onend`/`onerror` on the utterance are what keep
-// `speakingId` in sync with reality in that case; a plain isSpeaking() flag flipped only at the two
-// call sites (speak/stop) would go stale the instant a normal utterance finishes.
-const state = $state<{ speakingId: string | null }>({ speakingId: null });
+// Text is spoken one chunk (roughly one sentence) at a time, and each chunk's `end` starts the next.
+// Chromium silently cuts off a single long utterance after ~15s, and chunking is also what makes
+// progress and resume possible. Pause is cancel() plus a remembered index, not
+// speechSynthesis.pause(), which is a no-op or broken on Android Chrome and some Linux voices. Resume
+// restarts the current chunk.
+//
+// The engine finishes or fails utterances on its own. cancel()'s `end` also arrives as a separate
+// task, after the call that caused it. So every utterance captures the `generation` it was spoken
+// under. Each pause, stop, or new play bumps that counter, which makes a late event from a
+// superseded chunk a no-op.
+export type SpeechStatus = "idle" | "playing" | "paused";
+
+const MAX_CHUNK = 200;
+
+const state = $state({
+  id: null as string | null,
+  label: "",
+  status: "idle" as SpeechStatus,
+  chunks: [] as string[],
+  index: 0,
+});
+let generation = 0;
 
 function synth(): SpeechSynthesis | undefined {
   return typeof window !== "undefined" ? window.speechSynthesis : undefined;
@@ -17,34 +32,91 @@ export function isSpeechSupported(): boolean {
   return !!synth();
 }
 
-export const speechRegistry = {
-  isSpeaking(id: string): boolean {
-    return state.speakingId === id;
-  },
-  speak(id: string, text: string): void {
-    const s = synth();
-    if (!s || !text.trim()) return;
-    // cancel()'s `end` event is dispatched as its own task, never inside this call — which is what
-    // makes the toggle below reachable, since it compares against a speakingId this cancel has not
-    // had the chance to clear. The old speakingId is cleared by the assignment further down (or by
-    // the toggle); each handler guards on its own id so a late `end` cannot clear a newer utterance.
-    // (An earlier version of this comment claimed the opposite, that cancel() fires onend
-    // SYNCHRONOUSLY and that this is what clears the old id. Were that true the toggle would be
-    // dead code and a second click would re-speak.)
-    s.cancel();
-    if (state.speakingId === id) {
-      // Toggle: clicking the already-speaking bubble's own button again just stops it.
-      state.speakingId = null;
-      return;
+function pack(parts: string[]): string[] {
+  const out: string[] = [];
+  let buf = "";
+  for (const p of parts) {
+    const next = buf ? `${buf} ${p}` : p;
+    if (buf && next.length > MAX_CHUNK) {
+      out.push(buf);
+      buf = p;
+    } else {
+      buf = next;
     }
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.onend = () => { if (state.speakingId === id) state.speakingId = null; };
-    utterance.onerror = () => { if (state.speakingId === id) state.speakingId = null; };
-    state.speakingId = id;
-    s.speak(utterance);
+  }
+  if (buf) out.push(buf);
+  return out;
+}
+
+export function speechChunks(text: string): string[] {
+  const sentences = Array.from(new Intl.Segmenter(undefined, { granularity: "sentence" }).segment(text), (s) => s.segment.trim())
+    .filter(Boolean);
+  return pack(sentences.flatMap((s) => (s.length > MAX_CHUNK ? pack(s.split(/\s+/)) : [s])));
+}
+
+function halt() {
+  generation++;
+  synth()?.cancel();
+}
+
+function reset() {
+  state.id = null;
+  state.label = "";
+  state.status = "idle";
+  state.chunks = [];
+  state.index = 0;
+}
+
+function speakCurrent() {
+  const gen = ++generation;
+  const utterance = new SpeechSynthesisUtterance(state.chunks[state.index]);
+  utterance.onend = () => {
+    if (gen !== generation) return;
+    if (state.index + 1 < state.chunks.length) {
+      state.index++;
+      speakCurrent();
+    } else {
+      reset();
+    }
+  };
+  utterance.onerror = () => { if (gen === generation) reset(); };
+  synth()!.speak(utterance);
+}
+
+export const speechRegistry = {
+  statusOf(id: string): SpeechStatus {
+    return state.id === id ? state.status : "idle";
+  },
+  current() {
+    return { id: state.id, label: state.label, status: state.status, index: state.index, total: state.chunks.length };
+  },
+  play(id: string, text: string, label: string): void {
+    const chunks = speechChunks(text);
+    if (!synth() || !chunks.length) return;
+    halt();
+    Object.assign(state, { id, label, status: "playing", chunks, index: 0 });
+    speakCurrent();
+  },
+  pause(): void {
+    if (state.status !== "playing") return;
+    halt();
+    state.status = "paused";
+  },
+  resume(): void {
+    if (state.status !== "paused" || !synth()) return;
+    state.status = "playing";
+    speakCurrent();
+  },
+  toggle(id: string, text: string, label: string): void {
+    if (state.id !== id) this.play(id, text, label);
+    else if (state.status === "playing") this.pause();
+    else this.resume();
   },
   stop(): void {
-    synth()?.cancel();
-    state.speakingId = null;
+    halt();
+    reset();
   },
 };
+
+// Nothing keeps speaking into a page that is being navigated away from or put in the bfcache.
+if (typeof window !== "undefined") window.addEventListener("pagehide", () => speechRegistry.stop());

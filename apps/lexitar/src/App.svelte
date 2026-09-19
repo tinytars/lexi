@@ -58,6 +58,8 @@
   import { pinnedQueries } from "@pablotech/akesi/pinned-queries";
   import Onboarding, { type OnboardingField } from "@tinytars/frame/Onboarding.svelte";
   import AccountMenu from "@tinytars/frame/AccountMenu.svelte";
+  import SpeechControls from "@tinytars/frame/SpeechControls.svelte";
+  import { speechRegistry } from "@tinytars/frame/speech-registry.svelte";
   import LoginScreen from "@tinytars/frame/LoginScreen.svelte";
   import RecoveryCodeDialog from "./lib/RecoveryCodeDialog.svelte";
   import AttachPicker from "@tinytars/frame/AttachPicker.svelte";
@@ -98,6 +100,14 @@
   let unlocking = $state(false);
   let error = $state<string | null>(null);
   let selectedClientId = $state<string | null>(null);
+  // Read-aloud outlives the bubble it came from, but never the record: closing the vault or
+  // switching patient stops it. Keyed on the boolean, since `vault` is reassigned on every save.
+  const vaultOpen = $derived(vault !== null);
+  $effect(() => {
+    void vaultOpen;
+    void selectedClientId;
+    speechRegistry.stop();
+  });
   // W72 — the unlocked-session key material lives in one object with one transition each way
   // (vault-session.svelte.ts). These were four separate $state declarations set and cleared in eight
   // separate assignments, so a half-open session — a live DEK for a vault the user had closed — was
@@ -954,6 +964,7 @@
      confirmation (it must not). -->
 <p class="sr-only" role="alert">{announcedError}</p>
 <p class="sr-only" role="status" aria-live="polite">{vaultSave.saved ? "Saved" : ""}</p>
+<SpeechControls />
 <div class="app-body">
 <!-- M78 Phase 15 — measures whatever renders in this banner area (0 when nothing is showing),
      now that there's no header to measure instead. -->
