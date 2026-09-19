@@ -2,6 +2,8 @@
 // nav-controller.ts because these take plain arguments and close over nothing — no component state,
 // no Svelte runes — so they're unit-testable without any component or effect machinery.
 
+import { TABS, type Tab } from "./nav";
+
 /** A handful of report sections render as a Notes sub-tab rather than their own top-level tab. */
 export const NESTED_IN_NOTES = new Set(["docInference", "healthMarkers", "definitions"]);
 
@@ -60,4 +62,23 @@ export function resolveDefaultGroup(
   if (remembered) return remembered;
   if (FIRST_SYSTEM_DEFAULT_SECTIONS.has(section)) return firstSystemDefault;
   return SECTION_DEFAULT_GROUP[section] ?? allGroupKey;
+}
+
+export type VisibilityBounce = { tab?: Tab; section: string } | null;
+
+// Chat has no SectionMeta, so it bounces on its own canSee and must flip the tab too — otherwise the
+// chat-thread fallback (which checks only thread ids) would fight this bounce forever.
+export function decideVisibilityBounce(
+  view: { activeTab: Tab; section: string | null },
+  visibleSections: string[],
+  canSeeTab: (tab: Tab) => boolean,
+): VisibilityBounce {
+  const first = visibleSections[0];
+  if (!first) return null;
+  if (view.activeTab === "chat") {
+    if (canSeeTab("chat")) return null;
+    const tab = TABS.find((t) => t.id !== "chat" && canSeeTab(t.id))?.id;
+    return tab ? { tab, section: first } : null;
+  }
+  return view.section && !visibleSections.includes(view.section) ? { section: first } : null;
 }

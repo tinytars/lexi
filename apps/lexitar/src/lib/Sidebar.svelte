@@ -14,15 +14,8 @@
   import SidebarGroupList from "@tinytars/frame/SidebarGroupList.svelte";
   import SidebarLeafList from "@tinytars/frame/SidebarLeafList.svelte";
   import type { SidebarGroupRow, SidebarLeafRow } from "@tinytars/frame/sidebar-rows";
-  import { markerSidebarGroups, markerGroupsPending } from "./marker-sidebar-groups";
   import { todayISODate } from "@pablotech/akesi/treatment-bucket";
-  import { treatmentSidebarBuckets, type TreatmentSidebarBucket } from "./treatment-sidebar";
-  import { hypothesisSidebarGroups, hypothesisGroupsPending } from "./hypothesis-sidebar-groups";
-  import { explorationSidebarGroups, explorationGroupsPending } from "./exploration-sidebar-groups";
-  import { questionsSidebarGroups } from "./questions-sidebar-groups";
-  import { glossarySidebarGroups } from "./glossary-sidebar-groups";
-  import { reportSidebarGroups } from "./report-sidebar-groups";
-  import { allergySidebarRows, familySidebarRows, notesSidebarGroups, studySidebarGroups } from "./sidebar-leaf-rows";
+  import { lowerZoneKindFor, lowerZoneModel } from "./sidebar-lower-zone";
   import { sortThreads, type Thread } from "./chat-threads";
   import { threadLeaf } from "./sidebar-leaf-mappers";
   import { ALL_GROUP_LABEL, ALL_GROUP_KEY } from "./sidebar-labels";
@@ -32,7 +25,6 @@
   import { capabilitiesFor, capabilitiesForRow, type RowCapabilities, type RowKind } from "./sidebar-row-capabilities";
 import { pinnedQueries } from "@pablotech/akesi/pinned-queries";
   import type { SidebarItemKind } from "./vault-item-ops";
-  import { PRODUCT_NAME } from "./brand";
 
   interface Props {
     activeTab: Tab;
@@ -127,38 +119,7 @@ import { pinnedQueries } from "@pablotech/akesi/pinned-queries";
     return Object.entries(v.clients).sort((a, b) => a[1].displayName.localeCompare(b[1].displayName));
   }
 
-  // M76 Phase 1/5 — which contextual lower zone (if any) shows below the divider.
-  // M78 Phase 2 — allergies/familyHistory/notes/study are named identically to their own section
-  // keys (unlike hypothesis/"futureTreatment"), so selecting one of them can pass `active` straight
-  // through as the section key.
-  // M82 Phase 3 — section keys are now globally unique, so every arm but chat's matches on `active`
-  // alone (chat's `active` holds a thread id, not a section key, so activeTab stays load-bearing there).
-  // W48 — Profile/Allergies/Family share one lower zone ("personalization"): Allergies and Family
-  // are no longer flat top-level rows (patientRows filters them out below), only reachable by first
-  // landing on Profile. All three of their own section keys still map here, so the group list below
-  // the divider (Bio/Allergies/Family) stays visible+correctly-highlighted no matter which of the
-  // three is currently active.
-  let lowerZoneKind = $derived<
-    "chat" | "markers" | "treatment" | "hypothesis" | "personalization" | "notes" | "study" | "healthReports" | "questions" | "glossary" | "analysis" | "exploration" | null
-  >(
-    activeTab === "chat" ? "chat" :
-    active === "markers" ? "markers" :
-    active === "healthReports" ? "healthReports" :
-    active === "treatment" ? "treatment" :
-    active === "personalization" || active === "allergies" || active === "familyHistory" ? "personalization" :
-    active === "notes" ? "notes" :
-    active === "docInference" ? "questions" :
-    active === "definitions" ? "glossary" :
-    active === "futureTreatment" ? "hypothesis" :
-    active === "study" ? "study" :
-    active === "analysis" ? "analysis" :
-    active === "exploration" ? "exploration" :
-    null
-  );
-  // M76/Phase 2 — real Markers rows (Ratios + one per established body system).
-  // M76/Phase 3 — real Treatment rows (Ongoing/Planned/Past, always all 3).
-  // M76/Phase 4 — real Hypothesis rows (one per established body system, empty until established).
-  // M80 Phase 5 — real Exploration rows (one per established body system, empty until established).
+  let lowerZoneKind = $derived(lowerZoneKindFor(activeTab, active));
   // W48 — Profile's own group list is real navigation (Bio/Allergies/Family are three distinct
   // top-level section keys), not an in-page filter — its render branch below wires onSelect to
   // selectRow directly instead of onSelectGroup, and activeKey to `active` instead of `activeGroup`.
@@ -249,44 +210,10 @@ import { pinnedQueries } from "@pablotech/akesi/pinned-queries";
 
   let analysisGroupRows = $derived<SidebarGroupRow[]>(client ? analysisSidebarGroups(client) : []);
 
-  let lowerGroupRows = $derived<SidebarGroupRow[]>(
-    lowerZoneKind === "markers" && client ? markerSidebarGroups(client) :
-    lowerZoneKind === "treatment" && client ? treatmentSidebarBuckets(client, todayISODate()) :
-    lowerZoneKind === "hypothesis" && client ? hypothesisSidebarGroups(client) :
-    lowerZoneKind === "exploration" && client ? explorationSidebarGroups(client) :
-    lowerZoneKind === "healthReports" && client ? reportSidebarGroups(client) :
-    lowerZoneKind === "personalization" && client ? [
-      { key: "personalization", label: "Bio" },
-      { key: "allergies", label: "Allergies", count: allergySidebarRows(client).length,
-        action: { label: sidebarActionFor("allergies")!.label, onClick: () => onAction("allergies", sidebarActionFor("allergies")!.verb) } },
-      { key: "familyHistory", label: "Family", count: familySidebarRows(client).length,
-        action: { label: sidebarActionFor("familyHistory")!.label, onClick: () => onAction("familyHistory", sidebarActionFor("familyHistory")!.verb) } },
-    ] :
-    lowerZoneKind === "notes" && client ? notesSidebarGroups(client) :
-    lowerZoneKind === "study" && client ? studySidebarGroups(client) :
-    lowerZoneKind === "questions" && client ? questionsSidebarGroups(client) :
-    lowerZoneKind === "glossary" && client ? glossarySidebarGroups(client) :
-    [],
-  );
-  let lowerGroupPendingNote = $derived(
-    (lowerZoneKind === "markers" || lowerZoneKind === "hypothesis" || lowerZoneKind === "exploration") && client &&
-    (lowerZoneKind === "markers" ? markerGroupsPending(client) :
-      lowerZoneKind === "hypothesis" ? hypothesisGroupsPending(client) : explorationGroupsPending(client))
-      ? `Grouped by body system once the ${PRODUCT_NAME} Translation runs.`
-      : null,
-  );
-  // M78 Phase 2/3 — real Allergies/Family/Notes/Study/Reports rows, one per item (flat, not grouped).
-  // W48 — under "personalization", which individual-item list (if any) shows depends on which of
-  // the three children is actually active: Bio is a single form (no items to list), so only
-  // Allergies/Family contribute their own entries here, exactly as they did as flat top-level rows.
-  // W58 — Notes/Study/Reports no longer contribute a section-wide flat leaf list here: each
-  // group row carries its own items as `children` now (see notesSidebarGroups/
-  // studySidebarGroups/reportSidebarGroups).
-  let lowerLeafRows = $derived<SidebarLeafRow[]>(
-    lowerZoneKind === "personalization" && client && active === "allergies" ? allergySidebarRows(client) :
-    lowerZoneKind === "personalization" && client && active === "familyHistory" ? familySidebarRows(client) :
-    [],
-  );
+  let lowerZone = $derived(lowerZoneModel(lowerZoneKind, client, active, todayISODate(), onAction));
+  let lowerGroupRows = $derived(lowerZone.groupRows);
+  let lowerGroupPendingNote = $derived(lowerZone.pendingNote);
+  let lowerLeafRows = $derived(lowerZone.leafRows);
   // M82 Phase 3 — a group's visible rows: filters each group's SectionMeta[] by presence + audience,
   // the same predicates the old per-tab sectionsFor used.
   function visibleSections(sections: SectionMeta[]): SectionMeta[] {

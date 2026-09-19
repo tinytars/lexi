@@ -10,7 +10,7 @@
   // out of band ("~24h"). Same hash/dedup/PUT/save spine, no /api/extract call.
   import type { Client, PendingUpload } from "./types";
   import { classifyUpload, type FoldResult, type SourceFoldResult } from "./import-flow";
-  import { normalizeClientId } from "./client-id";
+  import { putRaw } from "./attachment-store";
   import { PRODUCT_NAME } from "./brand";
 
   let {
@@ -107,12 +107,7 @@
     if (!rawFile || !next) return;
     status = "committing";
     try {
-      const res = await fetch(`/api/raw/${normalizeClientId(clientId)}/${rawFile}`, {
-        method: "PUT",
-        // /api/raw is gated by the hd_session cookie (W44) — same-origin fetch sends it automatically.
-        headers: { "Content-Type": "application/octet-stream" },
-        body: bytes as BodyInit,
-      });
+      const res = await putRaw(clientId, rawFile, bytes);
       if (!res.ok && res.status !== 204) {
         throw new Error(`storing the original failed (${res.status})`);
       }

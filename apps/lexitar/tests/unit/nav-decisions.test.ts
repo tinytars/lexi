@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest";
+import type { Tab } from "../../src/lib/nav";
 import {
   resolveNestedSection,
   decideHashSync,
   resolveDefaultGroup,
+  decideVisibilityBounce,
   NESTED_IN_NOTES,
   GROUP_SECTIONS,
   FIRST_SYSTEM_DEFAULT_SECTIONS,
@@ -79,5 +81,44 @@ describe("GROUP_SECTIONS / ANCHOR_ELIGIBLE_SECTIONS", () => {
   it("notes is group-bearing but not anchor-eligible", () => {
     expect(GROUP_SECTIONS.has("notes")).toBe(true);
     expect(ANCHOR_ELIGIBLE_SECTIONS.has("notes")).toBe(false);
+  });
+});
+
+describe("decideVisibilityBounce", () => {
+  const all = () => true;
+  const noChat = (t: Tab) => t !== "chat";
+
+  it("stays put on a visible chat", () => {
+    expect(decideVisibilityBounce({ activeTab: "chat", section: "thread-1" }, ["markers"], all)).toBeNull();
+  });
+
+  it("bounces a hidden chat to the first visible non-chat tab and the first visible section", () => {
+    expect(decideVisibilityBounce({ activeTab: "chat", section: "thread-1" }, ["markers", "notes"], noChat))
+      .toEqual({ tab: "labs", section: "markers" });
+  });
+
+  it("skips tabs the audience cannot see when picking where a hidden chat lands", () => {
+    const onlyAi = (t: Tab) => t === "ai";
+    expect(decideVisibilityBounce({ activeTab: "chat", section: null }, ["analysis"], onlyAi))
+      .toEqual({ tab: "ai", section: "analysis" });
+  });
+
+  it("leaves a hidden chat alone when there is nowhere visible to go", () => {
+    expect(decideVisibilityBounce({ activeTab: "chat", section: null }, [], noChat)).toBeNull();
+    expect(decideVisibilityBounce({ activeTab: "chat", section: null }, ["markers"], () => false)).toBeNull();
+  });
+
+  it("moves an invisible section to the first visible one without changing tab", () => {
+    expect(decideVisibilityBounce({ activeTab: "labs", section: "exploration" }, ["markers", "notes"], all))
+      .toEqual({ section: "markers" });
+  });
+
+  it("keeps a visible section, and a view with no section yet", () => {
+    expect(decideVisibilityBounce({ activeTab: "labs", section: "notes" }, ["markers", "notes"], all)).toBeNull();
+    expect(decideVisibilityBounce({ activeTab: "labs", section: null }, ["markers"], all)).toBeNull();
+  });
+
+  it("never bounces when no section is visible at all", () => {
+    expect(decideVisibilityBounce({ activeTab: "labs", section: "notes" }, [], all)).toBeNull();
   });
 });
