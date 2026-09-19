@@ -22,7 +22,7 @@
   // (what to ask, and each field's own validity rule) is entirely caller-supplied — a number field
   // is optional and omitted from the create payload when left blank or when the user skips; a
   // select field always has a value and is always included. Everything the caller collects is
-  // stored wherever it wants (LexiTar puts it in the encrypted vault, never the server).
+  // stored wherever it wants (e.g. an encrypted vault, never the server).
   let {
     productName,
     subheading = "Welcome. A couple of details help tailor your results — or skip and add them later.",
