@@ -38,7 +38,7 @@ const DAY_MS = 86_400_000;
 // Relative to now so no window ages out; newest readings stagger (60 vs 200 days) for markers-tab's W65 case.
 const READING_AGES_DAYS: Record<(typeof GROUPS)[number], number[]> = {
   "Cardiovascular Risk": [825, 625, 400, 200, 60],
-  "Metabolic Health": [825, 625, 400, 300, 200],
+  "Metabolic Health": [825, 625, 400, 200, 200],
 };
 
 /** Dated marker readings — three per marker minimum, which is what a chart needs to draw a line. */
