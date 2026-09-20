@@ -427,7 +427,7 @@ to its own OS voice, which never leaves the device.
 `src/lib/error-reporter.ts` posts every uncaught error and unhandled rejection here (each distinct
 error once per page load, at most 5). Session-gated (`hd_session`). The body `{ name, message, stack, build }`
 is PHI-scrubbed server-side (`functions/_lib/client-error.ts`), then filed in
-`CLIENT_ERROR_GITHUB_REPO` (`pablo-tech/plover-factory`, private): a new issue titled
+`CLIENT_ERROR_GITHUB_REPO` (`promontory-studio/plover-factory`, private): a new issue titled
 `Client error: <name> [<fingerprint>]` — the scrubbed message goes in the body only — or a comment on
 the open issue carrying the same fingerprint. `build` is the deploy's commit SHA
 (`CF_PAGES_COMMIT_SHA`, baked in at build time), linked from the issue body. Each issue carries a `fp:<fingerprint>` label, which is how a
