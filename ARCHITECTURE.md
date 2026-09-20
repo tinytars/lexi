@@ -156,8 +156,13 @@ The model gets the same treatment. Every call core takes an injected `MessagesCl
 naming each feature's provider, model and key env var. It returns either the Anthropic SDK or
 `inference/openai.ts`, an adapter that speaks the same port over any OpenAI-compatible
 `/chat/completions` endpoint (OpenAI, Ollama, vLLM, LM Studio). The adapter refuses input a model's
-declared `caps` can't take before sending anything. `tests/unit/model-ids-single-source.test.ts`
-fails if a source file names a model id outside the config. Setup: `apps/lexitar/INFERENCE.md`.
+declared `caps` can't take before sending anything — the app degrades by **refusing a feature with a
+422 the UI can act on**, never by silently sending a lesser payload, and the fix is routing that one
+feature to a capable model rather than weakening the request.
+`tests/unit/model-ids-single-source.test.ts` fails if a source file names a model id outside the
+config. Which models actually hold the contract is measured against the app's own validators
+(`apps/lexitar/MEASUREMENT.md`), and the stacks that came out of it ship as copyable configs
+(`apps/lexitar/MODELS.md`). Setup: `apps/lexitar/INFERENCE.md`.
 
 ## Two things worth reading before you adapt this
 
