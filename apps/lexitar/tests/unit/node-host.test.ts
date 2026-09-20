@@ -54,6 +54,30 @@ describe("Node host", () => {
     expect(await res.json()).toMatchObject({ salt: expect.any(String), iterations: expect.any(Number) });
   });
 
+  // The self-host's twin of functions/api/_middleware.ts: discoverRoutes() skips `_` files, so
+  // without this catch a throw here would 500 with nothing reported anywhere.
+  it("reports a route that throws, and still answers 500", async () => {
+    const seen: { route: string; method: string }[] = [];
+    const boom = {
+      file: "boom.ts",
+      segments: [{ kind: "static" as const, value: "api" }, { kind: "static" as const, value: "chat" }],
+      module: {
+        onRequestGet: () => {
+          throw new Error("D1_ERROR: no such table: vault_envelopes");
+        },
+      },
+    };
+    const app = createApp({
+      routes: [boom],
+      env: {},
+      assets: async () => new Response("static"),
+      report: async (_env, _error, ctx) => void seen.push({ route: ctx.route, method: ctx.method }),
+    });
+    const res = await app(new Request("https://host/api/chat"));
+    expect(res.status).toBe(500);
+    expect(seen).toEqual([{ route: "/api/chat", method: "GET" }]);
+  });
+
   it("a Function's own error status passes through untouched", async () => {
     expect((await get("/api/auth/password/salt")).status).toBe(400);
     expect((await get("/api/account")).status).toBe(401);
