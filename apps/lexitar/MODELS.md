@@ -17,7 +17,7 @@ cp inference.examples/open-local.json inference.config.json
 | Stack | File | Needs | Sends your record to |
 |---|---|---|---|
 | **Default** | the committed [`inference.config.json`](inference.config.json) | an Anthropic API key | Anthropic |
-| **Mixed** | [`inference.examples/mixed.json`](inference.examples/mixed.json) | an Anthropic API key **and** a local OpenAI-compatible server | Anthropic for the document and reasoning features; nowhere for the rest |
+| **Mixed** | [`inference.examples/mixed.json`](inference.examples/mixed.json) | an Anthropic API key **and** a local OpenAI-compatible server | Anthropic for everything except the highest-volume call; nowhere for that one |
 | **Open, local** | [`inference.examples/open-local.json`](inference.examples/open-local.json) | a local OpenAI-compatible server and a GPU; **no vendor account, no key** | nowhere — it never leaves the machine |
 
 ### Default — Anthropic
