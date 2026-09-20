@@ -1,107 +1,248 @@
-# DPGA.md — Digital Public Goods Alliance: what it is & how LexiTar gets certified
+# LexiTar against the DPG Standard
 
-**Created:** 2026-07-11 · **Last verified against code:** 2026-09-19 · **Folder:** `apps/lexitar/`
-**Why this doc:** LexiTar's positioning and its funding strategy — both kept with the Foundation's records, not in this repo — hinge on LexiTar being **developed as a Digital Public Good (DPG)** and the Tiny Tars Foundation **pursuing DPGA registration**. This doc explains what that means and the concrete path to it.
+An assessment of LexiTar **as it is**, against the [Digital Public Goods Standard](https://github.com/DPGAlliance/DPG-Standard/blob/main/standard.md)
+(v1.1.4) and the questions its [application form](https://github.com/DPGAlliance/DPG-Standard/blob/main/standard-questions.md)
+asks for each indicator. Each indicator gets a verdict, the evidence behind it, and the gaps that stand
+between it and "meets". The gaps are the input to a development plan. This doc is not a plan, a
+tracker, or a history: when LexiTar changes, rewrite the affected verdict to describe the new state.
 
-> **Claim discipline:** say LexiTar is **"developed as a Digital Public Good."** Do **not** say "certified," "DPG-certified," or "certified-ready" until the Foundation has actually submitted a DPGA application. Once submitted, LexiTar is a **"nominee"**; only after full review is it a **recognized DPG**.
+**Assessed against:** `dev` at `4bf28be`, and the live `tinytars.foundation/privacy` and `/terms` pages.
+**Scope:** the software in this repo (`apps/lexitar`, `packages/frame`) plus the open packages it is
+built from (`@tinytars/vault`, `@pablotech/akesi`, `@pablotech/neuro`). Users' health data is never
+part of the DPG.
+**Wording:** until an application is submitted, LexiTar is "developed as a Digital Public Good", never "certified".
 
----
+**Verdicts:** ✅ meets · 🟡 partly meets (an assessor would ask for more) · ❌ does not meet
 
-## 0. TL;DR
+## Summary
 
-- **DPGA = Digital Public Goods Alliance** — a UNICEF/Norad-rooted, multilateral body (members incl. UNICEF, UNESCO, GitHub, national governments) that **certifies** open-source software/data/AI/content as **Digital Public Goods** against the **DPG Standard (9 indicators)** and lists them in a public **Registry**.
-- **It doesn't (mostly) fund** — it certifies and connects. Registration is a **free credibility badge** that de-risks every philanthropic ask and can open DPGA-facilitated funders (e.g. Co-Develop).
-- **Process:** free 5-min eligibility test → apply at `app.digitalpublicgoods.net/signup` → two-stage technical review (~30 days) → recognized DPG on the Registry → **annual renewal.**
-- **The former hard gate is closed:** `tinytars/lexi` has been public under the MIT license (`../../LICENSE`, copyright Tiny Tars Foundation) since 2026-09-13, satisfying Indicator 2. What remains is mostly writing — privacy-policy coverage, ownership, the model-dependency story — plus one piece of code: a user-facing way to trigger the erasure the API already implements.
-
----
-
-## 1. What the DPGA / a DPG is
-
-A **Digital Public Good** is open-source software, open data, an open AI system, or open content that (a) is **relevant to the UN Sustainable Development Goals (SDGs)**, (b) uses **approved open licenses**, and (c) is designed to **do no harm** — and does all of it in a way that's platform-independent, documented, and privacy-respecting. The **DPGA** maintains the **DPG Standard**, reviews nominees against it, and publishes recognized DPGs in the **DPG Registry** (a discovery surface funders, governments, and multilaterals actually shop from).
-
-**Scoping note for LexiTar:** the DPG is the **LexiTar public software** (this repo — `apps/lexitar` and `packages/frame`, plus the `@tinytars/vault` primitives it builds on) — **not** any user's data. Individual users' health data is never the DPG and stays private, client-encrypted, and out of scope (`../../SECURITY.md`).
-
----
-
-## 2. Why LexiTar pursues DPG status
-
-1. **Funding credibility:** a recognized-DPG badge signals genuine non-commercial public good — it strengthens *every* foundation/AI-for-good application and opens DPGA-facilitated funders.
-2. **Brand positioning:** "developed as a Digital Public Good" is the canonical positioning, satisfying the Google Ad Grant non-commercial requirement while signaling privacy-by-design / data-minimization / purpose-limitation.
-3. **Private-benefit defense:** DPG open-licensing is also the operational answer to foundation lawyers' private-benefit concern — the charity's core asset is open and community-owned, not a founder's proprietary product.
-
----
-
-## 3. The DPG Standard — 9 indicators & LexiTar's readiness
-
-| # | Indicator | LexiTar status | Gap / action |
+| # | Indicator | Verdict | What stands in the way |
 |---|---|---|---|
-| 1 | **SDG Relevance** | ✅ Strong — SDG 3 (Health & Well-being) + SDG 10 (Reduced Inequalities); health literacy for low-literacy/LEP adults | Document the SDG mapping in the application |
-| 2 | **Open Licensing** | ✅ **Closed 2026-09-13** — repo public under MIT (`../../LICENSE`); `@tinytars/vault` and `@tinytars/frame` are open too | None. Cite the LICENSE and the public repo |
-| 3 | **Clear Ownership** | 🟡 LICENSE copyright and `../../README.md` both name the Tiny Tars Foundation; `../../CODEOWNERS` exists. What's still unwritten is the arrangement with the for-profit side (enterprise integrations sold separately; the utility stays open) | Write a short public ownership statement (Foundation owns the open utility; any commercial integration is separate and licensed from it) |
-| 4 | **Platform Independence** | ✅ **Closed 2026-09-19.** **Hosting:** the same `functions/` tree runs on Cloudflare Pages (D1 + R2) or a Node self-host (`node:sqlite` + filesystem blobs, `npm run serve:node` or the `Dockerfile`); CI runs the full e2e suite on both hosts and boots the image, and `tests/unit/platform-imports.test.ts` fails if a route or the UI imports a Cloudflare module (`../../ARCHITECTURE.md` §Cloudflare is one host). **Model:** every inference is configured in one file, `inference.config.json`, which names a provider, model and key env var per feature. Anthropic is the default; any OpenAI-compatible endpoint works too, including OpenAI and a local open model through Ollama, vLLM or LM Studio (`INFERENCE.md`). Features that need no model (vault, sign-in, manual entry, markers and charts, export) are listed there with the ones that do. The remaining single-vendor piece is optional: read-aloud uses Azure Speech and falls back to the browser voice | Cite `INFERENCE.md` and `tests/unit/openai-adapter.test.ts` |
-| 5 | **Documentation** | ✅ **Largely satisfied** — public `README.md`, `ARCHITECTURE.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `CHANGELOG.md` at the root; `API.md`, `AUTH.md`, `VAULT.md`, `docs/BUILDING.md` in this app | None blocking. Point the application at these |
-| 6 | **Non-PII Data Extraction** (export in a non-proprietary format) | ✅ `src/lib/export.ts` ships CSV (`exportCsv`) and structured JSON (`exportJson`), surfaced through `@tinytars/frame`'s `ExportTab.svelte`. The indicator asks for *a* non-proprietary format, not FHIR | Cite the export as evidence. FHIR stays a nice-to-have |
-| 7 | **Privacy & Applicable Laws** | 🟡 Six mandatory sub-requirements. **Published privacy policy: done** — `https://tinytars.foundation/privacy`, linked from the in-app disclaimer (`src/lib/Disclaimer.svelte`, `LEGAL_BASE` in `src/lib/brand.ts`). It covers retention and deletion-on-request, but says nothing about consent, data minimization, or governance/access control. **Deletion: API only** — `POST /api/account/erase` works (self-only, email-echo confirmation, `functions/_lib/erasure.ts`), but no UI calls it, so a user can't erase their account themselves | (a) Add a self-service "Delete account" action that calls `/api/account/erase`. (b) Extend the privacy policy to cover consent, minimization and governance, and point it at the self-service deletion. (c) Access control is already readable in one place (`functions/_lib/capabilities.ts`) — cite it |
-| 8 | **Open Standards & Best Practices** | ✅ WebAuthn/FIDO2 passkeys, AES-GCM-256, PBKDF2-SHA256, ECDH-ES over P-256, HMAC-SHA256 — all via WebCrypto (`@tinytars/vault`'s `ARCHITECTURE.md`) | Cite these |
-| 9A | **Do No Harm — Data Privacy & Security** | 🟡 → **nearly ✅; nothing left to disclose.** Every route serving patient files authorises per client namespace through `functions/_lib/raw-owner.ts`: `/api/raw`, `/api/chat-history` and `/api/document-extract` (W73). Only the owner, or an account holding a live vault grant, may read or delete. A namespace with no owner is claimable only while it is **empty**. One holding objects nobody owns is **orphaned** and refused on every route, and that includes writes (W76). This closed the planned disclosure and a worse hole behind it: one upload could make a stranger the owner, who could then delete the originals. Ownership never flips, because the first writer wins. An owner locked out by legacy data gets back in by proving a stored file's full SHA-256 (`POST /api/raw/claim`, automatic on vault open). Otherwise the operator assigns it (`raw-backfill --assign`) or the retention sweep removes it (`orphan-sweep`, 90 days). Verified state 2026-09-19: every stored object on prod and dev has an owner. Prod had 0 orphans. Dev's 2 were leftovers of accounts that no longer exist, and they were deleted. Erasure reports `complete: false` instead of claiming a clean erase when it can't attribute an object (`erasure.ts`) | Cite `raw-owner.ts`, `tests/unit/raw-authorization.test.ts` and `API.md` §`/api/raw`. What still stands between 9A and ✅ is Indicator 7's self-service deletion UI and privacy-policy coverage |
-| 9B | **Do No Harm — Inappropriate/Illegal Content** | 🟡 Safeguards exist in code: the audited `MEDICAL_DISCLAIMER` (`src/lib/brand.ts`) shown in-app, education-not-medicine framing, no diagnosis/triage/treatment recommendations | Write up the content-harm controls (disclaimer, framing, fail-closed generation) as one section the application can cite |
-| 9C | **Do No Harm — Protection from Harassment** | ✅ Effectively N/A — single-user self-service, no user-to-user/social surface | Note N/A with rationale |
-
-**Read:** 6 of 9 are satisfied (1, 2, 4, 5, 6, 8). Indicator 3 needs writing only. Indicators 7 and 9 need a small piece of UI (self-service deletion), a fuller privacy policy, and a 9B write-up; 9C is N/A.
+| 1 | SDG relevance | ✅ | Nothing public maps LexiTar to specific SDG targets |
+| 2 | Open licensing | ✅ | — |
+| 3 | Clear ownership | 🟡 | Two core packages are owned by an individual, not the Foundation; no contributor licence terms |
+| 4 | Platform independence | 🟡 | Every AI feature requires Anthropic's closed API, with no open alternative; self-hosting isn't documented |
+| 5 | Documentation | ✅ | No end-user guide |
+| 6 | Data extraction | ✅ | — |
+| 7 | Privacy & applicable laws | ❌ | The privacy policy's encryption claims are false for three data paths; data processors aren't named; no law is identified |
+| 8 | Standards & best practices | ✅ | — |
+| 9A | Data privacy & security | 🟡 | Uploaded originals are stored unencrypted; health data leaves for third-party models; no self-service deletion |
+| 9B | Inappropriate, misleading & illegal content | ❌ | No process to detect, report or remove illegal uploads; no way to flag misleading AI output |
+| 9C | Protection from harassment | 🟡 | Patient↔clinician sharing counts as interaction; the minimum age isn't enforced |
 
 ---
 
-## 4. How to get certified (the process)
+## 1. Relevance to the SDGs — ✅
 
-1. **Eligibility test (free, ~5 min)** — `digitalpublicgoods.net` self-assessment to gauge readiness against the 9 indicators before formally applying.
-2. **Apply** — an *authorized representative of the solution owner* (i.e. the Tiny Tars Foundation) creates an account and submits at **`app.digitalpublicgoods.net/signup`** ("Start your DPG application"). The custom form walks through each indicator's evidence.
-3. **Two-stage technical review** — the DPGA technical team reviews the submission against all 9 indicators; the project moves from **nominee → fully-reviewed recognized DPG**. Typically **~30 days** (varies with volume).
-4. **Result** — approved solutions are **listed on the DPG Registry** and the owner joins the DPG Product Owners community. **No fee.**
-5. **Annual renewal** — DPG status is valid **one year**; an annual re-review confirms continued compliance. Lapsed/non-compliant solutions are removed from the Registry.
+**The form asks:** which SDGs, and how LexiTar relates to each one's targets.
 
-Support / questions: `support@digitalpublicgoods.net`. Detailed evaluation criteria live in the DPGA's Review Policy on GitHub.
+LexiTar explains a person's own lab results in plain language to adults with low health literacy or
+limited English. That speaks to **SDG 3** (target 3.8, access to quality essential health care; 3.4,
+non-communicable disease) and **SDG 10** (target 10.2, inclusion regardless of status).
+
+**Gaps**
+- No public doc (`../../README.md`, `../../START-HERE.md`) mentions the SDGs. The mapping has to be written
+  out target by target for the form. It should also be stated somewhere public that a reviewer can link to.
+
+## 2. Use of approved open licenses — ✅
+
+**The form asks:** which OSI-approved license, with a link to it.
+
+`../../LICENSE` is MIT, copyright Tiny Tars Foundation, in a public repo. `@tinytars/vault` is MIT.
+`@pablotech/akesi` and `@pablotech/neuro` ship an MIT `LICENSE` file. Runtime dependencies are open too:
+SimpleWebAuthn (MIT), pdf.js (Apache-2.0), SheetJS `xlsx` 0.18.5 (Apache-2.0).
+
+**Gaps**
+- None blocking. `@pablotech/akesi` and `@pablotech/neuro` omit the `license` field in `package.json`, so
+  automated licence scanners report them as UNKNOWN even though the file is present.
+
+## 3. Clear ownership — 🟡
+
+**The form asks:** who owns it, public evidence of ownership, the owner's country, and whether the owner
+owns all the code. If not, what gives it the right to redistribute (e.g. a Contributor License Agreement).
+
+The Tiny Tars Foundation (a US 501(c)(3)) is named as owner in the LICENSE, in `../../README.md`, and in
+the Terms' "Intellectual property" section ("name, logos, software, and brand … remain the property of
+the Foundation").
+
+**Gaps**
+- **The Foundation doesn't own all the code.** The clinical reasoning core, `@pablotech/akesi` and
+  `@pablotech/neuro` (repo `pablo-tech/pilos`), is copyright an individual. The form's "do you own all
+  of the code" answer is therefore No. The MIT licence gives the Foundation the right to redistribute,
+  but an assessor will see a core dependency outside the owner's control. The options are to transfer
+  those packages to the Foundation or to state the arrangement publicly.
+- **No contributor terms.** `../../CONTRIBUTING.md` sets no inbound licence (no CLA or DCO), so
+  ownership of outside contributions is implied by MIT, not documented.
+- **Commercial use of the code is unstated.** Nothing public says how any commercial offering relates to the open
+  utility. A reviewer asking "who can profit from this" finds no answer.
+
+## 4. Platform independence — 🟡
+
+**The form asks:** the core dependencies, whether any closed component creates a proprietary dependency,
+and how each can be swapped for an open alternative "with minimal configuration changes".
+
+**Core technologies:** TypeScript, Svelte 5, Vite, Web Crypto, WebAuthn, SQLite-compatible storage and
+object storage.
+
+| Closed component | What depends on it | Open alternative today |
+|---|---|---|
+| **Cloudflare Pages / D1 / R2** (hosting) | Everything, in production | ✅ The same `functions/` tree runs on Node (`node:sqlite` + filesystem blobs) via `npm run serve:node` or the `Dockerfile`. CI runs e2e on both hosts, and `tests/unit/platform-imports.test.ts` blocks Cloudflare imports from routes and UI |
+| **Anthropic API** (Claude Opus / Sonnet / Haiku) | Every AI feature: report extraction, findings, ranges, marker groups, leaf Translate, chat, treatment inference (`functions/api/*`, `ANTHROPIC_API_KEY`) | ❌ None. Calls go through `@anthropic-ai/sdk` directly; there's no provider interface and no open-model path |
+| **Azure AI Speech** (read-aloud) | `functions/api/speak.ts` | ✅ Falls back to the browser's own `speechSynthesis` on any failure |
+| **Gmail API** (outbound email) | `functions/_lib/email.ts` | 🟡 No-ops without credentials, but that drops notification emails, which `step-up.ts` relies on as a security control. There's no SMTP path |
+| **Google OAuth** (sign-in) | `functions/_lib/google.ts` | ✅ Optional; passkeys and passwords work without it |
+
+**Gaps**
+- **The model dependency is the gap.** Without Anthropic, the vault, markers, charts and export still
+  work, but everything that makes LexiTar a *literacy* tool doesn't. Meeting the standard needs a model
+  interface with at least one open-weights backend (e.g. an OpenAI-compatible endpoint serving an open
+  model) that can be switched by configuration. Short of that, the form needs a written account of which
+  features survive without a model, and that account doesn't exist yet.
+- **Self-hosting is proven in CI, not documented.** `README.md` mentions the Node host, but there's no
+  guide for an outside operator (env vars, storage layout, backups) to run it in production.
+- **Email needs an open transport** (SMTP) so a self-host doesn't lose security notifications.
+
+## 5. Documentation — ✅
+
+**The form asks:** documentation that lets "a technical person unfamiliar with the project … launch and
+run" it: developer docs, architecture, user guides.
+
+Developer and architecture docs are strong: `../../START-HERE.md` (a ten-minute clone-to-running path),
+`../../README.md`, `../../ARCHITECTURE.md`, `../../CONTRIBUTING.md`, `../../SECURITY.md`, `API.md`,
+`AUTH.md`, `VAULT.md`, `docs/BUILDING.md`.
+
+**Gaps**
+- **No end-user guide.** Nothing explains, for a patient, how to import a report, read a translation,
+  or share with a clinician. `START-HERE.md` §A explains what LexiTar is, not how to use it.
+- The self-hosting guide from Indicator 4.
+
+## 6. Mechanism for extracting data and content — ✅
+
+**The form asks:** whether LexiTar handles non-PII data or content, and how it's exported or imported in
+a non-proprietary format.
+
+A user's own record exports as CSV and structured JSON (`src/lib/export.ts`: `exportCsv`, `exportJson`),
+through `@tinytars/frame`'s `ExportTab.svelte`. Lab data imports from PDF and XLSX. LexiTar's
+non-PII content (its reasoning prompts and the finding DAG) is plain source in public repos.
+
+**Gaps** — none.
+
+## 7. Adherence to privacy and applicable laws — ❌
+
+**The form asks:** the list of laws LexiTar complies with, and links (privacy policy, terms) that
+demonstrate it.
+
+A privacy policy (`tinytars.foundation/privacy`) and terms (`/terms`) are published and linked in-app
+(`src/lib/Disclaimer.svelte`). They cover retention, deletion on request, a 16+ age limit, and the fact
+that the Foundation is not a HIPAA covered entity.
+
+**Gaps**
+- **The policy's central claims are false as the code stands.** It says data is "readable only inside
+  your own browser", that "we do not hold plain-text access to your health records", and that a lost key
+  means "we cannot recover the encrypted contents". In fact:
+  - uploaded originals (PDFs, images) are stored **unencrypted** under `raw/` (`VAULT.md`, `functions/api/raw/`);
+  - every vault carries an **org-recovery envelope by default** that the Foundation's key can open
+    (`VAULT.md` §org recovery; the patient can revoke it);
+  - AI features send health data in plain text through the server to Anthropic, and read-aloud sends
+    it to Azure.
+
+  An assessor comparing the policy with `VAULT.md` finds the contradiction directly. The fix is either
+  the code or the policy, but they have to agree.
+- **Processors aren't named.** The policy mentions only "infrastructure providers (such as our cloud
+  host)". Anthropic, Microsoft Azure and Google receive or handle user data and aren't listed, nor are
+  their retention terms.
+- **No laws are identified.** The form asks for a list. Candidates LexiTar would have to show
+  adherence to: GDPR (EU users; health data is special-category, needing explicit consent), the FTC
+  Health Breach Notification Rule, CCPA/CPRA, Washington's My Health My Data Act, and ADA/WCAG for
+  accessibility. None is cited, and there is no consent capture for processing health data.
+- **Deletion is by request only.** `POST /api/account/erase` exists but no UI calls it (see 9A).
+
+## 8. Adherence to standards and best practices — ✅
+
+**The form asks:** open standards and best practices followed, with evidence such as validators or test suites.
+
+- **Open standards:** WebAuthn/FIDO2 passkeys; W3C Web Crypto (AES-GCM-256, PBKDF2-SHA256, ECDH-ES
+  P-256, HMAC-SHA256); OAuth 2.0 / OpenID Connect (Google sign-in); WCAG 2.1 AA, asserted by axe in
+  `tests/e2e/a11y.spec.ts`; CSV and JSON for export.
+- **Best practices:** CI on every PR (`.github/workflows/ci.yml`) with ~270 unit and ~70 e2e files
+  and enforced coverage (`coverage-thresholds.json`); CodeQL; Dependabot for npm and Actions; private
+  vulnerability reporting (`../../SECURITY.md`); a code of conduct.
+
+**Gaps** — none blocking. Health-data interoperability (FHIR, LOINC codes for markers) isn't used. That
+isn't required, but an assessor in the health domain may look for it.
+
+## 9A. Data privacy and security — 🟡
+
+**The form asks:** whether PII is collected, stored and distributed; what types; and how privacy,
+security and integrity are ensured.
+
+**Answer on the form:** PII is **collected, stored and distributed** (to clinicians a patient links).
+Types: email, name, password hash, passkeys, lab reports and marker values, symptoms, treatments, notes,
+family history, photos, chat history.
+
+What's in place:
+- The vault is client-side encrypted (`@tinytars/vault`), with per-principal envelopes for owner, org
+  recovery and provider links.
+- Every route serving patient files authorises per client namespace (`functions/_lib/raw-owner.ts`,
+  `tests/unit/raw-authorization.test.ts`). Unowned namespaces are refused, and ownership never flips.
+- Access policy lives in one table (`functions/_lib/capabilities.ts`). Privileged reads are logged to
+  `phi_access_events`, and support access is consent-gated and time-boxed.
+- Erasure (`functions/_lib/erasure.ts`) deletes everything attributable, and reports itself
+  incomplete rather than claiming a clean erase.
+
+**Gaps**
+- **Uploaded originals are plaintext at rest.** The most sensitive files a user gives LexiTar are the
+  ones not covered by its encryption. They should be encrypted client-side like the vault.
+- **Health data goes to third-party models in plain text** with no user-facing disclosure or consent at
+  the point of use, and no documented retention or zero-retention terms with Anthropic or Azure.
+- **No self-service deletion.** A user can't erase their own account from the UI.
+
+## 9B. Inappropriate, misleading and illegal content — ❌
+
+**The form asks:** whether content is collected, stored or distributed; what types; how inappropriate,
+misleading or illegal content (explicitly including CSAM) is identified; and the processes to detect,
+moderate, report and remove it, with an average response time.
+
+**Answer on the form:** content is **collected, stored and distributed**. That covers uploaded PDFs and
+photos, free-text notes, and AI-generated explanations, shared with linked clinicians.
+
+What's in place:
+- The Terms' acceptable-use clause forbids "unlawful content".
+- For *misleading* content: the audited `MEDICAL_DISCLAIMER` (`src/lib/brand.ts`) is shown in-app;
+  prompts carry education-not-medicine rules ("do not diagnose"); and the finding DAG marks derived
+  content stale when its inputs change (`../../ARCHITECTURE.md`).
+
+**Gaps**
+- **No illegal-content process.** Nothing detects, reports or removes illegal uploads, and there's no
+  documented response time. LexiTar accepts image uploads and stores them in plain text, so "we can't see
+  it" isn't available as an answer either. A written policy and a reporting channel are needed, plus
+  either scanning or a reasoned position on why it doesn't apply.
+- **No way to flag a misleading answer.** A user or clinician who sees a wrong explanation has no
+  in-app way to report it, and nothing routes such reports to a reviewer.
+
+## 9C. Protection from harassment — 🟡
+
+**The form asks:** whether LexiTar facilitates interaction with or between users; if so, how users
+protect themselves, and how underage users are kept safe.
+
+**Answer on the form:** **Yes, narrowly.** A patient can link clinicians, who then read their vault,
+and support staff can be granted consent-gated access. There's no messaging, no public profile and no
+social surface.
+
+What's in place: provider links are patient-approved, time-boxed and revocable; support access expires
+and re-keys on exit; privileged access is logged and shown to the patient. The contributor side has
+`../../CODE_OF_CONDUCT.md`. The Terms and privacy policy set a minimum age of 16.
+
+**Gaps**
+- **The age limit isn't enforced.** Onboarding asks for a birth year but accepts any year up to the
+  current one (`src/App.svelte`, the `birthYear` field), so a 10-year-old passes. "Not directed to children"
+  rests on the Terms alone, and the form asks for *systems* protecting underage users.
+- **No abuse-report path** for a patient who wants to report a clinician account, as opposed to revoking it.
 
 ---
 
-## 5. Gaps to close before applying (ranked)
-1. **Self-service account deletion in the UI** (Indicators 7/9A) — wire a confirmed "Delete account" action to `POST /api/account/erase`. The only remaining code gap.
-2. **Privacy policy coverage** (Indicator 7) — add consent, data minimization, and governance/access control; reference the self-service deletion.
-3. **Ownership statement** (Indicator 3).
-4. **Do-no-harm write-up** (9B content controls).
+## Scale of solution (form section, not an indicator)
 
----
-
-## 5b. Verified status history
-
-**2026-09-19** — re-checked against `tinytars/lexi` at `main`:
-
-- **Indicator 4 closed.** Inference moved to one config file with an OpenAI-compatible adapter, so
-  a deployer can run any feature on OpenAI or a local open model (`INFERENCE.md`).
-
-- **Indicator 2 closed.** Repo public under MIT since 2026-09-13.
-- **Indicator 5 moves to ✅.** The public doc set (README, ARCHITECTURE, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, CHANGELOG, API, AUTH, VAULT, BUILDING) is in place.
-- **9A's two authorisation gaps closed** (W73, `raw-owner.ts`), and the unclaimed-namespace residual with them (W76). Orphaned namespaces are refused on every route, which also ends the squat-then-delete hole. There are three ways out: reclaim by hash (`POST /api/raw/claim`), assignment (`raw-backfill --assign`), or the sweep (`orphan-sweep`). Backfill run on both environments. Prod has 0 orphans. Dev's 2 (leftovers of accounts that no longer exist) were deleted, so dev is now at 0 too. Nothing left to disclose.
-- **Indicator 7's privacy policy is published** at `tinytars.foundation/privacy`, but coverage is partial.
-- **New finding:** erasure is implemented server-side but has no UI entry point, so it doesn't yet count as a user-facing deletion mechanism.
-- **Indicator 4 confirmed as a single-provider dependency** on Anthropic, with no fallback.
-- **Indicator 4's hosting half closed** (tinytars/lexi #43, #44, #53): a Node self-host and Docker
-  image run the unchanged backend, proven by the e2e suite on both hosts in CI. Deploy tooling
-  (wrangler, backups, snapshots) stays Cloudflare-specific, and the Node host is an alternative,
-  not a second production.
-
-**2026-08-24** — Indicators 6 and 8 moved to "already satisfied" (CSV/JSON export and WebAuthn/NIST crypto were live; FHIR had never been required). Indicators 7 and 9A moved *down* to 🟡 once the six privacy sub-requirements were cross-walked and deletion turned out not to exist; deletion was built 2026-08-25.
-
-## 6. Next actions
-- [ ] Run the **free eligibility test** to get an official readiness read against the 9 indicators.
-- [ ] Ship the **self-service "Delete account"** UI over `/api/account/erase`.
-- [ ] Extend the **privacy policy** (consent, minimization, governance, self-service deletion).
-- [ ] Write the **ownership** and **do-no-harm** statements.
-- [ ] Only after the above: submit at `app.digitalpublicgoods.net/signup` as the Tiny Tars Foundation.
-- [ ] Until submitted, keep all copy at **"developed as a Digital Public Good"** — never "certified".
-
----
-
-## Sources
-- DPGA — [DPG Standard (9 indicators)](https://www.digitalpublicgoods.net/standard) · [Submission Guide](https://www.digitalpublicgoods.net/submission-guide) · [FAQ](https://www.digitalpublicgoods.net/frequently-asked-questions) · [Registry](https://www.digitalpublicgoods.net/registry) · [DPG Standard on GitHub](https://github.com/DPGAlliance/DPG-Standard)
-- Related docs in this repo — `FEATURES.md` (the 4 DPG pillars), `LIABILITY.md` (the non-commercial utility's legal posture), `../../SECURITY.md`, `../../ARCHITECTURE.md`. The funding role, open-source IP position, brand/claim guidelines, and LexiTar's scope/population live with the Foundation's records rather than here.
+Deployed at `literacy.tinytars.foundation`. **English only** — no i18n layer exists, although LexiTar's
+stated audience includes adults with limited English. This will be asked under "designed to support
+different languages", and it's the largest mismatch between LexiTar's positioning and the product.
