@@ -2,18 +2,17 @@
 // POSTs it (+ the minimized patient) to the stateless /api/extract relay, which
 // returns the validated ProposedReport. Holds no passphrase and does no persistence;
 // the caller folds the result into the decrypted vault and saves.
-import type { ProposedReport, ReportPatient } from "@pablotech/akesi/report-extract";
+import type { PageImage, ProposedReport, ReportPatient } from "@pablotech/akesi/report-extract";
 import { AiError } from "./ai-error";
+import { bytesToBase64 } from "./base64";
+import { needsPageImages, renderPdfPages } from "./pdf-pages-for-model";
 
-// Chunked base64 — String.fromCharCode(...bytes) overflows the call stack on a
-// multi-MB PDF, so encode in 32 KB windows.
-export function bytesToBase64(bytes: Uint8Array): string {
-  let bin = "";
-  const CHUNK = 0x8000;
-  for (let i = 0; i < bytes.length; i += CHUNK) {
-    bin += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
-  }
-  return btoa(bin);
+// The report as the configured model can take it: natively when it reads PDFs, rendered to pages
+// when it can only see. A model with neither cap gets the PDF and the relay's own 422 — the refusal
+// is the server's to make, not the browser's to guess at.
+async function documentBody(bytes: Uint8Array): Promise<{ pdfBase64: string } | { pageImages: PageImage[] }> {
+  if (!needsPageImages("extract")) return { pdfBase64: bytesToBase64(bytes) };
+  return { pageImages: await renderPdfPages(bytes) };
 }
 
 export async function extractReport(
@@ -25,7 +24,7 @@ export async function extractReport(
   const res = await fetch("/api/extract", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sourceFile, pdfBase64: bytesToBase64(bytes), patient }),
+    body: JSON.stringify({ sourceFile, ...(await documentBody(bytes)), patient }),
   });
   if (!res.ok) {
     let payload: { error?: string; errorCode?: string } = {};
