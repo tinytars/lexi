@@ -3,6 +3,7 @@ import { onRequestPost } from "../../functions/api/client-error";
 import { scrubMessage, scrubFrames, toReport } from "../../functions/_lib/client-error";
 import { signSession } from "../../functions/_lib/session";
 import { fakeSessionDb } from "../support/session-db";
+import { useWorkerd } from "../support/miniflare";
 
 // The crash that prompted the reporter: it existed only in one browser console, never in the tracker.
 const EACH_KEY_DUPLICATE = {
@@ -68,21 +69,15 @@ describe("POST /api/client-error", () => {
   };
 
   // GitHub is the one boundary a test cannot hit for real.
-  const stubGithub = (openIssue: number | null) => {
+  const stubGithub = (openIssue: number | null, openLabels: string[] = ["client-error"]) => {
     const calls: { url: string; method: string; body: { title: string; body: string; labels?: string[] } | null }[] = [];
     vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
       calls.push({ url, method: init?.method ?? "GET", body: init?.body ? JSON.parse(String(init.body)) : null });
-      if (url.includes("/issues?")) return Response.json(openIssue ? [{ number: openIssue }] : []);
+      if (url.includes("/issues?")) return Response.json(openIssue ? [{ number: openIssue, labels: openLabels.map((name) => ({ name })) }] : []);
       return new Response("{}", { status: 201 });
     });
     return calls;
   };
-  it("refuses a caller without a session, so the public URL cannot spam the tracker", async () => {
-    const calls = stubGithub(null);
-    expect((await post({ ...baseEnv(), ...github }, EACH_KEY_DUPLICATE, false)).status).toBe(401);
-    expect(calls).toEqual([]);
-  });
-
   it("opens an issue for a first occurrence, titled with name and fingerprint but no message", async () => {
     const calls = stubGithub(null);
     expect((await post({ ...baseEnv(), ...github }, EACH_KEY_DUPLICATE)).status).toBe(204);
@@ -134,5 +129,85 @@ describe("POST /api/client-error", () => {
     stubGithub(null);
     expect((await post({ ...baseEnv(), ...github }, "{not json")).status).toBe(400);
     expect((await post({ ...baseEnv(), ...github }, { message: "x".repeat(20_000) })).status).toBe(413);
+  });
+
+  // A crash first seen logged-out opens a pre-auth issue; without this the authenticated recurrence
+  // only comments and the issue never gains the label that gates promotion and wakes the autopilot.
+  it("promotes a pre-auth issue to client-error when the same crash recurs for a signed-in user", async () => {
+    const calls = stubGithub(42, ["pre-auth"]);
+    expect((await post({ ...baseEnv(), ...github }, EACH_KEY_DUPLICATE)).status).toBe(204);
+    const writes = calls.filter((c) => c.method === "POST");
+    expect(writes.map((c) => c.url)).toEqual([
+      "https://api.github.com/repos/pablo-tech/plover-factory/issues/42/labels",
+      "https://api.github.com/repos/pablo-tech/plover-factory/issues/42/comments",
+    ]);
+    expect(writes[0].body).toEqual({ labels: ["client-error"] });
+  });
+
+  // fakeSessionDb throws on any query but the session lookup, so a budget write on this path would
+  // make spendReportBudget fail closed and this report would never be filed.
+  it("spends no report budget for a signed-in caller, so an anonymous flood cannot starve a real crash", async () => {
+    const calls = stubGithub(null);
+    expect((await post({ ...baseEnv(), ...github }, EACH_KEY_DUPLICATE)).status).toBe(204);
+    expect(calls.some((c) => c.url.endsWith("/issues"))).toBe(true);
+  });
+
+  describe("without a session", () => {
+    // A fresh D1 per test: the budget also has a global hourly cap, which tests sharing one database
+    // would spend on each other.
+    const d1 = useWorkerd({ perTest: true });
+    const anon = (ip: string, body: unknown, headers: Record<string, string> = {}) =>
+      onRequestPost({
+        request: new Request("https://lexitar.example/api/client-error", {
+          method: "POST",
+          headers: { origin: "https://lexitar.example", "cf-connecting-ip": ip, "user-agent": "test-agent", ...headers },
+          body: JSON.stringify(body),
+        }),
+        env: { SESSION_SECRET: "test-secret", DB: d1.db, ...github } as Parameters<typeof onRequestPost>[0]["env"],
+      });
+
+    // The case the session gate never saw: a tab whose bundle is too stale to boot has no session.
+    it("accepts a same-origin report and files it under pre-auth, which gates nothing", async () => {
+      const calls = stubGithub(null);
+      expect((await anon("198.51.100.10", EACH_KEY_DUPLICATE)).status).toBe(204);
+      const create = calls.find((c) => c.method === "POST")!;
+      expect(create.url).toBe("https://api.github.com/repos/pablo-tech/plover-factory/issues");
+      expect(create.body!.labels![0]).toBe("pre-auth");
+    });
+
+    it("refuses a report claiming another origin", async () => {
+      const calls = stubGithub(null);
+      expect((await anon("198.51.100.11", EACH_KEY_DUPLICATE, { origin: "https://evil.example" })).status).toBe(403);
+      expect(calls).toEqual([]);
+    });
+
+    it("scrubs an anonymous report exactly like a signed-in one", async () => {
+      const calls = stubGithub(null);
+      await anon("198.51.100.12", { name: "TypeError", message: `bad value for "Jane Doe"`, stack: "" });
+      expect(JSON.stringify(calls)).not.toContain("Jane");
+    });
+
+    it("stops filing once an address has spent its hour, and still answers 204", async () => {
+      const calls = stubGithub(null);
+      for (let i = 0; i < 5; i++) expect((await anon("198.51.100.13", EACH_KEY_DUPLICATE)).status, `report ${i + 1}`).toBe(204);
+      expect(calls.filter((c) => c.url.endsWith("/issues"))).toHaveLength(5);
+      expect((await anon("198.51.100.13", EACH_KEY_DUPLICATE)).status).toBe(204);
+      expect(calls.filter((c) => c.url.endsWith("/issues"))).toHaveLength(5);
+    });
+
+    it("charges a report naming none of our own assets most of the hour", async () => {
+      const calls = stubGithub(null);
+      const extension = { name: "Error", message: "extension blew up", stack: "at f (chrome-extension://abc/x.js:1:1)" };
+      expect((await anon("198.51.100.14", extension)).status).toBe(204);
+      expect((await anon("198.51.100.14", extension)).status).toBe(204);
+      expect(calls.filter((c) => c.url.endsWith("/issues"))).toHaveLength(1);
+    });
+
+    it("takes the boot guard's report, whose stack is empty by construction, at the cheap rate", async () => {
+      const calls = stubGithub(null);
+      const boot = { name: "StaleBuildError", message: "Failed to load https://lexitar.example/assets/index-A.js", stack: "", build: "", source: "boot-asset" };
+      for (let i = 0; i < 2; i++) expect((await anon("198.51.100.16", boot)).status).toBe(204);
+      expect(calls.filter((c) => c.url.endsWith("/issues"))).toHaveLength(2);
+    });
   });
 });

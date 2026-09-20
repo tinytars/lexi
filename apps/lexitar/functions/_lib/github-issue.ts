@@ -57,7 +57,22 @@ export async function fileReport(env: GithubIssueEnv, report: Report): Promise<"
 
   const lookup = await fetch(`${API}/repos/${repo}/issues?state=open&labels=${encodeURIComponent(label)}&per_page=1`, { headers: headers(token) });
   if (!lookup.ok) throw new Error(`GitHub issue lookup failed: ${lookup.status}`);
-  const existing = ((await lookup.json()) as { number: number }[])[0];
+  const existing = ((await lookup.json()) as { number: number; labels?: { name: string }[] }[])[0];
+
+  // A crash first seen logged-out opens a `pre-auth` issue, and every authenticated recurrence after it
+  // only comments — so without this the issue never gains `client-error`, never gates promotion, and
+  // never reaches the autopilot. The lookup already returned the labels, so the extra call happens once
+  // per issue, the first time a source that is missing shows up.
+  if (existing) {
+    const have = new Set((existing.labels ?? []).map((l) => l.name));
+    const missing = report.labels.filter((l) => !have.has(l));
+    if (missing.length)
+      await fetch(`${API}/repos/${repo}/issues/${existing.number}/labels`, {
+        method: "POST",
+        headers: headers(token),
+        body: JSON.stringify({ labels: missing }),
+      });
+  }
 
   const res = existing
     ? await fetch(`${API}/repos/${repo}/issues/${existing.number}/comments`, { method: "POST", headers: headers(token), body: JSON.stringify({ body: report.body }) })
@@ -74,11 +89,12 @@ export function fileClientError(
   env: GithubIssueEnv,
   report: ClientErrorReport,
   context: { deployment: string; userAgent: string },
+  label: "client-error" | "pre-auth" = "client-error",
 ): Promise<"created" | "commented"> {
   return fileReport(env, {
     title: issueTitle(report),
     body: occurrence(report, context),
     fingerprint: report.fingerprint,
-    labels: ["client-error"],
+    labels: [label],
   });
 }

@@ -7,11 +7,15 @@ import { ROUTE_PATTERNS } from "../../functions/_lib/route-patterns";
 
 const github = { CLIENT_ERROR_GITHUB_TOKEN: "ghp_test", CLIENT_ERROR_GITHUB_REPO: "pablo-tech/plover-factory" };
 
-const stubGithub = (openIssue: number | null) => {
+// `openLabels` is not decoration: a real open issue already carries the label it was created with,
+// and `fileReport` adds only the ones missing. A stub that answered with no labels would make every
+// recurrence look like it needed promoting.
+const stubGithub = (openIssue: number | null, openLabels: string[] = ["server-error"]) => {
   const calls: { url: string; method: string; body: { title?: string; body?: string; labels?: string[] } | null }[] = [];
   vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
     calls.push({ url, method: init?.method ?? "GET", body: init?.body ? JSON.parse(String(init.body)) : null });
-    if (url.includes("/issues?")) return Response.json(openIssue ? [{ number: openIssue }] : []);
+    if (url.includes("/issues?"))
+      return Response.json(openIssue ? [{ number: openIssue, labels: openLabels.map((name) => ({ name })) }] : []);
     return new Response("{}", { status: 201 });
   });
   return calls;
