@@ -6,7 +6,7 @@ asks for each indicator. Each indicator gets a verdict, the evidence behind it, 
 between it and "meets". The gaps are the input to a development plan. This doc is not a plan, a
 tracker, or a history: when LexiTar changes, rewrite the affected verdict to describe the new state.
 
-**Assessed against:** `dev` at `4bf28be`, and the live `tinytars.foundation/privacy` and `/terms` pages.
+**Assessed against:** `dev` at `6e2d811`, and the live `tinytars.foundation/privacy` and `/terms` pages.
 **Scope:** the software in this repo (`apps/lexitar`, `packages/frame`) plus the open packages it is
 built from (`@tinytars/vault`, `@pablotech/akesi`, `@pablotech/neuro`). Users' health data is never
 part of the DPG.
@@ -21,7 +21,7 @@ part of the DPG.
 | 1 | SDG relevance | ✅ | Nothing public maps LexiTar to specific SDG targets |
 | 2 | Open licensing | ✅ | — |
 | 3 | Clear ownership | 🟡 | Two core packages are owned by an individual, not the Foundation; no contributor licence terms |
-| 4 | Platform independence | 🟡 | Every AI feature requires Anthropic's closed API, with no open alternative; self-hosting isn't documented |
+| 4 | Platform independence | ✅ | Open-model configs can't do PDF or vision, and no benchmark backs the quality claim |
 | 5 | Documentation | ✅ | No end-user guide |
 | 6 | Data extraction | ✅ | — |
 | 7 | Privacy & applicable laws | ❌ | The privacy policy's encryption claims are false for three data paths; data processors aren't named; no law is identified |
@@ -76,7 +76,7 @@ the Foundation").
 - **Commercial use of the code is unstated.** Nothing public says how any commercial offering relates to the open
   utility. A reviewer asking "who can profit from this" finds no answer.
 
-## 4. Platform independence — 🟡
+## 4. Platform independence — ✅
 
 **The form asks:** the core dependencies, whether any closed component creates a proprietary dependency,
 and how each can be swapped for an open alternative "with minimal configuration changes".
@@ -86,21 +86,31 @@ object storage.
 
 | Closed component | What depends on it | Open alternative today |
 |---|---|---|
-| **Cloudflare Pages / D1 / R2** (hosting) | Everything, in production | ✅ The same `functions/` tree runs on Node (`node:sqlite` + filesystem blobs) via `npm run serve:node` or the `Dockerfile`. CI runs e2e on both hosts, and `tests/unit/platform-imports.test.ts` blocks Cloudflare imports from routes and UI |
-| **Anthropic API** (Claude Opus / Sonnet / Haiku) | Every AI feature: report extraction, findings, ranges, marker groups, leaf Translate, chat, treatment inference (`functions/api/*`, `ANTHROPIC_API_KEY`) | ❌ None. Calls go through `@anthropic-ai/sdk` directly; there's no provider interface and no open-model path |
+| **Cloudflare Pages / D1 / R2** (hosting) | Everything, in the live deployment | ✅ The same `functions/` tree runs on Node (`node:sqlite` + filesystem blobs) via `npm run serve:node` or the `Dockerfile` (`server/`). CI runs e2e on both hosts, and `tests/unit/platform-imports.test.ts` blocks Cloudflare imports from routes and UI |
+| **Anthropic API** (Claude Opus / Sonnet / Haiku) | Every AI feature, by default | ✅ Any OpenAI-compatible server, set per feature in `inference.config.json` — no code change. That includes open weights served locally by Ollama, vLLM or LM Studio (`INFERENCE.md`). Both web routes and the CLI resolve their client through `functions/_lib/inference/resolve.ts`; `tests/unit/openai-adapter.test.ts` exercises the adapter against a real Chat Completions server |
 | **Azure AI Speech** (read-aloud) | `functions/api/speak.ts` | ✅ Falls back to the browser's own `speechSynthesis` on any failure |
 | **Gmail API** (outbound email) | `functions/_lib/email.ts` | 🟡 No-ops without credentials, but that drops notification emails, which `step-up.ts` relies on as a security control. There's no SMTP path |
 | **Google OAuth** (sign-in) | `functions/_lib/google.ts` | ✅ Optional; passkeys and passwords work without it |
 
+An operator can therefore run LexiTar with no proprietary component in the request path: Node or Docker
+for the host, a local open-weights model for inference, the browser voice for read-aloud, passkeys for
+sign-in. `INFERENCE.md` also lists what needs no model at all — vault, sign-in, manual entry, markers
+and charts, reference material, export.
+
 **Gaps**
-- **The model dependency is the gap.** Without Anthropic, the vault, markers, charts and export still
-  work, but everything that makes LexiTar a *literacy* tool doesn't. Meeting the standard needs a model
-  interface with at least one open-weights backend (e.g. an OpenAI-compatible endpoint serving an open
-  model) that can be switched by configuration. Short of that, the form needs a written account of which
-  features survive without a model, and that account doesn't exist yet.
-- **Self-hosting is proven in CI, not documented.** `README.md` mentions the Node host, but there's no
-  guide for an outside operator (env vars, storage layout, backups) to run it in production.
+- **Document ingestion still needs a capable model.** An `openai` provider declares `caps`, and a
+  request needing something it lacks is refused with `422 model_unsupported` rather than being sent.
+  With a typical local model (no vision, no PDF), chat without photos, persona, pasted treatment text,
+  ranges and marker groups work, while report and document extraction and the photo paths don't. So the
+  open-model configuration is functional but not feature-complete, and the form answer should say so
+  rather than claim parity.
+- **Quality is unmeasured off Claude.** `INFERENCE.md` is candid that the prompts were written against
+  Claude and that a smaller model may fail Finding validation more often. `scripts/brain-benchmark.ts`
+  exists; no published run compares an open model against it.
 - **Email needs an open transport** (SMTP) so a self-host doesn't lose security notifications.
+- **Self-hosting is documented as a dev path, not an operator's.** `README.md` and the `Dockerfile`
+  cover launch; env-var inventory, storage layout and backups for a production self-host aren't written
+  down.
 
 ## 5. Documentation — ✅
 
@@ -109,7 +119,7 @@ run" it: developer docs, architecture, user guides.
 
 Developer and architecture docs are strong: `../../START-HERE.md` (a ten-minute clone-to-running path),
 `../../README.md`, `../../ARCHITECTURE.md`, `../../CONTRIBUTING.md`, `../../SECURITY.md`, `API.md`,
-`AUTH.md`, `VAULT.md`, `docs/BUILDING.md`.
+`AUTH.md`, `VAULT.md`, `INFERENCE.md`, `docs/BUILDING.md`.
 
 **Gaps**
 - **No end-user guide.** Nothing explains, for a patient, how to import a report, read a translation,
@@ -143,8 +153,8 @@ that the Foundation is not a HIPAA covered entity.
   - uploaded originals (PDFs, images) are stored **unencrypted** under `raw/` (`VAULT.md`, `functions/api/raw/`);
   - every vault carries an **org-recovery envelope by default** that the Foundation's key can open
     (`VAULT.md` §org recovery; the patient can revoke it);
-  - AI features send health data in plain text through the server to Anthropic, and read-aloud sends
-    it to Azure.
+  - AI features send health data in plain text through the server to whichever provider
+    `inference.config.json` names — Anthropic in the live deployment — and read-aloud sends it to Azure.
 
   An assessor comparing the policy with `VAULT.md` finds the contradiction directly. The fix is either
   the code or the policy, but they have to agree.
@@ -194,7 +204,9 @@ What's in place:
 - **Uploaded originals are plaintext at rest.** The most sensitive files a user gives LexiTar are the
   ones not covered by its encryption. They should be encrypted client-side like the vault.
 - **Health data goes to third-party models in plain text** with no user-facing disclosure or consent at
-  the point of use, and no documented retention or zero-retention terms with Anthropic or Azure.
+  the point of use, and no documented retention or zero-retention terms with Anthropic or Azure. An
+  operator *can* now keep inference in-house (`inference.config.json` → a local model, Indicator 4), but
+  the deployment users actually meet does not, and nothing in the UI says where their data goes.
 - **No self-service deletion.** A user can't erase their own account from the UI.
 
 ## 9B. Inappropriate, misleading and illegal content — ❌
