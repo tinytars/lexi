@@ -40,18 +40,19 @@ function occurrence(r: ClientErrorReport, context: { deployment: string; userAge
   ].join("\n");
 }
 
+export interface Report {
+  title: string;
+  body: string;
+  fingerprint: string;
+  labels: string[]; // the source label ("client-error", "server-error", …); fp: is added here
+}
+
 // One open issue per fingerprint: a recurrence comments on it instead of opening a duplicate. The lookup
 // is by label, not /search/issues: search lagged a new issue by over a minute, the label filter by ~4s,
 // so only a repeat inside those few seconds can still open a duplicate.
-export async function fileClientError(
-  env: GithubIssueEnv,
-  report: ClientErrorReport,
-  context: { deployment: string; userAgent: string },
-): Promise<"created" | "commented"> {
+export async function fileReport(env: GithubIssueEnv, report: Report): Promise<"created" | "commented"> {
   const token = env.CLIENT_ERROR_GITHUB_TOKEN!;
   const repo = env.CLIENT_ERROR_GITHUB_REPO!;
-  const body = occurrence(report, context);
-
   const label = `fp:${report.fingerprint}`;
 
   const lookup = await fetch(`${API}/repos/${repo}/issues?state=open&labels=${encodeURIComponent(label)}&per_page=1`, { headers: headers(token) });
@@ -59,8 +60,25 @@ export async function fileClientError(
   const existing = ((await lookup.json()) as { number: number }[])[0];
 
   const res = existing
-    ? await fetch(`${API}/repos/${repo}/issues/${existing.number}/comments`, { method: "POST", headers: headers(token), body: JSON.stringify({ body }) })
-    : await fetch(`${API}/repos/${repo}/issues`, { method: "POST", headers: headers(token), body: JSON.stringify({ title: issueTitle(report), body, labels: ["client-error", label] }) });
+    ? await fetch(`${API}/repos/${repo}/issues/${existing.number}/comments`, { method: "POST", headers: headers(token), body: JSON.stringify({ body: report.body }) })
+    : await fetch(`${API}/repos/${repo}/issues`, {
+        method: "POST",
+        headers: headers(token),
+        body: JSON.stringify({ title: report.title, body: report.body, labels: [...report.labels, label] }),
+      });
   if (!res.ok) throw new Error(`GitHub issue ${existing ? "comment" : "create"} failed: ${res.status}`);
   return existing ? "commented" : "created";
+}
+
+export function fileClientError(
+  env: GithubIssueEnv,
+  report: ClientErrorReport,
+  context: { deployment: string; userAgent: string },
+): Promise<"created" | "commented"> {
+  return fileReport(env, {
+    title: issueTitle(report),
+    body: occurrence(report, context),
+    fingerprint: report.fingerprint,
+    labels: ["client-error"],
+  });
 }

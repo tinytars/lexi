@@ -38,6 +38,13 @@ jobs:
       - run: npm run check
       - run: npm run lint
       - run: npm run build
+      # functions/api/_middleware.ts must never migrate to functions/_middleware.ts: Pages would then
+      # generate include:["/*"] and bill a Worker invocation for every chunk, font and favicon.
+      - name: Pages routing stays scoped to /api/*
+        run: |
+          T=$(mktemp -d)
+          npx wrangler pages functions build --outdir "$T/out" --output-routes-path "$T/routes.json"
+          jq -e '.include == ["/api/*"]' "$T/routes.json"
       - run: npm run coverage
       # The same unit suite with the Node host's adapters (SQLite + filesystem blobs) standing in for
       # Miniflare's D1/R2 — see tests/support/miniflare.ts.

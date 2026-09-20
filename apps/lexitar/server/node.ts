@@ -3,6 +3,7 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
+import { reportServerError, type ServerErrorEnv } from "../functions/_lib/server-error";
 import { createApp, type Fetch } from "./app";
 import { assetServer } from "./assets";
 import { FsBucket } from "./fs-bucket";
@@ -82,6 +83,20 @@ async function main(): Promise<void> {
   });
   serve(app, Number(process.env.PORT ?? 8788));
 }
+
+// A crash outside any request — a rejected background task, a throw in a timer — would otherwise end
+// the process (or silently not) with nothing but a line on the operator's terminal. Reporting is
+// capped at 3 s because the process is on its way out and GitHub may be the thing that is broken.
+function reportFatal(kind: "unhandledRejection" | "uncaughtException", e: unknown): Promise<unknown> {
+  console.error(`${kind}:`, e);
+  return Promise.race([
+    reportServerError(process.env as ServerErrorEnv, e, { route: `(${kind})`, method: "-", deployment: "node-host" }),
+    new Promise((resolve) => setTimeout(resolve, 3000)),
+  ]);
+}
+
+process.on("unhandledRejection", (e) => void reportFatal("unhandledRejection", e));
+process.on("uncaughtException", (e) => void reportFatal("uncaughtException", e).then(() => process.exit(1)));
 
 main().catch((e) => {
   console.error(e);
