@@ -5,7 +5,7 @@ import { ROUTE_PATTERNS } from "../../functions/_lib/route-patterns";
 
 // A thrown D1/R2 error used to be an unreported 500 — a 1101 on a dashboard nobody opens.
 
-const github = { CLIENT_ERROR_GITHUB_TOKEN: "ghp_test", CLIENT_ERROR_GITHUB_REPO: "pablo-tech/plover-factory" };
+const github = { CLIENT_ERROR_GITHUB_TOKEN: "ghp_test", CLIENT_ERROR_GITHUB_REPO: "promontory-studio/plover-factory" };
 
 // `openLabels` is not decoration: a real open issue already carries the label it was created with,
 // and `fileReport` adds only the ones missing. A stub that answered with no labels would make every
@@ -58,7 +58,7 @@ describe("functions/api/_middleware", () => {
     expect(res.status).toBe(500);
     expect(await res.json()).toEqual({ error: "internal error" });
     const create = calls.find((c) => c.method === "POST")!;
-    expect(create.url).toBe("https://api.github.com/repos/pablo-tech/plover-factory/issues");
+    expect(create.url).toBe("https://api.github.com/repos/promontory-studio/plover-factory/issues");
     expect(create.body!.title).toMatch(/^Server error: \/api\/vault\/:id — Error \[[0-9a-f]{8}\]$/);
     expect(create.body!.labels![0]).toBe("server-error");
     expect(create.body!.body).toContain("no such table");
@@ -87,7 +87,7 @@ describe("functions/api/_middleware", () => {
     const calls = stubGithub(77);
     await run("/api/chat-history/t91", new Error("D1_ERROR: database is locked"));
     expect(calls.filter((c) => c.method === "POST").map((c) => c.url)).toEqual([
-      "https://api.github.com/repos/pablo-tech/plover-factory/issues/77/comments",
+      "https://api.github.com/repos/promontory-studio/plover-factory/issues/77/comments",
     ]);
   });
 

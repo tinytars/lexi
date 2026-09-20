@@ -1,7 +1,7 @@
 name: Notify failure
 
 # One implementation of "a workflow failed, tell someone", called by every workflow that runs
-# unattended. Issues go to the private pablo-tech/plover-factory inbox, not this public tracker,
+# unattended. Issues go to the private promontory-studio/plover-factory inbox, not this public tracker,
 # so failures stay with the rest of the error pipeline.
 #
 # `ci-failure` is not `client-error`: plover-factory's fix.yml only picks up the latter, so nothing
@@ -30,7 +30,7 @@ jobs:
         with:
           app-id: ${{ vars.AUTOPILOT_APP_ID }}
           private-key: ${{ secrets.AUTOPILOT_APP_KEY }}
-          owner: pablo-tech
+          owner: promontory-studio
           repositories: plover-factory
       # Inputs reach the shell as env, never as ${{ }} inside the script: a title is free text.
       - env:
@@ -43,7 +43,7 @@ jobs:
           SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          repo=pablo-tech/plover-factory
+          repo=promontory-studio/plover-factory
           body=$(printf 'Failed run: %s\n\n%s\n\nEvent: %s, ref: %s, sha: %s' \
             "$RUN_URL" "$CONTEXT" "$EVENT" "$REF" "$SHA")
           existing=$(gh issue list -R "$repo" --state open --label ci-failure --limit 100 \
