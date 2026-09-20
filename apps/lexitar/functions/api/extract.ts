@@ -3,7 +3,8 @@ import { requireSession } from "../_lib/session";
 import { logRequest } from "../_lib/log";
 import { modelErrorReply } from "../_lib/model-errors";
 import { modelFor } from "../_lib/inference/resolve";
-import { proposeFromReport, type ReportPatient } from "@pablotech/akesi/report-extract";
+import { proposeFromReport, type ReportPatient, type ReportSource } from "@pablotech/akesi/report-extract";
+import { validatePageImages } from "../_lib/page-images";
 
 // W15/1 — extract an uploaded clinical report server-side. The browser can't hold
 // the Anthropic key, so it sends the raw PDF (base64) + a MINIMIZED patient subset
@@ -28,6 +29,9 @@ const MAX_BODY_BYTES = 24 * 1024 * 1024;
 interface ExtractBody {
   sourceFile?: unknown;
   pdfBase64?: unknown;
+  // Rendered pages, when the configured model can see but cannot take a PDF (pdf-pages-for-model.ts).
+  // The browser renders because the Workers runtime has no pdfjs.
+  pageImages?: unknown;
   patient?: unknown;
 }
 
@@ -67,8 +71,11 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
   }
 
   const sourceFile = typeof body.sourceFile === "string" && body.sourceFile.trim() ? body.sourceFile : "report.pdf";
-  if (typeof body.pdfBase64 !== "string" || body.pdfBase64.length === 0) {
-    return finish(400, { error: "pdfBase64 is required", errorCode: "no_pdf" }, { errorCode: "no_pdf" });
+  const pageImages = validatePageImages(body.pageImages);
+  const source: ReportSource | null =
+    pageImages ? { pageImages } : typeof body.pdfBase64 === "string" && body.pdfBase64.length > 0 ? { pdfBase64: body.pdfBase64 } : null;
+  if (!source) {
+    return finish(400, { error: "pdfBase64 or pageImages is required", errorCode: "no_pdf" }, { errorCode: "no_pdf" });
   }
   const patient = validatePatient(body.patient);
   if (!patient) {
@@ -78,7 +85,7 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
   try {
     const { client, model } = modelFor(env, "extract");
     const today = new Date().toISOString().slice(0, 10);
-    const report = await proposeFromReport(client, { pdfBase64: body.pdfBase64 }, sourceFile, patient, today, model);
+    const report = await proposeFromReport(client, source, sourceFile, patient, today, model);
     return finish(200, report);
   } catch (err) {
     // A schema/validation failure from proposeFromReport is the model's fault, not a

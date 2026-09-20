@@ -8,6 +8,7 @@
 import type { Attachment } from "./types";
 import { AiError, withDeadline } from "./ai-error";
 import { capDocuments, type DocumentText, type StoredExtraction } from "@pablotech/akesi/document-read";
+import type { PageImage } from "@pablotech/akesi/report-extract";
 import { normalizeClientId } from "./client-id";
 
 // A model call on a long PDF is slower than a leaf regen's own scoped call but bounded the same
@@ -24,13 +25,18 @@ export function isExtractableDocument(a: Pick<Attachment, "name" | "mediaType">)
   return isPdfAttachment(a) || a.mediaType.startsWith("text/") || /\.(txt|md|markdown)$/i.test(a.name);
 }
 
-/** Reads one attachment, storing the text server-side. Returns the reading; throws an AiError. */
-export async function extractDocument(clientId: string, a: Attachment): Promise<StoredExtraction> {
+/**
+ * Reads one attachment, storing the text server-side. Returns the reading; throws an AiError.
+ *
+ * `pageImages` rides along only for a model that can see but cannot take a PDF: the relay has the
+ * bytes in R2 already and normally needs nothing but the key, but it has no pdfjs to render them.
+ */
+export async function extractDocument(clientId: string, a: Attachment, pageImages?: PageImage[]): Promise<StoredExtraction> {
   const res = await withDeadline(DOCUMENT_EXTRACT_DEADLINE_MS, (signal) =>
     fetch("/api/document-extract", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: normalizeClientId(clientId), key: a.key, mediaType: a.mediaType }),
+      body: JSON.stringify({ id: normalizeClientId(clientId), key: a.key, mediaType: a.mediaType, ...(pageImages ? { pageImages } : {}) }),
       signal,
     }).catch((e) => {
       if ((e as Error).name === "AbortError") throw e;
