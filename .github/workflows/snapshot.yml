@@ -40,6 +40,11 @@ jobs:
       # The store is chosen explicitly rather than read from this branch's wrangler.jsonc
       # (vault-sync.ts prefers STORE_PREFIX over it). A schedule fires from main, so inferring the
       # store from the checkout would silently mean "prod only, forever".
+      #
+      # This env var only ever covered the PREFIX. The bucket and the D1 database come from
+      # scripts/target.ts, which reads the worktree's wrangler.jsonc — so the dev leg used to dump
+      # health-identity-prod with nothing but its key prefix saying "dev". The step below moves the
+      # whole target, not just the prefix; this stays as the value that step asserts against.
       STORE_PREFIX: ${{ matrix.store }}
       ORG_KEY_PASSPHRASE: ${{ secrets.ORG_KEY_PASSPHRASE }}
       PASSPHRASE: ${{ secrets.PASSPHRASE }}
@@ -55,6 +60,28 @@ jobs:
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v7
+
+      # scripts/target.ts resolves bucket + D1 + prefix from the worktree's wrangler.jsonc, which is
+      # deliberately divergent per branch ("THE WORKTREE YOU STAND IN DECIDES"). A schedule always
+      # fires from main, so the dev leg stood in prod: it dumped health-identity-prod and read the
+      # prod bucket, with nothing but its key prefix saying "dev". Rather than restating the bucket
+      # and database names here — a second copy of facts that already drifted once — put the
+      # worktree in the branch that owns this store and let the one source of truth answer.
+      #
+      # The fetch is explicit because checkout only creates a remote ref for the branch it checked
+      # out; the assertion is what makes a wrong branch loud instead of silent.
+      - name: Stand in ${{ matrix.store }}'s target
+        run: |
+          set -euo pipefail
+          branch=$([ "$STORE_PREFIX" = prod ] && echo main || echo dev)
+          git fetch --depth=1 origin "$branch"
+          git show "FETCH_HEAD:apps/lexitar/wrangler.jsonc" > apps/lexitar/wrangler.jsonc
+          grep -E 'bucket_name|database_name|STORE_PREFIX' apps/lexitar/wrangler.jsonc
+          got="$(grep -o '"STORE_PREFIX": *"[^"]*"' apps/lexitar/wrangler.jsonc | cut -d'"' -f4)"
+          if [ "$got" != "$STORE_PREFIX" ]; then
+            echo "::error::origin/$branch declares STORE_PREFIX=$got, but this leg snapshots $STORE_PREFIX"
+            exit 1
+          fi
 
       - uses: actions/setup-node@v7
         with:
