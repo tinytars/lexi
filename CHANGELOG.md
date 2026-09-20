@@ -7,6 +7,22 @@ All notable changes to this project are documented here. Format follows
 
 ### Added
 
+- `apps/lexitar` — **model capability is declared and surfaced.** `capsFor(feature)` reads the same
+  `inference.config.json` in the browser and on the server, so photo and PDF affordances are
+  disabled up front with a reason naming the fix, instead of failing after an upload.
+- `apps/lexitar` — **page-image route for vision models without native PDF support.** When a
+  provider declares `vision` but not `pdf`, the browser renders the document's pages and sends what
+  a human sees (`src/lib/pdf-pages-for-model.ts`). No PDF→text scraping: a model that cannot see the
+  document is refused, not fed a degraded payload.
+- `apps/lexitar` — **a general way to measure any feature against any configured model.**
+  `npm run bench:models` scores feature × model through the shipped prompts and the shipped
+  validators, over whatever config file it is given. Method, pre-registration and the dated results
+  are in `apps/lexitar/MEASUREMENT.md`.
+- `apps/lexitar` — **alternative stacks that ship as configs, not prose.**
+  `inference.examples/mixed.json` and `inference.examples/open-local.json` are complete
+  `inference.config.json` files a deployer copies; `apps/lexitar/MODELS.md` says what each serves
+  and what it cannot. `tests/unit/inference-examples.test.ts` drives every feature each one
+  configures over a real socket, so a stale example fails CI rather than a deployer.
 - `apps/lexitar` — the LexiTar web app, moved here from its original private monorepo. Imported as
   a single squashed commit rather than with full history (the source history carries old versions
   of several docs/fixtures with real self-disclosed example content that would otherwise need a

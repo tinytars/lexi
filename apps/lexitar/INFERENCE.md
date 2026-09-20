@@ -109,11 +109,18 @@ Then set `OPENAI_API_KEY` in `.dev.vars` or as a Pages secret.
 Point any subset of features at `local`. With the caps above, chat (without photos), persona, pasted
 treatment text, ranges and marker groups work. PDF extraction and photos answer `model_unsupported`.
 
+A missing capability is a routing problem, not a dead end: `features` maps **each feature to its own
+provider**, so the fix for "my local model cannot read PDFs" is a vision-capable model on `extract`,
+`document` and `treatmentImage`, not a degraded payload. Two worked-out stacks that do exactly that
+ship in [`inference.examples/`](inference.examples/); [`MODELS.md`](MODELS.md) says what each one
+can and cannot serve.
+
 ## What changes when you switch
 
-- **Quality.** Prompts were written and checked against Claude. The Finding in particular is long,
-  structured reasoning, and a smaller model may fail validation more often. Failed validations
-  retry once, and then the refresh reports an error rather than saving a bad Finding.
+- **Quality.** Measured, not assumed: [`MEASUREMENT.md`](MEASUREMENT.md) scores feature × model
+  against the app's own validators, and [`MODELS.md`](MODELS.md) turns those numbers into stacks you
+  can copy. Failed validations retry once, and then the refresh reports an error rather than saving
+  a bad Finding.
 - **Dropped features.** The `openai` adapter drops Anthropic's prompt caching (OpenAI caches on its
   own) and extended thinking.
 - **Brain versions.** The model id is part of each brain's version stamp. Changing the `chat`,

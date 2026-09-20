@@ -5,6 +5,9 @@
 // the caller fails with its own clear error (and an already-set env var always wins). Override
 // the dir with PLOVER_CREDENTIALS_DIR.
 //
+// anthropic.env joins the list because the model key is what every inference script needs and the
+// header above already assumes it is ambient — scripts/model-bench.ts resolves it through modelFor.
+//
 // W52: cloudflare.env joins the list because the snapshot/restore tooling talks to the R2 REST
 // API directly (scripts/vault-sync.ts §REST) and needs the same CLOUDFLARE_* pair that
 // scripts/wrangler.sh loads bash-side.
@@ -14,7 +17,7 @@ import { join } from "node:path";
 
 const dir = process.env.PLOVER_CREDENTIALS_DIR ?? join(homedir(), "PabloTech", "plover-keys");
 
-for (const file of ["health-dash.env", "cloudflare.env"]) {
+for (const file of ["health-dash.env", "cloudflare.env", "anthropic.env"]) {
   const path = join(dir, file);
   if (!existsSync(path)) continue;
   for (const line of readFileSync(path, "utf8").split("\n")) {
