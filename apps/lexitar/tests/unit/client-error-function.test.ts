@@ -152,6 +152,34 @@ describe("POST /api/client-error", () => {
     expect(calls.some((c) => c.url.endsWith("/issues"))).toBe(true);
   });
 
+  // A refused token used to be indistinguishable from a healthy quiet week: the client is answered
+  // 204 either way and nothing reaches the tracker.
+  it("still answers 204 when GitHub refuses the token, but says so in the log", async () => {
+    vi.stubGlobal("fetch", async () => new Response("{}", { status: 401 }));
+    const lines: string[] = [];
+    const log = vi.spyOn(console, "log").mockImplementation((l: string) => void lines.push(String(l)));
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect((await post({ ...baseEnv(), ...github }, EACH_KEY_DUPLICATE)).status).toBe(204);
+    expect(lines.some((l) => l.includes("github_dead"))).toBe(true);
+    log.mockRestore();
+    err.mockRestore();
+  });
+
+  it("retries a GitHub blip once, since a 503 a moment later is usually a 201", async () => {
+    let calls = 0;
+    vi.stubGlobal("fetch", async (url: string) => {
+      calls++;
+      if (calls === 1) return new Response("{}", { status: 503 });
+      if (String(url).includes("/issues?")) return Response.json([]);
+      return new Response("{}", { status: 201 });
+    });
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect((await post({ ...baseEnv(), ...github }, EACH_KEY_DUPLICATE)).status).toBe(204);
+    expect(calls).toBe(3);
+    expect(err).not.toHaveBeenCalled();
+    err.mockRestore();
+  });
+
   describe("without a session", () => {
     // A fresh D1 per test: the budget also has a global hourly cap, which tests sharing one database
     // would spend on each other.

@@ -1,0 +1,51 @@
+name: error-pipeline
+
+# LexiTar's only telemetry is the error sink, and it dies quietly: a revoked token, a secret set on
+# production but not preview, a Worker that stopped filing. From the outside that is indistinguishable
+# from a quiet week — which scripts/promotion-gate.ts used to promote on. This proves the sink alive
+# end to end every three hours, and the gate refuses to promote without a recent proof.
+#
+# The canary files through the real anonymous /api/client-error path on health-dash-dev, under a fixed
+# fingerprint, so its issue is always found by label. When its comment list gets long, close it: the
+# next canary opens a fresh one.
+
+on:
+  schedule:
+    - cron: "0 */3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  alive:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/lexitar
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+        working-directory: .
+      - run: npx tsx scripts/error-pipeline-check.ts health-dash-dev pablo-tech/plover-factory
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # The same classic PAT that is the CLIENT_ERROR_GITHUB_TOKEN Pages secret on both projects
+          # (plover-keys: github-release-pat.env) — checking a copy would prove nothing about the one
+          # the Worker uses, but rotation replaces both from that one file.
+          CLIENT_ERROR_GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
+
+  notify-failure:
+    needs: [alive]
+    if: always() && contains(needs.*.result, 'failure')
+    uses: ./.github/workflows/notify-failure.yml
+    secrets: inherit
+    with:
+      title: LexiTar's error pipeline is not proven alive
+      context: The client/server error sink failed its liveness check. Until it passes, a quiet soak is not evidence of health and promotion is blocked.

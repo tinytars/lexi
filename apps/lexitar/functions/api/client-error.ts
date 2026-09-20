@@ -72,6 +72,10 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
   try {
     await fileClientError(env, report, reportContext, authed ? "client-error" : "pre-auth");
   } catch (e) {
+    // The sink dying is itself a failure nobody would otherwise see: the client is told 204 either
+    // way, and an empty tracker reads exactly like a quiet week. This line is what
+    // scripts/error-pipeline-check.ts and a `wrangler pages deployment tail` grep look for.
+    logRequest({ route: ROUTE, status: 500, errorCode: "github_dead" });
     console.error("client-error: filing failed", (e as Error).message, JSON.stringify(report));
   }
   return new Response(null, { status: 204 });
