@@ -40,7 +40,8 @@
     "raw:backfill": "tsx scripts/raw-backfill.ts",
     "orphan:sweep": "tsx scripts/orphan-sweep.ts",
     "r2-ops": "tsx scripts/r2-ops-cli.ts",
-    "serve:node": "node --env-file-if-exists=.dev.vars --import tsx server/node.ts"
+    "serve:node": "node --env-file-if-exists=.dev.vars --import tsx server/node.ts",
+    "test:live": "BENCH_LIVE=1 vitest run --config vitest.live.config.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
@@ -63,7 +64,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.126.0",
-    "@pablotech/akesi": "^0.1.55",
+    "@pablotech/akesi": "^0.1.56",
     "@pablotech/neuro": "^0.1.43",
     "@simplewebauthn/browser": "^14.0.0",
     "@simplewebauthn/server": "^14.0.2",

@@ -94,6 +94,7 @@ via `wrangler pages secret put`, never committed.
 - [`API.md`](API.md) — the HTTP contract for `functions/`.
 - [`INFERENCE.md`](INFERENCE.md) — which model runs each AI feature, and how to switch providers.
 - [`MEASUREMENT.md`](MEASUREMENT.md) — how model quality is measured, and what it measured.
+- [`MODELS.md`](MODELS.md) — the stacks you can run this on, and what each one cannot serve.
 - [`INGEST.md`](INGEST.md), [`BLOOD.md`](BLOOD.md), [`DEXA.md`](DEXA.md), [`NARRATIVE.md`](NARRATIVE.md) —
   per-source ingest detail.
 - [`BACKUP.md`](BACKUP.md) — snapshot/restore.
