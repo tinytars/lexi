@@ -4,8 +4,8 @@ LexiTar's prompts were written and checked against one vendor's models. [`INFERE
 lets a deployer point any feature at any OpenAI-compatible endpoint — which makes "it works on
 Claude" an unmeasured claim about every other model the moment someone does. This page is how that
 claim gets settled, and it is the **only** page in this repo that carries a number about model
-quality. `MODELS.md` — landing with the shipped example stacks — says which stacks a deployer can
-pick; `INFERENCE.md` says how to configure one; neither repeats a result from here.
+quality. [`MODELS.md`](MODELS.md) says which stacks a deployer can pick;
+[`INFERENCE.md`](INFERENCE.md) says how to configure one; neither repeats a result from here.
 
 ## The method
 
@@ -124,8 +124,8 @@ thing that runs.
   result *for models that fit 4 GiB*, and says nothing about the same architectures at larger sizes;
   those are listed as not measured rather than guessed at.
 - **What each outcome will mean.** A model at or near the baseline on a feature is a usable
-  alternative *for that feature* and is named in `MODELS.md`. A model that validates but needs more
-  attempts is usable and slower, and is named as such. A model that fails is not recommended for
+  alternative *for that feature* and is named in [`MODELS.md`](MODELS.md). A model that validates
+  but needs more attempts is usable and slower, and is named as such. A model that fails is not recommended for
   that feature, and the rejection buckets say why. **A flat or negative result publishes unchanged**
   and the recommendation says so — that outcome is pre-registered too.
 - **What would make this wrong.** n is small: single-digit for the document features. An interval
