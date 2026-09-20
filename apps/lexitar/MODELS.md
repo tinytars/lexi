@@ -31,12 +31,17 @@ magnitude. The `dev` block downgrades four features to Sonnet so the dev environ
 ### Mixed — vendor where it must be, open where it was measured to hold
 
 The point of `features` mapping **each feature to its own provider** is that you do not have to
-pick one model for everything. This stack keeps the vendor on the features that need vision, native
-PDF handling or long structured reasoning, and moves the features an open 4B model was measured to
-hold onto a local server: `ranges`, `treatmentText`, and the benchmark's own model.
+pick one model for everything. This stack keeps the vendor on every feature that needs vision,
+native PDF handling or long structured reasoning, and moves onto a local server only what was
+measured to hold at ceiling: `ranges`, plus the benchmark's own model.
 
 That is a real cut in both cost and data exposure — `ranges` runs per marker and is one of the
 highest-volume calls the app makes — without giving up a single feature.
+
+`treatmentText` is deliberately **not** moved, even though the open model mostly managed it: two of
+three cases validated and the third ran past the client's timeout. "Mostly" is not the bar for a
+stack this page recommends. Move it yourself if your hardware says otherwise — that is what
+`npm run bench:models -- --config` is for.
 
 ### Open, local — no vendor account at all
 
@@ -60,7 +65,7 @@ degraded.
 |---|---|---|---|
 | `chat`, `persona`, `leafRegen` | yes | yes | yes, text only (`local-text` has no vision, so photo attach is disabled) |
 | `ranges`, `markerGroups` | yes | `ranges` local, `markerGroups` vendor | yes |
-| `treatmentText` | yes | local | yes |
+| `treatmentText` | yes | vendor (see below) | yes, 2 of 3 measured cases |
 | `finding` | yes | vendor | yes, subject to the note below |
 | `extract`, `document` | yes, native PDF | vendor | **only with a GPU larger than the one measured**; page images, never native PDF |
 | `treatmentImage` | yes | vendor | **same** |
