@@ -1,0 +1,32 @@
+{
+  "$doc": "Best per feature: the open model runs the features it was measured to hold, the vendor runs the rest. Copy over inference.config.json. Numbers in MEASUREMENT.md, the stack description in MODELS.md.",
+  "providers": {
+    "anthropic": {
+      "api": "anthropic",
+      "keyEnv": ["ANTHROPIC_API_KEY"],
+      "billingUrl": "https://console.anthropic.com/settings/billing"
+    },
+    "local-text": {
+      "api": "openai",
+      "baseUrl": "http://127.0.0.1:11434/v1",
+      "keyEnv": [],
+      "caps": { "vision": false, "pdf": false, "jsonSchema": true, "tools": false },
+      "maxTokensField": "max_tokens",
+      "maxOutputTokens": 4096
+    }
+  },
+  "features": {
+    "chat": { "provider": "anthropic", "model": "claude-sonnet-4-6" },
+    "persona": { "provider": "anthropic", "model": "claude-sonnet-4-6" },
+    "extract": { "provider": "anthropic", "model": "claude-opus-4-7" },
+    "document": { "provider": "anthropic", "model": "claude-opus-4-7" },
+    "treatmentImage": { "provider": "anthropic", "model": "claude-opus-4-7" },
+    "treatmentText": { "provider": "local-text", "model": "qwen3:4b-instruct-2507-q4_K_M" },
+    "finding": { "provider": "anthropic", "model": "claude-opus-4-7" },
+    "ranges": { "provider": "local-text", "model": "qwen3:4b-instruct-2507-q4_K_M" },
+    "markerGroups": { "provider": "anthropic", "model": "claude-opus-4-7" },
+    "leafRegen": { "provider": "anthropic", "model": "claude-sonnet-4-6" },
+    "benchmarkWeakest": { "provider": "local-text", "model": "qwen3:4b-instruct-2507-q4_K_M" }
+  },
+  "dev": {}
+}

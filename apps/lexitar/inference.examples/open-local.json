@@ -1,0 +1,35 @@
+{
+  "$doc": "Fully open weights, self-hosted, no vendor account and no key. Copy over inference.config.json. Measured numbers and the hardware they were measured on are in MEASUREMENT.md; MODELS.md says which features this stack can and cannot serve.",
+  "providers": {
+    "local-text": {
+      "api": "openai",
+      "baseUrl": "http://127.0.0.1:11434/v1",
+      "keyEnv": [],
+      "caps": { "vision": false, "pdf": false, "jsonSchema": true, "tools": false },
+      "maxTokensField": "max_tokens",
+      "maxOutputTokens": 4096
+    },
+    "local-vision": {
+      "api": "openai",
+      "baseUrl": "http://127.0.0.1:11434/v1",
+      "keyEnv": [],
+      "caps": { "vision": true, "pdf": false, "jsonSchema": true, "tools": false },
+      "maxTokensField": "max_tokens",
+      "maxOutputTokens": 4096
+    }
+  },
+  "features": {
+    "chat": { "provider": "local-text", "model": "qwen3:4b-instruct-2507-q4_K_M" },
+    "persona": { "provider": "local-text", "model": "qwen3:4b-instruct-2507-q4_K_M" },
+    "extract": { "provider": "local-vision", "model": "granite3.2-vision:2b" },
+    "document": { "provider": "local-vision", "model": "granite3.2-vision:2b" },
+    "treatmentImage": { "provider": "local-vision", "model": "granite3.2-vision:2b" },
+    "treatmentText": { "provider": "local-text", "model": "qwen3:4b-instruct-2507-q4_K_M" },
+    "finding": { "provider": "local-text", "model": "qwen3:4b-instruct-2507-q4_K_M" },
+    "ranges": { "provider": "local-text", "model": "qwen3:4b-instruct-2507-q4_K_M" },
+    "markerGroups": { "provider": "local-text", "model": "qwen3:4b-instruct-2507-q4_K_M" },
+    "leafRegen": { "provider": "local-text", "model": "qwen3:4b-instruct-2507-q4_K_M" },
+    "benchmarkWeakest": { "provider": "local-text", "model": "qwen3:4b-instruct-2507-q4_K_M" }
+  },
+  "dev": {}
+}
