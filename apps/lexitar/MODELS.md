@@ -62,7 +62,7 @@ degraded.
 | `ranges`, `markerGroups` | yes | `ranges` local, `markerGroups` vendor | yes |
 | `treatmentText` | yes | local | yes |
 | `finding` | yes | vendor | yes, subject to the note below |
-| `extract`, `document` | yes, native PDF | vendor | **only with a GPU larger than the one measured** |
+| `extract`, `document` | yes, native PDF | vendor | **only with a GPU larger than the one measured**; page images, never native PDF |
 | `treatmentImage` | yes | vendor | **same** |
 
 ## The verdict, and its one big caveat
@@ -73,11 +73,13 @@ Read [`MEASUREMENT.md`](MEASUREMENT.md) for the numbers. The summary a deployer 
   app's highest-volume model call, with a ten-check validator — validated on every case, on the
   first attempt, with no retries. That is not a hedge: it is the same prompt, the same validator and
   the same retry loop production runs.
-- **The document and photo features were not made to work on a 4 GiB GPU.** Both vision models that
-  fit produced one of two failures: the accurate one needed *more than the HTTP client's timeout*
-  to encode a page and answer, and the one fast enough to answer invented the patient's name. This
-  is a hardware result, not a verdict on open vision models — a larger GPU was not tested and this
-  page will not guess. `MEASUREMENT.md`'s *not measured* list says so too.
+- **The document features were not made to work on a 4 GiB GPU.** The accurate vision model does not
+  fit the card at all — the page the app really sends costs about 4096 image tokens and the
+  allocation fails — and on the CPU it answers past the HTTP client's 300-second ceiling. The one
+  that *does* fit passed the validator on an extraction and, on the same page, reported a patient
+  name that is not on it. The validator is a structural check and cannot catch that, which is
+  itself the finding. This is a hardware result, not a verdict on open vision models: a larger GPU
+  was not tested and this page will not guess.
 - **The vendor baseline could not be re-run**, for a reason that has nothing to do with models; see
   `MEASUREMENT.md`.
 

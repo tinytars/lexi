@@ -134,8 +134,121 @@ thing that runs.
 
 ## Results
 
-**Not yet run.** This section is deliberately empty and dated: the method and the pre-registration
-above were committed first, and the table lands here when the run happens — whatever it says.
+Run **2026-09-20**, from `npm run bench:models`. Nothing below is hand-copied from a console, and no
+number from this page is repeated anywhere else in this repo or in `pilos`.
+
+### The one-line answer
+
+**A 4B open model, on a laptop-class GPU slice, holds the shipped contract on the structured text
+features and does not hold it on the document features.** `ranges` — the app's highest-volume model
+call — validated every case on the first attempt. The vendor baseline could not be run at all, for
+a billing reason given below, so nothing here is a *comparison*; it is an absolute result against
+the app's own validators.
+
+### The regime, so a row can be read
+
+| | |
+|---|---|
+| Server | Ollama 0.34.2, one request at a time, `http://127.0.0.1:11434/v1` |
+| Hardware | NVIDIA **A10-4Q vGPU slice — 3.8 GiB VRAM**, 6 CPU cores, 53 GB RAM |
+| Server settings | `OLLAMA_CONTEXT_LENGTH=8192 OLLAMA_FLASH_ATTENTION=1 OLLAMA_KV_CACHE_TYPE=q8_0` |
+| Offload | `qwen3:4b-instruct-2507-q4_K_M` runs 66% on the GPU and 34% on the CPU — it does not fit either |
+
+### Open-weight candidates
+
+| feature | model | n | validated | 95% CI | first try | mean attempts | median s | commonest rejection |
+|---|---|---|---|---|---|---|---|---|
+| ranges | `qwen3:4b-instruct-2507-q4_K_M` | 12 | 12/12 | [0.76, 1.00] | 100% | 1.00 | 55.7 | — |
+| extract | `granite3.2-vision:2b` | 1 | 1/1 | [0.21, 1.00] | 100% | 1.00 | 156.3 | — |
+| document | `granite3.2-vision:2b` | 2 | 1/2 | [0.09, 0.91] | 50% | 1.50 | 33.1 | unreachable (1) |
+| treatmentText | `qwen3:4b-instruct-2507-q4_K_M` | 3 | 2/3 | [0.21, 0.94] | 67% | 1.33 | 244.3 | unreachable (1) |
+
+Config: `inference.examples/open-local.json`, with `local-vision` pointed at
+`granite3.2-vision:2b` — see *Which vision model, and why the table is not the whole answer* below,
+because the shipped example deliberately names a different one.
+
+The documents took the **page-images** route in every row: neither local model declares `caps.pdf`,
+both declare `vision`, so the fixture's rendered page is what the model saw. No row here scored the
+native-PDF route.
+
+| feature | model | n | validated | median s | note |
+|---|---|---|---|---|---|
+| extract | `qwen2.5vl:3b`, CPU-only | 1 | 0/1 | 300.7 | hit the client ceiling, below |
+| document | `qwen2.5vl:3b`, CPU-only | 2 | 0/2 | 300.7 | same |
+
+`qwen2.5vl:3b` could not run on the GPU at all. The app sends a page at the width it really renders
+(1568 px, [`src/lib/pdf-pages-for-model.ts`](src/lib/pdf-pages-for-model.ts)), which costs roughly
+4096 image tokens, and the allocation fails outright on a 3.8 GiB card:
+
+```
+cudaMalloc failed: out of memory / failed to allocate CUDA0 buffer of size 1925738496
+```
+
+### The baseline was not run
+
+**The vendor baseline could not be measured on this date.** Every call came back, before the model
+saw anything:
+
+```
+400 {"type":"error","error":{"type":"invalid_request_error","message":"Your credit balance is too
+low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits."}}
+```
+
+A second key on a different project returned the same thing, so it is the account, not the key.
+Buying credit was out of scope for the session that ran this, so the baseline is **absent, not
+zero**, and this page will not fill it by assumption. To run it, once the account has credit:
+
+```sh
+ANTHROPIC_API_KEY=… npm run bench:models -- --feature ranges,extract,document,treatmentText
+```
+
+That failed attempt is what produced the harness's
+[`refused` bucket](https://github.com/pablo-tech/pilos/pull/24): the billing error scored as a
+*quality* failure and printed a frontier model at `0/12`. A benchmark that cannot tell "never
+asked" from "answered badly" is worse than no benchmark, so the bucket was added, tested and
+released *before* the run above — an account problem now buckets as `refused`, ahead of every
+quality reason.
+
+### The client's own ceiling is part of the result
+
+The HTTP client sets no timeout, so the effective ceiling is Node's undici default: **300 seconds**
+for headers and body. Every `unreachable — fetch failed` above is that ceiling, at ~300.7 s, not a
+model declining. It is reported rather than raised: raising it needs a dependency this milestone
+does not add, and a feature that takes five minutes is not one a user waits for. **A model that
+cannot answer in 300 s cannot serve that feature here** — a deployment fact, not an artefact.
+
+Latency is a real column, not a footnote. Every row shares one server, one request at a time, no
+other load; an earlier run whose vision calls queued behind aborted generations reported two
+`treatmentText` timeouts that this uncontended run does not, and was discarded rather than
+published.
+
+### Which vision model, and why the table is not the whole answer
+
+`granite3.2-vision:2b` validated `extract` 1/1 above. It is still **not** the model
+[`MODELS.md`](MODELS.md) ships, and this is the most important caveat on the page.
+
+Asked to read the patient name off the same fixture page, `granite3.2-vision:2b` answered
+`Alex Doe`. The name on the page is `TESTCASE, Alex (fictional)`. `qwen2.5vl:3b`, forced onto the
+CPU, returned it **exactly** — in 403.9 s, past the ceiling.
+
+The validator did not catch the invented name, and could not have: it checks that the response is a
+medical report, that required fields are present, that confidence is in range. **A structurally
+perfect extraction of a hallucinated name passes.** That is the honest limit of using the app's own
+validator as the oracle — it is exactly the production bar, and the production bar does not include
+factual fidelity to the source. Read `validated` as *"production would have accepted this"*, never
+as *"this is true"*.
+
+So on 4 GiB: the accurate vision model is too slow and the fast one is unfaithful.
+`inference.examples/open-local.json` names the accurate one, because a stack that fails to load is
+a better failure than a stack that files a confident wrong name into someone's record.
+
+### What this changes
+
+- `INFERENCE.md`'s "written and checked against Claude" sentence is gone; the claim is measured now.
+- `ranges` and `treatmentText` are named as open-model features in [`MODELS.md`](MODELS.md), and
+  `inference.examples/mixed.json` routes them locally by default.
+- The document features are named as needing more GPU than was measured, with no guess about how
+  much more.
 
 ## Not measured
 
@@ -150,3 +263,5 @@ Named, because absence of a number is reported as absence and never as a pass.
 | Scanned-PDF OCR | beyond what a vision model does natively. No scanned fixture, so no claim. |
 | Cost per feature in currency | the runner reports calls and latency, not billing. Read the provider's own billing page. |
 | Anything a run skipped for a declared missing capability | the row says skipped, and skipped is not zero. |
+| **Factual fidelity to the source document** | the oracle is the shipped validator, which is a structural check. A response that invents a patient name passes it, and one did — see the vision-model caveat above. Measuring fidelity needs a per-field ground truth for every fixture, which does not exist yet. |
+| The native-PDF route on an open model | no local candidate declares `caps.pdf`, so every document row above scored the page-images route. The native route is measured only on a provider that supports it, which means the baseline, which did not run. |
