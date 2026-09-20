@@ -32,6 +32,8 @@
     "doc:read-check": "tsx scripts/document-read-check.ts",
     "coverage": "vitest run --coverage",
     "prompt:golden": "tsx scripts/gen-prompt-golden.ts",
+    "bench:models": "tsx scripts/model-bench.ts",
+    "fixture:report": "tsx scripts/gen-report-fixture.ts",
     "lint": "oxlint src functions scripts server tests --deny-warnings",
     "brain:versions": "tsx scripts/gen-brain-versions.ts",
     "recovery:approve": "tsx scripts/recovery-approve.ts",
@@ -61,7 +63,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.126.0",
-    "@pablotech/akesi": "^0.1.54",
+    "@pablotech/akesi": "^0.1.55",
     "@pablotech/neuro": "^0.1.43",
     "@simplewebauthn/browser": "^14.0.0",
     "@simplewebauthn/server": "^14.0.2",
