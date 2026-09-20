@@ -83,3 +83,12 @@ jobs:
             --body "Automatic promotion: dev has soaked 24h, CI is green on its tip, and no plover-factory error report names a build in this range. \`apps/lexitar/wrangler.jsonc\` is main's, unchanged.
 
           @pablo-tech: label this PR \`hold\` to stop it merging."
+
+  notify-failure:
+    needs: [promote]
+    if: always() && contains(needs.*.result, 'failure')
+    uses: ./.github/workflows/notify-failure.yml
+    secrets: inherit
+    with:
+      title: Promotion workflow failed
+      context: dev is not reaching main by automation. A gate that blocks promotion exits clean; a failure here means the workflow itself broke.

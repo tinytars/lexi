@@ -78,3 +78,12 @@ jobs:
       - name: Note the independent check
         if: failure()
         run: echo "Backup alarm for ${{ matrix.store }}. \`npm run vault:snapshot:check\` re-asks locally." >> "$GITHUB_STEP_SUMMARY"
+
+  notify-failure:
+    needs: [snapshot]
+    if: always() && contains(needs.*.result, 'failure')
+    uses: ./.github/workflows/notify-failure.yml
+    secrets: inherit
+    with:
+      title: Nightly vault snapshot failed
+      context: The vault backup did not complete. Its check step is the only alarm on backup integrity, and until this passes there is no verified recent snapshot.
