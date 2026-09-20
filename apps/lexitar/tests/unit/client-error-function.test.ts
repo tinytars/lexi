@@ -56,7 +56,7 @@ describe("client error scrubbing", () => {
 });
 
 describe("POST /api/client-error", () => {
-  const github = { CLIENT_ERROR_GITHUB_TOKEN: "ghp_test", CLIENT_ERROR_GITHUB_REPO: "pablo-tech/plover-factory" };
+  const github = { CLIENT_ERROR_GITHUB_TOKEN: "ghp_test", CLIENT_ERROR_GITHUB_REPO: "promontory-studio/plover-factory" };
   const baseEnv = () => ({ SESSION_SECRET: "test-secret", DB: fakeSessionDb() });
   const post = async (env: Parameters<typeof onRequestPost>[0]["env"], body: unknown, authed = true) => {
     const cookie = authed ? `hd_session=${await signSession(env, "acct-1")}` : "";
@@ -82,7 +82,7 @@ describe("POST /api/client-error", () => {
     const calls = stubGithub(null);
     expect((await post({ ...baseEnv(), ...github }, EACH_KEY_DUPLICATE)).status).toBe(204);
     const create = calls.find((c) => c.method === "POST")!;
-    expect(create.url).toBe("https://api.github.com/repos/pablo-tech/plover-factory/issues");
+    expect(create.url).toBe("https://api.github.com/repos/promontory-studio/plover-factory/issues");
     expect(create.body!.title).toMatch(/^Client error: Error \[[0-9a-f]{8}\]$/);
     expect(create.body!.body).toContain("each_key_duplicate");
     const fp = /\[([0-9a-f]{8})\]$/.exec(create.body!.title)![1];
@@ -96,7 +96,7 @@ describe("POST /api/client-error", () => {
     const calls = stubGithub(42);
     expect((await post({ ...baseEnv(), ...github }, EACH_KEY_DUPLICATE)).status).toBe(204);
     const writes = calls.filter((c) => c.method === "POST");
-    expect(writes.map((c) => c.url)).toEqual(["https://api.github.com/repos/pablo-tech/plover-factory/issues/42/comments"]);
+    expect(writes.map((c) => c.url)).toEqual(["https://api.github.com/repos/promontory-studio/plover-factory/issues/42/comments"]);
   });
 
   it("never sends the raw message to GitHub", async () => {
@@ -138,8 +138,8 @@ describe("POST /api/client-error", () => {
     expect((await post({ ...baseEnv(), ...github }, EACH_KEY_DUPLICATE)).status).toBe(204);
     const writes = calls.filter((c) => c.method === "POST");
     expect(writes.map((c) => c.url)).toEqual([
-      "https://api.github.com/repos/pablo-tech/plover-factory/issues/42/labels",
-      "https://api.github.com/repos/pablo-tech/plover-factory/issues/42/comments",
+      "https://api.github.com/repos/promontory-studio/plover-factory/issues/42/labels",
+      "https://api.github.com/repos/promontory-studio/plover-factory/issues/42/comments",
     ]);
     expect(writes[0].body).toEqual({ labels: ["client-error"] });
   });
@@ -199,7 +199,7 @@ describe("POST /api/client-error", () => {
       const calls = stubGithub(null);
       expect((await anon("198.51.100.10", EACH_KEY_DUPLICATE)).status).toBe(204);
       const create = calls.find((c) => c.method === "POST")!;
-      expect(create.url).toBe("https://api.github.com/repos/pablo-tech/plover-factory/issues");
+      expect(create.url).toBe("https://api.github.com/repos/promontory-studio/plover-factory/issues");
       expect(create.body!.labels![0]).toBe("pre-auth");
     });
 
