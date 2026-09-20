@@ -134,7 +134,9 @@ export async function reportServerError(env: ServerErrorEnv, error: unknown, ctx
     });
     return "filed";
   } catch (e) {
-    // Sealed: a throw in here would recurse through the middleware that called it.
+    // Sealed: a throw in here would recurse through the middleware that called it. The extra line
+    // distinguishes "the sink is dead" from "nothing went wrong", which are the same empty tracker.
+    logRequest({ route: ctx.route, status: 500, requestId: ctx.requestId, errorCode: "github_dead" });
     console.error("server-error: reporting failed", (e as Error)?.message);
     return "logged";
   }
