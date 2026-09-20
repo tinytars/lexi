@@ -14,21 +14,76 @@ part of the DPG.
 
 **Verdicts:** ✅ meets · 🟡 partly meets (an assessor would ask for more) · ❌ does not meet
 
-## Summary
+## Compliance dashboard
 
-| # | Indicator | Verdict | What stands in the way |
+Every question the application form asks, and where LexiTar stands on it today.
+**⚪** marks a question that describes the solution rather than scoring it — the answer still has to be
+right, but there is nothing to fix.
+
+| # | What the form asks | Light | Where LexiTar stands |
 |---|---|---|---|
-| 1 | SDG relevance | ✅ | Nothing public maps LexiTar to specific SDG targets |
-| 2 | Open licensing | ✅ | — |
-| 3 | Clear ownership | 🟡 | Two core packages are owned by an individual, not the Foundation; no contributor licence terms |
-| 4 | Platform independence | ✅ | Open-model configs can't do PDF or vision, and no benchmark backs the quality claim |
-| 5 | Documentation | ✅ | No end-user guide |
-| 6 | Data extraction | ✅ | — |
-| 7 | Privacy & applicable laws | ❌ | The privacy policy's encryption claims are false for three data paths; data processors aren't named; no law is identified |
-| 8 | Standards & best practices | ✅ | — |
-| 9A | Data privacy & security | 🟡 | Uploaded originals are stored unencrypted; health data leaves for third-party models; no self-service deletion |
-| 9B | Inappropriate, misleading & illegal content | ❌ | No process to detect, report or remove illegal uploads; no way to flag misleading AI output |
-| 9C | Protection from harassment | 🟡 | Patient↔clinician sharing counts as interaction; the minimum age isn't enforced |
+| **1** | **SDG relevance** | **✅** | |
+| 1.1 | Which SDGs | ✅ | SDG 3 (health), SDG 10 (inequality) |
+| 1.2 | Relation to each SDG's targets | 🟡 | True of the product, written nowhere public |
+| **2** | **Open licensing** | **✅** | |
+| 2.1 | Which approved open licence | ✅ | MIT, for the app and every first-party package |
+| 2.2 | Public evidence of it | ✅ | `../../LICENSE` in a public repo |
+| **3** | **Clear ownership** | **🟡** | |
+| 3.1 | Who owns the solution | ✅ | Tiny Tars Foundation |
+| 3.2 | Public evidence of ownership | ✅ | LICENSE, `../../README.md`, Terms §Intellectual property |
+| 3.3 | Type of organisation | ✅ | 501(c)(3) non-profit |
+| 3.4 | Country of the owner | ✅ | United States |
+| 3.5 | Do you own all the code | ❌ | `@pablotech/akesi` and `@pablotech/neuro` — the reasoning core — are copyright an individual |
+| 3.6 | If not, the right to redistribute | 🟡 | MIT covers it, but no CLA or DCO governs inbound contributions |
+| **4** | **Platform independence** | **✅** | |
+| 4.1 | Core technologies | ✅ | TypeScript, Svelte, Web Crypto, WebAuthn, SQLite-compatible storage, object storage |
+| 4.2 | Any closed dependency | ⚪ | Yes — hosting, models, speech, email, OAuth |
+| 4.3 | Open alternative: hosting | ✅ | Node/Docker self-host, e2e-tested in CI on both hosts |
+| 4.4 | Open alternative: inference | ✅ | Any OpenAI-compatible server, incl. local open weights, by config alone |
+| 4.5 | Open alternative: read-aloud | ✅ | Browser `speechSynthesis` fallback |
+| 4.6 | Open alternative: email | 🟡 | Gmail or nothing; no SMTP path, and silence drops a security notification |
+| 4.7 | Open alternative: sign-in | ✅ | Passkeys and passwords; Google OAuth is optional |
+| **5** | **Documentation** | **✅** | |
+| 5.1 | Developer and architecture docs | ✅ | `../../ARCHITECTURE.md`, `API.md`, `AUTH.md`, `VAULT.md`, `INFERENCE.md` |
+| 5.2 | Enough for a stranger to launch and run it | ✅ | `../../START-HERE.md` §B, clone to running in ten minutes |
+| 5.3 | User guide | ❌ | Nothing tells a patient how to use the product |
+| **6** | **Extracting data and content** | **✅** | |
+| 6.1 | Is non-PII data or content handled | ⚪ | Yes — reasoning prompts, the finding DAG, reference material |
+| 6.2 | Export/import in a non-proprietary format | ✅ | CSV and JSON export; PDF/XLSX import |
+| **7** | **Privacy and applicable laws** | **❌** | |
+| 7.1 | Which laws it complies with | ❌ | No law named anywhere; GDPR, FTC HBNR, CCPA, MHMDA all plausibly apply |
+| 7.2 | Evidence of adherence | ❌ | Policy and Terms are published, but their encryption claims contradict the code |
+| 7.3 | Processors disclosed | ❌ | Anthropic, Azure and Google are unnamed in the policy |
+| 7.4 | Consent for special-category data | ❌ | None captured at signup or at the point a model call sends data out |
+| 7.5 | Deletion available to the user | ❌ | `POST /api/account/erase` works; no UI reaches it |
+| **8** | **Standards and best practices** | **✅** | |
+| 8.1 | Open standards, with evidence | ✅ | WebAuthn, Web Crypto, OAuth2/OIDC, WCAG 2.1 AA via axe in e2e |
+| 8.2 | Best practices, with evidence | ✅ | CI on every PR, coverage thresholds, CodeQL, Dependabot, disclosure policy |
+| **9A** | **Data privacy and security** | **🟡** | |
+| 9A.1 | Is PII collected / stored / distributed | ⚪ | All three — distributed to clinicians the patient links |
+| 9A.2 | Which types | ✅ | Identity, lab results, symptoms, treatments, notes, photos, chat |
+| 9A.3 | Vault confidentiality | ✅ | Client-side encryption, per-principal envelopes |
+| 9A.4 | Access control and audit | ✅ | One capability table, per-namespace ownership, logged privileged reads |
+| 9A.5 | Uploaded originals | ❌ | Stored unencrypted — the most sensitive files are the least protected |
+| 9A.6 | Transfer to third-party models | 🟡 | Avoidable by config, but the live deployment sends plaintext health data out |
+| 9A.7 | Erasure integrity | ✅ | Reports itself incomplete rather than claiming a clean erase |
+| **9B** | **Inappropriate, misleading, illegal content** | **❌** | |
+| 9B.1 | Is content collected / stored / distributed | ⚪ | All three — uploads, notes, generated explanations |
+| 9B.2 | Which types | ✅ | PDFs, photos, free text, AI-generated health explanations |
+| 9B.3 | Identifying illegal content | ❌ | An acceptable-use clause, and nothing that acts on it |
+| 9B.4 | Detect / moderate / report / remove | ❌ | No process, no channel, no owner |
+| 9B.5 | Average response time | ❌ | Undefined, because there is no process to time |
+| 9B.6 | Misleading content | 🟡 | Disclaimer, no-diagnosis prompts and staleness tracking; no way to flag a wrong answer |
+| **9C** | **Protection from harassment** | **🟡** | |
+| 9C.1 | Does it enable interaction between users | ⚪ | Yes, narrowly — patient↔clinician sharing; no messaging or social surface |
+| 9C.2 | How users protect themselves | 🟡 | Links are patient-approved, time-boxed, revocable and logged; no abuse-report path |
+| 9C.3 | Safety of underage users | ❌ | 16+ in the Terms, unenforced at signup |
+| **—** | **Scale** (form section, unscored) | **⚪** | Live at `literacy.tinytars.foundation`; **English only**, against an audience defined partly by limited English |
+
+**Verdict: not ready to submit.** Indicators 7 and 9B fail outright, and both need work that isn't
+writing: consent and deletion in the product, a content-reporting process behind it. Indicator 3's
+ownership split and 9C's age gate are smaller but real. Everything else either passes or passes with a
+note.
 
 ---
 
