@@ -10,6 +10,7 @@ import {
   classifyUpload,
   importFileForChat,
 } from "../../src/lib/import-flow";
+import { AI_ERROR_MESSAGES } from "../../src/lib/ai-error";
 
 const base = (): Client => ({ displayName: "Alex", dob: "1980-01-01", gender: "male", watchlist: [], results: [] });
 
@@ -159,7 +160,15 @@ describe("classifyUpload", () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ error: "model unavailable" }), { status: 503 }));
     const file = new File([new Uint8Array([1, 2, 3])], "echo.pdf");
     const res = await classifyUpload(base(), "Alex", file);
-    expect(res).toEqual({ status: "error", message: "model unavailable" });
+    expect(res).toEqual({ status: "error", message: AI_ERROR_MESSAGES.ai_busy });
+  });
+
+  it("names the model's missing capability when the relay refuses the document", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ error: "model cannot read pdf", errorCode: "model_unsupported" }), { status: 422 }),
+    );
+    const res = await classifyUpload(base(), "Alex", new File([new Uint8Array([1, 2, 3])], "echo.pdf"));
+    expect(res).toEqual({ status: "error", message: AI_ERROR_MESSAGES.model_unsupported });
   });
 });
 
@@ -224,7 +233,7 @@ describe("importFileForChat", () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ error: "model unavailable" }), { status: 503 }));
     const { stored, saved, deps } = fakeDeps();
     const res = await importFileForChat(base(), "Alex", new File([new Uint8Array([1, 2, 3])], "echo.pdf"), deps);
-    expect(res).toEqual({ ok: false, message: "model unavailable" });
+    expect(res).toEqual({ ok: false, message: AI_ERROR_MESSAGES.ai_busy });
     expect([...stored, ...saved]).toEqual([]);
   });
 });

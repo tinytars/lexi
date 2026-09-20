@@ -12,6 +12,11 @@
   import { classifyUpload, type FoldResult, type SourceFoldResult } from "./import-flow";
   import { putRaw } from "./attachment-store";
   import { PRODUCT_NAME } from "./brand";
+  import { ABILITY_UNAVAILABLE, supports } from "./model-ability";
+
+  // Spreadsheets and device exports are parsed in the browser and need no model at all, so a
+  // deployment whose model can't read documents keeps importing those — it loses only the PDF path.
+  const pdfImport = supports("extract", "documents");
 
   let {
     client,
@@ -60,7 +65,14 @@
       // The PDF/non-PDF split is the same predicate classifyUpload branches on below;
       // flipping the status label here (not the classification itself) keeps the
       // "Extracting…" hint visible for the report path's network round-trip.
-      if (/\.pdf$/i.test(file.name)) status = "extracting";
+      if (/\.pdf$/i.test(file.name)) {
+        if (!pdfImport) {
+          status = "error";
+          errorMsg = ABILITY_UNAVAILABLE.documents;
+          return;
+        }
+        status = "extracting";
+      }
       const result = await classifyUpload(client, clientId, file);
       switch (result.status) {
         case "duplicate": {
@@ -140,7 +152,11 @@
   {#if !client}
     <p class="lead">Create a record first, then drop a report here to get started.</p>
   {:else}
-    <p class="lead">Drop a health report (PDF), lab spreadsheet, or device export to add it to <strong>{client.displayName}</strong>'s record.</p>
+    <p class="lead">
+      Drop a {#if pdfImport}health report (PDF), {/if}lab spreadsheet, or device export to add it to
+      <strong>{client.displayName}</strong>'s record.
+    </p>
+    {#if !pdfImport}<p class="note warn">{ABILITY_UNAVAILABLE.documents}</p>{/if}
 
     {#if status === "idle" || status === "error" || status === "duplicate"}
       <label
@@ -150,10 +166,12 @@
         ondragleave={() => (dragging = false)}
         ondrop={onDrop}
       >
-        <input type="file" accept="application/pdf,.pdf,.xlsx,.xls" onchange={onInput} />
+        <input type="file" accept={pdfImport ? "application/pdf,.pdf,.xlsx,.xls" : ".xlsx,.xls"} onchange={onInput} />
         <p class="big">📄</p>
         <p>Drop a file here, or click to choose one.</p>
-        <p class="hint">PDF reports and lab spreadsheets are read instantly; unrecognized formats are queued for processing.</p>
+        <p class="hint">
+          {pdfImport ? "PDF reports and lab spreadsheets" : "Lab spreadsheets"} are read instantly; unrecognized formats are queued for processing.
+        </p>
       </label>
     {/if}
 

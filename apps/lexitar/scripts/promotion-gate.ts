@@ -1,20 +1,27 @@
 import { execFileSync } from "node:child_process";
+import { canaryFingerprint } from "./error-pipeline-check";
 import { isMain } from "./is-main";
 
 // Promotion is automatic only once dev has run quietly: no plover-factory error report may name a build
 // from the commits being promoted. Reports carry `Build: tinytars/lexi@<sha>` (functions/_lib/github-issue.ts).
 const SOAK_HOURS = 24;
+const CANARY_MAX_AGE_HOURS = 8;
 const HOUR = 3_600_000;
 const BUILD = /tinytars\/lexi@([0-9a-f]{7,40})/g;
 
-export type Soak = { range: string[]; tipTime: number; now: number; ciGreen: boolean; reports: string[] };
+export type Soak = { range: string[]; tipTime: number; now: number; ciGreen: boolean; reports: string[]; canaryAt: number | null };
 
-export function promotionBlockers({ range, tipTime, now, ciGreen, reports }: Soak): string[] {
+export function promotionBlockers({ range, tipTime, now, ciGreen, reports, canaryAt }: Soak): string[] {
   if (!range.length) return ["dev has nothing that main lacks"];
   const out: string[] = [];
   const age = Math.floor((now - tipTime) / HOUR);
   if (age < SOAK_HOURS) out.push(`dev tip is ${age}h old; soak is ${SOAK_HOURS}h`);
   if (!ciGreen) out.push("CI is not green on the dev tip");
+  // Checked BEFORE the reports below, because it decides what their absence means: a dead sink and a
+  // clean week are the same empty list, and this gate used to promote on the first one.
+  if (canaryAt === null) out.push("the error pipeline has never proved itself alive; a quiet soak is not evidence");
+  else if (now - canaryAt > CANARY_MAX_AGE_HOURS * HOUR)
+    out.push(`the error pipeline last proved itself alive ${Math.floor((now - canaryAt) / HOUR)}h ago; a quiet soak is not evidence`);
   const builds = new Set(reports.flatMap((r) => [...r.matchAll(BUILD)].map((m) => m[1])));
   for (const b of builds) if (range.some((sha) => sha.startsWith(b) || b.startsWith(sha))) out.push(`error reported from build ${b}, which is in the range`);
   return out;
@@ -30,12 +37,18 @@ if (isMain(import.meta.url)) {
   const conclusions: (string | null)[] = JSON.parse(ci);
   const bodies = (path: string): string[] =>
     (JSON.parse(run("gh", "api", "--paginate", "--slurp", `${path}&since=${since}`)) as { body: string | null }[][]).flat().map((i) => i.body ?? "");
+  // Closed included, sorted by update: the canary issue is closed by hand once its comment list is long,
+  // and the run that closed it still proved the pipeline alive.
+  const canary = JSON.parse(
+    run("gh", "api", `repos/${factory}/issues?state=all&sort=updated&direction=desc&per_page=1&labels=fp:${await canaryFingerprint()}`),
+  ) as { updated_at: string }[];
   const blockers = promotionBlockers({
     range,
     tipTime: tip ? Date.parse(run("git", "show", "-s", "--format=%cI", tip)) : 0,
     now: Date.now(),
     ciGreen: conclusions.length > 0 && conclusions.every((c) => c === "success" || c === "skipped" || c === "neutral"),
     reports: [...bodies(`repos/${factory}/issues?state=all&labels=client-error&per_page=100`), ...bodies(`repos/${factory}/issues/comments?per_page=100`)],
+    canaryAt: canary[0] ? Date.parse(canary[0].updated_at) : null,
   });
   if (blockers.length) {
     console.log(`not promoting:\n${blockers.join("\n")}`);

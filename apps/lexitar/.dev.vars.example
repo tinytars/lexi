@@ -47,8 +47,8 @@ RANGES_ANTHROPIC_API_KEY=sk-ant-...
 # GOOGLE_CLIENT_SECRET=<from Google Cloud console>
 # GOOGLE_KEK=<base64 of 32 random bytes, e.g. `openssl rand -base64 32`>
 
-# Browser error reporting (functions/api/client-error.ts): uncaught client errors become GitHub
-# issues in this repo, one per fingerprint. Fine-grained PAT scoped to that one repo, Issues:
+# Error reporting (functions/api/client-error.ts and functions/api/_middleware.ts): uncaught browser
+# errors and uncaught Function errors both become GitHub issues in this repo, one per fingerprint. Fine-grained PAT scoped to that one repo, Issues:
 # read/write only. Unset → reports go to `wrangler pages deployment tail` only.
 # CLIENT_ERROR_GITHUB_TOKEN=github_pat_...
 # CLIENT_ERROR_GITHUB_REPO=owner/name

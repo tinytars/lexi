@@ -16,6 +16,7 @@
     "dag:push": "tsx scripts/export-finding-dag-vault.ts",
     "dag:pull": "tsx scripts/import-finding-dag-vault.ts",
     "neuro-pil:lint": "tsx scripts/neuro-pil-lint.ts",
+    "gen:routes": "tsx scripts/gen-route-patterns.ts",
     "check": "svelte-check --tsconfig ./tsconfig.app.json --threshold error && tsc -p tsconfig.node.json",
     "wrangler": "bash scripts/wrangler.sh",
     "d1:migrate:remote": "bash scripts/d1-migrate.sh --remote",
@@ -60,7 +61,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.126.0",
-    "@pablotech/akesi": "^0.1.53",
+    "@pablotech/akesi": "^0.1.54",
     "@pablotech/neuro": "^0.1.43",
     "@simplewebauthn/browser": "^14.0.0",
     "@simplewebauthn/server": "^14.0.2",
