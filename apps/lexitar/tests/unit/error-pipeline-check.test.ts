@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { missingPagesSecrets, tokenExpiry, pipelineBlockers, canaryFingerprint } from "../../scripts/error-pipeline-check";
+import { canaryOrigin, missingPagesSecrets, tokenExpiry, pipelineBlockers, canaryFingerprint } from "../../scripts/error-pipeline-check";
 
 const HOUR = 3_600_000;
 const now = Date.parse("2026-09-20T12:00:00Z");
@@ -13,6 +13,18 @@ const healthy = {
   tokenReaches: true,
   tokenDaysLeft: null as number | null,
 };
+
+describe("canaryOrigin", () => {
+  // health-dash-dev is served at health-dash-aex.pages.dev. A canary addressed by project name
+  // would POST into a void and read as a dead sink forever — the exact false alarm this guards.
+  it("uses the subdomain Cloudflare serves, not the project name", () => {
+    expect(canaryOrigin({ subdomain: "health-dash-aex.pages.dev" })).toBe("https://health-dash-aex.pages.dev");
+  });
+
+  it("refuses to guess when the project reports no subdomain", () => {
+    expect(() => canaryOrigin({})).toThrow(/subdomain/);
+  });
+});
 
 describe("missingPagesSecrets", () => {
   it("passes a project that carries both secrets on the environment serving its branch", () => {

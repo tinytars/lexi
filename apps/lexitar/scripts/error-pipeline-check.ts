@@ -15,10 +15,21 @@ const CANARY_TIMEOUT_MS = 90_000;
 const GITHUB = "https://api.github.com";
 
 export interface PagesProject {
+  subdomain?: string;
   deployment_configs?: {
     production?: { env_vars?: Record<string, unknown> | null };
     preview?: { env_vars?: Record<string, unknown> | null };
   };
+}
+
+/**
+ * Where Cloudflare actually serves a project, which is NOT derivable from its name: health-dash-dev
+ * is served at health-dash-aex.pages.dev. Guessing it makes the canary POST into a void and read as
+ * a dead sink forever.
+ */
+export function canaryOrigin(project: PagesProject): string {
+  if (!project.subdomain) throw new Error("Pages project reports no subdomain; cannot address the canary");
+  return `https://${project.subdomain}`;
 }
 
 /**
@@ -77,7 +88,7 @@ export function pipelineBlockers({ now, canaryAt, maxCanaryAgeH, missingSecrets,
 export const canaryFingerprint = (): Promise<string> => fingerprintOf("Error", scrubMessage(CANARY_MESSAGE));
 
 if (isMain(import.meta.url)) {
-  const [deployment, factory] = process.argv.slice(2);
+  const [devProject, factory] = process.argv.slice(2);
   const token = process.env.CLIENT_ERROR_GITHUB_TOKEN!;
   const gh = { authorization: `Bearer ${token}`, accept: "application/vnd.github+json", "user-agent": "lexitar-error-pipeline" };
 
@@ -90,13 +101,13 @@ if (isMain(import.meta.url)) {
     return ((await res.json()) as { result: PagesProject }).result;
   };
 
-  const missingSecrets = (
-    await Promise.all(
-      ["health-dash-dev", "health-dash-main"].map(async (name) =>
-        missingPagesSecrets(await project(name), ["CLIENT_ERROR_GITHUB_TOKEN", "CLIENT_ERROR_GITHUB_REPO"]).map((m) => `${name}/${m}`),
-      ),
-    )
-  ).flat();
+  const projects = await Promise.all(
+    [devProject, "health-dash-main"].map(async (name) => ({ name, project: await project(name) })),
+  );
+  const missingSecrets = projects.flatMap(({ name, project }) =>
+    missingPagesSecrets(project, ["CLIENT_ERROR_GITHUB_TOKEN", "CLIENT_ERROR_GITHUB_REPO"]).map((m) => `${name}/${m}`),
+  );
+  const deployment = canaryOrigin(projects[0].project);
 
   const reach = await fetch(`${GITHUB}/repos/${factory}`, { headers: gh });
   const { daysLeft } = tokenExpiry(reach.headers);

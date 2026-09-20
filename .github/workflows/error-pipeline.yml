@@ -32,7 +32,7 @@ jobs:
           node-version: 22
       - run: npm ci
         working-directory: .
-      - run: npx tsx scripts/error-pipeline-check.ts https://health-dash-dev.pages.dev pablo-tech/plover-factory
+      - run: npx tsx scripts/error-pipeline-check.ts health-dash-dev pablo-tech/plover-factory
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
