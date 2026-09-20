@@ -23,6 +23,7 @@
   import Field from "@tinytars/frame/Field.svelte";
   import SaveStatus from "@tinytars/frame/SaveStatus.svelte";
   import { compressImage } from "./image-compress";
+  import { ABILITY_UNAVAILABLE, supports } from "./model-ability";
   import { inferTreatmentRecord } from "./treatment-infer-client";
   import { mergeInferredFields } from "./treatment-infer-merge";
   import { wasSavedThisSession } from "./treatment-session-guard";
@@ -128,7 +129,11 @@
   let frequencySelect = $state<HTMLSelectElement | undefined>();
   // "manual" is gone — a brand-new treatment's only entry point is a capture (see captureRequired
   // below); this toggle now only ever chooses which capture method.
-  let addMode = $state<"photos" | "text">("photos");
+  // Identify-from-photos needs a model that can see; text-from-label needs no vision at all. On a
+  // deployment configured without vision the photo capture is not offered, rather than offered and
+  // then refused by the relay after the photos are picked and compressed.
+  const photoIdentify = supports("treatmentImage", "photos");
+  let addMode = $state<"photos" | "text">(photoIdentify ? "photos" : "text");
   let pendingText = $state("");
   // usedForIdentify marks which of these produced the currently-recorded extraction, so
   // saveNewTreatment can stamp the resulting Attachment keys onto rawCaptureAttachmentKeys — a
@@ -338,7 +343,7 @@
     newTreatment = { id: crypto.randomUUID(), name: "", kind: "drug", start: "" };
     editingIndex = null;
     addOpen = true;
-    addMode = "photos";
+    addMode = photoIdentify ? "photos" : "text";
     revokePendingImages();
     pendingText = "";
     identifying = false;
@@ -916,9 +921,12 @@
              captureRequired) — there is no other way in. A medicine-scope re-extraction on an
              EXISTING drug still offers both capture methods alongside the fields below. -->
         <div class="add-mode-toggle">
-          <Button class={addMode === "photos" ? "mode active" : "mode"} onclick={() => (addMode = "photos")}>From photos</Button>
+          {#if photoIdentify}
+            <Button class={addMode === "photos" ? "mode active" : "mode"} onclick={() => (addMode = "photos")}>From photos</Button>
+          {/if}
           <Button class={addMode === "text" ? "mode active" : "mode"} onclick={() => (addMode = "text")}>From text</Button>
         </div>
+        {#if !photoIdentify}<p class="ct-empty">{ABILITY_UNAVAILABLE.photos}</p>{/if}
         {#if addMode === "photos"}
           <div class="photo-intake">
             {#if !clientId}

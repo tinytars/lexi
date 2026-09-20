@@ -10,6 +10,7 @@ import { openPdf } from "@tinytars/frame/pdf-render";
 import { MAX_DOCUMENT_PAGES } from "@pablotech/akesi/document-read";
 import { extractDocument, extractedMetadata, isExtractableDocument, isPdfAttachment } from "./document-extract-client";
 import { normalizeClientId } from "./client-id";
+import { ABILITY_UNAVAILABLE, supports } from "./model-ability";
 import type { Attachment } from "./types";
 
 // W46 Phase 4 — client-side guards that /api/raw itself doesn't enforce (it only caps at 24 MB
@@ -135,6 +136,11 @@ export async function attachFiles(
  */
 async function withExtraction(clientId: string, attachment: Attachment): Promise<Attachment> {
   if (!isExtractableDocument(attachment)) return attachment;
+  // A deployment whose document model can take neither PDFs nor images will refuse this with 422;
+  // record that once, here, rather than paying an upload-and-refuse round trip per attachment.
+  if (!supports("document", "documents")) {
+    return { ...attachment, extracted: { at: new Date().toISOString(), chars: 0, error: ABILITY_UNAVAILABLE.documents } };
+  }
   try {
     return { ...attachment, extracted: extractedMetadata(await extractDocument(clientId, attachment)) };
   } catch (err) {
