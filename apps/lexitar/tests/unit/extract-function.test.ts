@@ -68,6 +68,14 @@ describe("/api/extract guard + validation", () => {
     expect(create).not.toHaveBeenCalled();
   });
 
+  it("400s on pageImages that are not images, rather than relaying them", async () => {
+    const body = JSON.stringify({ sourceFile: "x.pdf", patient: PATIENT, pageImages: [{ base64: "AAA", mediaType: "application/pdf" }] });
+    const res = await call({ auth: "valid", body });
+    expect(res.status).toBe(400);
+    expect((await res.json()).errorCode).toBe("no_pdf");
+    expect(create).not.toHaveBeenCalled();
+  });
+
   it("400s when patient (dob/gender) is missing/invalid", async () => {
     const res = await call({ auth: "valid", body: JSON.stringify({ pdfBase64: "JVBERi0x", patient: { dob: "1980-01-01" } }) });
     expect(res.status).toBe(400);
@@ -95,6 +103,16 @@ describe("/api/extract happy path", () => {
     const doc = userContent.find((b: { type: string }) => b.type === "document");
     expect(doc.source).toMatchObject({ type: "base64", media_type: "application/pdf", data: "JVBERi0x" });
     expect(args.output_config.format.type).toBe("json_schema");
+  });
+
+  it("takes rendered pages instead, for a model that can see but cannot take a PDF", async () => {
+    const pageImages = [{ base64: "AAA", mediaType: "image/jpeg" }, { base64: "BBB", mediaType: "image/jpeg" }];
+    const res = await call({ auth: "valid", body: JSON.stringify({ sourceFile: "coronary.pdf", pageImages, patient: PATIENT }) });
+    expect(res.status).toBe(200);
+
+    const content = create.mock.calls[0][0].messages[0].content;
+    expect(content.filter((b: { type: string }) => b.type === "image").map((b: { source: { data: string } }) => b.source.data)).toEqual(["AAA", "BBB"]);
+    expect(content.some((b: { type: string }) => b.type === "document")).toBe(false);
   });
 });
 

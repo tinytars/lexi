@@ -22,6 +22,7 @@
   import { documentTextsFor } from "./document-extract-client";
   import { documentsPromptBlock } from "@pablotech/akesi/document-read";
   import { DEFAULT_ATTACH_ACCEPT } from "@tinytars/frame/attach-controller";
+  import { ABILITY_UNAVAILABLE, supports } from "./model-ability";
   import DictateButton from "@tinytars/frame/DictateButton.svelte";
   import AttachmentStrip from "@tinytars/frame/AttachmentStrip.svelte";
   import { PRODUCT_NAME } from "./brand";
@@ -84,6 +85,7 @@
   // outgoing user turn.
   let pendingAttachments = $state<Attachment[]>([]);
   let attachError = $state<string | null>(null);
+  const chatPhotos = supports("chat", "photos");
   // Switching threads (new/select/delete, all driven from the sidebar now) clears any stale error
   // banner from the previously-open thread.
   $effect(() => { void activeId; error = null; });
@@ -302,8 +304,14 @@
   // turn on send). A document is read during attachFiles, so this await can take a few seconds.
   async function stageAttachments(files: File[]) {
     if (!clientId || files.length === 0) return;
+    // A photo is re-sent as bytes on every round, so a chat model without vision cannot carry one at
+    // all — say so at the composer instead of letting the send fail. Documents are unaffected: they
+    // ride as text that was read at attach time.
+    const staged = chatPhotos ? files : files.filter((f) => !f.type.startsWith("image/"));
+    if (staged.length < files.length) attachError = ABILITY_UNAVAILABLE.photos;
+    if (staged.length === 0) return;
     try {
-      const added = await attachFiles(clientId, files, { maxCount: MAX_ATTACHMENTS });
+      const added = await attachFiles(clientId, staged, { maxCount: MAX_ATTACHMENTS });
       pendingAttachments = appendAttachments(pendingAttachments, added);
     } catch (err) {
       attachError = err instanceof Error ? err.message : "Attaching failed — try again.";

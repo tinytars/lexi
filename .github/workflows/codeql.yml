@@ -24,3 +24,12 @@ jobs:
       - uses: github/codeql-action/analyze@v4
         with:
           category: "/language:javascript-typescript"
+
+  notify-failure:
+    needs: [analyze]
+    if: always() && github.event_name != 'pull_request' && contains(needs.*.result, 'failure')
+    uses: ./.github/workflows/notify-failure.yml
+    secrets: inherit
+    with:
+      title: CodeQL analysis failed
+      context: The scheduled security scan did not complete, so no findings are being produced for this repository.

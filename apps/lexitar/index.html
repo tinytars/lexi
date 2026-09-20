@@ -28,7 +28,7 @@
         fetch("/api/client-error", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ name: "StaleBuildError", message: "Failed to load " + src, stack: "", build: "" }),
+          body: JSON.stringify({ name: "StaleBuildError", message: "Failed to load " + src, stack: "", build: "", source: "boot-asset" }),
           keepalive: true,
         }).catch(function () {});
         window.reloadForCurrentBuild();

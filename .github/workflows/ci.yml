@@ -38,6 +38,13 @@ jobs:
       - run: npm run check
       - run: npm run lint
       - run: npm run build
+      # functions/api/_middleware.ts must never migrate to functions/_middleware.ts: Pages would then
+      # generate include:["/*"] and bill a Worker invocation for every chunk, font and favicon.
+      - name: Pages routing stays scoped to /api/*
+        run: |
+          T=$(mktemp -d)
+          npx wrangler pages functions build --outdir "$T/out" --output-routes-path "$T/routes.json"
+          jq -e '.include == ["/api/*"]' "$T/routes.json"
       - run: npm run coverage
       # The same unit suite with the Node host's adapters (SQLite + filesystem blobs) standing in for
       # Miniflare's D1/R2 — see tests/support/miniflare.ts.
@@ -183,3 +190,35 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "frame-v${{ steps.bump.outputs.version }}" --generate-notes
+
+  # Pages deploys through the git integration, not through CI, so a failed build is invisible here:
+  # the branch quietly keeps serving the previous bundle while this workflow stays green and the
+  # promotion gate reads that green as "dev is deployed".
+  pages-deploy:
+    needs: [lexitar]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npx tsx apps/lexitar/scripts/pages-deploy-status.ts "$PROJECT" "$GITHUB_SHA"
+        env:
+          PROJECT: ${{ github.ref == 'refs/heads/main' && 'health-dash-main' || 'health-dash-dev' }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+  # Only on push: a red PR run is already in front of the person who caused it, but a red dev or
+  # main run is unattended.
+  notify-failure:
+    needs: [test, lexitar, lexitar-data, lexitar-image, autopilot-guard, release, pages-deploy]
+    if: always() && github.event_name == 'push' && contains(needs.*.result, 'failure')
+    uses: ./.github/workflows/notify-failure.yml
+    secrets: inherit
+    with:
+      title: CI failed on a branch that deploys
+      context: A push to dev or main broke CI. Until it is green the promotion gate will not promote, and the branch may be serving a bundle nobody verified.

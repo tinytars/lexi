@@ -19,6 +19,7 @@ import { modelId } from "./model-config";
 import { parseRawFile } from "./parse-raw";
 import { normalizeClientId } from "./client-id";
 import { lazyImport } from "./lazy-import";
+import { AiError, describeAiError } from "./ai-error";
 
 // The minimized patient the report prompt needs — dob/gender + existing diagnosis
 // names for naming consistency. NOT the whole vault (the server only ever sees this).
@@ -198,7 +199,11 @@ export async function classifyUpload(client: Client, clientId: string, file: Fil
       }
     }
   } catch (e) {
-    return { status: "error", message: (e as Error).message || "Could not read this file." };
+    // An extraction refused for a known reason (a model that can't read documents, an exhausted
+    // account) gets the one sentence that failure mode already has; anything else here is a file
+    // problem, not a model one, and keeps its own message.
+    const message = e instanceof AiError ? describeAiError(e) : (e as Error).message;
+    return { status: "error", message: message || "Could not read this file." };
   }
 }
 

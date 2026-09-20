@@ -5,11 +5,13 @@
 // directly for <img src>/download links.
 import { hashSourceWeb } from "@pablotech/akesi/ingest-core";
 import { compressImage } from "./image-compress";
-import { bytesToBase64 } from "./extract-client";
-import { openPdf } from "@tinytars/frame/pdf-render";
+import { bytesToBase64 } from "./base64";
+import { openPdf, type PdfDoc } from "@tinytars/frame/pdf-render";
 import { MAX_DOCUMENT_PAGES } from "@pablotech/akesi/document-read";
 import { extractDocument, extractedMetadata, isExtractableDocument, isPdfAttachment } from "./document-extract-client";
 import { normalizeClientId } from "./client-id";
+import { ABILITY_UNAVAILABLE, supports } from "./model-ability";
+import { needsPageImages, renderOpenPdfPages } from "./pdf-pages-for-model";
 import type { Attachment } from "./types";
 
 // W46 Phase 4 — client-side guards that /api/raw itself doesn't enforce (it only caps at 24 MB
@@ -98,26 +100,27 @@ export async function attachFiles(
     // Page cap BEFORE the upload, not after: without it a 200-page PDF is sent whole to the model,
     // billed in full as input, and only then fails on the OUTPUT ceiling — you pay for everything
     // and get nothing back. openPdf is already in the browser bundle for the in-app viewer, so the
-    // count is free. A PDF pdfjs cannot open at all is let through — the reader may still manage it.
+    // count is free, and the SAME open is what renders the pages below when the model needs them.
+    // A PDF pdfjs cannot open at all is let through — the reader may still manage it.
+    let pdf: PdfDoc | null = null;
     if (mediaType === "application/pdf" || /\.pdf$/i.test(file.name)) {
-      let pages: number | null = null;
       try {
         // bytes.slice(), NOT bytes: pdf.js TRANSFERS the array it is handed to its worker, which
         // detaches the underlying ArrayBuffer and leaves the caller's view zero-length. Passing the
         // original meant the PUT below then uploaded an empty body, and /api/raw rejected it —
         // "storing the attachment failed (400)" on every PDF, with nothing pointing at the page
         // count as the cause. slice() copies, so the bytes we upload are untouched.
-        pages = (await openPdf(bytes.slice())).numPages;
+        pdf = await openPdf(bytes.slice());
       } catch {
-        pages = null;
+        // Left null — see above.
       }
-      if (pages !== null && pages > MAX_DOCUMENT_PAGES) {
-        throw new Error(`"${file.name}" is ${pages} pages — split it and attach up to ${MAX_DOCUMENT_PAGES} pages at a time`);
+      if (pdf !== null && pdf.numPages > MAX_DOCUMENT_PAGES) {
+        throw new Error(`"${file.name}" is ${pdf.numPages} pages — split it and attach up to ${MAX_DOCUMENT_PAGES} pages at a time`);
       }
     }
     await uploadAttachment(clientId, bytes, key);
     const attachment: Attachment = { key, name: file.name, mediaType, bytes: bytes.length, addedAt: new Date().toISOString() };
-    out.push(opts?.extractDocuments === false ? attachment : await withExtraction(clientId, attachment));
+    out.push(opts?.extractDocuments === false ? attachment : await withExtraction(clientId, attachment, pdf));
   }
   return out;
 }
@@ -133,10 +136,18 @@ export async function attachFiles(
  * not to read it. `extracted.error` is what lets the UI say "couldn't read this" instead of leaving
  * a document that silently contributes nothing.
  */
-async function withExtraction(clientId: string, attachment: Attachment): Promise<Attachment> {
+async function withExtraction(clientId: string, attachment: Attachment, pdf: PdfDoc | null): Promise<Attachment> {
   if (!isExtractableDocument(attachment)) return attachment;
+  // A deployment whose document model can take neither PDFs nor images will refuse this with 422;
+  // record that once, here, rather than paying an upload-and-refuse round trip per attachment.
+  if (!supports("document", "documents")) {
+    return { ...attachment, extracted: { at: new Date().toISOString(), chars: 0, error: ABILITY_UNAVAILABLE.documents } };
+  }
   try {
-    return { ...attachment, extracted: extractedMetadata(await extractDocument(clientId, attachment)) };
+    // A model that sees but cannot take a PDF is sent the pages instead — rendered here, from the
+    // open document above, because the relay's runtime has no pdfjs.
+    const pageImages = pdf && needsPageImages("document") ? await renderOpenPdfPages(pdf) : undefined;
+    return { ...attachment, extracted: extractedMetadata(await extractDocument(clientId, attachment, pageImages)) };
   } catch (err) {
     const message = err instanceof Error ? err.message : "could not be read";
     return { ...attachment, extracted: { at: new Date().toISOString(), chars: 0, error: message } };

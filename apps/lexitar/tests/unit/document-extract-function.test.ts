@@ -147,6 +147,24 @@ describe("/api/document-extract reading", () => {
     expect(content[0].source.media_type).toBe("application/pdf");
   });
 
+  it("relays the caller's rendered pages instead of the blob, for a model that can see but not take a PDF", async () => {
+    const env = makeEnv({ "test/raw/alex/ab12cd34-report.pdf": new Uint8Array([0x25, 0x50, 0x44, 0x46]) });
+    const pageImages = [{ base64: "AAA", mediaType: "image/jpeg" }, { base64: "BBB", mediaType: "image/jpeg" }];
+    const res = await call(env, { auth: "valid", body: { id: "alex", key: "ab12cd34-report.pdf", mediaType: "application/pdf", pageImages } });
+    expect(res.status).toBe(200);
+    const content = create.mock.calls[0][0].messages[0].content;
+    expect(content.filter((b: { type: string }) => b.type === "image").map((b: { source: { data: string } }) => b.source.data)).toEqual(["AAA", "BBB"]);
+    expect(content.some((b: { type: string }) => b.type === "document")).toBe(false);
+  });
+
+  it("413s an oversized body that carries no pages — only rendered pages buy the larger ceiling", async () => {
+    const env = makeEnv({ "test/raw/alex/ab12cd34-report.pdf": new Uint8Array([0x25]) });
+    const res = await call(env, { auth: "valid", body: { id: "alex", key: "ab12cd34-report.pdf", note: "x".repeat(8 * 1024) } });
+    expect(res.status).toBe(413);
+    expect((await res.json()).errorCode).toBe("too_large");
+    expect(create).not.toHaveBeenCalled();
+  });
+
   it("serves a second request for the same content key from the sidecar, with NO model call", async () => {
     const env = makeEnv({ "test/raw/alex/ab12cd34-report.pdf": new Uint8Array([0x25, 0x50, 0x44, 0x46]) });
     await call(env, { auth: "valid" });

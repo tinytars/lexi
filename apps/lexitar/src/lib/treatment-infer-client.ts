@@ -7,7 +7,7 @@
 // describeAiError that turns those into the sentence a person reads. This path used to build its own
 // TreatmentImageError and then have the caller drop it and read `.message`, so credit exhaustion
 // here looked nothing like credit exhaustion anywhere else.
-import { bytesToBase64 } from "./extract-client";
+import { bytesToBase64 } from "./base64";
 import { AiError, withDeadline } from "./ai-error";
 import { LEAF_REGEN_DEADLINE_MS } from "./leaf-regen-config";
 import type { ProposedTreatment } from "@pablotech/akesi/treatment-infer";

@@ -150,3 +150,13 @@ export function modelId(feature: Feature, mode: InferenceMode = "prod", config: 
 export function providerFor(feature: Feature, config: InferenceConfig = INFERENCE): Provider {
   return config.providers[config.features[feature].provider];
 }
+
+// Anthropic's models take everything this app sends, so an anthropic provider declares no caps and
+// gets these. Only an OpenAI-compatible endpoint — where the deployer picks the model — has to say.
+const ANTHROPIC_CAPS: Caps = { vision: true, pdf: true, jsonSchema: true, tools: true };
+
+/** What the model behind a feature can take. The server refuses past this; the browser stops asking. */
+export function capsFor(feature: Feature, config: InferenceConfig = INFERENCE): Caps {
+  const p = providerFor(feature, config);
+  return p.api === "openai" ? p.caps : ANTHROPIC_CAPS;
+}

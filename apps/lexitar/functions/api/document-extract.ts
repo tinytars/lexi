@@ -7,6 +7,7 @@ import { modelFor } from "../_lib/inference/resolve";
 import { storeKey } from "../_lib/store";
 import { rawAccessFor, mayRead, type RawAccess } from "../_lib/raw-owner";
 import { readDocument, DOCUMENT_READ_FAILURE, type DocumentReading, type StoredExtraction } from "@pablotech/akesi/document-read";
+import { validatePageImages } from "../_lib/page-images";
 import type { ObjectBucket } from "../_lib/object-bucket";
 
 // Read one ALREADY-UPLOADED attachment as text, and cache the result forever.
@@ -31,7 +32,12 @@ interface Env {
 }
 
 const ROUTE = "/api/document-extract";
-const MAX_BODY_BYTES = 8 * 1024;
+// The request normally carries {id, key} and nothing else — a few hundred bytes, because the bytes
+// are already in R2. It carries the pages rendered as images as well when the configured document
+// model can see but cannot take a PDF (src/lib/pdf-pages-for-model.ts), which is the only reason
+// this ceiling is not still 8 KB. A request WITHOUT them is still held to the old one.
+const MAX_BODY_BYTES = 24 * 1024 * 1024;
+const MAX_METADATA_BODY_BYTES = 8 * 1024;
 // Mirrors /api/extract's ceiling: a base64 PDF inflates ~33%, so ~18 MB of PDF is the most Claude
 // will take as a document block.
 const MAX_DOCUMENT_BYTES = 18 * 1024 * 1024;
@@ -73,11 +79,15 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
   if (rawBody.length > MAX_BODY_BYTES) {
     return finish(413, { error: "request too large", errorCode: "too_large" }, { errorCode: "too_large" });
   }
-  let body: { id?: unknown; key?: unknown; mediaType?: unknown };
+  let body: { id?: unknown; key?: unknown; mediaType?: unknown; pageImages?: unknown };
   try {
     body = JSON.parse(rawBody);
   } catch {
     return finish(400, { error: "malformed JSON body", errorCode: "bad_json" }, { errorCode: "bad_json" });
+  }
+  const pageImages = validatePageImages(body.pageImages);
+  if (!pageImages && rawBody.length > MAX_METADATA_BODY_BYTES) {
+    return finish(413, { error: "request too large", errorCode: "too_large" }, { errorCode: "too_large" });
   }
 
   const id = typeof body.id === "string" ? body.id.trim().toLowerCase() : "";
@@ -136,7 +146,15 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
       }
       const resolved = modelFor(env, "document");
       model = resolved.model;
-      reading = await readDocument(resolved.client, { pdfBase64: bytesToBase64(bytes) }, key, model);
+      if (pageImages) {
+        // The pages come from the caller, not from the blob just fetched — only the browser has
+        // pdfjs. That is safe here and nowhere else: the access check above already proved this is
+        // the caller's own namespace, so the worst they can do is cache a reading of their own
+        // pages under their own key.
+        reading = await readDocument(resolved.client, { pageImages }, key, model);
+      } else {
+        reading = await readDocument(resolved.client, { pdfBase64: bytesToBase64(bytes) }, key, model);
+      }
     }
   } catch (err) {
     const message = (err as Error).message ?? "";
