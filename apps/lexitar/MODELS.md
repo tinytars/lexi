@@ -101,6 +101,9 @@ Being precise about this, because "it works" is the claim that rots:
 | the model on the other end answers *well* | `MEASUREMENT.md`'s run | no — it needs a model |
 | a stack works end to end against a live server | `npm run test:live` — one real call per feature per stack | no, by design |
 
+It has been run: on 2026-09-20 the open stack served all four measured features against a live
+Ollama server in 257 s, and the suite fails as it should when a feature's model does not exist.
+
 `npm run test:live` runs every example stack; name one with
 `BENCH_LIVE_CONFIG=inference.examples/open-local.json npm run test:live`. It is excluded from
 `npm run test` rather than skipped inside it, so it can never go green without its inputs.

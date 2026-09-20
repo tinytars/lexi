@@ -46,6 +46,8 @@ describe.each(CONFIGS)("%s", (path) => {
       expect(caps.pdf || caps.vision, `${feature} was skipped but its provider declares a document capability`).toBe(false);
     }
     expect(probes.length + skipped.length).toBe(FEATURES.length);
+    // Without this the loop below is vacuous: a config that skipped everything would pass.
+    expect(probes.length, "every feature was skipped — this stack was never actually called").toBeGreaterThan(0);
 
     for (const probe of probes) {
       const { client, model } = modelFor(process.env, probe.feature as Feature, "prod", config);
