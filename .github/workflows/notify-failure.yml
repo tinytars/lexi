@@ -1,0 +1,55 @@
+name: Notify failure
+
+# One implementation of "a workflow failed, tell someone", called by every workflow that runs
+# unattended. Issues go to the private pablo-tech/plover-factory inbox, not this public tracker,
+# so failures stay with the rest of the error pipeline.
+#
+# `ci-failure` is not `client-error`: plover-factory's fix.yml only picks up the latter, so nothing
+# here hands a red build to the autopilot. A CI failure's cause is the commit that turned it red,
+# which a human reads from the diff.
+
+on:
+  workflow_call:
+    inputs:
+      title:
+        description: Issue title; a recurrence comments on the open issue with this exact title.
+        required: true
+        type: string
+      context:
+        description: One line naming what failed, shown under the run link.
+        required: false
+        type: string
+        default: ""
+
+jobs:
+  file:
+    runs-on: ubuntu-latest
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.AUTOPILOT_APP_ID }}
+          private-key: ${{ secrets.AUTOPILOT_APP_KEY }}
+          owner: pablo-tech
+          repositories: plover-factory
+      # Inputs reach the shell as env, never as ${{ }} inside the script: a title is free text.
+      - env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          TITLE: ${{ inputs.title }}
+          CONTEXT: ${{ inputs.context }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          repo=pablo-tech/plover-factory
+          body=$(printf 'Failed run: %s\n\n%s\n\nEvent: %s, ref: %s, sha: %s' \
+            "$RUN_URL" "$CONTEXT" "$EVENT" "$REF" "$SHA")
+          existing=$(gh issue list -R "$repo" --state open --label ci-failure --limit 100 \
+            --json number,title --jq 'first(.[] | select(.title == env.TITLE) | .number) // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" -R "$repo" --body "$body"
+          else
+            gh issue create -R "$repo" --title "$TITLE" --body "$body" --label ci-failure --assignee pablo-tech
+          fi
