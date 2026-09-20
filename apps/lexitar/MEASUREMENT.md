@@ -118,7 +118,11 @@ thing that runs.
 - **Outcome.** Validated / n per feature × model, with the first-attempt rate and mean attempts
   beside it. Higher pass rate is better; lower mean attempts is better.
 - **Regimes.** One run per config file. Claude as the baseline; open-weight candidates on a local
-  OpenAI-compatible server on one 24 GB GPU.
+  OpenAI-compatible server (Ollama) on the hardware this repo's maintainer actually has — an NVIDIA
+  **A10-4Q vGPU slice, 3.8 GiB of VRAM**. That ceiling picks the candidates: 4B-class quantised
+  weights fit, and the 12B–20B models fit only by spilling into system RAM. A result here is a
+  result *for models that fit 4 GiB*, and says nothing about the same architectures at larger sizes;
+  those are listed as not measured rather than guessed at.
 - **What each outcome will mean.** A model at or near the baseline on a feature is a usable
   alternative *for that feature* and is named in `MODELS.md`. A model that validates but needs more
   attempts is usable and slower, and is named as such. A model that fails is not recommended for
@@ -142,6 +146,7 @@ Named, because absence of a number is reported as absence and never as a pass.
 | `chat`, `persona`, `leafRegen` | conversational output with no structural validator to act as an oracle. Scoring them needs a rubric, and a rubric graded by a model is not evidence. |
 | `treatmentImage` | no synthetic photograph of a product exists, and a rendered document is not one. Measuring the image path on a page image would report a number for something nobody does. |
 | `markerGroups` | grouping runs a convergence loop rather than a single validated call; it needs its own probe. |
+| Open-weight models larger than ~4 GiB quantised | they do not fit the VRAM named in the pre-registration. A 12B or 20B model is plausibly better than the 4B one measured here, and this page has no evidence either way. |
 | Scanned-PDF OCR | beyond what a vision model does natively. No scanned fixture, so no claim. |
 | Cost per feature in currency | the runner reports calls and latency, not billing. Read the provider's own billing page. |
 | Anything a run skipped for a declared missing capability | the row says skipped, and skipped is not zero. |
