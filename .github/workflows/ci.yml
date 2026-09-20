@@ -193,12 +193,11 @@ jobs:
 
   # Pages deploys through the git integration, not through CI, so a failed build is invisible here:
   # the branch quietly keeps serving the previous bundle while this workflow stays green and the
-  # promotion gate reads that green as "dev is deployed". Soaking non-blocking first.
+  # promotion gate reads that green as "dev is deployed".
   pages-deploy:
     needs: [lexitar]
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v7
         with:
@@ -216,7 +215,7 @@ jobs:
   # Only on push: a red PR run is already in front of the person who caused it, but a red dev or
   # main run is unattended.
   notify-failure:
-    needs: [test, lexitar, lexitar-data, lexitar-image, autopilot-guard, release]
+    needs: [test, lexitar, lexitar-data, lexitar-image, autopilot-guard, release, pages-deploy]
     if: always() && github.event_name == 'push' && contains(needs.*.result, 'failure')
     uses: ./.github/workflows/notify-failure.yml
     secrets: inherit
