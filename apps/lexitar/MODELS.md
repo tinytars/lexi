@@ -46,7 +46,9 @@ the vision model are different models behind the same `baseUrl`: `local-text` de
 routed to the second one.
 
 The config is the right shape. **Whether it delivers depends entirely on the GPU**, and the
-hardware it was measured on was too small — see the honest verdict below.
+hardware it was measured on was too small — see the honest verdict below. The vision model it names
+is the one that read the fixture correctly, not the one that was fastest; on a card too small to
+hold it, it will not load at all, which is the failure you want rather than the other one.
 
 ## What each stack serves
 

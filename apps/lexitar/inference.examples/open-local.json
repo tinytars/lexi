@@ -21,9 +21,9 @@
   "features": {
     "chat": { "provider": "local-text", "model": "qwen3:4b-instruct-2507-q4_K_M" },
     "persona": { "provider": "local-text", "model": "qwen3:4b-instruct-2507-q4_K_M" },
-    "extract": { "provider": "local-vision", "model": "granite3.2-vision:2b" },
-    "document": { "provider": "local-vision", "model": "granite3.2-vision:2b" },
-    "treatmentImage": { "provider": "local-vision", "model": "granite3.2-vision:2b" },
+    "extract": { "provider": "local-vision", "model": "qwen2.5vl:3b" },
+    "document": { "provider": "local-vision", "model": "qwen2.5vl:3b" },
+    "treatmentImage": { "provider": "local-vision", "model": "qwen2.5vl:3b" },
     "treatmentText": { "provider": "local-text", "model": "qwen3:4b-instruct-2507-q4_K_M" },
     "finding": { "provider": "local-text", "model": "qwen3:4b-instruct-2507-q4_K_M" },
     "ranges": { "provider": "local-text", "model": "qwen3:4b-instruct-2507-q4_K_M" },
