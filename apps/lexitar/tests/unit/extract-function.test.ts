@@ -12,6 +12,7 @@ vi.mock("@anthropic-ai/sdk", () => ({
 import { onRequestPost } from "../../functions/api/extract";
 import { signSession } from "../../functions/_lib/session";
 import { fakeSessionDb } from "../support/session-db";
+import { resetServerErrorDedupe } from "../../functions/_lib/server-error";
 
 const ENV = { SESSION_SECRET: "test-secret",
     DB: fakeSessionDb(), ANTHROPIC_API_KEY: "k" };
@@ -26,7 +27,9 @@ const VALID_REPORT = {
 
 const PATIENT = { dob: "1980-01-01", gender: "male", factors: { diseases: [] } };
 
-async function call(opts: { auth?: "valid" | "bogus"; body?: string } = {}) {
+const background: Promise<unknown>[] = [];
+
+async function call(opts: { auth?: "valid" | "bogus"; body?: string; env?: typeof ENV } = {}) {
   const headers: Record<string, string> = { "content-type": "application/json" };
   if (opts.auth === "valid") headers.cookie = `hd_session=${await signSession(ENV, "acct-1")}`;
   else if (opts.auth === "bogus") headers.cookie = "hd_session=bogus";
@@ -36,11 +39,17 @@ async function call(opts: { auth?: "valid" | "bogus"; body?: string } = {}) {
       headers,
       body: opts.body ?? JSON.stringify({ sourceFile: "coronary.pdf", pdfBase64: "JVBERi0x", patient: PATIENT }),
     }),
-    env: ENV,
+    env: opts.env ?? ENV,
+    waitUntil: (p) => void background.push(p),
   });
 }
 
-beforeEach(() => {
+// Draining first: a report filed with waitUntil outlives the test that triggered it, and its
+// fingerprint would otherwise land in the dedupe set after the next test cleared it.
+beforeEach(async () => {
+  await Promise.all(background);
+  background.length = 0;
+  resetServerErrorDedupe();
   create.mockReset();
   create.mockResolvedValue({
     content: [{ type: "text", text: JSON.stringify(VALID_REPORT) }],
@@ -126,6 +135,39 @@ describe("/api/extract error mapping", () => {
     const res = await call({ auth: "valid" });
     expect(res.status).toBe(422);
     expect((await res.json()).errorCode).toBe("invalid_extraction");
+  });
+
+  // An extraction the model got wrong is classified, so the middleware never sees it and the user
+  // only ever sees "could not extract this report" — it reaches us only if the route files it.
+  it("files an invalid extraction, reporting the code rather than the document it quotes", async () => {
+    const github = { ...ENV, CLIENT_ERROR_GITHUB_TOKEN: "ghp_test", CLIENT_ERROR_GITHUB_REPO: "promontory-studio/plover-factory" };
+    const issues: { title: string; body: string }[] = [];
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (String(url).includes("/issues?")) return Response.json([]);
+      issues.push(JSON.parse(String(init?.body)));
+      return new Response("{}", { status: 201 });
+    });
+    create.mockResolvedValue({
+      content: [{ type: "text", text: JSON.stringify({ ...VALID_REPORT, studyType: "" }) }],
+      stop_reason: "end_turn",
+      usage: { input_tokens: 1, output_tokens: 1 },
+    });
+
+    const res = await call({ auth: "valid", env: github as typeof ENV });
+    expect(res.status).toBe(422);
+    await Promise.all(background);
+    vi.unstubAllGlobals();
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0].title).toContain("Server error: /api/extract");
+    expect(issues[0].body).toContain("invalid_extraction");
+    expect(issues[0].body).not.toContain("coronary.pdf");
+  });
+
+  it("does not file a document the model correctly refused as not a report", async () => {
+    create.mockRejectedValue(new Error('report "holiday-photo.pdf" is not a medical report: it is a photograph'));
+    expect((await call({ auth: "valid" })).status).toBe(422);
+    expect(background).toEqual([]);
   });
 
   it("maps an insufficient-credit Anthropic error to 402", async () => {

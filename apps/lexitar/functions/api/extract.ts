@@ -5,6 +5,7 @@ import { modelErrorReply } from "../_lib/model-errors";
 import { modelFor } from "../_lib/inference/resolve";
 import { proposeFromReport, type ReportPatient, type ReportSource } from "@pablotech/akesi/report-extract";
 import { validatePageImages } from "../_lib/page-images";
+import { detailFor, reportServerError, type ServerErrorEnv } from "../_lib/server-error";
 
 // W15/1 — extract an uploaded clinical report server-side. The browser can't hold
 // the Anthropic key, so it sends the raw PDF (base64) + a MINIMIZED patient subset
@@ -13,7 +14,7 @@ import { validatePageImages } from "../_lib/page-images";
 // folds it into the decrypted vault client-side — the vault plaintext and keys never
 // transit; only the report itself does (a documented, bounded exposure). Runs on
 // ANTHROPIC_API_KEY, distinct from the Finding key so it can't drain that credit pool.
-interface Env {
+interface Env extends ServerErrorEnv {
   SESSION_SECRET: string;
   // W71 — requireSession reads accounts.sessions_valid_from, so every gated route needs the binding.
   DB: D1Database;
@@ -44,7 +45,11 @@ function validatePatient(raw: unknown): ReportPatient | null {
   return raw as ReportPatient;
 }
 
-export async function onRequestPost(context: { request: Request; env: Env }): Promise<Response> {
+export async function onRequestPost(context: {
+  request: Request;
+  env: Env;
+  waitUntil: (p: Promise<unknown>) => void;
+}): Promise<Response> {
   const { request, env } = context;
   const start = Date.now();
   const requestId = request.headers.get("cf-ray") ?? undefined;
@@ -101,6 +106,21 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
       return finish(422, { error: `This doesn't look like a medical report — ${reason}. Attach it to a note or a chat instead.`, errorCode: "not_a_report" }, { errorCode: "not_a_report" });
     }
     if (/^report "|^extraction truncated|^invalid JSON for|^no text block/.test(message)) {
+      // The middleware files only what a handler failed to classify, and this one is classified — but
+      // the classification is "our model answered with something that isn't a report", which is a
+      // defect on our side and reaches nobody unless it is filed. The user sees "couldn't extract
+      // this report" and moves on. code-only, because the message quotes the document.
+      context.waitUntil(
+        reportServerError(env, err, {
+          route: ROUTE,
+          method: request.method,
+          deployment: new URL(request.url).host,
+          requestId,
+          detail: detailFor(ROUTE),
+          status: 422,
+          errorCode: "invalid_extraction",
+        }),
+      );
       return finish(422, { error: "could not extract this report", detail: message, errorCode: "invalid_extraction" }, { errorCode: "invalid_extraction" });
     }
     const { status, errorCode, error } = modelErrorReply(err, "extraction backend error");
