@@ -14,5 +14,11 @@
   ],
   // Every R2 key is built via storeKey(env, …), which throws if this is unset — so dev and
   // prod deploys never share keys even if they were ever pointed at the same bucket.
-  "vars": { "STORE_PREFIX": "dev" }
+  //
+  // REPORTS decides whether every inference is made in sight of the patient's own PDFs (CORPUS.md).
+  // It lives here rather than in inference.config.json because it is an ENVIRONMENT fact, not a
+  // model one: this branch's copy is dev's, main's copy is preserved across every promotion by
+  // promote.yml's keep-paths, and that is what lets dev run the corpus while prod does not.
+  // "never" restores the pre-corpus behaviour wholesale and is the first step of the rollback.
+  "vars": { "STORE_PREFIX": "dev", "REPORTS": "always" }
 }
