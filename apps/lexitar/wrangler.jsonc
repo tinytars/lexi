@@ -15,5 +15,12 @@
   ],
   // Every R2 key is built via storeKey(env, …), which throws if this is unset — so dev and
   // prod deploys never share keys even if they were ever pointed at the same bucket.
-  "vars": { "STORE_PREFIX": "prod" }
+  //
+  // REPORTS decides whether every inference is made in sight of the patient's own PDFs (CORPUS.md).
+  // "never" is what an unset value already means; it is written out because this is the one line
+  // that changes production's inference bill, and a line you can find is worth more than a default
+  // you have to know about. It lives here rather than in inference.config.json because it is an
+  // ENVIRONMENT fact, not a model one — and promote.yml's keep-paths preserves this file across
+  // every promotion, which is what lets dev run the corpus while prod does not.
+  "vars": { "STORE_PREFIX": "prod", "REPORTS": "never" }
 }
