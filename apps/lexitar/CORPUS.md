@@ -14,8 +14,8 @@ shape in which the question "what does my report actually say" has a truthful an
 ## 1. What every inference sees
 
 Every PDF stored under one person's namespace, ordered by key, attached as `document` blocks
-ahead of whatever the feature was going to ask. Eight features are attached in the type system; six
-of them carry it on the wire today:
+ahead of whatever the feature was going to ask. Five features are attached — every feature that
+answers a question about a person's record:
 
 | Feature | Route |
 |---|---|
@@ -24,8 +24,8 @@ of them carry it on the wire today:
 | `finding` | `functions/api/refresh-finding.ts` |
 | `ranges` | `functions/api/refresh-range.ts` |
 | `markerGroups` | `functions/api/refresh-marker-groups.ts` |
-| `persona` | `functions/api/persona-adapt.ts` |
-| `treatmentImage`, `treatmentText` | `functions/api/treatment-infer.ts` — **not yet attached**, see §6 |
+
+The other six are §6, each for a stated reason.
 
 Non-PDF originals (`.xlsx`, `.jpg`, `.json`) are not attached: there is no `document` block form
 for them. Their readings are in the vault, extracted at import, and that remains all the model
@@ -139,7 +139,7 @@ write is billed either way — this moves it off the patient's cursor, it does n
 | `chat` | **yes** | — |
 | `ranges`, `markerGroups` | no | they pin their output with `output_config.format`, which `max_tokens: 0` rejects |
 | `leafRegen` | no | each node forks its own entry, so warming the sweep is ~30 writes up front |
-| `persona`, `treatmentText` | no | they restate text that already holds every fact |
+| `finding` | no | it refreshes in the background, not at a cursor, and on its own key pool |
 
 A warm call must also match the follow-up's thinking configuration and effort, since both render
 into the prefix. `max_tokens: 0` is rejected alongside `stream: true`, enabled thinking,
@@ -218,16 +218,18 @@ failure this design exists to prevent.
 | `extract` | the browser hands it *the* document, at a moment when the bytes may not be in R2 yet; attaching the corpus would double-count it and make a new client's first import impossible against an empty namespace |
 | `document` | same argument — its output *feeds* the corpus |
 | `benchmarkWeakest` | no client, no R2, no session |
+| `treatmentImage`, `treatmentText` | they read a pill bottle's own label, which is not in the record; `functions/api/treatment-infer.ts` carries no `clientId` to read a record against |
+| `persona` | it restates a finished answer that already holds every fact — `missingFacts` (`functions/api/persona-adapt.ts`) proves that on every call, so a corpus could tell it nothing |
 
-These three are the `UNATTACHED_FEATURES` union in `functions/_lib/inference/attach.ts`. The type
-is the decision: `attachedModelFor` cannot be called for them, and `unattachedModelFor` cannot be
+These six are the `UNATTACHED_FEATURES` union in `functions/_lib/inference/attach.ts`. The type is
+the decision: `attachedModelFor` cannot be called for them, and `unattachedModelFor` cannot be
 called for anything else.
 
-**`treatmentImage` and `treatmentText` are attached features whose route does not yet attach.**
-`inferTreatment` is published from `@pablotech/akesi`, builds its own `content` array and takes no
-prefix parameter, so `functions/api/treatment-infer.ts` still resolves a bare model. It needs an
-akesi release adding that parameter. This is the one place where the type says "attached" and the
-wire does not, and it is a gap, not a decision.
+The first five are unattached because there is no record to read. `persona` is the one that is
+unattached on **cost**: it could have carried a corpus and simply would not have been better for
+it, at a ~350K-token cache write per patient per window. Measured first (§8), then detached — and
+`tests/unit/persona-adapt-function.test.ts` pins it, with `REPORTS: "always"` and a real PDF in the
+record, so the saving cannot quietly come back.
 
 **`documentsPromptBlock` and PDFs.** An attachment is stored under the same `raw/{clientId}/`
 prefix the corpus is assembled from, so where the corpus is on the model already holds an attached
@@ -305,8 +307,8 @@ Per request, for the largest measured namespace:
 
 | | cache write | cache read |
 |---|---|---|
-| `claude-sonnet-4-6` — chat, `leafRegen`, `persona`, `treatmentText` | $0.585 | $0.047 |
-| `claude-opus-4-7` — `ranges`, `markerGroups`, `finding`, `treatmentImage` | $2.927 | $0.234 |
+| `claude-sonnet-4-6` — `chat`, `leafRegen` | $0.585 | $0.047 |
+| `claude-opus-4-7` — `ranges`, `markerGroups`, `finding` | $2.927 | $0.234 |
 
 And per user action, on that same record:
 
@@ -326,7 +328,7 @@ by an order of magnitude — on Opus, against a record of 67 pages, well under t
 over a measured token count, not a projection of usage. Once an environment has run the corpus for
 a week, the Usage and Cost Admin API is what replaces them, with the date it was taken.
 
-Two attached features are known to earn none of it and are flagged rather than silently dropped:
-`persona-adapt` restates a paragraph that already contains every fact — its own `missingFacts`
-check proves it — and `treatmentText` reads a pill-bottle label. Neither touches the patient's
-reports. They stay in scope; whether they stay attached is a decision for the measured numbers.
+These figures are what retired `persona` from the attached set (§6): a restatement could not be
+improved by a corpus, and the table prices what carrying one anyway would have cost — a write per
+patient per window, on the sonnet row, for nothing. `treatmentImage`/`treatmentText` never reached
+the wire at all, having no record to read.

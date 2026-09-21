@@ -45,11 +45,11 @@ the feature fails, and its error names the vars to set.
 | Feature | Where | What it sends | Needs |
 |---|---|---|---|
 | `chat` † | `/api/chat` | the question, the patient context, attached photos | tools, and vision to read attached photos |
-| `persona` † | `/api/persona-adapt` | a chat answer to restate | — |
+| `persona` | `/api/persona-adapt` | a chat answer to restate | — |
 | `extract` | `/api/extract`, CLI report import | an uploaded report | PDF input, JSON schema |
 | `document` | `/api/document-extract` | an attached document | PDF input, JSON schema |
-| `treatmentImage` † | `/api/treatment-infer` | photos of a product | vision, JSON schema |
-| `treatmentText` † | `/api/treatment-infer` | pasted product text | JSON schema |
+| `treatmentImage` | `/api/treatment-infer` | photos of a product | vision, JSON schema |
+| `treatmentText` | `/api/treatment-infer` | pasted product text | JSON schema |
 | `finding` † | `/api/refresh-finding`, CLI | the whole record | — (the reply is JSON written as prose) |
 | `ranges` † | `/api/refresh-range`, CLI | one marker's history | JSON schema |
 | `markerGroups` † | `/api/refresh-marker-groups`, CLI | marker names | JSON schema |
@@ -59,7 +59,7 @@ the feature fails, and its error names the vars to set.
 **†** — sends the patient's source PDFs ahead of everything in the "what it sends" column, so it
 additionally needs **PDF input** and answers `422 model_unsupported` on a provider without it.
 [`CORPUS.md`](CORPUS.md) is that mechanism in full: what is attached, the page ceiling, and the
-`REPORTS: "never"` switch that turns the whole column back off. The three unmarked features are
+`REPORTS: "never"` switch that turns the whole column back off. The six unmarked features are
 unattached by design and `CORPUS.md` §6 says why.
 
 These work with no model at all: the vault, sign-in, manual entry, markers and charts, reference

@@ -21,18 +21,16 @@ export async function savePersona(persona: PersonaId): Promise<void> {
 // chosen, the adapter could not keep every fact, or the call failed. Never throws; the answer stands.
 // `question` is what the patient asked, so the persona can show it was heard.
 //
-// No record selected → no restatement, for the same never-throw reason: the route now answers in
-// sight of that record's reports (CORPUS.md) and refuses without one, and a missing voice is a far
-// smaller thing than an error where an answer should be.
+// It needs no record: the restatement is of the answer's own words, and the route carries no corpus
+// (CORPUS.md §6).
 export async function adaptAnswer(
   persona: PersonaId,
-  clientId: string | null,
   text: string,
   question?: string,
 ): Promise<{ persona: PersonaId; text: string } | null> {
-  if (persona === DEFAULT_PERSONA || !clientId) return null;
+  if (persona === DEFAULT_PERSONA) return null;
   try {
-    const res = await fetch("/api/persona-adapt", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ persona, clientId, text, question }) });
+    const res = await fetch("/api/persona-adapt", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ persona, text, question }) });
     if (!res.ok) return null;
     const body = (await res.json()) as { kind?: string; persona?: unknown; text?: unknown };
     const adapted = readPersonaId(body.persona);
@@ -46,13 +44,11 @@ export async function adaptAnswer(
 // instant. A failed take is dropped from the cache so it can be retried.
 const takes = new Map<string, Promise<string | null>>();
 
-export function personaTake(persona: PersonaId, clientId: string | null, text: string): Promise<string | null> {
-  // The record is part of the key: the same sentence restated against a different record is a
-  // different take, and a cache that ignored that would serve one patient's from another's.
-  const key = `${persona}:${clientId ?? ""}:${text}`;
+export function personaTake(persona: PersonaId, text: string): Promise<string | null> {
+  const key = `${persona}:${text}`;
   let take = takes.get(key);
   if (!take) {
-    take = adaptAnswer(persona, clientId, text).then((a) => a?.text ?? null);
+    take = adaptAnswer(persona, text).then((a) => a?.text ?? null);
     takes.set(key, take);
     void take.then((t) => { if (t === null) takes.delete(key); });
   }

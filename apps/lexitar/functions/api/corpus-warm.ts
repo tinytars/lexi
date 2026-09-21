@@ -21,8 +21,8 @@ import { providerFor } from "../../src/lib/model-config";
 //   * `leafRegen` sends a different tool schema and system prompt per node, and the cache prefix
 //     renders tools -> system -> messages, so each node's corpus is a separate entry. Pre-warming
 //     the sweep would mean buying every one of those writes up front for a sweep that may never run.
-//   * `persona` and `treatmentText` restate text that already holds every fact; warming them spends
-//     a write on a question nobody asked.
+//   * `finding` is refreshed in the background rather than at a cursor, so there is no wait to move
+//     earlier — and it bills to its own key pool, which pre-warming would drain on nobody's behalf.
 //
 // Chat is the one place the patient waits at a cursor, and its prefix is stable: one system prompt
 // per unit system, one tool. So this route warms chat and says so in its name's absence — see the

@@ -2,7 +2,7 @@ import type { D1Database } from "../_lib/identity-types";
 import { requireSession } from "../_lib/session";
 import { logRequest } from "../_lib/log";
 import { modelErrorReply } from "../_lib/model-errors";
-import { modelFor } from "../_lib/inference/resolve";
+import { unattachedModelFor } from "../_lib/inference/attach";
 import { inferTreatment } from "@pablotech/akesi/treatment-infer";
 import { TREATMENT_INFER_MAX_TOKENS, MAX_TREATMENT_TEXT_CHARS } from "../../src/lib/treatment-infer-config";
 
@@ -14,6 +14,9 @@ import { TREATMENT_INFER_MAX_TOKENS, MAX_TREATMENT_TEXT_CHARS } from "../../src/
 // ONE route for both inputs: the extraction task is the same whichever way the label arrives, and
 // splitting it would mean two prompts to keep the label-amount rule in sync across. Only the model
 // differs — vision work for photos, the cheaper tier for text that is already text.
+//
+// The patient's reports are NOT attached (CORPUS.md §6): a pill bottle is not in the record, and
+// this route has no clientId to read a record against.
 interface Env {
   SESSION_SECRET: string;
   // W71 — requireSession reads accounts.sessions_valid_from, so every gated route needs the binding.
@@ -103,7 +106,7 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
 
   try {
     // Photos are vision work; text that is already text is not, so each has its own feature.
-    const { client, model } = modelFor(env, images.length > 0 ? "treatmentImage" : "treatmentText");
+    const { client, model } = unattachedModelFor(env, images.length > 0 ? "treatmentImage" : "treatmentText");
     const result = await inferTreatment(client, { images, text }, model, TREATMENT_INFER_MAX_TOKENS);
     return finish(200, result);
   } catch (err) {
