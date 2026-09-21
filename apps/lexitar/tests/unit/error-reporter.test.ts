@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { installErrorReporter, type ClientErrorPayload } from "../../src/lib/error-reporter";
+import { installApiFailureReporting, installErrorReporter, reportCaughtError, type ClientErrorPayload } from "../../src/lib/error-reporter";
 import { lazyImport } from "../../src/lib/lazy-import";
 
 const fire = (target: EventTarget, type: string, props: Record<string, unknown>) =>
@@ -55,5 +55,63 @@ describe("installErrorReporter", () => {
     const { target, reloads } = setup();
     fire(target, "error", { error: new Error("boom") });
     expect(reloads).toEqual([]);
+  });
+});
+
+describe("reportCaughtError", () => {
+  it("files a handled failure, sharing the page's dedupe and cap with uncaught ones", () => {
+    const { target, sent } = setup();
+    const failure = new Error("Failed to fetch");
+    failure.name = "VaultSaveFailed";
+
+    reportCaughtError(failure);
+    reportCaughtError(failure); // a retry of the same failing save must not file twice
+    fire(target, "error", { error: failure });
+
+    expect(sent.map((p) => `${p.name}: ${p.message}`)).toEqual(["VaultSaveFailed: Failed to fetch"]);
+  });
+});
+
+// A 503 from the platform never reaches the server's error sink, and a 5xx a route classified itself
+// is deliberately not filed there either — so the browser is the only witness.
+describe("installApiFailureReporting", () => {
+  const scopeAnswering = (status: number) => {
+    const scope = { fetch: (async () => new Response("", { status })) as unknown as typeof fetch };
+    installApiFailureReporting(scope, "https://lexitar.example");
+    return scope;
+  };
+
+  it("reports a 5xx on an API route, naming the route and status", async () => {
+    const { sent } = setup();
+    const scope = scopeAnswering(503);
+
+    await scope.fetch("https://lexitar.example/api/refresh-range", { method: "POST" });
+
+    expect(sent.map((p) => `${p.name}: ${p.message}`)).toEqual(["ApiUnavailable: POST /api/refresh-range → 503"]);
+  });
+
+  it("masks the id segment, which can be a vault slug", async () => {
+    const { sent } = setup();
+    const scope = scopeAnswering(500);
+
+    await scope.fetch(new Request("https://lexitar.example/api/vault/834bc60d-c937-467d-9e78-3caa734acf45", { method: "PUT" }));
+
+    expect(sent[0].message).toBe("PUT /api/vault/… → 500");
+  });
+
+  it("leaves 4xx, other origins and the sink itself alone", async () => {
+    const { sent } = setup();
+    await scopeAnswering(422).fetch("https://lexitar.example/api/extract", { method: "POST" });
+    await scopeAnswering(500).fetch("https://elsewhere.example/api/extract", { method: "POST" });
+    await scopeAnswering(500).fetch("https://lexitar.example/api/client-error", { method: "POST" });
+
+    expect(sent).toEqual([]);
+  });
+
+  it("hands the response back untouched", async () => {
+    setup();
+    const res = await scopeAnswering(503).fetch("https://lexitar.example/api/leaf-regen", { method: "POST" });
+
+    expect(res.status).toBe(503);
   });
 });

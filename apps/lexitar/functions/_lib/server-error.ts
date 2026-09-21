@@ -19,6 +19,10 @@ export interface ServerErrorContext {
   deployment: string;
   requestId?: string;
   detail?: "scrubbed" | "code-only";
+  // Set by a handler that classified the failure itself and answered with its own status — the
+  // middleware's default is an exception nobody classified.
+  status?: number;
+  errorCode?: string;
 }
 
 export interface ServerErrorReport {
@@ -78,7 +82,7 @@ export async function toServerReport(error: unknown, ctx: ServerErrorContext): P
   const name = typeof e?.name === "string" && NAME.test(e.name) ? e.name : "Error";
   const message =
     ctx.detail === "code-only"
-      ? `${classifyModelError(error).errorCode} (${name})`
+      ? `${ctx.errorCode ?? classifyModelError(error).errorCode} (${name})`
       : scrubServerMessage(typeof e?.message === "string" ? e.message : String(error), STATIC_SEGMENTS);
   const frames = scrubFrames(typeof e?.stack === "string" ? e.stack : "");
   return { name, message, frames, fingerprint: await fingerprintOf(name, message, ctx.route) };
@@ -99,8 +103,8 @@ function occurrence(r: ServerErrorReport, ctx: ServerErrorContext): string {
     `- Seen: ${new Date().toISOString()}`,
     "",
     ctx.detail === "code-only"
-      ? "_Filed automatically by LexiTar's server error sink (`functions/api/_middleware.ts`). This route talks to a model provider, whose errors can quote the request, so only the classified code is reported._"
-      : "_Filed automatically by LexiTar's server error sink (`functions/api/_middleware.ts`). Message and stack are PHI-scrubbed._",
+      ? "_Filed automatically by LexiTar's server error sink (`functions/_lib/server-error.ts`). This route talks to a model provider, whose errors can quote the request, so only the classified code is reported._"
+      : "_Filed automatically by LexiTar's server error sink (`functions/_lib/server-error.ts`). Message and stack are PHI-scrubbed._",
   ].join("\n");
 }
 
@@ -110,13 +114,13 @@ const MAX_FINGERPRINTS = 50;
 const seen = new Set<string>();
 
 /**
- * Reports an exception that escaped a handler. NEVER throws and never rejects — it is called from a
+ * Reports an exception that escaped a handler, or one a handler classified and answered itself. NEVER throws and never rejects — it is called from a
  * catch block and from waitUntil, where a second failure would be invisible anyway.
  */
 export async function reportServerError(env: ServerErrorEnv, error: unknown, ctx: ServerErrorContext): Promise<"filed" | "deduped" | "logged"> {
   try {
     // The log line goes out first and unconditionally: it is the signal that survives a dead GitHub.
-    logRequest({ route: ctx.route, status: 500, requestId: ctx.requestId, errorCode: "unhandled" });
+    logRequest({ route: ctx.route, status: ctx.status ?? 500, requestId: ctx.requestId, errorCode: ctx.errorCode ?? "unhandled" });
 
     const report = await toServerReport(error, ctx);
     if (seen.has(report.fingerprint)) return "deduped";
@@ -136,7 +140,7 @@ export async function reportServerError(env: ServerErrorEnv, error: unknown, ctx
   } catch (e) {
     // Sealed: a throw in here would recurse through the middleware that called it. The extra line
     // distinguishes "the sink is dead" from "nothing went wrong", which are the same empty tracker.
-    logRequest({ route: ctx.route, status: 500, requestId: ctx.requestId, errorCode: "github_dead" });
+    logRequest({ route: ctx.route, status: ctx.status ?? 500, requestId: ctx.requestId, errorCode: "github_dead" });
     console.error("server-error: reporting failed", (e as Error)?.message);
     return "logged";
   }

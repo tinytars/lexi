@@ -1,8 +1,8 @@
 import { onLazyImportFailure } from "./lazy-import";
 
-// Forwards uncaught errors, unhandled rejections, and failed lazy chunk loads to /api/client-error, which files them as GitHub
-// issues. Before this, a crash like each_key_duplicate existed only in the one browser console that
-// saw it. PHI scrubbing happens server-side (functions/_lib/client-error.ts) — the trust boundary.
+// Forwards uncaught errors, unhandled rejections, failed lazy chunk loads and explicitly reported
+// handled failures to /api/client-error, which files them as GitHub issues. Before this, a crash like
+// each_key_duplicate existed only in the one browser console that saw it. PHI scrubbing happens server-side (functions/_lib/client-error.ts) — the trust boundary.
 
 export interface ClientErrorPayload {
   name: string;
@@ -31,21 +31,62 @@ function send(payload: ClientErrorPayload): void {
 // index.html's boot guard defines it: reload once onto the current build, loop-guarded.
 const reloadForCurrentBuild = () => (globalThis as { reloadForCurrentBuild?: () => void }).reloadForCurrentBuild?.();
 
+const seen = new Set<string>();
+let sink: (p: ClientErrorPayload) => void = send;
+
+function capture(err: unknown): void {
+  // A cross-origin script error arrives as a bare "Script error." with no Error object — nothing to act on.
+  if (err === undefined || err === null) return;
+  const e = err instanceof Error ? err : new Error(String(err));
+  const signature = `${e.name}: ${e.message}`;
+  if (seen.has(signature) || seen.size >= MAX_REPORTS_PER_PAGE) return;
+  seen.add(signature);
+  sink({ name: e.name, message: e.message, stack: e.stack ?? "", build: BUILD });
+}
+
+// For a failure the app caught and showed the user but that nobody would otherwise report. It shares
+// the budget above, so handled failures can never crowd out a crash.
+export function reportCaughtError(err: unknown): void {
+  capture(err);
+}
+
+// A 5xx is the one failure the server's own sink can miss entirely: the platform can answer before
+// any handler runs, and a handler that returns its own status has — by the middleware's rule —
+// already classified it. Only the browser sees both. Wrapping fetch reports every route at once
+// instead of threading a report through the sixteen call sites that make these requests.
+const SINK_PATH = "/api/client-error";
+
+// The path is a message field, so it must be code, not data: an id segment can be a vault slug.
+function maskApiPath(pathname: string): string {
+  const parts = pathname.split("/").filter(Boolean);
+  return parts.length > 2 ? `/${parts[0]}/${parts[1]}/…` : pathname;
+}
+
+export function installApiFailureReporting(
+  scope: { fetch: typeof fetch } = globalThis,
+  origin: string = location.origin,
+): void {
+  const inner = scope.fetch;
+  scope.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const res = await inner(input, init);
+    if (res.status < 500) return res;
+    const url = new URL(input instanceof Request ? input.url : String(input), origin);
+    if (url.origin !== origin || !url.pathname.startsWith("/api/") || url.pathname === SINK_PATH) return res;
+    const method = (input instanceof Request ? input.method : init?.method) ?? "GET";
+    const failure = new Error(`${method} ${maskApiPath(url.pathname)} → ${res.status}`);
+    failure.name = "ApiUnavailable";
+    capture(failure);
+    return res;
+  };
+}
+
 export function installErrorReporter(
   target: EventTarget = window,
   report: (p: ClientErrorPayload) => void = send,
   reload: () => void = reloadForCurrentBuild,
 ): void {
-  const seen = new Set<string>();
-  const capture = (err: unknown) => {
-    // A cross-origin script error arrives as a bare "Script error." with no Error object — nothing to act on.
-    if (err === undefined || err === null) return;
-    const e = err instanceof Error ? err : new Error(String(err));
-    const signature = `${e.name}: ${e.message}`;
-    if (seen.has(signature) || seen.size >= MAX_REPORTS_PER_PAGE) return;
-    seen.add(signature);
-    report({ name: e.name, message: e.message, stack: e.stack ?? "", build: BUILD });
-  };
+  seen.clear();
+  sink = report;
   target.addEventListener("error", (ev) => capture((ev as ErrorEvent).error));
   target.addEventListener("unhandledrejection", (ev) => capture((ev as PromiseRejectionEvent).reason));
   onLazyImportFailure((err) => {
