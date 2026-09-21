@@ -51,15 +51,28 @@ export function reportCaughtError(err: unknown): void {
 }
 
 // A 5xx is the one failure the server's own sink can miss entirely: the platform can answer before
-// any handler runs, and a handler that returns its own status has — by the middleware's rule —
-// already classified it. Only the browser sees both. Wrapping fetch reports every route at once
-// instead of threading a report through the sixteen call sites that make these requests.
+// any handler runs, and only the browser sees that. Wrapping fetch reports every route at once
+// instead of threading a report through the sixteen call sites that make these requests — and
+// skips what a handler classified itself, which is the middleware's rule applied from this side.
 const SINK_PATH = "/api/client-error";
 
 // The path is a message field, so it must be code, not data: an id segment can be a vault slug.
 function maskApiPath(pathname: string): string {
   const parts = pathname.split("/").filter(Boolean);
   return parts.length > 2 ? `/${parts[0]}/${parts[1]}/…` : pathname;
+}
+
+// The middleware's rule, read from this side: a handler that answers with its own `errorCode` has
+// classified the failure, so it is a condition the app expects rather than a defect. `ai_busy` is
+// why this matters — the vendor answering 429/503/529 is a 503 here, which the app retries and
+// explains, and filing one as a bug also pins the promotion gate on a build no fix can clear.
+async function classifiedByHandler(res: Response): Promise<boolean> {
+  try {
+    const body = (await res.clone().json()) as { errorCode?: unknown } | null;
+    return typeof body?.errorCode === "string";
+  } catch {
+    return false;
+  }
 }
 
 export function installApiFailureReporting(
@@ -72,6 +85,7 @@ export function installApiFailureReporting(
     if (res.status < 500) return res;
     const url = new URL(input instanceof Request ? input.url : String(input), origin);
     if (url.origin !== origin || !url.pathname.startsWith("/api/") || url.pathname === SINK_PATH) return res;
+    if (await classifiedByHandler(res)) return res;
     const method = (input instanceof Request ? input.method : init?.method) ?? "GET";
     const failure = new Error(`${method} ${maskApiPath(url.pathname)} → ${res.status}`);
     failure.name = "ApiUnavailable";

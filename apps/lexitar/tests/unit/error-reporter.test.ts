@@ -81,6 +81,15 @@ describe("installApiFailureReporting", () => {
     return scope;
   };
 
+  const scopeAnsweringBody = (status: number, body: unknown) => {
+    const scope = {
+      fetch: (async () =>
+        new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } })) as unknown as typeof fetch,
+    };
+    installApiFailureReporting(scope, "https://lexitar.example");
+    return scope;
+  };
+
   it("reports a 5xx on an API route, naming the route and status", async () => {
     const { sent } = setup();
     const scope = scopeAnswering(503);
@@ -113,5 +122,47 @@ describe("installApiFailureReporting", () => {
     const res = await scopeAnswering(503).fetch("https://lexitar.example/api/leaf-regen", { method: "POST" });
 
     expect(res.status).toBe(503);
+  });
+
+  // A vendor answering 429/503/529 becomes `ai_busy`, which the app retries and explains. Filing it
+  // as a bug buries the real ones and pins the promotion gate on a build no fix can clear.
+  it("leaves a failure the handler classified itself alone", async () => {
+    const { sent } = setup();
+    const scope = scopeAnsweringBody(503, { errorCode: "ai_busy", error: "The AI is busy." });
+
+    await scope.fetch("https://lexitar.example/api/corpus-warm", { method: "POST" });
+
+    expect(sent).toEqual([]);
+  });
+
+  it("still reports a 5xx the server never classified", async () => {
+    const { sent } = setup();
+    const scope = scopeAnsweringBody(500, { error: "internal error" });
+
+    await scope.fetch("https://lexitar.example/api/corpus-warm", { method: "POST" });
+
+    expect(sent.map((p) => p.message)).toEqual(["POST /api/corpus-warm → 500"]);
+  });
+
+  // The platform's own 5xx is HTML or nothing at all, and it is the one the server's sink misses.
+  it("still reports a 5xx whose body is not JSON", async () => {
+    const { sent } = setup();
+    const scope = {
+      fetch: (async () => new Response("<html>502 Bad Gateway</html>", { status: 502 })) as unknown as typeof fetch,
+    };
+    installApiFailureReporting(scope, "https://lexitar.example");
+
+    await scope.fetch("https://lexitar.example/api/chat", { method: "POST" });
+
+    expect(sent.map((p) => p.message)).toEqual(["POST /api/chat → 502"]);
+  });
+
+  it("leaves the body readable by the caller it was answered to", async () => {
+    setup();
+    const scope = scopeAnsweringBody(503, { errorCode: "ai_busy" });
+
+    const res = await scope.fetch("https://lexitar.example/api/leaf-regen", { method: "POST" });
+
+    expect(await res.json()).toEqual({ errorCode: "ai_busy" });
   });
 });
