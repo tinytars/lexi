@@ -22,6 +22,8 @@ export interface MarkerCatalogEntry {
 }
 
 export interface ChatContext {
+  // Here rather than in the system prompt: the prompt is cached prefix, this block is not (CORPUS.md).
+  today: string;
   patient: { name: string; age: number | null; gender: string };
   diseases: { diagnostic: string; icdCodes?: string[]; summary?: string }[];
   // The unified treatment list, titration collapsed, each tagged with its temporal bucket
@@ -118,6 +120,7 @@ export function buildChatContext(client: Client, system: UnitSystem = "imperial"
   const groupByKey = new Map(groupByName(rawTreatments, today).map((g) => [g.name.trim().toLowerCase(), g]));
   const dailyTotals = dailyTotalsByName(rawTreatments, today);
   const ctx: ChatContext = {
+    today,
     patient: { name: client.displayName, age: ageYears(client.dob), gender: client.gender },
     diseases: diseases(f?.diseases),
     treatments: collapseByName(rawTreatments).map((t) => {

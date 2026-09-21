@@ -245,7 +245,7 @@
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ messages, unitSystem, final: round === MAX_ROUNDS - 1 }),
+          body: JSON.stringify({ messages, unitSystem, clientId, final: round === MAX_ROUNDS - 1 }),
         });
         if (!res.ok) {
           const body = (await res.json().catch(() => ({}))) as { error?: string; errorCode?: string };

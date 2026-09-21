@@ -16,10 +16,6 @@ import { fileURLToPath } from "node:url";
 import { chatSystemPrompt } from "../src/lib/chat-prompt";
 import { isMain } from "./is-main";
 
-// chatSystemPrompt takes "today" as an explicit param rather than reading the ambient clock, so
-// (unlike the akesi-pil-owned surfaces) no frozen-clock wrapper is needed here.
-export const FROZEN_TODAY = "2026-06-28";
-
 export const DIR = fileURLToPath(new URL("../tests/fixtures/prompt-golden/", import.meta.url));
 
 /** Every golden file this fixture covers, as name → the text it should contain. */
@@ -27,8 +23,8 @@ export function promptGolden(): Record<string, string> {
   return {
     // Both renderings, not one: the unit-system branch is the only thing that varies per patient, so
     // covering a single side would let an edit to the other reach production unreviewed.
-    "system--chat--metric.txt": chatSystemPrompt(FROZEN_TODAY, "metric"),
-    "system--chat--imperial.txt": chatSystemPrompt(FROZEN_TODAY, "imperial"),
+    "system--chat--metric.txt": chatSystemPrompt("metric"),
+    "system--chat--imperial.txt": chatSystemPrompt("imperial"),
   };
 }
 
