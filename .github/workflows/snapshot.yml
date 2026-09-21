@@ -109,8 +109,13 @@ jobs:
   notify-failure:
     needs: [snapshot]
     if: always() && contains(needs.*.result, 'failure')
-    uses: ./.github/workflows/notify-failure.yml
-    secrets: inherit
+    uses: promontory-studio/autopilot/.github/workflows/notify-failure.yml@c8899c17e4fb3f434e4846c657f6c1a28ffc728d
+    # `secrets: inherit` does not cross owners, so every secret is named.
+    secrets:
+      app-key: ${{ secrets.AUTOPILOT_APP_KEY }}
     with:
+      issue-repo: promontory-studio/plover-factory
+      app-id: ${{ vars.AUTOPILOT_APP_ID }}
+      assignee: pablo-tech
       title: Nightly vault snapshot failed
       context: The vault backup did not complete. Its check step is the only alarm on backup integrity, and until this passes there is no verified recent snapshot.

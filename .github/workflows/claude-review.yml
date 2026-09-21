@@ -1,13 +1,15 @@
 name: Claude PR Review
 
-# pr-review runs on CI's completion rather than watching checks from inside
-# itself (which would include itself and deadlock — see pablo-tech/pilos#10).
-# It approves and enables auto-merge; the dev/main rulesets then merge only
-# once every required check is green.
+# The review runs on CI's completion rather than watching checks from inside itself
+# (which would include itself and deadlock — see pablo-tech/pilos#10). It approves and
+# enables auto-merge; the dev/main rulesets then merge only once every required check
+# is green.
 #
-# vars.AUTOPILOT gates the merge: `on` enables auto-merge after approval (unless
-# the PR is labeled `hold`), `dry-run` (or unset) stops at approval, `off` skips
-# review.
+# vars.AUTOPILOT gates the merge: `on` enables auto-merge after approval (unless the PR
+# is labeled `hold`), `dry-run` (or unset) stops at approval, `off` skips review.
+#
+# push-audit stays here: it is an after-the-fact read of a direct push to main, not part
+# of the pull-request pipeline the shared workflow implements.
 on:
   workflow_run:
     workflows: ["CI"]
@@ -26,100 +28,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  pr-review:
+  review:
     if: >
       github.event_name == 'workflow_run' &&
       github.event.workflow_run.event == 'pull_request' &&
-      github.event.workflow_run.pull_requests[0] != null &&
-      vars.AUTOPILOT != 'off'
-    runs-on: ubuntu-latest
-    env:
-      PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
-      CI_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ github.event.workflow_run.head_sha }}
-          fetch-depth: 0
-
-      - uses: anthropics/claude-code-action@v1
-        with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          allowed_bots: "dependabot[bot],plover-autopilot[bot]"
-          claude_args: '--allowedTools "Read,Grep,Glob,Bash(git diff:*),Bash(git log:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr review:*),Bash(gh pr edit:*)"'
-          prompt: |
-            The CI workflow just finished (conclusion: ${{ env.CI_CONCLUSION }})
-            for PR #${{ env.PR_NUMBER }} in this repo.
-
-            - If CI did not succeed: comment on the PR with
-              `gh pr comment ${{ env.PR_NUMBER }} -b "CI is failing, not reviewing yet."`
-              and stop — do not approve or merge.
-            - Otherwise, review the PR for correctness bugs and for
-              reuse/simplification/efficiency issues, at the same bar as
-              `/code-review` run at high effort. Read the diff with
-              `gh pr diff ${{ env.PR_NUMBER }}`.
-              - If there are no blocking issues: approve with
-                `gh pr review ${{ env.PR_NUMBER }} --approve -b "<one-line
-                summary of what you checked>"`. Do not merge; a later step does.
-              - If there are blocking issues: post them as one review comment
-                with `gh pr comment ${{ env.PR_NUMBER }}` (most severe first,
-                with file:line references) and do not approve or merge.
-              - If you are not confident in the verdict, say so in a comment,
-                run `gh pr edit ${{ env.PR_NUMBER }} --add-label autopilot:needs-human`,
-                and do not approve or merge.
-
-      # The merge is decided here, not by the model: only AUTOPILOT=on merges, and a
-      # `hold` label vetoes. The App token (not GITHUB_TOKEN) makes the merge's push
-      # trigger downstream workflows (dev CI, main's frame release).
-      - id: app
-        if: vars.AUTOPILOT == 'on' && vars.AUTOPILOT_APP_ID != ''
-        uses: actions/create-github-app-token@v3
-        with:
-          app-id: ${{ vars.AUTOPILOT_APP_ID }}
-          private-key: ${{ secrets.AUTOPILOT_APP_KEY }}
-      - name: Auto-merge if approved at this head
-        if: steps.app.outputs.token != ''
-        env:
-          GH_TOKEN: ${{ steps.app.outputs.token }}
-          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
-        run: |
-          pr=$(gh pr view "$PR_NUMBER" -R "$GITHUB_REPOSITORY" --json labels,headRefOid,latestReviews,baseRefName)
-          approved=$(jq --arg sha "$HEAD_SHA" '.headRefOid == $sha and any(.latestReviews[]; .state == "APPROVED" and (.author.login | test("claude")))' <<<"$pr")
-          held=$(jq 'any(.labels[].name; . == "hold" or . == "autopilot:needs-human")' <<<"$pr")
-          # A promotion into main keeps dev's history (merge commit), as every promotion has.
-          method=$([ "$(jq -r .baseRefName <<<"$pr")" = main ] && echo --merge || echo --squash)
-          echo "approved=$approved held=$held method=$method"
-          if [ "$approved" = true ] && [ "$held" = false ]; then
-            gh pr merge "$PR_NUMBER" -R "$GITHUB_REPOSITORY" --auto "$method" --delete-branch
-          fi
-
-  dependabot-repair:
-    # A Dependabot bump that breaks CI goes to the fixer in private plover-factory,
-    # which pushes migration commits onto the Dependabot branch. Keyed on the branch,
-    # not the actor, so a repair that still fails CI is retried; fix.yml caps attempts.
-    if: >
-      github.event_name == 'workflow_run' &&
-      github.event.workflow_run.event == 'pull_request' &&
-      github.event.workflow_run.conclusion == 'failure' &&
-      startsWith(github.event.workflow_run.head_branch, 'dependabot/') &&
-      github.event.workflow_run.pull_requests[0] != null &&
-      vars.AUTOPILOT != 'off' && vars.AUTOPILOT_APP_ID != ''
-    runs-on: ubuntu-latest
-    steps:
-      - id: app
-        uses: actions/create-github-app-token@v3
-        with:
-          app-id: ${{ vars.AUTOPILOT_APP_ID }}
-          private-key: ${{ secrets.AUTOPILOT_APP_KEY }}
-          owner: promontory-studio
-          repositories: plover-factory
-      - env:
-          GH_TOKEN: ${{ steps.app.outputs.token }}
-          PR: ${{ github.event.workflow_run.pull_requests[0].number }}
-          BRANCH: ${{ github.event.workflow_run.head_branch }}
-        run: |
-          gh api repos/promontory-studio/plover-factory/dispatches -f event_type=dependabot-broken \
-            -F "client_payload[pr]=$PR" -f "client_payload[branch]=$BRANCH"
+      github.event.workflow_run.pull_requests[0] != null
+    uses: promontory-studio/autopilot/.github/workflows/review.yml@c8899c17e4fb3f434e4846c657f6c1a28ffc728d
+    # `secrets: inherit` does not cross owners, so every secret is named.
+    secrets:
+      anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+      app-key: ${{ secrets.AUTOPILOT_APP_KEY }}
+    with:
+      mode: ${{ vars.AUTOPILOT || 'dry-run' }}
+      pr-number: ${{ github.event.workflow_run.pull_requests[0].number }}
+      head-sha: ${{ github.event.workflow_run.head_sha }}
+      ci-conclusion: ${{ github.event.workflow_run.conclusion }}
+      head-branch: ${{ github.event.workflow_run.head_branch }}
+      allowed-bots: dependabot[bot],plover-autopilot[bot]
+      # A promotion into main keeps dev's history, as every promotion has.
+      merge-method-by-base: '{"main":"merge"}'
+      app-id: ${{ vars.AUTOPILOT_APP_ID }}
+      repair-repo: promontory-studio/plover-factory
+      repair-event: dependabot-broken
 
   push-audit:
     if: github.event_name == 'push'
@@ -145,10 +75,15 @@ jobs:
             an audit pass, not a gate, since the commit is already merged.
 
   notify-failure:
-    needs: [pr-review, dependabot-repair, push-audit]
+    needs: [review, push-audit]
     if: always() && contains(needs.*.result, 'failure')
-    uses: ./.github/workflows/notify-failure.yml
-    secrets: inherit
+    uses: promontory-studio/autopilot/.github/workflows/notify-failure.yml@c8899c17e4fb3f434e4846c657f6c1a28ffc728d
+    # `secrets: inherit` does not cross owners, so every secret is named.
+    secrets:
+      app-key: ${{ secrets.AUTOPILOT_APP_KEY }}
     with:
+      issue-repo: promontory-studio/plover-factory
+      app-id: ${{ vars.AUTOPILOT_APP_ID }}
+      assignee: pablo-tech
       title: Claude PR review workflow failed
       context: The review automation itself broke, so pushes are going unreviewed until it is fixed.

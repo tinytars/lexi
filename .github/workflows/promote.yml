@@ -1,8 +1,8 @@
 name: promote
 
-# Opens the dev -> main promotion PR once dev has soaked (apps/lexitar/scripts/promotion-gate.ts),
-# keeping main's prod wrangler.jsonc exactly as every hand promotion has. claude-review.yml then
-# reviews and merges it like any other PR. Veto: label the PR `hold`, or set AUTOPILOT_PROMOTE=off.
+# Opens the dev -> main promotion PR once dev has soaked, keeping main's prod wrangler.jsonc
+# exactly as every hand promotion has. claude-review.yml then reviews and merges it like any
+# other PR. Veto: label the PR `hold`, or set AUTOPILOT_PROMOTE=off.
 # Scheduled runs fire only from main, so the schedule is live once this file is promoted.
 
 on:
@@ -11,84 +11,51 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-
-concurrency:
-  group: promote
-  cancel-in-progress: false
+  contents: write
+  pull-requests: write
 
 jobs:
-  promote:
+  # The canary issue is found by a label derived from the canary message rather than written
+  # down, so it has to be computed from this repository's code before the gate can look it up.
+  canary:
     if: vars.AUTOPILOT != 'off' && vars.AUTOPILOT_PROMOTE != 'off' && vars.AUTOPILOT_APP_ID != ''
     runs-on: ubuntu-latest
+    outputs:
+      label: ${{ steps.fingerprint.outputs.label }}
     steps:
-      - id: lexi
-        uses: actions/create-github-app-token@v3
-        with:
-          app-id: ${{ vars.AUTOPILOT_APP_ID }}
-          private-key: ${{ secrets.AUTOPILOT_APP_KEY }}
-      - id: factory
-        uses: actions/create-github-app-token@v3
-        with:
-          app-id: ${{ vars.AUTOPILOT_APP_ID }}
-          private-key: ${{ secrets.AUTOPILOT_APP_KEY }}
-          owner: promontory-studio
-          repositories: plover-factory
       - uses: actions/checkout@v7
         with:
-          ref: main
-          fetch-depth: 0
-          token: ${{ steps.lexi.outputs.token }}
-      - name: One promotion at a time
-        id: open
-        env:
-          GH_TOKEN: ${{ steps.lexi.outputs.token }}
-        run: |
-          n=$(gh pr list --base main --state open --json headRefName -q '[.[] | select(.headRefName | startswith("promote/"))] | length')
-          echo "open=$n" >> "$GITHUB_OUTPUT"
+          persist-credentials: false
       - uses: actions/setup-node@v7
-        if: steps.open.outputs.open == '0'
         with:
           node-version: 22
-      - if: steps.open.outputs.open == '0'
-        run: npm ci
-      - name: Soak gate
-        id: gate
-        if: steps.open.outputs.open == '0'
-        env:
-          GH_TOKEN: ${{ steps.factory.outputs.token }}
-        run: |
-          if npx tsx apps/lexitar/scripts/promotion-gate.ts promontory-studio/plover-factory origin/main origin/dev; then
-            echo "go=true" >> "$GITHUB_OUTPUT"
-          fi
-      - name: Open promotion PR
-        if: steps.gate.outputs.go == 'true'
-        env:
-          GH_TOKEN: ${{ steps.lexi.outputs.token }}
-        run: |
-          branch="promote/auto-$(date -u +%F)"
-          git config user.name "plover-autopilot[bot]"
-          git config user.email "plover-autopilot[bot]@users.noreply.github.com"
-          git switch -c "$branch"
-          if ! git merge --no-ff --no-commit origin/dev; then
-            git merge --abort
-            echo "::error::dev does not merge cleanly into main; promote by hand"
-            exit 1
-          fi
-          git checkout origin/main -- apps/lexitar/wrangler.jsonc
-          git commit -m "Promote dev to main after a quiet soak, keeping main's prod wrangler bindings"
-          git push origin "$branch"
-          gh pr create --base main --head "$branch" \
-            --title "Promote dev to main ($(date -u +%F))" \
-            --body "Automatic promotion: dev has soaked 24h, CI is green on its tip, and no plover-factory error report names a build in this range. \`apps/lexitar/wrangler.jsonc\` is main's, unchanged.
+      - run: npm ci
+      - id: fingerprint
+        run: echo "label=$(npx tsx apps/lexitar/scripts/canary-label.ts)" >> "$GITHUB_OUTPUT"
 
-          @pablo-tech: label this PR \`hold\` to stop it merging."
+  promote:
+    needs: [canary]
+    uses: promontory-studio/autopilot/.github/workflows/promote.yml@c8899c17e4fb3f434e4846c657f6c1a28ffc728d
+    # `secrets: inherit` does not cross owners, so every secret is named.
+    secrets:
+      app-key: ${{ secrets.AUTOPILOT_APP_KEY }}
+    with:
+      mode: ${{ vars.AUTOPILOT_PROMOTE || 'on' }}
+      keep-paths: apps/lexitar/wrangler.jsonc
+      report-repo: promontory-studio/plover-factory
+      canary-label: ${{ needs.canary.outputs.label }}
+      app-id: ${{ vars.AUTOPILOT_APP_ID }}
 
   notify-failure:
-    needs: [promote]
+    needs: [canary, promote]
     if: always() && contains(needs.*.result, 'failure')
-    uses: ./.github/workflows/notify-failure.yml
-    secrets: inherit
+    uses: promontory-studio/autopilot/.github/workflows/notify-failure.yml@c8899c17e4fb3f434e4846c657f6c1a28ffc728d
+    # `secrets: inherit` does not cross owners, so every secret is named.
+    secrets:
+      app-key: ${{ secrets.AUTOPILOT_APP_KEY }}
     with:
+      issue-repo: promontory-studio/plover-factory
+      app-id: ${{ vars.AUTOPILOT_APP_ID }}
+      assignee: pablo-tech
       title: Promotion workflow failed
       context: dev is not reaching main by automation. A gate that blocks promotion exits clean; a failure here means the workflow itself broke.
