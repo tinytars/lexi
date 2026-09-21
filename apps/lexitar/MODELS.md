@@ -91,8 +91,11 @@ Read [`MEASUREMENT.md`](MEASUREMENT.md) for the numbers. The summary a deployer 
   name that is not on it. The validator is a structural check and cannot catch that, which is
   itself the finding. This is a hardware result, not a verdict on open vision models: a larger GPU
   was not tested and this page will not guess.
-- **The vendor baseline could not be re-run**, for a reason that has nothing to do with models; see
-  `MEASUREMENT.md`.
+- **The vendor baseline holds every feature it was asked**, on the models each one ships on, and it
+  is what makes the point above a comparison rather than an assertion. It separates from the open
+  candidate only on the document features, and even there the two were asked different questions —
+  the vendor model took the native PDF, which no open candidate offers. `MEASUREMENT.md` carries the
+  rows, the intervals and that caveat.
 
 So: **Mixed is the stack to pick today** if you want less vendor exposure without losing a feature.
 **Open, local** is the stack to pick if vendor-independence is the requirement and you have a real
