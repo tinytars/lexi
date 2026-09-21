@@ -153,6 +153,21 @@ re-reading the record when someone finally asks. `MAX_IDLE_KEEPALIVES = 12` is t
 a chosen number. A real chat turn is itself a cache read, so an active conversation refreshes the
 entry on its own and no "the patient just asked" signal is wired in.
 
+### Rate limits are the other cost, and they arrive first
+
+Price is per token; a rate limit is per minute. A corpus-sized prefix moves both, and the second
+one bites sooner. Opening a record fires the warm call and the leaf sweep about a second apart, so
+two requests each carrying the whole record reach the vendor back to back — which is exactly what
+produced the first two overload answers seen on dev, on 2026-09-21, minutes after the corpus was
+first turned on.
+
+Nothing is broken when that happens. `model-errors.ts` maps the vendor's 429/503/529 onto
+`ai_busy`; `refresh-range.ts` treats it as transient and retries inside the range call, and
+everywhere else the user is simply told the AI is busy. It is worth writing down because it is the
+failure this design makes common: the first symptom of a corpus too large for an account's
+throughput is `ai_busy`, not a bill. The warm call is the one to suspect — it is the only request
+that carries the whole record before anybody has asked anything.
+
 ## 5. The ceiling
 
 | Limit | Value | Where |
