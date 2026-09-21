@@ -123,7 +123,7 @@ jobs:
     # The rules it enforces are in .github/autopilot.json. Which pull requests it applies to is an
     # input, not a job-level `if:`: a required check that reports SKIPPED blocks the merge forever.
     if: github.event_name == 'pull_request'
-    uses: promontory-studio/autopilot/.github/workflows/guard.yml@0551d8e5ce9c539b501e478b1f8b791df3aa094a
+    uses: promontory-studio/autopilot/.github/workflows/guard.yml@3193be6e7e98fdfcba42894c681ff567b96a02db
     with:
       base-ref: ${{ github.base_ref }}
       head-sha: ${{ github.event.pull_request.head.sha }}
@@ -207,7 +207,7 @@ jobs:
   notify-failure:
     needs: [test, lexitar, lexitar-data, lexitar-image, autopilot-guard, release, pages-deploy]
     if: always() && github.event_name == 'push' && contains(needs.*.result, 'failure')
-    uses: promontory-studio/autopilot/.github/workflows/notify-failure.yml@0551d8e5ce9c539b501e478b1f8b791df3aa094a
+    uses: promontory-studio/autopilot/.github/workflows/notify-failure.yml@3193be6e7e98fdfcba42894c681ff567b96a02db
     # `secrets: inherit` does not cross owners, so every secret is named.
     secrets:
       app-key: ${{ secrets.AUTOPILOT_APP_KEY }}
