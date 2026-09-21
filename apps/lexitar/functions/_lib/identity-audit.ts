@@ -81,14 +81,63 @@ export async function markCrmEventSynced(db: D1Database, id: string, syncedAt?: 
 // See migrations/0008_account_erasure.sql for why this table exists at all. Recorded on write; read
 // only by the erasure plan today.
 
-export async function recordRawObject(db: D1Database, r2Key: string, accountId: string): Promise<void> {
+export interface RawObjectMeasurement {
+  /** Page count, from the browser's pdf.js — a Worker cannot count pages itself. */
+  pages?: number;
+  bytes?: number;
+}
+
+export async function recordRawObject(
+  db: D1Database,
+  r2Key: string,
+  accountId: string,
+  meta: RawObjectMeasurement = {},
+): Promise<void> {
   // A re-PUT of the same key is idempotent in R2 and must be idempotent here too, and it must NOT
   // reassign ownership: the first writer owns the key, so a later account writing the same path
   // cannot claim someone else's object by overwriting it.
   await db
-    .prepare("INSERT OR IGNORE INTO raw_objects (r2_key, account_id, created_at) VALUES (?, ?, ?)")
-    .bind(r2Key, accountId, new Date().toISOString())
+    .prepare("INSERT OR IGNORE INTO raw_objects (r2_key, account_id, created_at, pages, bytes) VALUES (?, ?, ?, ?, ?)")
+    .bind(r2Key, accountId, new Date().toISOString(), meta.pages ?? null, meta.bytes ?? null)
     .run();
+  // INSERT OR IGNORE above is a no-op for a key that already exists, which is exactly the row a
+  // backfill or a re-upload needs to measure.
+  if (meta.pages !== undefined) await fillRawPageCount(db, r2Key, meta.pages, meta.bytes);
+}
+
+/**
+ * Record a page count for a key that already has an ownership row, filling a MISSING count only.
+ *
+ * The `pages IS NULL` guard is the whole point: a stored count is what the corpus ceiling is checked
+ * against, so letting a later caller lower it would let a client talk its way past the limit one
+ * request at a time.
+ */
+export async function fillRawPageCount(db: D1Database, r2Key: string, pages: number, bytes?: number): Promise<void> {
+  await db
+    .prepare("UPDATE raw_objects SET pages = ?, bytes = COALESCE(?, bytes) WHERE r2_key = ? AND pages IS NULL")
+    .bind(pages, bytes ?? null, r2Key)
+    .run();
+}
+
+export interface RawPdfRow {
+  r2_key: string;
+  pages: number | null;
+  bytes: number | null;
+}
+
+/**
+ * Every raw PDF recorded under one client namespace, ordered by key.
+ *
+ * The ORDER is load-bearing, not cosmetic: the corpus turn built from these rows is a prompt-cache
+ * prefix, and a prefix that reorders between two requests is a different prefix. D1 sorts here so
+ * the assembler never depends on R2's listing order.
+ */
+export async function listRawPdfsUnder(db: D1Database, keyPrefix: string): Promise<RawPdfRow[]> {
+  const { results } = await db
+    .prepare("SELECT r2_key, pages, bytes FROM raw_objects WHERE r2_key LIKE ? AND lower(r2_key) LIKE '%.pdf' ORDER BY r2_key")
+    .bind(`${keyPrefix}%`)
+    .all<RawPdfRow>();
+  return results;
 }
 
 export async function listRawObjectsForAccount(db: D1Database, accountId: string): Promise<string[]> {

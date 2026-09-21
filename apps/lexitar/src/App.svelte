@@ -59,6 +59,7 @@
   import { withClient } from "./lib/vault-clients";
   import { reclaimOrphans } from "./lib/orphan-claim";
   import { putRaw } from "./lib/attachment-store";
+  import { healRawPageCounts } from "./lib/raw-pages-heal";
   import { togglePinnedIn, renameIn, removeFrom, labelOf, type SidebarItemKind } from "./lib/vault-item-ops";
   import { pinnedQueries } from "@pablotech/akesi/pinned-queries";
   import Onboarding, { type OnboardingField } from "@tinytars/frame/Onboarding.svelte";
@@ -549,6 +550,14 @@
   $effect(() => {
     void openSweepKey;
     leafRegen.sweep();
+  });
+
+  // W77 — a PDF stored before page counts were kept leaves the report corpus refusing to assemble
+  // (CORPUS.md), and only a browser can count its pages. Once per selected client, unawaited: it is
+  // a repair of stored data, not part of rendering anything.
+  $effect(() => {
+    const id = selectedClientId;
+    if (id) void healRawPageCounts(id);
   });
 
   $effect(() => {
