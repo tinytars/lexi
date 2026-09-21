@@ -258,6 +258,12 @@ export function createLeafRegenQueue(deps: LeafRegenQueueDeps): LeafRegenQueue {
       if (!c?.finding || !id || !deps.getProviderToken()) return;
       void staleNodes(c).then((staleSet) => {
         if (deps.getClient() !== c) return;
+        // Deliberately parallel, unlike the range sweep (range-fill.ts), which awaits its first call
+        // so the rest read one warm corpus cache entry. That saving cannot exist here: a prompt cache
+        // prefix renders tools -> system -> messages, and each node sends its OWN tool schema and its
+        // own system prompt ahead of the corpus (leaf-regen-anthropic.ts), so every node's corpus is
+        // already a separate entry however these are ordered. Serializing would buy wall-clock time
+        // for nothing. See CORPUS.md's caching section.
         for (const key of nodes) void regen(key, c, id, staleSet, undefined, false, true);
       });
     },

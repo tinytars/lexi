@@ -9,7 +9,7 @@ import { nodeHashNow } from "./staleness";
 import { appendRegenEvent } from "./regen-log";
 import { visionAttachmentsFor, documentAttachmentsFor } from "./finding-vision";
 import { fetchAttachmentBase64, MAX_VISION_ATTACHMENTS } from "./attachment-store";
-import { documentTextsFor } from "./document-extract-client";
+import { documentTextsFor, needTranscription } from "./document-extract-client";
 import { MAX_LEAF_DOCUMENTS } from "./leaf-regen-config";
 import type { DocumentText } from "@pablotech/akesi/document-read";
 import { AiError, withDeadline } from "./ai-error";
@@ -89,9 +89,11 @@ export async function fetchLeafRegen(
   // monolith core is not, and does not go through this client at all. documentTextsFor drops
   // anything unextracted or unfetchable, so a document that failed to read degrades this call to
   // text-and-images rather than failing it — same reasoning as the allSettled above.
+  // PDFs are left out where the corpus is on (needTranscription); .txt and .md have no document
+  // block form, so their text is the only way they reach the model at all.
   let documents: DocumentText[] | undefined;
   if (clientId) {
-    const attached = documentAttachmentsFor(node, context, MAX_LEAF_DOCUMENTS);
+    const attached = needTranscription(documentAttachmentsFor(node, context, MAX_LEAF_DOCUMENTS));
     if (attached.length > 0) {
       const texts = await documentTextsFor(clientId, attached);
       if (texts.length > 0) documents = texts;
@@ -107,6 +109,7 @@ export async function fetchLeafRegen(
 
   const payload = JSON.stringify({
     node,
+    clientId,
     inputs: context,
     ...(sendTargetLabels ? { targetLabels } : {}),
     ...(images ? { images } : {}),

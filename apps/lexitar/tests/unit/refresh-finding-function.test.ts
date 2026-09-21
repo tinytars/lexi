@@ -11,8 +11,21 @@ vi.mock("@anthropic-ai/sdk", () => ({
 }));
 
 import { onRequestPost } from "../../functions/api/refresh-finding";
+import { signSession } from "../../functions/_lib/session";
+import { createAccount } from "../../functions/_lib/identity-accounts";
+import { recordRawObject } from "../../functions/_lib/identity-audit";
+import { CORPUS_ACK } from "../../functions/_lib/inference/corpus";
+import { useWorkerd } from "../support/miniflare";
 
-const ENV = { PROVIDER_TOKEN: "provtok", FINDING_ANTHROPIC_API_KEY: "k", STORE_PREFIX: "dev", };
+// REPORTS unset — the corpus off — and bindings that throw on contact, to prove it stays off.
+const NO_STORAGE = new Proxy({}, { get: () => () => { throw new Error("touched storage"); } }) as never;
+const ENV = { PROVIDER_TOKEN: "provtok", FINDING_ANTHROPIC_API_KEY: "k", STORE_PREFIX: "dev",
+  SESSION_SECRET: "test-secret", DB: NO_STORAGE, VAULT: NO_STORAGE };
+
+// Whose record this is, and the account vouching for it. Required on every call whatever REPORTS is
+// set to — these cases are about the relay's other contracts, so the ids are filled in here rather
+// than repeated in every body.
+const IDS = { clientId: "alex", accountId: "acct-1" };
 
 function fakeStream(deltas: string[], throwFinal?: string) {
   return {
@@ -28,11 +41,21 @@ function fakeStream(deltas: string[], throwFinal?: string) {
 
 const CLIENT = { displayName: "P", dob: "1980-01-01", gender: "male", watchlist: [], results: [] };
 
+/** Leaves a deliberately malformed body alone; everything else gets the ids. */
+function withIds(body: string | undefined): string | undefined {
+  if (body === undefined) return undefined;
+  try {
+    return JSON.stringify({ ...IDS, ...JSON.parse(body) });
+  } catch {
+    return body;
+  }
+}
+
 function call(opts: { auth?: string; body?: string } = {}) {
   const headers: Record<string, string> = { "content-type": "application/json" };
   if (opts.auth !== undefined) headers.authorization = opts.auth;
   return onRequestPost({
-    request: new Request("http://x/api/refresh-finding", { method: "POST", headers, body: opts.body ?? JSON.stringify({ client: CLIENT }) }),
+    request: new Request("http://x/api/refresh-finding", { method: "POST", headers, body: withIds(opts.body) ?? JSON.stringify({ client: CLIENT, ...IDS }) }),
     env: ENV,
   });
 }
@@ -53,7 +76,23 @@ describe("/api/refresh-finding guard", () => {
 
   it("400s on malformed JSON and on a missing client", async () => {
     expect((await call({ auth: "Bearer provtok", body: "{not json" })).status).toBe(400);
-    expect((await call({ auth: "Bearer provtok", body: JSON.stringify({}) })).status).toBe(400);
+    expect((await call({ auth: "Bearer provtok", body: JSON.stringify({ client: undefined }) })).status).toBe(400);
+  });
+
+  // The bearer is a deployment-wide secret. It buys entry to the route; it never says whose reports
+  // may be read, so a caller holding only it has to name the account and be checked against it.
+  it("400s a bearer-only caller that names no account, and never streams", async () => {
+    const res = await onRequestPost({
+      request: new Request("http://x/api/refresh-finding", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: "Bearer provtok" },
+        body: JSON.stringify({ client: CLIENT, clientId: "alex" }),
+      }),
+      env: ENV,
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json() as { errorCode: string }).errorCode).toBe("no_account_id");
+    expect(streamMock).not.toHaveBeenCalled();
   });
 });
 
@@ -107,12 +146,14 @@ describe("/api/refresh-finding streaming", () => {
 describe("/api/refresh-finding R2 audit trail (W39 Phase 3)", () => {
   function callWithR2(store: Map<string, string>, deltas: string[]) {
     streamMock.mockReturnValue(fakeStream(deltas));
-    const env = { ...ENV, STORE_PREFIX: "dev", VAULT: { put: async (k: string, v: string) => { store.set(k, v); return { etag: k }; } } };
+    const env = { ...ENV, STORE_PREFIX: "dev",
+      VAULT: { get: (): never => { throw new Error("touched storage"); }, list: (): never => { throw new Error("touched storage"); },
+               put: async (k: string, v: string) => { store.set(k, v); return { etag: k }; } } };
     return onRequestPost({
       request: new Request("http://x/api/refresh-finding", {
         method: "POST",
         headers: { "content-type": "application/json", authorization: "Bearer provtok", "cf-ray": "ray7" },
-        body: JSON.stringify({ client: CLIENT, attempt: 1 }),
+        body: JSON.stringify({ client: CLIENT, attempt: 1, ...IDS }),
       }),
       env,
     });
@@ -127,5 +168,69 @@ describe("/api/refresh-finding R2 audit trail (W39 Phase 3)", () => {
     const done = events.find((e) => e.event === "stream-done");
     expect(done).toMatchObject({ attempt: 1, usage: { input: 1, output: 1 } });
     for (const k of store.keys()) expect(k).toMatch(/^dev\/logs\/refresh-finding\/\d{4}-\d{2}-\d{2}\/ray7-\d\.json$/);
+  });
+});
+
+describe("/api/refresh-finding generates in sight of the patient's reports", () => {
+  const w = useWorkerd({ r2: true, perTest: true });
+
+  async function alexWithAReport(): Promise<string> {
+    const id = crypto.randomUUID();
+    await createAccount(w.db, { id, displayName: "alex", email: `alex-${id}@example.com` });
+    const key = "dev/raw/alex/report.pdf";
+    await w.bucket.put(key, new TextEncoder().encode("%PDF-1.4 report"));
+    await recordRawObject(w.db, key, id, { pages: 2, bytes: 15 });
+    return id;
+  }
+
+  const post = async (accountId: string | null, body: unknown) =>
+    onRequestPost({
+      request: new Request("http://x/api/refresh-finding", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: "Bearer provtok",
+                   ...(accountId ? { cookie: `hd_session=${await signSession({ SESSION_SECRET: "test-secret" }, accountId)}` } : {}) },
+        body: JSON.stringify(body),
+      }),
+      env: { ...ENV, DB: w.db, VAULT: w.bucket, REPORTS: "always" } as never,
+    });
+
+  it("leads with the reports, ahead of the Finding request", async () => {
+    const who = await alexWithAReport();
+
+    const res = await post(who, { client: CLIENT, clientId: "alex" });
+    await bodyText(res);
+
+    const messages = streamMock.mock.calls[0][0].messages;
+    expect(messages[0].content[0].type).toBe("document");
+    expect(messages[1]).toEqual({ role: "assistant", content: CORPUS_ACK });
+    expect(messages[2].role).toBe("user");
+  });
+
+  // Before a 200 commits, because after it the only channel left is the in-band sentinel — which the
+  // browser reads as generation_failed and retries, three full Opus generations deep.
+  it("404s a namespace the session's account does not own, with no stream and no sentinel", async () => {
+    await alexWithAReport();
+    const stranger = crypto.randomUUID();
+    await createAccount(w.db, { id: stranger, displayName: "nobody", email: `nobody-${stranger}@example.com` });
+
+    const res = await post(stranger, { client: CLIENT, clientId: "alex" });
+
+    expect(res.status).toBe(404);
+    expect(res.headers.get("content-type")).toContain("application/json");
+    expect(streamMock).not.toHaveBeenCalled();
+  });
+
+  it("admits a patient's own session with no bearer at all", async () => {
+    const who = await alexWithAReport();
+    const res = await onRequestPost({
+      request: new Request("http://x/api/refresh-finding", {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie: `hd_session=${await signSession({ SESSION_SECRET: "test-secret" }, who)}` },
+        body: JSON.stringify({ client: CLIENT, clientId: "alex" }),
+      }),
+      env: { ...ENV, DB: w.db, VAULT: w.bucket, REPORTS: "always" } as never,
+    });
+
+    expect(res.status).toBe(200);
   });
 });

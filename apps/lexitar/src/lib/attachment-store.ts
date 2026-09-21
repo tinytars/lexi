@@ -30,8 +30,27 @@ export async function buildAttachmentKey(bytes: Uint8Array, originalName: string
   return `${sha8}-${safeName}`;
 }
 
-export function putRaw(clientId: string, key: string, bytes: Uint8Array): Promise<Response> {
-  return fetch(`/api/raw/${normalizeClientId(clientId)}/${key}`, {
+/**
+ * How many pages this PDF has, or undefined if it isn't one or pdfjs cannot open it.
+ *
+ * The browser is the only place this can be measured: pdf.js does not run on Workers, so the
+ * Function receiving the upload cannot count for itself, and a count guessed from byte size is
+ * worthless (a 12 MB scan can be two pages). The count travels with the upload as `?pages=` and is
+ * what the report corpus checks its page ceiling against — see CORPUS.md.
+ */
+export async function countPdfPages(bytes: Uint8Array, name: string, mediaType?: string): Promise<number | undefined> {
+  if (mediaType !== "application/pdf" && !/\.pdf$/i.test(name)) return undefined;
+  try {
+    // .slice() for the same reason as attachFiles below: pdf.js detaches the buffer it is handed.
+    return (await openPdf(bytes.slice())).numPages;
+  } catch {
+    return undefined;
+  }
+}
+
+export function putRaw(clientId: string, key: string, bytes: Uint8Array, pages?: number): Promise<Response> {
+  const query = pages === undefined ? "" : `?pages=${pages}`;
+  return fetch(`/api/raw/${normalizeClientId(clientId)}/${key}${query}`, {
     method: "PUT",
     // /api/raw is gated by the hd_session cookie (W44) — same-origin fetch sends it automatically.
     headers: { "Content-Type": "application/octet-stream" },
@@ -39,8 +58,8 @@ export function putRaw(clientId: string, key: string, bytes: Uint8Array): Promis
   });
 }
 
-export async function uploadAttachment(clientId: string, bytes: Uint8Array, key: string): Promise<void> {
-  const res = await putRaw(clientId, key, bytes);
+export async function uploadAttachment(clientId: string, bytes: Uint8Array, key: string, pages?: number): Promise<void> {
+  const res = await putRaw(clientId, key, bytes, pages);
   if (!res.ok && res.status !== 204) {
     throw new Error(`storing the attachment failed (${res.status})`);
   }
@@ -118,7 +137,8 @@ export async function attachFiles(
         throw new Error(`"${file.name}" is ${pdf.numPages} pages — split it and attach up to ${MAX_DOCUMENT_PAGES} pages at a time`);
       }
     }
-    await uploadAttachment(clientId, bytes, key);
+    // pdf is already open for the page cap above, so the count the corpus needs is free here.
+    await uploadAttachment(clientId, bytes, key, pdf?.numPages);
     const attachment: Attachment = { key, name: file.name, mediaType, bytes: bytes.length, addedAt: new Date().toISOString() };
     out.push(opts?.extractDocuments === false ? attachment : await withExtraction(clientId, attachment, pdf));
   }

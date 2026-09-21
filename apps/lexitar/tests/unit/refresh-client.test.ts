@@ -44,13 +44,21 @@ beforeEach(() => {
 describe("refreshFinding — terminal vs. retryable", () => {
   it("a truncated / unparseable stream is TERMINAL — one attempt, no retry", async () => {
     fetchMock.mockResolvedValue(streamResponse('{"finding":'));
-    await expect(refreshFinding(CLIENT, "tok")).rejects.toMatchObject({ errorCode: "truncated" });
+    await expect(refreshFinding(CLIENT, "alex", "tok")).rejects.toMatchObject({ errorCode: "truncated" });
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  // The Finding is generated in sight of this person's own reports (CORPUS.md), so every attempt —
+  // not just the first — has to say whose record it is, or a retry loses the corpus mid-ladder.
+  it("names whose record it is on every attempt", async () => {
+    fetchMock.mockImplementation(attempts(missing("latest")));
+    await expect(refreshFinding(CLIENT, "alex", "tok")).rejects.toThrow();
+    for (let i = 0; i < 3; i += 1) expect(bodyOf(i).clientId).toBe("alex");
   });
 
   it("a validation miss RETRIES with a correction, capped at 3 attempts", async () => {
     fetchMock.mockImplementation(attempts(missing("latest")));
-    await expect(refreshFinding(CLIENT, "tok")).rejects.toThrow(/progression\.latest" missing/);
+    await expect(refreshFinding(CLIENT, "alex", "tok")).rejects.toThrow(/progression\.latest" missing/);
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(bodyOf(1).corrections[0]).toContain('progression.latest" missing');
   });
@@ -58,7 +66,7 @@ describe("refreshFinding — terminal vs. retryable", () => {
   // Sending only the newest rejection let the model fix one problem and reintroduce another every attempt.
   it("accumulates rejections across attempts rather than replacing them", async () => {
     fetchMock.mockImplementation(attempts(missing("latest"), missing("recent"), missing("overall")));
-    await expect(refreshFinding(CLIENT, "tok")).rejects.toThrow();
+    await expect(refreshFinding(CLIENT, "alex", "tok")).rejects.toThrow();
 
     expect(bodyOf(0).corrections).toEqual([]);
     expect(bodyOf(1).corrections).toHaveLength(1);
@@ -70,7 +78,7 @@ describe("refreshFinding — terminal vs. retryable", () => {
 
   it("recovers on a later attempt once validation passes", async () => {
     fetchMock.mockImplementation(attempts(missing("latest"), valid()));
-    const finding = await refreshFinding(CLIENT, "tok");
+    const finding = await refreshFinding(CLIENT, "alex", "tok");
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(finding.inputsHash).toBe(await findingInputsHash(CLIENT));
     expect(await isFindingStale({ ...CLIENT, finding })).toBe(false);
@@ -80,7 +88,7 @@ describe("refreshFinding — terminal vs. retryable", () => {
   it("threads the abort signal to the fetch", async () => {
     fetchMock.mockImplementation(attempts(valid()));
     const ctrl = new AbortController();
-    await refreshFinding(CLIENT, "tok", undefined, ctrl.signal);
+    await refreshFinding(CLIENT, "alex", "tok", undefined, ctrl.signal);
     expect((fetchMock.mock.calls[0][1] as RequestInit).signal).toBe(ctrl.signal);
   });
 });
@@ -89,7 +97,7 @@ describe("refreshFinding — portion-based progress", () => {
   it("reports N-of-total portions climbing monotonically within an attempt", async () => {
     fetchMock.mockImplementation(async () => multiChunk(['{"progression":1,', '"disease":2}']));
     const seen: RefreshProgress[] = [];
-    await expect(refreshFinding(CLIENT, "tok", (p) => seen.push({ ...p }))).rejects.toThrow();
+    await expect(refreshFinding(CLIENT, "alex", "tok", (p) => seen.push({ ...p }))).rejects.toThrow();
     const first = seen.filter((p) => p.attempt === 1);
     expect(first.map((p) => p.received)).toEqual([1, 2]);
     expect(first.at(-1)).toMatchObject({ received: 2, total: FINDING_PORTION_KEYS.length, attempt: 1, maxAttempts: 3 });
@@ -98,7 +106,7 @@ describe("refreshFinding — portion-based progress", () => {
   it("increments the attempt across a validation-retry (not a silent reset)", async () => {
     fetchMock.mockImplementation(attempts(missing("latest"), valid()));
     const seen: number[] = [];
-    await refreshFinding(CLIENT, "tok", (p) => seen.push(p.attempt));
+    await refreshFinding(CLIENT, "alex", "tok", (p) => seen.push(p.attempt));
     expect(seen).toContain(1);
     expect(seen).toContain(2);
     expect(Math.max(...seen)).toBe(2);
@@ -109,7 +117,7 @@ describe("refreshFinding — loop events for the audit beacon", () => {
   it("emits validation-fail (category-only) per retry then gave-up, never the correction prose", async () => {
     fetchMock.mockImplementation(attempts(missing("latest")));
     const events: RefreshEvent[] = [];
-    await expect(refreshFinding(CLIENT, "tok", undefined, undefined, (e) => events.push(e))).rejects.toThrow();
+    await expect(refreshFinding(CLIENT, "alex", "tok", undefined, undefined, (e) => events.push(e))).rejects.toThrow();
     expect(events.filter((e) => e.event === "validation-fail")).toHaveLength(3);
     expect(events.at(-1)).toMatchObject({ event: "gave-up", errorCode: "validation_exhausted" });
     for (const e of events) expect(JSON.stringify(e)).not.toContain("progression.latest");
@@ -118,14 +126,14 @@ describe("refreshFinding — loop events for the audit beacon", () => {
   it("emits truncated (terminal) on an unparseable stream", async () => {
     fetchMock.mockResolvedValue(streamResponse('{"finding":'));
     const events: RefreshEvent[] = [];
-    await expect(refreshFinding(CLIENT, "tok", undefined, undefined, (e) => events.push(e))).rejects.toMatchObject({ errorCode: "truncated" });
+    await expect(refreshFinding(CLIENT, "alex", "tok", undefined, undefined, (e) => events.push(e))).rejects.toMatchObject({ errorCode: "truncated" });
     expect(events).toEqual([{ event: "truncated", attempt: 1, errorCode: "truncated" }]);
   });
 
   it("emits success on the winning attempt", async () => {
     fetchMock.mockImplementation(attempts(valid()));
     const events: RefreshEvent[] = [];
-    await refreshFinding(CLIENT, "tok", undefined, undefined, (e) => events.push(e));
+    await refreshFinding(CLIENT, "alex", "tok", undefined, undefined, (e) => events.push(e));
     expect(events).toEqual([{ event: "success", attempt: 1 }]);
   });
 });

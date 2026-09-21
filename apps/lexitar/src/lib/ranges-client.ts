@@ -13,9 +13,14 @@ import type { Client, PersonalizedRange } from "./types";
  * One marker's personalized range. Throws AiError with the relay's machine-readable errorCode so the
  * caller can render the same sentence describeAiError gives every other AI surface — the deadline and
  * the typed error are the whole reason this is not a bare fetch.
+ *
+ * `clientId` is positional and required rather than an option: the range is generated in sight of
+ * that record's own reports (CORPUS.md), so a caller that forgets it is a type error here rather
+ * than a 400 in front of a patient.
  */
 export async function fetchPersonalizedRange(
   client: Client,
+  clientId: string,
   marker: string,
   providerToken: string | null | undefined,
 ): Promise<PersonalizedRange> {
@@ -23,7 +28,7 @@ export async function fetchPersonalizedRange(
     fetch("/api/refresh-range", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${providerToken}` },
-      body: JSON.stringify({ client, marker }),
+      body: JSON.stringify({ client, clientId, marker }),
       signal,
     }).catch((e) => {
       if ((e as Error).name === "AbortError") throw e;

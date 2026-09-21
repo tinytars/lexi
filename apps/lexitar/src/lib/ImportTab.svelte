@@ -10,7 +10,7 @@
   // out of band ("~24h"). Same hash/dedup/PUT/save spine, no /api/extract call.
   import type { Client, PendingUpload } from "./types";
   import { classifyUpload, type FoldResult, type SourceFoldResult } from "./import-flow";
-  import { putRaw } from "./attachment-store";
+  import { putRaw, countPdfPages } from "./attachment-store";
   import { PRODUCT_NAME } from "./brand";
   import { ABILITY_UNAVAILABLE, supports } from "./model-ability";
 
@@ -119,7 +119,9 @@
     if (!rawFile || !next) return;
     status = "committing";
     try {
-      const res = await putRaw(clientId, rawFile, bytes);
+      // The page count rides along with the upload: it is what the report corpus checks its ceiling
+      // against, and this is the only moment a browser has the bytes open. See CORPUS.md.
+      const res = await putRaw(clientId, rawFile, bytes, await countPdfPages(bytes, rawFile));
       if (!res.ok && res.status !== 204) {
         throw new Error(`storing the original failed (${res.status})`);
       }

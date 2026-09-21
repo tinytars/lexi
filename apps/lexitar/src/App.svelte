@@ -41,7 +41,7 @@
   import { createConflictResolver } from "./lib/conflict-resolver";
   import { buildRefreshMessage } from "./lib/refresh-message";
   import { patientSwitchedMidRequest } from "./lib/stale-guard";
-  import { eligibleMarkersForRangeFill } from "./lib/range-eligibility";
+  import { fillMissingRanges } from "./lib/range-fill";
   import { decideSidebarAction } from "./lib/sidebar-dispatch";
   import ReportSections from "./lib/ReportSections.svelte";
   import { ALL_SECTIONS, presentSections } from "./lib/report-sections";
@@ -59,6 +59,7 @@
   import { withClient } from "./lib/vault-clients";
   import { reclaimOrphans } from "./lib/orphan-claim";
   import { putRaw } from "./lib/attachment-store";
+  import { healRawPageCounts } from "./lib/raw-pages-heal";
   import { togglePinnedIn, renameIn, removeFrom, labelOf, type SidebarItemKind } from "./lib/vault-item-ops";
   import { pinnedQueries } from "@pablotech/akesi/pinned-queries";
   import Onboarding, { type OnboardingField } from "@tinytars/frame/Onboarding.svelte";
@@ -85,10 +86,11 @@
   import { PRODUCT_NAME, FOUNDATION } from "./lib/brand";
   import OrgFooter from "@tinytars/frame/OrgFooter.svelte";
   import Disclaimer from "./lib/Disclaimer.svelte";
-  import { runWithConcurrency } from "@tinytars/frame/concurrency";
   import { loadSidebarMode, modeForSection } from "./lib/sidebar-mode";
   import { loadLastSection, saveLastSection, loadLastGroup, saveLastGroup } from "./lib/nav-memory";
   import { loadJSON, saveJSON } from "@tinytars/frame/persisted-json";
+  import { createCorpusWarmer } from "./lib/corpus-warm";
+  import { warmCorpus } from "./lib/corpus-warm-client";
 
   // W84 — read-aloud uses the personas' neural voices, the browser voice only as a fallback.
   configureSpeech(neuralSpeech);
@@ -116,6 +118,17 @@
     void vaultOpen;
     void selectedClientId;
     speechRegistry.stop();
+  });
+
+  // Reads the open record's reports into the prompt cache before the patient asks anything, so the
+  // first question is answered against a warm entry rather than waiting out a cache write
+  // (CORPUS.md). Tracks unitSystem too: it picks the chat system prompt, which sits AHEAD of the
+  // documents in the cache prefix, so a toggle genuinely forks the entry and a warm-up for the
+  // other one would be paid for and never read.
+  const corpusWarmer = createCorpusWarmer((id) => warmCorpus(id, unitSystem));
+  $effect(() => {
+    corpusWarmer.select(vaultOpen ? selectedClientId : null);
+    void unitSystem;
   });
   // W72 — the unlocked-session key material lives in one object with one transition each way
   // (vault-session.svelte.ts). These were four separate $state declarations set and cleared in eight
@@ -341,6 +354,12 @@
       const pl = parseHash(window.location.hash);
       if (pl) applyNav(pl);
     });
+    // Coming back to the tab is the one signal of presence this app gets for free. It restarts the
+    // keep-alive budget, which otherwise stops itself once holding the entry costs more than
+    // rebuilding it (MAX_IDLE_KEEPALIVES).
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") corpusWarmer.wake();
+    });
     if (boot.cleanUrl) window.history.replaceState({}, "", boot.cleanUrl);
     // W45 — deferred so the rest of this instance script (the const helpers it calls) has initialized.
     const googleReturn = boot.googleReturn;
@@ -467,7 +486,7 @@
   // W84 — with Cody selected, any assistant bubble offers "Cody's take" on Lexi's words.
   $effect(() => {
     const p = persona;
-    configureRetell(p === "lexi" ? null : { label: `${PERSONAS[p].name}'s take`, voice: p, retell: (text) => personaTake(p, text) });
+    configureRetell(p === "lexi" ? null : { label: `${PERSONAS[p].name}'s take`, voice: p, retell: (text) => personaTake(p, selectedClientId, text) });
   });
   // Every login path re-reads the account; the persona rides along so no path can forget it.
   async function refreshAccount() {
@@ -549,6 +568,14 @@
   $effect(() => {
     void openSweepKey;
     leafRegen.sweep();
+  });
+
+  // W77 — a PDF stored before page counts were kept leaves the report corpus refusing to assemble
+  // (CORPUS.md), and only a browser can count its pages. Once per selected client, unawaited: it is
+  // a repair of stored data, not part of rendering anything.
+  $effect(() => {
+    const id = selectedClientId;
+    if (id) void healRawPageCounts(id);
   });
 
   $effect(() => {
@@ -780,9 +807,9 @@
   // so no progress/abort plumbing. Throws on failure so MarkerChart's own doTranslate can surface the
   // error scoped to that one marker instead of the page-level refreshError.
   async function translateMarker(client: Client, marker: string): Promise<void> {
-    if (!currentClient) return;
+    if (!currentClient || !selectedClientId) return;
     const c = currentClient;
-    const range = await fetchPersonalizedRange(client, marker, providerToken);
+    const range = await fetchPersonalizedRange(client, selectedClientId, marker, providerToken);
     if (patientSwitchedMidRequest(currentClient, c)) return;
     saveEdits({ ...c, personalizedRanges: { ...c.personalizedRanges, [marker]: range } });
   }
@@ -794,9 +821,9 @@
   // path, same as every other in-app mutation) — no providerToken precondition, so the account
   // owner's own session (cookie auth, no token) works too.
   async function handleCategorizeMarkers(client: Client): Promise<void> {
-    if (!currentClient) return;
+    if (!currentClient || !selectedClientId) return;
     const c = currentClient;
-    const markerGroups = await refreshMarkerGroups(client, { providerToken: providerToken ?? undefined });
+    const markerGroups = await refreshMarkerGroups(client, selectedClientId, { providerToken: providerToken ?? undefined });
     if (patientSwitchedMidRequest(currentClient, c)) return;
     saveEdits({ ...c, markerGroups });
   }
@@ -809,10 +836,8 @@
   // cookie auth (translateMarker's providerToken precondition was dropped for this). Fire-and-forget
   // from the caller; failures here are silent — MarkerChart's per-marker Translate button already
   // covers a marker that didn't get filled.
-  async function fillMissingRanges(client: Client): Promise<void> {
-    const eligible = eligibleMarkersForRangeFill(client);
-    if (eligible.length === 0) return;
-    await runWithConcurrency(eligible, 4, async (marker) => {
+  function fillRanges(client: Client): Promise<void> {
+    return fillMissingRanges(client, async (marker) => {
       try {
         await translateMarker(client, marker);
       } catch {
@@ -826,7 +851,7 @@
   // so Health Reports + the stale chips recompute. ImportTab handles the raw PUT.
   async function handleImported(updated: Client, reportId?: string) {
     if (!selectedClientId || !(await persistClient(selectedClientId, updated))) return;
-    void fillMissingRanges(updated);
+    void fillRanges(updated);
     // W38/5 — headline case: after a report import, close the modal and auto-follow to it in
     // Reports, highlighted (no confirming click).
     if (reportId) {
@@ -841,7 +866,7 @@
       storeOriginal: putRaw,
       persist: async (id, next) => {
         if (!(await persistClient(id, next))) return false;
-        void fillMissingRanges(next);
+        void fillRanges(next);
         return true;
       },
     });

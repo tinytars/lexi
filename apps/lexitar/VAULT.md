@@ -243,7 +243,15 @@ can't drift from the served `.enc`.
 along with the authorisation gap recorded in `API.md`):
 `env.VAULT.get(storeKey(env, "raw", id.toLowerCase(), file))` → streams the plaintext original with a
 content-type by extension; `400` bad path, `404` miss, PHI-free log `{route:"/api/raw", status, id}`.
-Never decrypts (raw is stored unencrypted). **`DELETE /api/raw/{id}/{file}`**
+Never decrypts (raw is stored unencrypted).
+
+Because these objects are plaintext and outside the encryption boundary, a Worker can read them —
+and since W-corpus every AI route does: the PDFs under `raw/{id}/` are attached to each inference
+about that person as `document` blocks ([`CORPUS.md`](CORPUS.md)), through the same `rawAccessFor`
+gate this route uses. Encrypting raw originals would end that, which is the trade the boundary
+here was already making and is now paying for.
+
+**`DELETE /api/raw/{id}/{file}`**
 (same gate) expunges one raw object from R2 (`env.VAULT.delete(...)`) → `{deleted:true}`;
 idempotent. It's the web-delete shape: the browser runs the pure `removeSource()`, `PUT`s the
 re-encrypted vault, then `DELETE`s the raw object.

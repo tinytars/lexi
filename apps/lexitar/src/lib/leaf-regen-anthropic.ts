@@ -70,6 +70,10 @@ export interface RunLeafRegenParams {
   /** Aborts the generation when the caller goes away — see the request.signal pass-through in
    *  functions/api/leaf-regen.ts. Without it a browser disconnect leaves the model generating. */
   signal?: AbortSignal;
+  /** The patient's own reports, prepended verbatim ahead of this node's inputs (CORPUS.md). Empty
+   *  for the CLI backfill, which calls this in-process with no R2. Unchanged by the correction
+   *  retry below, so the second attempt reads the cache entry the first one wrote. */
+  prefixTurns?: Anthropic.MessageParam[];
 }
 
 // Throws on an unknown node (caller's responsibility to pass a valid one) or on an Anthropic SDK
@@ -195,7 +199,7 @@ export async function runLeafRegen(params: RunLeafRegenParams): Promise<LeafRege
         system: `${BASE_SYSTEM_PROMPT}\n\n${scopeInstruction}${spec.systemPromptExtra}`,
         tools: [toolSchema],
         tool_choice: { type: "tool", name: toolSchema.name },
-        messages: [{ role: "user", content: withCorrection }],
+        messages: [...(params.prefixTurns ?? []), { role: "user", content: withCorrection }],
       },
       params.signal ? { signal: params.signal } : undefined,
     );

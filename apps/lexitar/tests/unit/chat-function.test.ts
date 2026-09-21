@@ -10,12 +10,20 @@ vi.mock("@anthropic-ai/sdk", () => ({
   },
 }));
 
+import type Anthropic from "@anthropic-ai/sdk";
 import { onRequestPost } from "../../functions/api/chat";
 import { signSession } from "../../functions/_lib/session";
+import { createAccount } from "../../functions/_lib/identity-accounts";
+import { recordRawObject } from "../../functions/_lib/identity-audit";
+import { CORPUS_ACK } from "../../functions/_lib/inference/corpus";
 import { fakeSessionDb } from "../support/session-db";
+import { useWorkerd } from "../support/miniflare";
 
+// REPORTS is unset here, which is a deployment that never turned the corpus on — so a VAULT that
+// throws on contact is the assertion that these cases read no storage at all.
+const NO_STORAGE = new Proxy({}, { get: () => () => { throw new Error("touched storage"); } }) as never;
 const ENV = { SESSION_SECRET: "test-secret",
-    DB: fakeSessionDb(), ANTHROPIC_API_KEY: "k" };
+    DB: fakeSessionDb(), VAULT: NO_STORAGE, STORE_PREFIX: "dev", ANTHROPIC_API_KEY: "k" };
 
 const MSGS = [{ role: "user", content: "CONTEXT:\n{}\n\nQUESTION:\nwhat changed?" }];
 
@@ -27,7 +35,7 @@ async function call(opts: { auth?: "valid" | "bogus"; body?: string } = {}) {
     request: new Request("http://local/api/chat", {
       method: "POST",
       headers,
-      body: opts.body ?? JSON.stringify({ messages: MSGS }),
+      body: opts.body ?? JSON.stringify({ messages: MSGS, clientId: "alex" }),
     }),
     env: ENV,
   });
@@ -61,9 +69,9 @@ describe("/api/chat guard + validation", () => {
   });
 
   it("400s on missing/empty/invalid messages", async () => {
-    expect((await call({ auth: "valid", body: JSON.stringify({ messages: [] }) })).status).toBe(400);
-    expect((await call({ auth: "valid", body: JSON.stringify({ messages: "nope" }) })).status).toBe(400);
-    expect((await call({ auth: "valid", body: JSON.stringify({ messages: [{ role: "system", content: "x" }] }) })).status).toBe(400);
+    expect((await call({ auth: "valid", body: JSON.stringify({ messages: [], clientId: "alex" }) })).status).toBe(400);
+    expect((await call({ auth: "valid", body: JSON.stringify({ messages: "nope", clientId: "alex" }) })).status).toBe(400);
+    expect((await call({ auth: "valid", body: JSON.stringify({ messages: [{ role: "system", content: "x" }], clientId: "alex" }) })).status).toBe(400);
     expect(create).not.toHaveBeenCalled();
   });
 
@@ -79,16 +87,16 @@ describe("/api/chat guard + validation", () => {
         { type: "text", text: "CONTEXT:\n{}\n\nQUESTION:\nwhat is this?" },
       ],
     }];
-    const res = await call({ auth: "valid", body: JSON.stringify({ messages: imageMsgs }) });
+    const res = await call({ auth: "valid", body: JSON.stringify({ messages: imageMsgs, clientId: "alex" }) });
     expect(res.status).toBe(200);
     expect(create).toHaveBeenCalledWith(expect.objectContaining({ messages: imageMsgs }));
   });
 
   // W46 Phase 6 — raised from 512 KB to 8 MB so a turn carrying compressed-image base64 fits.
   it("413s only once the body exceeds the new 8 MB cap, not at the old 512 KB one", async () => {
-    const bigButUnderCap = JSON.stringify({ messages: [{ role: "user", content: "x".repeat(1_000_000) }] });
+    const bigButUnderCap = JSON.stringify({ messages: [{ role: "user", content: "x".repeat(1_000_000) }], clientId: "alex" });
     expect((await call({ auth: "valid", body: bigButUnderCap })).status).not.toBe(413);
-    const overCap = JSON.stringify({ messages: [{ role: "user", content: "x".repeat(9 * 1024 * 1024) }] });
+    const overCap = JSON.stringify({ messages: [{ role: "user", content: "x".repeat(9 * 1024 * 1024) }], clientId: "alex" });
     expect((await call({ auth: "valid", body: overCap })).status).toBe(413);
   });
 });
@@ -124,7 +132,7 @@ describe("/api/chat relay contract", () => {
   });
 
   it("drops tools on the final forced round so the model must answer", async () => {
-    await call({ auth: "valid", body: JSON.stringify({ messages: MSGS, final: true }) });
+    await call({ auth: "valid", body: JSON.stringify({ messages: MSGS, final: true, clientId: "alex" }) });
     const arg = create.mock.calls[0][0] as { tools?: unknown };
     expect(arg.tools).toBeUndefined();
   });
@@ -140,12 +148,12 @@ describe("/api/chat units-system instruction (W14)", () => {
   const systemOf = () => (create.mock.calls[0][0] as { system: string }).system;
 
   it("names SI in the system prompt when unitSystem=metric", async () => {
-    await call({ auth: "valid", body: JSON.stringify({ messages: MSGS, unitSystem: "metric" }) });
+    await call({ auth: "valid", body: JSON.stringify({ messages: MSGS, unitSystem: "metric", clientId: "alex" }) });
     expect(systemOf()).toContain("SI units");
   });
 
   it("names US-conventional units when unitSystem=imperial (and on the default)", async () => {
-    await call({ auth: "valid", body: JSON.stringify({ messages: MSGS, unitSystem: "imperial" }) });
+    await call({ auth: "valid", body: JSON.stringify({ messages: MSGS, unitSystem: "imperial", clientId: "alex" }) });
     expect(systemOf()).toContain("US-conventional units");
   });
 
@@ -185,7 +193,7 @@ describe("/api/chat logging is PHI-free", () => {
       request: new Request("http://local/api/chat", {
         method: "POST",
         headers: { cookie: `hd_session=${await signSession(ENV, "acct-1")}`, "content-type": "application/json" },
-        body: JSON.stringify({ messages: [{ role: "user", content: "SECRET_PHI in here" }] }),
+        body: JSON.stringify({ messages: [{ role: "user", content: "SECRET_PHI in here" }], clientId: "alex" }),
       }),
       env: ENV,
     });
@@ -236,5 +244,101 @@ describe("/api/chat refuses an incomplete completion", () => {
     const res = await call({ auth: "valid" });
     expect(res.status).toBe(200);
     expect((await res.json())).toMatchObject({ kind: "answer", answer: "an answer" });
+  });
+});
+
+// The requirement this whole change exists for: a question is answered in sight of the person's own
+// reports. Real R2 and real D1 — what the corpus contains is a property of what storage holds.
+describe("/api/chat answers in sight of the patient's reports", () => {
+  const w = useWorkerd({ r2: true, perTest: true });
+  const env = () =>
+    ({ SESSION_SECRET: "test-secret", DB: w.db, VAULT: w.bucket, STORE_PREFIX: "dev", REPORTS: "always", ANTHROPIC_API_KEY: "k" }) as never;
+
+  /** An account that owns `alex`, with one stored report. */
+  async function alexWithAReport(): Promise<string> {
+    const id = crypto.randomUUID();
+    await createAccount(w.db, { id, displayName: "alex", email: `alex-${id}@example.com` });
+    const key = "dev/raw/alex/report.pdf";
+    await w.bucket.put(key, new TextEncoder().encode("%PDF-1.4 report"));
+    await recordRawObject(w.db, key, id, { pages: 2, bytes: 15 });
+    return id;
+  }
+
+  const post = async (accountId: string, body: unknown) =>
+    onRequestPost({
+      request: new Request("http://local/api/chat", {
+        method: "POST",
+        headers: { cookie: `hd_session=${await signSession(ENV, accountId)}`, "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+      env: env(),
+    });
+
+  const sentMessages = (round: number) => (create.mock.calls[round][0] as { messages: Anthropic.MessageParam[] }).messages;
+
+  it("sends the reports ahead of the browser's own turns", async () => {
+    const who = await alexWithAReport();
+
+    const res = await post(who, { messages: MSGS, clientId: "alex" });
+
+    expect(res.status).toBe(200);
+    const messages = sentMessages(0);
+    const first = messages[0].content as Anthropic.ContentBlockParam[];
+    expect(first[0].type).toBe("document");
+    expect(messages[1]).toEqual({ role: "assistant", content: CORPUS_ACK });
+    expect(messages.slice(2)).toEqual(MSGS);
+  });
+
+  // The cache is keyed on the exact prefix bytes, so a corpus that differs by one byte between
+  // round 1 and round 2 turns every tool round into a full re-write of the whole record.
+  it("sends a byte-identical corpus on a tool round", async () => {
+    const who = await alexWithAReport();
+    const toolRound = [...MSGS, { role: "assistant", content: [{ type: "tool_use", id: "tu_1", name: "get_marker_readings", input: {} }] }];
+
+    await post(who, { messages: MSGS, clientId: "alex" });
+    await post(who, { messages: toolRound, clientId: "alex" });
+
+    expect(JSON.stringify(sentMessages(1).slice(0, 2))).toBe(JSON.stringify(sentMessages(0).slice(0, 2)));
+  });
+
+  // A 403 would confirm the namespace exists; this route says only that there is nothing here.
+  it("404s for an account that does not own the record, and calls no model", async () => {
+    await alexWithAReport();
+    const stranger = crypto.randomUUID();
+    await createAccount(w.db, { id: stranger, displayName: "nobody", email: `nobody-${stranger}@example.com` });
+
+    const res = await post(stranger, { messages: MSGS, clientId: "alex" });
+
+    expect(res.status).toBe(404);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  // The browser replays the array on every round; ~20 MB of base64 per round does not fit the body
+  // cap once, and bytes the caller chose are not bytes the caller was authorised to read.
+  it("400s on a caller-supplied document block rather than relaying it", async () => {
+    const who = await alexWithAReport();
+    const smuggled = [{
+      role: "user",
+      content: [
+        { type: "document", source: { type: "base64", media_type: "application/pdf", data: "JVBERi0=" } },
+        { type: "text", text: "what does this say?" },
+      ],
+    }];
+
+    const res = await post(who, { messages: smuggled, clientId: "alex" });
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).errorCode).toBe("client_document");
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("400s when the question does not say whose record it is about", async () => {
+    const who = await alexWithAReport();
+
+    const res = await post(who, { messages: MSGS });
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).errorCode).toBe("no_client_id");
+    expect(create).not.toHaveBeenCalled();
   });
 });

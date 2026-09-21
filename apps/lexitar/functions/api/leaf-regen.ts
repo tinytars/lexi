@@ -1,8 +1,8 @@
-import type { D1Database } from "../_lib/identity-types";
 import { requireSession } from "../_lib/session";
 import { logRequest } from "../_lib/log";
-import { modelErrorReply } from "../_lib/model-errors";
-import { modelFor } from "../_lib/inference/resolve";
+import { inferenceErrorReply } from "../_lib/model-errors";
+import { attachedModelFor, type AttachedEnv } from "../_lib/inference/attach";
+import { subjectOf } from "../_lib/inference/subject";
 import { LEAF_REGEN_SPECS } from "../../src/lib/leaf-regen-registry";
 import { runLeafRegen } from "../../src/lib/leaf-regen-anthropic";
 import { capDocuments } from "@pablotech/akesi/document-read";
@@ -27,10 +27,13 @@ import { capDocuments } from "@pablotech/akesi/document-read";
 //
 // Its provider in inference.config.json reads RANGES_ANTHROPIC_API_KEY first, the key Markers'
 // on-the-fly Translate uses: on the dev Pages project only that one is demonstrably good.
-interface Env {
+//
+// "It never touches R2" stopped being true above: a leaf is now regenerated in sight of the
+// person's own reports (CORPUS.md), which this route reads from R2 itself. The browser's inputs are
+// still relayed uninspected — what changed is that the relay now also carries something the browser
+// never sent. AttachedEnv brings DB (requireSession needs it anyway, W71), VAULT and STORE_PREFIX.
+interface Env extends AttachedEnv {
   SESSION_SECRET: string;
-  // W71 — requireSession reads accounts.sessions_valid_from, so every gated route needs the binding.
-  DB: D1Database;
 }
 
 const ROUTE = "/api/leaf-regen";
@@ -59,7 +62,7 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
   if (rawBody.length > MAX_BODY_BYTES) {
     return finish(413, { error: "inputs too large" }, { errorCode: "too_large" });
   }
-  let body: { node?: unknown; inputs?: unknown; targetLabels?: unknown; images?: unknown; documents?: unknown };
+  let body: { node?: unknown; inputs?: unknown; targetLabels?: unknown; images?: unknown; documents?: unknown; clientId?: unknown };
   try {
     body = JSON.parse(rawBody);
   } catch {
@@ -77,6 +80,11 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
     return finish(400, { error: "inputs is required" }, { errorCode: "no_inputs" });
   }
   const inputs = body.inputs as Record<string, unknown>;
+
+  // Whose record this leaf belongs to — required whatever REPORTS is set to, so enabling the corpus
+  // in a deployment never changes the request contract underneath its callers.
+  const who = subjectOf(session, body);
+  if ("error" in who) return finish(who.status, { error: who.error, errorCode: who.errorCode }, { errorCode: who.errorCode });
 
   // Optional: for a row-addressable node (studyResults, treatmentAssessment — each item independently
   // identified by a label), the caller may narrow the response to just the row(s) that actually
@@ -128,7 +136,8 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
     // request.signal upstream (mirrors refresh-finding.ts): a browser that disconnects — a
     // navigation, or the client-side deadline firing — stops the generation instead of leaving
     // the model producing tokens nobody will read.
-    const outcome = await runLeafRegen({ ...modelFor(env, "leafRegen"), node: body.node, inputs, targetLabels, images, documents, signal: request.signal });
+    const { corpus, ...resolved } = await attachedModelFor(env, "leafRegen", who);
+    const outcome = await runLeafRegen({ ...resolved, node: body.node, inputs, targetLabels, images, documents, prefixTurns: corpus.turns, signal: request.signal });
     switch (outcome.kind) {
       case "empty":
         return finish(200, { result: null });
@@ -156,7 +165,8 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
         return finish(200, { result: outcome.result }, { usage: outcome.usage });
     }
   } catch (err) {
-    const { status, errorCode, error } = modelErrorReply(err, "leaf-regen backend error");
-    return finish(status, { error, errorCode }, { errorCode });
+    // Spread rather than picked apart: a corpus refusal's limit/actual/max is the whole remedy.
+    const { status, ...payload } = inferenceErrorReply(err, "leaf-regen backend error");
+    return finish(status, payload, { errorCode: payload.errorCode });
   }
 }
