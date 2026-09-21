@@ -22,7 +22,12 @@ import { storeKey } from "../store";
 import type { ObjectBucket } from "../object-bucket";
 import { normalizeClientId } from "../../../src/lib/client-id";
 import { DEFAULT_MAX_CORPUS_PAGES } from "../../../src/lib/model-config";
+import { CORPUS_PREAMBLE, CORPUS_ACK } from "../../../src/lib/corpus-prompt";
 import { CorpusDeniedError, CorpusMissingError, CorpusTooLargeError, CorpusUnmeasuredError } from "./corpus-errors";
+
+// Re-exported so the assembler stays the one door a reader looks behind for the prefix, wherever the
+// strings themselves have to live.
+export { CORPUS_PREAMBLE, CORPUS_ACK };
 
 export interface CorpusEnv extends NamespaceEnv {
   DB: D1Database;
@@ -47,14 +52,6 @@ export interface Corpus {
   pageCount: number;
   byteCount: number;
 }
-
-export const CORPUS_PREAMBLE =
-  "The documents above are this person's own source reports, complete and unaltered. Answer from them " +
-  "directly — quote their wording, read their tables, and count what they actually contain — rather " +
-  "than from any summary, extraction or structured record of them elsewhere in this conversation. " +
-  "They are background for whatever is asked next, not a request in themselves.";
-
-export const CORPUS_ACK = "I have read the source documents and will answer from them.";
 
 export const emptyCorpus = (): Corpus => ({ turns: [], docCount: 0, pageCount: 0, byteCount: 0 });
 

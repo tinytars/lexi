@@ -31,6 +31,18 @@ Non-PDF originals (`.xlsx`, `.jpg`, `.json`) are not attached: there is no `docu
 for them. Their readings are in the vault, extracted at import, and that remains all the model
 sees of them. Stated, not solved.
 
+**The claim is tested against a real model**, in `tests/live/corpus-answers-the-document.test.ts`.
+Every other suite proves the plumbing — which bytes are attached, in what order, by which route —
+and none of them can prove a model can read them, because none of them calls one. That file asks
+three questions whose answers exist only in a document's own pages (a prior study's score inside an
+imaging narrative, a reference interval in a table cell, a supplement dose in a clinic note), each
+one absent from any structured extraction of the same file. It is opt-in and never in CI, because
+it spends money:
+
+```
+BENCH_LIVE=1 npx vitest run --config vitest.live.config.ts tests/live/corpus-answers-the-document.test.ts
+```
+
 ## 2. Where the bytes come from
 
 `{STORE_PREFIX}/raw/{clientId}/` in R2 — the original upload, plaintext, deliberately outside the
@@ -150,10 +162,10 @@ entry on its own and no "the patient just asked" signal is wired in.
 | Documents | **100** | `MAX_CORPUS_DOCS` |
 | Pages per document | **60** | akesi's existing per-document bound, enforced on upload |
 
-Pages bind before bytes. At roughly 1,500–3,000 tokens per page, 600 pages — the provider's own
-hard limit — is up to 1.8 M tokens, past the window; 250 leaves room for history, context and
-output. A deployer pointing a feature at a 200 K-context model sets a lower `maxCorpusPages`,
-which is why that one lives in config and the other two do not.
+Pages bind before bytes. At the measured **2,239 tokens per page** (§8), the provider's own hard
+limit of 600 pages is 1.34 M tokens — past a 1 M window; 250 pages is ~560 K, which leaves room for
+history, context and output. A deployer pointing a feature at a 200 K-context model sets a lower
+`maxCorpusPages`, which is why that one lives in config and the other two do not.
 
 **Page counts live in D1**, in `raw_objects` (`migrations/0015_raw_object_pages.sql`), not in R2
 metadata: `ObjectBucket` has no metadata channel, and widening that port would be a
@@ -269,13 +281,50 @@ error. The structure of it:
 - The first call of every window pays the write. `corpus-warm` moves chat's off the patient's
   cursor; it does not remove it.
 
-**No token or dollar figure is published here until it is measured.** Pages-per-token varies by
-several times between a text PDF and a scan, so an estimate would be a number people plan against
-and it would be wrong. The measurement is `messages.count_tokens` against a real vault for
-tokens/page, and the Usage and Cost Admin API for a week of actual spend; both land in this section
-with the date they were taken.
+### Measured, 2026-09-21, on dev
 
-> **Measured:** *(pending — dev measurement, warp step 6)*
+`npm run corpus:measure` (`scripts/corpus-measure.ts`) counts a real namespace through
+`messages.count_tokens` — the whole chat prefix, tools and system included, not the documents
+alone. It is free and writes nothing, so it can be re-run on any environment at any time.
+
+| | PDFs | pages | prefix tokens | tokens/page |
+|---|---|---|---|---|
+| smallest namespace | 6 | 8 | 17,463 | 2,183 |
+| typical namespace | 28 | 46 | 104,755 | 2,277 |
+| largest namespace | 17 | 67 | 156,130 | 2,330 |
+| **all four measured** | **61** | **156** | **349,318** | **2,239** |
+
+**2,239 tokens/page**, and it is tight: the spread across four real records is 2,028–2,330, an
+8% band rather than the 2× the ceiling was sized against. The 250-page ceiling is therefore
+~560,000 tokens — comfortably inside a 1 M window with room for history, context and output.
+
+### What that costs
+
+Measured tokens at list price, from the same table `scripts/inference-cost.ts` bills against.
+Per request, for the largest measured namespace:
+
+| | cache write | cache read |
+|---|---|---|
+| `claude-sonnet-4-6` — chat, `leafRegen`, `persona`, `treatmentText` | $0.585 | $0.047 |
+| `claude-opus-4-7` — `ranges`, `markerGroups`, `finding`, `treatmentImage` | $2.927 | $0.234 |
+
+And per user action, on that same record:
+
+| | serialized (shipped) | parallel fan-out (the trap §4 names) |
+|---|---|---|
+| Chat turn, 5 tool rounds, warm | $0.23 | — |
+| Chat turn, 5 tool rounds, cold | $0.77 | — |
+| Translate-all, ~30 leaf regens | **$1.94** | $17.56 |
+| Marker sweep, ~120 ranges | **$30.80** | $351.29 |
+
+The marker sweep is the number to look at before turning this on anywhere. Serializing the first
+call is what makes it $31 instead of $351, and $31 is still the most expensive button in the app
+by an order of magnitude — on Opus, against a record of 67 pages, well under the ceiling.
+
+**Observed spend is not reported here, because there is none to observe**: production runs
+`REPORTS: "never"` (§7), so no corpus traffic has been billed. The figures above are arithmetic
+over a measured token count, not a projection of usage. Once an environment has run the corpus for
+a week, the Usage and Cost Admin API is what replaces them, with the date it was taken.
 
 Two attached features are known to earn none of it and are flagged rather than silently dropped:
 `persona-adapt` restates a paragraph that already contains every fact — its own `missingFacts`
