@@ -11,12 +11,12 @@ name: ops
 # per-client, and must never run through lexitar-op (that action asserts a client and a run
 # command — wrong shape for something that touches neither). Ported from plover-code's own
 # ops.yml once the Cloudflare Pages repoint (migration plan Phase 6) made health-dash-dev a
-# project this repo's runs can legitimately push a secret to; plover-code's copy stays live
-# alongside this one for now.
+# project this repo's runs can legitimately push a secret to. plover-code's copy is gone; this is
+# the only one.
 #
-# A NEW OPERATIONAL FLOW IS AN ENTRY IN THIS FILE, NEVER A SECOND WORKFLOW — same discipline
-# plover-code's ops.yml documents, for the same reason (three near-identical workflows drifting
-# independently).
+# A NEW OPERATIONAL FLOW IS AN ENTRY IN THIS FILE, NEVER A SECOND WORKFLOW — the discipline
+# plover-code's ops.yml carried before it was retired, for the reason it carried it (three
+# near-identical workflows drifting independently).
 
 on:
   workflow_dispatch:
@@ -84,7 +84,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: ${{ inputs.preview && 10 || fromJSON('{"refresh-finding":45,"refresh-ranges":30,"refresh-marker-groups":20,"process-pending":30,"reconcile":20,"sync-treatment-attachments":10,"treatment-groups-backfill":30,"treatment-photo-extract":10,"raw-backfill":15,"orphan-sweep":15,"recovery-approve":5}')[inputs.op] }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -93,7 +93,7 @@ jobs:
       # reaches the composite action that would otherwise provide them.
       - name: Set up Node (sync_pages_secret only)
         if: ${{ inputs.sync_pages_secret }}
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
 

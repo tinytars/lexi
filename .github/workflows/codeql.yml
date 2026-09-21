@@ -12,28 +12,27 @@ jobs:
   analyze:
     name: Analyze
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       actions: read
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@v7
-      - uses: github/codeql-action/init@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: github/codeql-action/init@c23de5a82f64bb08c6d9f28844551440ca298e76 # v4.38.1
         with:
           languages: javascript-typescript
-      - uses: github/codeql-action/analyze@v4
+      - uses: github/codeql-action/analyze@c23de5a82f64bb08c6d9f28844551440ca298e76 # v4.38.1
         with:
           category: "/language:javascript-typescript"
 
   notify-failure:
     needs: [analyze]
     if: always() && github.event_name != 'pull_request' && contains(needs.*.result, 'failure')
-    uses: promontory-studio/autopilot/.github/workflows/notify-failure.yml@2c52091f36c1e2da50624954f826f31c31b0b536
+    uses: promontory-studio/pedalion/.github/workflows/notify-failure.yml@2c52091f36c1e2da50624954f826f31c31b0b536
     # `secrets: inherit` does not cross owners, so every secret is named.
     secrets:
       app-key: ${{ secrets.AUTOPILOT_APP_KEY }}
-      # plover-autopilot is not installed on promontory-studio; this PAT is what reaches plover-factory.
-      issue-token: ${{ secrets.RELEASE_PAT }}
     with:
       issue-repo: promontory-studio/plover-factory
       app-id: ${{ vars.AUTOPILOT_APP_ID }}
