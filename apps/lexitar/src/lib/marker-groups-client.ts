@@ -14,6 +14,7 @@ export interface RefreshError extends Error {
 
 export async function refreshMarkerGroups(
   client: Client,
+  clientId: string,
   opts: { providerToken?: string; force?: boolean } = {},
 ): Promise<MarkerGrouping> {
   const systems = systemOrder(client);
@@ -28,7 +29,7 @@ export async function refreshMarkerGroups(
   const res = await fetch("/api/refresh-marker-groups", {
     method: "POST",
     headers,
-    body: JSON.stringify({ client }),
+    body: JSON.stringify({ client, clientId }),
   });
   if (!res.ok || !res.body) {
     let payload: { error?: string; errorCode?: string } = {};

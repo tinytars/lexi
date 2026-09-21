@@ -148,7 +148,10 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
   } catch (err) {
     // Distinguish credits-exhausted / rate-limit / overload from a generic failure
     // so the browser can show a recovery path (e.g. a billing link) — W7f.
-    const { status, errorCode, error } = inferenceErrorReply(err, "chat backend error");
-    return finish(status, { error, errorCode }, { errorCode });
+    // Spread, not destructured field-by-field: a corpus refusal carries `limit`/`actual`/`max` or
+    // `unmeasured`, and those numbers are the whole remedy — "312 pages, at most 250" tells the
+    // patient which reports to remove, where "too large" tells them nothing.
+    const { status, ...payload } = inferenceErrorReply(err, "chat backend error");
+    return finish(status, payload, { errorCode: payload.errorCode });
   }
 }

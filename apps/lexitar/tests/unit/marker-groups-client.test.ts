@@ -41,7 +41,7 @@ describe("refreshMarkerGroups client-side hash pre-check", () => {
       generatedBy: { mode: "prod" as const, model: "claude-opus-4-7" },
     };
     const client = { ...BASE_CLIENT, markerGroups: cached };
-    const result = await refreshMarkerGroups(client);
+    const result = await refreshMarkerGroups(client, "alex");
     expect(result).toBe(cached);
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -56,7 +56,7 @@ describe("refreshMarkerGroups client-side hash pre-check", () => {
     const cached = { ...fresh, generatedAt: "2026-01-01T00:00:00.000Z" };
     fetchMock.mockResolvedValue(streamResponse(JSON.stringify(fresh)));
     const client = { ...BASE_CLIENT, markerGroups: cached };
-    const result = await refreshMarkerGroups(client, { force: true });
+    const result = await refreshMarkerGroups(client, "alex", { force: true });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(result).toEqual(fresh);
   });
@@ -71,31 +71,32 @@ describe("refreshMarkerGroups network path", () => {
       generatedBy: { mode: "prod", model: "claude-opus-4-7" },
     };
     fetchMock.mockResolvedValue(streamResponse(`[[PASS]] 1\n${JSON.stringify(grouping)}`));
-    const result = await refreshMarkerGroups(BASE_CLIENT, { providerToken: "provtok" });
+    const result = await refreshMarkerGroups(BASE_CLIENT, "alex", { providerToken: "provtok" });
     expect(result).toEqual(grouping);
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe("/api/refresh-marker-groups");
     expect(JSON.parse(init.body as string).client).toEqual(BASE_CLIENT);
+    expect(JSON.parse(init.body as string).clientId).toBe("alex");
     expect((init.headers as Record<string, string>).Authorization).toBe("Bearer provtok");
   });
 
   it("omits the Authorization header when no providerToken is given (patient's own session)", async () => {
     fetchMock.mockResolvedValue(streamResponse(JSON.stringify({ groups: [], markerGroupsHash: "x", generatedAt: "t", generatedBy: {} })));
-    await refreshMarkerGroups(BASE_CLIENT);
+    await refreshMarkerGroups(BASE_CLIENT, "alex");
     const [, init] = fetchMock.mock.calls[0];
     expect((init.headers as Record<string, string>).Authorization).toBeUndefined();
   });
 
   it("throws on the [[REFRESH_ERROR]] sentinel", async () => {
     fetchMock.mockResolvedValue(streamResponse("[[REFRESH_ERROR]] generation failed"));
-    await expect(refreshMarkerGroups(BASE_CLIENT)).rejects.toThrow("generation failed");
+    await expect(refreshMarkerGroups(BASE_CLIENT, "alex")).rejects.toThrow("generation failed");
   });
 
   it("throws with the server's errorCode when the response is non-2xx", async () => {
     fetchMock.mockResolvedValue(
       new Response(JSON.stringify({ error: "no System Analysis yet", errorCode: "no_finding" }), { status: 400 }),
     );
-    const err = await refreshMarkerGroups(BASE_CLIENT).catch((e) => e);
+    const err = await refreshMarkerGroups(BASE_CLIENT, "alex").catch((e) => e);
     expect(err.message).toBe("no System Analysis yet");
     expect(err.errorCode).toBe("no_finding");
   });

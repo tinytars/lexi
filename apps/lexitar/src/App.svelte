@@ -468,7 +468,7 @@
   // W84 — with Cody selected, any assistant bubble offers "Cody's take" on Lexi's words.
   $effect(() => {
     const p = persona;
-    configureRetell(p === "lexi" ? null : { label: `${PERSONAS[p].name}'s take`, voice: p, retell: (text) => personaTake(p, text) });
+    configureRetell(p === "lexi" ? null : { label: `${PERSONAS[p].name}'s take`, voice: p, retell: (text) => personaTake(p, selectedClientId, text) });
   });
   // Every login path re-reads the account; the persona rides along so no path can forget it.
   async function refreshAccount() {
@@ -789,9 +789,9 @@
   // so no progress/abort plumbing. Throws on failure so MarkerChart's own doTranslate can surface the
   // error scoped to that one marker instead of the page-level refreshError.
   async function translateMarker(client: Client, marker: string): Promise<void> {
-    if (!currentClient) return;
+    if (!currentClient || !selectedClientId) return;
     const c = currentClient;
-    const range = await fetchPersonalizedRange(client, marker, providerToken);
+    const range = await fetchPersonalizedRange(client, selectedClientId, marker, providerToken);
     if (patientSwitchedMidRequest(currentClient, c)) return;
     saveEdits({ ...c, personalizedRanges: { ...c.personalizedRanges, [marker]: range } });
   }
@@ -803,9 +803,9 @@
   // path, same as every other in-app mutation) — no providerToken precondition, so the account
   // owner's own session (cookie auth, no token) works too.
   async function handleCategorizeMarkers(client: Client): Promise<void> {
-    if (!currentClient) return;
+    if (!currentClient || !selectedClientId) return;
     const c = currentClient;
-    const markerGroups = await refreshMarkerGroups(client, { providerToken: providerToken ?? undefined });
+    const markerGroups = await refreshMarkerGroups(client, selectedClientId, { providerToken: providerToken ?? undefined });
     if (patientSwitchedMidRequest(currentClient, c)) return;
     saveEdits({ ...c, markerGroups });
   }

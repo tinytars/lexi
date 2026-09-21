@@ -107,6 +107,7 @@ export async function fetchLeafRegen(
 
   const payload = JSON.stringify({
     node,
+    clientId,
     inputs: context,
     ...(sendTargetLabels ? { targetLabels } : {}),
     ...(images ? { images } : {}),

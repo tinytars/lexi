@@ -55,6 +55,10 @@ export interface RangeRequest {
   /** Is this error worth another attempt? The Function classifies via its HTTP error taxonomy; the
    *  default covers the CLI, where a raw SDK error carries its own status. */
   isTransient?: (err: unknown) => boolean;
+  /** The patient's own reports, prepended verbatim ahead of the question (CORPUS.md). Empty for the
+   *  CLI, which has no R2 to read them from — and identical on every retry, which is what lets the
+   *  three attempts share one cache entry instead of writing three. */
+  prefixTurns?: Anthropic.MessageParam[];
 }
 
 function defaultIsTransient(err: unknown): boolean {
@@ -82,7 +86,7 @@ export async function generateRange(req: RangeRequest): Promise<Omit<Personalize
       max_tokens: RANGES_MAX_TOKENS,
       system: [{ type: "text", text: systemPromptFor(client), cache_control: { type: "ephemeral" } }],
       output_config: { format: { type: "json_schema", schema: RANGE_SCHEMA } },
-      messages: [{ role: "user", content: userMessage }],
+      messages: [...(req.prefixTurns ?? []), { role: "user", content: userMessage }],
     });
     onUsage?.(response.usage);
 
