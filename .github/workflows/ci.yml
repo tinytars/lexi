@@ -124,8 +124,14 @@ jobs:
         run: docker logs lexitar
 
   autopilot-guard:
-    # The rules it enforces are in .github/autopilot.json. Which pull requests it applies to is an
-    # input, not a job-level `if:`: a required check that reports SKIPPED blocks the merge forever.
+    # The rules it enforces are in .github/autopilot.json. WHICH pull requests it applies to is an
+    # input, never a job-level `if:` — a required check that reports SKIPPED blocks the merge
+    # forever. The `if:` below is about event type, not applicability: it is true for every pull
+    # request, so the check always reports on the path where it is required to.
+    #
+    # On a direct push it does skip, which is why `autopilot-guard / guard` is never satisfied on
+    # a push to `dev` and a human landing a branch there uses the admin bypass. plover-code's copy
+    # runs on pushes and reports "nothing to check" instead; this one has not been changed to match.
     if: github.event_name == 'pull_request'
     uses: promontory-studio/autopilot/.github/workflows/guard.yml@2c52091f36c1e2da50624954f826f31c31b0b536
     with:
