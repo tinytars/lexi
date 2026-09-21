@@ -11,12 +11,12 @@ name: ops
 # per-client, and must never run through lexitar-op (that action asserts a client and a run
 # command — wrong shape for something that touches neither). Ported from plover-code's own
 # ops.yml once the Cloudflare Pages repoint (migration plan Phase 6) made health-dash-dev a
-# project this repo's runs can legitimately push a secret to; plover-code's copy stays live
-# alongside this one for now.
+# project this repo's runs can legitimately push a secret to. plover-code's copy is gone; this is
+# the only one.
 #
-# A NEW OPERATIONAL FLOW IS AN ENTRY IN THIS FILE, NEVER A SECOND WORKFLOW — same discipline
-# plover-code's ops.yml documents, for the same reason (three near-identical workflows drifting
-# independently).
+# A NEW OPERATIONAL FLOW IS AN ENTRY IN THIS FILE, NEVER A SECOND WORKFLOW — the discipline
+# plover-code's ops.yml carried before it was retired, for the reason it carried it (three
+# near-identical workflows drifting independently).
 
 on:
   workflow_dispatch:
