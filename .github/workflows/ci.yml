@@ -120,27 +120,17 @@ jobs:
         run: docker logs lexitar
 
   autopilot-guard:
-    # Required on dev and main; a skipped run (human PRs, promotions) satisfies the requirement.
-    if: >
-      github.event_name == 'pull_request' &&
-      !startsWith(github.head_ref, 'promote/') &&
-      contains(fromJSON('["plover-autopilot[bot]","dependabot[bot]"]'), github.event.pull_request.user.login)
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: apps/lexitar
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-      - run: npm ci
-        working-directory: .
-      - run: npx tsx scripts/autopilot-guard.ts "origin/${{ github.base_ref }}"
+    # The rules it enforces are in .github/autopilot.json. Which pull requests it applies to is an
+    # input, not a job-level `if:`: a required check that reports SKIPPED blocks the merge forever.
+    if: github.event_name == 'pull_request'
+    uses: promontory-studio/autopilot/.github/workflows/guard.yml@866bdd4b9a5da161b0478f7871ea3c740d8e42b8
+    with:
+      base-ref: ${{ github.base_ref }}
+      head-sha: ${{ github.event.pull_request.head.sha }}
+      authors: plover-autopilot[bot],dependabot[bot]
+      pr-author: ${{ github.event.pull_request.user.login }}
+      head-branch: ${{ github.head_ref }}
+      skip-branch-prefixes: promote/
 
   release:
     needs: [test, lexitar, lexitar-data]
@@ -217,8 +207,13 @@ jobs:
   notify-failure:
     needs: [test, lexitar, lexitar-data, lexitar-image, autopilot-guard, release, pages-deploy]
     if: always() && github.event_name == 'push' && contains(needs.*.result, 'failure')
-    uses: ./.github/workflows/notify-failure.yml
-    secrets: inherit
+    uses: promontory-studio/autopilot/.github/workflows/notify-failure.yml@866bdd4b9a5da161b0478f7871ea3c740d8e42b8
+    # `secrets: inherit` does not cross owners, so every secret is named.
+    secrets:
+      app-key: ${{ secrets.AUTOPILOT_APP_KEY }}
     with:
+      issue-repo: promontory-studio/plover-factory
+      app-id: ${{ vars.AUTOPILOT_APP_ID }}
+      assignee: pablo-tech
       title: CI failed on a branch that deploys
       context: A push to dev or main broke CI. Until it is green the promotion gate will not promote, and the branch may be serving a bundle nobody verified.
