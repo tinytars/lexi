@@ -314,8 +314,8 @@ Per request, for the largest measured namespace:
 
 | | cache write | cache read |
 |---|---|---|
-| `claude-sonnet-4-6` — `chat`, `leafRegen` | $0.585 | $0.047 |
-| `claude-opus-4-7` — `ranges`, `markerGroups`, `finding` | $2.927 | $0.234 |
+| `claude-sonnet-4-6` — `chat`, `leafRegen`, `ranges` | $0.585 | $0.047 |
+| `claude-opus-4-7` — `markerGroups`, `finding` | $0.976 | $0.078 |
 
 And per user action, on that same record:
 
@@ -324,11 +324,18 @@ And per user action, on that same record:
 | Chat turn, 5 tool rounds, warm | $0.23 | — |
 | Chat turn, 5 tool rounds, cold | $0.77 | — |
 | Translate-all, ~30 leaf regens | **$1.94** | $17.56 |
-| Marker sweep, ~120 ranges | **$30.80** | $351.29 |
+| Marker sweep, ~120 ranges | **$6.16** | $70.26 |
 
-The marker sweep is the number to look at before turning this on anywhere. Serializing the first
-call is what makes it $31 instead of $351, and $31 is still the most expensive button in the app
-by an order of magnitude — on Opus, against a record of 67 pages, well under the ceiling.
+The marker sweep is the number to look at before turning this on anywhere, and pricing it is what
+moved `ranges` off Opus: the same 120 calls cost $10.27 there, against $6.16 on Sonnet, for a
+feature `MODELS.md` measures a 4 B open model as holding at ceiling. Serializing the first call is
+the other half — it is what makes the sweep $6 instead of $70.
+
+Two corrections are folded into the table above, because both moved it by more than rounding. The
+Opus rows previously read $2.927 and $0.234: `scripts/inference-cost.ts` still carried the Opus 4.1
+price of $15/$75, so every Opus figure here was 3× its real cost, and the sweep was published at
+$30.80 when Opus would in fact have charged $10.27. And `ranges` now bills on Sonnet, which is the
+row it appears in. The price table is dated at the top for exactly this reason.
 
 **Observed spend is not reported here, because there is none to observe**: production runs
 `REPORTS: "never"` (§7), so no corpus traffic has been billed. The figures above are arithmetic

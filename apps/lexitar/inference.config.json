@@ -28,7 +28,7 @@
     "treatmentImage": { "provider": "anthropic", "model": "claude-opus-4-7" },
     "treatmentText": { "provider": "anthropic", "model": "claude-sonnet-4-6" },
     "finding": { "provider": "anthropic-finding", "model": "claude-opus-4-7" },
-    "ranges": { "provider": "anthropic-ranges", "model": "claude-opus-4-7" },
+    "ranges": { "provider": "anthropic-ranges", "model": "claude-sonnet-4-6" },
     "markerGroups": { "provider": "anthropic", "model": "claude-opus-4-7" },
     "leafRegen": { "provider": "anthropic-ranges", "model": "claude-sonnet-4-6" },
     "benchmarkWeakest": { "provider": "anthropic", "model": "claude-haiku-4-5-20251001" }
@@ -36,7 +36,6 @@
   "dev": {
     "extract": "claude-sonnet-4-6",
     "finding": "claude-sonnet-4-6",
-    "ranges": "claude-sonnet-4-6",
     "markerGroups": "claude-sonnet-4-6"
   }
 }
