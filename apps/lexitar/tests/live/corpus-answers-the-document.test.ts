@@ -80,8 +80,9 @@ describe("a model answering from the attached reports", () => {
 
       const { client, model } = modelFor(process.env, "chat");
       const answers: string[] = [];
-      // Sequential, not Promise.all: the second and third calls are cache reads off the first's
-      // write, which is the same ordering the app ships (CORPUS.md §4) and a tenth of the price.
+      const cacheReads: number[] = [];
+      // Sequential, not Promise.all: the second and third calls read the entry the first one wrote,
+      // which is the same ordering the app ships (CORPUS.md §4) and a tenth of the price.
       for (const probe of PROBES) {
         const message = await client.messages.create({
           model,
@@ -90,11 +91,17 @@ describe("a model answering from the attached reports", () => {
           messages: [...corpus.turns, { role: "user", content: probe.ask }],
         });
         answers.push(message.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("\n"));
+        cacheReads.push((message.usage as { cache_read_input_tokens?: number }).cache_read_input_tokens ?? 0);
       }
 
       for (const [i, probe] of PROBES.entries()) {
         expect(answers[i], `${probe.what}\nasked: ${probe.ask}`).toMatch(probe.pattern);
       }
+
+      // The other half of the design, and the one that decides what it costs: every call after the
+      // first must READ the corpus rather than re-send it. A breakpoint on the wrong block, or one
+      // volatile byte ahead of the documents, leaves this at zero and the bill at full price.
+      expect(cacheReads.slice(1).every((n) => n > 0), `cache reads per call: ${cacheReads.join(", ")}`).toBe(true);
     },
   );
 });
