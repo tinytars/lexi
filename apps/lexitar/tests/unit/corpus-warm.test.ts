@@ -1,0 +1,108 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { createCorpusWarmer, KEEPALIVE_INTERVAL_MS, MAX_IDLE_KEEPALIVES } from "../../src/lib/corpus-warm";
+import { warmCorpus } from "../../src/lib/corpus-warm-client";
+
+beforeEach(() => vi.useFakeTimers());
+afterEach(() => vi.useRealTimers());
+
+describe("createCorpusWarmer", () => {
+  it("warms the record as soon as it is selected", () => {
+    const warm = vi.fn().mockResolvedValue(true);
+
+    createCorpusWarmer(warm).select("alex");
+
+    expect(warm).toHaveBeenCalledExactlyOnceWith("alex");
+  });
+
+  it("refreshes the entry before it can expire", () => {
+    const warm = vi.fn().mockResolvedValue(true);
+    createCorpusWarmer(warm).select("alex");
+
+    vi.advanceTimersByTime(KEEPALIVE_INTERVAL_MS);
+
+    expect(warm).toHaveBeenCalledTimes(2);
+    expect(KEEPALIVE_INTERVAL_MS).toBeLessThan(5 * 60 * 1000);
+  });
+
+  // The point of the cap: past it, holding the entry has cost more than rebuilding it would.
+  it("stops refreshing a record nobody is asking about, and never bills past the cap", () => {
+    const warm = vi.fn().mockResolvedValue(true);
+    createCorpusWarmer(warm).select("alex");
+
+    vi.advanceTimersByTime(KEEPALIVE_INTERVAL_MS * (MAX_IDLE_KEEPALIVES + 10));
+
+    expect(warm).toHaveBeenCalledTimes(MAX_IDLE_KEEPALIVES + 1);
+  });
+
+  it("starts the budget over when the patient comes back to the tab", () => {
+    const warm = vi.fn().mockResolvedValue(true);
+    const warmer = createCorpusWarmer(warm);
+    warmer.select("alex");
+    vi.advanceTimersByTime(KEEPALIVE_INTERVAL_MS * MAX_IDLE_KEEPALIVES);
+    warm.mockClear();
+
+    warmer.wake();
+    vi.advanceTimersByTime(KEEPALIVE_INTERVAL_MS * MAX_IDLE_KEEPALIVES);
+
+    expect(warm).toHaveBeenCalledTimes(MAX_IDLE_KEEPALIVES + 1);
+  });
+
+  it("does nothing on wake before any record is open", () => {
+    const warm = vi.fn().mockResolvedValue(true);
+
+    createCorpusWarmer(warm).wake();
+
+    expect(warm).not.toHaveBeenCalled();
+  });
+
+  it("stops warming a closed vault, and a switch warms the new record only", () => {
+    const warm = vi.fn().mockResolvedValue(true);
+    const warmer = createCorpusWarmer(warm);
+
+    warmer.select("alex");
+    warmer.select("blake");
+    warm.mockClear();
+    vi.advanceTimersByTime(KEEPALIVE_INTERVAL_MS);
+    expect(warm).toHaveBeenCalledExactlyOnceWith("blake");
+
+    warmer.select(null);
+    warm.mockClear();
+    vi.advanceTimersByTime(KEEPALIVE_INTERVAL_MS * 3);
+    expect(warm).not.toHaveBeenCalled();
+  });
+
+  // A cold cache is a slower answer, never a wrong one — a failed warm must not take the timer with it.
+  it("keeps refreshing after a warm that fails", async () => {
+    const warm = vi.fn().mockRejectedValue(new Error("offline"));
+    createCorpusWarmer(warm).select("alex");
+    await vi.advanceTimersByTimeAsync(KEEPALIVE_INTERVAL_MS * 2);
+
+    expect(warm).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("warmCorpus", () => {
+  it("asks the server to warm this record, under the active unit system", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ warmed: true, written: 5120, read: 0 })));
+    vi.stubGlobal("fetch", fetchMock);
+
+    expect(await warmCorpus("alex", "metric")).toBe(true);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("/api/corpus-warm");
+    expect(JSON.parse(init.body as string)).toEqual({ clientId: "alex", unitSystem: "metric" });
+  });
+
+  // A record with no reports, a deployment with REPORTS off, a provider without prompt caching, a
+  // record too large to send — none of it is a condition a patient should be shown, because none of
+  // it stops them asking a question.
+  it("reports nothing warmed rather than throwing, whatever the server says", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ warmed: false, reason: "no_corpus" }))));
+    expect(await warmCorpus("alex", "imperial")).toBe(false);
+
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("{}", { status: 422 })));
+    expect(await warmCorpus("alex", "imperial")).toBe(false);
+
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("not json")));
+    expect(await warmCorpus("alex", "imperial")).toBe(false);
+  });
+});

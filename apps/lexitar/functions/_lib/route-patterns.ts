@@ -57,6 +57,7 @@ export const ROUTE_PATTERNS: readonly string[] = [
   "/api/account",
   "/api/chat",
   "/api/client-error",
+  "/api/corpus-warm",
   "/api/document-extract",
   "/api/extract",
   "/api/leaf-regen",

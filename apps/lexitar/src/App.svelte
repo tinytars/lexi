@@ -89,6 +89,8 @@
   import { loadSidebarMode, modeForSection } from "./lib/sidebar-mode";
   import { loadLastSection, saveLastSection, loadLastGroup, saveLastGroup } from "./lib/nav-memory";
   import { loadJSON, saveJSON } from "@tinytars/frame/persisted-json";
+  import { createCorpusWarmer } from "./lib/corpus-warm";
+  import { warmCorpus } from "./lib/corpus-warm-client";
 
   // W84 — read-aloud uses the personas' neural voices, the browser voice only as a fallback.
   configureSpeech(neuralSpeech);
@@ -116,6 +118,17 @@
     void vaultOpen;
     void selectedClientId;
     speechRegistry.stop();
+  });
+
+  // Reads the open record's reports into the prompt cache before the patient asks anything, so the
+  // first question is answered against a warm entry rather than waiting out a cache write
+  // (CORPUS.md). Tracks unitSystem too: it picks the chat system prompt, which sits AHEAD of the
+  // documents in the cache prefix, so a toggle genuinely forks the entry and a warm-up for the
+  // other one would be paid for and never read.
+  const corpusWarmer = createCorpusWarmer((id) => warmCorpus(id, unitSystem));
+  $effect(() => {
+    corpusWarmer.select(vaultOpen ? selectedClientId : null);
+    void unitSystem;
   });
   // W72 — the unlocked-session key material lives in one object with one transition each way
   // (vault-session.svelte.ts). These were four separate $state declarations set and cleared in eight
@@ -340,6 +353,12 @@
     window.addEventListener("hashchange", () => {
       const pl = parseHash(window.location.hash);
       if (pl) applyNav(pl);
+    });
+    // Coming back to the tab is the one signal of presence this app gets for free. It restarts the
+    // keep-alive budget, which otherwise stops itself once holding the entry costs more than
+    // rebuilding it (MAX_IDLE_KEEPALIVES).
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") corpusWarmer.wake();
     });
     if (boot.cleanUrl) window.history.replaceState({}, "", boot.cleanUrl);
     // W45 — deferred so the rest of this instance script (the const helpers it calls) has initialized.
