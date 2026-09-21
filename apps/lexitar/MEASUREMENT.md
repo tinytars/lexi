@@ -134,16 +134,18 @@ thing that runs.
 
 ## Results
 
-Run **2026-09-20**, from `npm run bench:models`. Nothing below is hand-copied from a console, and no
-number from this page is repeated anywhere else in this repo or in `pilos`.
+Open-weight candidates run **2026-09-20**, the `ranges` vendor baseline **2026-09-21**, both from
+`npm run bench:models`. Nothing below is hand-copied from a console, and no number from this page is
+repeated anywhere else in this repo or in `pilos`.
 
 ### The one-line answer
 
 **A 4B open model, on a laptop-class GPU slice, holds the shipped contract on the structured text
 features and does not hold it on the document features.** `ranges` — the app's highest-volume model
-call — validated every case on the first attempt. The vendor baseline could not be run at all, for
-a billing reason given below, so nothing here is a *comparison*; it is an absolute result against
-the app's own validators.
+call — validated every case on the first attempt, and so did the vendor baseline when it was
+finally run on 2026-09-21: **12/12 on both, 100% first try**, seven times faster on the vendor
+model. The other three features have no baseline yet, for the billing reason given below, so those
+rows are absolute results against the app's own validators rather than comparisons.
 
 ### The regime, so a row can be read
 
@@ -184,22 +186,33 @@ native-PDF route.
 cudaMalloc failed: out of memory / failed to allocate CUDA0 buffer of size 1925738496
 ```
 
-### The baseline was not run
+### The baseline: `ranges` on 2026-09-21, the rest still unrun
 
-**The vendor baseline could not be measured on this date.** Every call came back, before the model
-saw anything:
+| feature | model | n | validated | 95% CI | first try | mean attempts | median s | commonest rejection |
+|---|---|---|---|---|---|---|---|---|
+| ranges | `claude-sonnet-4-6` | 12 | 12/12 | [0.76, 1.00] | 100% | 1.00 | 7.8 | — |
+
+Run **2026-09-21**, `npm run bench:models -- --feature ranges`, against the committed
+`inference.config.json` on the day `ranges` moved from `claude-opus-4-7` to `claude-sonnet-4-6`
+there — the move is a cost decision ([`CORPUS.md`](CORPUS.md) §8) and this is the evidence that it
+costs no accuracy. The intervals are identical to the open model's because n is 12 in both: twelve
+cases cannot separate two models that each answer all twelve. What separates them is time — 7.8 s
+against 55.7 s — and that is a statement about the hardware each ran on, not about the models.
+
+`extract`, `document` and `treatmentText` still have no baseline. On **2026-09-20** every call came
+back, before the model saw anything:
 
 ```
 400 {"type":"error","error":{"type":"invalid_request_error","message":"Your credit balance is too
 low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits."}}
 ```
 
-A second key on a different project returned the same thing, so it is the account, not the key.
-Buying credit was out of scope for the session that ran this, so the baseline is **absent, not
-zero**, and this page will not fill it by assumption. To run it, once the account has credit:
+A second key on a different project returned the same thing, so it was the account, not the key.
+Those three baselines are **absent, not zero**, and this page will not fill them by assumption. The
+account has credit as of 2026-09-21 — `ranges` ran on it — so what is left is the document work:
 
 ```sh
-ANTHROPIC_API_KEY=… npm run bench:models -- --feature ranges,extract,document,treatmentText
+ANTHROPIC_API_KEY=… npm run bench:models -- --feature extract,document,treatmentText
 ```
 
 That failed attempt is what produced the harness's
@@ -265,4 +278,4 @@ Named, because absence of a number is reported as absence and never as a pass.
 | Anything a run skipped for a declared missing capability | the row says skipped, and skipped is not zero. |
 | **Factual fidelity to the source document** | the oracle is the shipped validator, which is a structural check. A response that invents a patient name passes it, and one did — see the vision-model caveat above. Measuring fidelity needs a per-field ground truth for every fixture, which does not exist yet. |
 | **Any feature as production actually runs it, where reports are attached** | every probe here sends its fixture alone. Production prepends the patient's own PDFs ([`CORPUS.md`](CORPUS.md)), so a production call carries a few hundred pages of context these scores never saw. The scores remain valid as a comparison *between models on the same prompt*, which is what they were pre-registered to be, and stop being a prediction of production accuracy, latency or cost. A stack running `REPORTS: "never"` is unaffected. |
-| The native-PDF route on an open model | no local candidate declares `caps.pdf`, so every document row above scored the page-images route. The native route is measured only on a provider that supports it, which means the baseline, which did not run. |
+| The native-PDF route on an open model | no local candidate declares `caps.pdf`, so every document row above scored the page-images route. The native route is measured only on a provider that supports it, which means the baseline — and the baseline has so far run only `ranges`, which sends no document. |
