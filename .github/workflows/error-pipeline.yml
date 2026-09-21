@@ -49,8 +49,6 @@ jobs:
     # `secrets: inherit` does not cross owners, so every secret is named.
     secrets:
       app-key: ${{ secrets.AUTOPILOT_APP_KEY }}
-      # plover-autopilot is not installed on promontory-studio; this PAT is what reaches plover-factory.
-      issue-token: ${{ secrets.RELEASE_PAT }}
     with:
       issue-repo: promontory-studio/plover-factory
       app-id: ${{ vars.AUTOPILOT_APP_ID }}
