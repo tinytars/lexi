@@ -23,6 +23,18 @@ function sdkImageType(mediaType: string): SdkImageType | null {
   return (SDK_IMAGE_TYPES as readonly string[]).includes(mediaType) ? (mediaType as SdkImageType) : null;
 }
 
+// A 429/503/529 is the request never having been asked, not an answer to it. `generateRange`
+// (ranges-anthropic.ts) has climbed a ladder over these since the CLI and the Function were merged,
+// for the reason its header names — one 429 used to mark a marker permanently FAILED. This path,
+// the busiest model call in the app, had no ladder at all, so a single overloaded moment lost the
+// patient's Translate and reached the browser as an ai_busy 5xx. Same delays, same three attempts.
+const TRANSIENT_RETRY_DELAYS_MS = [300, 900];
+
+function isTransientModelError(err: unknown): boolean {
+  const status = (err as { status?: number } | null)?.status;
+  return status === 429 || status === 503 || status === 529;
+}
+
 
 // Clones toolSchema and rewrites its own (and its row-array property's) description so the tool
 // definition agrees with a SCOPE OVERRIDE instead of contradicting it — see the scopeInstruction
@@ -206,12 +218,27 @@ export async function runLeafRegen(params: RunLeafRegenParams): Promise<LeafRege
     return stream.finalMessage();
   };
 
+  // Distinct from the correction loop below, which spends its single re-ask on a model that DID
+  // answer and answered wrongly. Every rung sends the same bytes, so the three attempts share one
+  // prompt-cache entry rather than paying for the patient's whole record again.
+  const attemptOrRetry = async (correction?: string) => {
+    for (const delay of TRANSIENT_RETRY_DELAYS_MS) {
+      try {
+        return await attempt(correction);
+      } catch (e) {
+        if (!isTransientModelError(e)) throw e;
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+    return attempt(correction);
+  };
+
   // Both attempts are billed, so both are reported — a retry that vanished from the cost line would
   // make the same mistake the core's loop made for a whole milestone.
   const usage = { input: 0, output: 0 };
   let last: LeafRegenOutcome | undefined;
   for (let i = 0; i < 2; i++) {
-    const message = await attempt(i === 0 ? undefined : (last as { error: Error }).error.message.slice(0, 400));
+    const message = await attemptOrRetry(i === 0 ? undefined : (last as { error: Error }).error.message.slice(0, 400));
     usage.input += message.usage.input_tokens;
     usage.output += message.usage.output_tokens;
 
