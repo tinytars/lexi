@@ -109,7 +109,7 @@ jobs:
   notify-failure:
     needs: [snapshot]
     if: always() && contains(needs.*.result, 'failure')
-    uses: promontory-studio/pedalion/.github/workflows/notify-failure.yml@2c52091f36c1e2da50624954f826f31c31b0b536
+    uses: promontory-studio/pedalion/.github/workflows/notify-failure.yml@0185de09d9447da6d439a1f0823c1631a5c0eb25 # v1.0.0
     # `secrets: inherit` does not cross owners, so every secret is named.
     secrets:
       app-key: ${{ secrets.AUTOPILOT_APP_KEY }}
