@@ -41,7 +41,7 @@
   import { createConflictResolver } from "./lib/conflict-resolver";
   import { buildRefreshMessage } from "./lib/refresh-message";
   import { patientSwitchedMidRequest } from "./lib/stale-guard";
-  import { eligibleMarkersForRangeFill } from "./lib/range-eligibility";
+  import { fillMissingRanges } from "./lib/range-fill";
   import { decideSidebarAction } from "./lib/sidebar-dispatch";
   import ReportSections from "./lib/ReportSections.svelte";
   import { ALL_SECTIONS, presentSections } from "./lib/report-sections";
@@ -86,7 +86,6 @@
   import { PRODUCT_NAME, FOUNDATION } from "./lib/brand";
   import OrgFooter from "@tinytars/frame/OrgFooter.svelte";
   import Disclaimer from "./lib/Disclaimer.svelte";
-  import { runWithConcurrency } from "@tinytars/frame/concurrency";
   import { loadSidebarMode, modeForSection } from "./lib/sidebar-mode";
   import { loadLastSection, saveLastSection, loadLastGroup, saveLastGroup } from "./lib/nav-memory";
   import { loadJSON, saveJSON } from "@tinytars/frame/persisted-json";
@@ -818,10 +817,8 @@
   // cookie auth (translateMarker's providerToken precondition was dropped for this). Fire-and-forget
   // from the caller; failures here are silent — MarkerChart's per-marker Translate button already
   // covers a marker that didn't get filled.
-  async function fillMissingRanges(client: Client): Promise<void> {
-    const eligible = eligibleMarkersForRangeFill(client);
-    if (eligible.length === 0) return;
-    await runWithConcurrency(eligible, 4, async (marker) => {
+  function fillRanges(client: Client): Promise<void> {
+    return fillMissingRanges(client, async (marker) => {
       try {
         await translateMarker(client, marker);
       } catch {
@@ -835,7 +832,7 @@
   // so Health Reports + the stale chips recompute. ImportTab handles the raw PUT.
   async function handleImported(updated: Client, reportId?: string) {
     if (!selectedClientId || !(await persistClient(selectedClientId, updated))) return;
-    void fillMissingRanges(updated);
+    void fillRanges(updated);
     // W38/5 — headline case: after a report import, close the modal and auto-follow to it in
     // Reports, highlighted (no confirming click).
     if (reportId) {
@@ -850,7 +847,7 @@
       storeOriginal: putRaw,
       persist: async (id, next) => {
         if (!(await persistClient(id, next))) return false;
-        void fillMissingRanges(next);
+        void fillRanges(next);
         return true;
       },
     });
