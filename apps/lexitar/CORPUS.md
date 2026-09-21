@@ -165,8 +165,8 @@ Nothing is broken when that happens. `model-errors.ts` maps the vendor's 429/503
 `ai_busy`; `refresh-range.ts` treats it as transient and retries inside the range call, and
 everywhere else the user is simply told the AI is busy. It is worth writing down because it is the
 failure this design makes common: the first symptom of a corpus too large for an account's
-throughput is `ai_busy`, not a bill. The warm call is the one to suspect — it is the only request
-that carries the whole record before anybody has asked anything.
+throughput is `ai_busy`, not a bill. Suspect the warm call first: it exists only to write the
+cache entry, so losing one costs nothing but a cold first question.
 
 ## 5. The ceiling
 
