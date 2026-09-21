@@ -29,17 +29,17 @@ candidate is the same edit as deploying one, because it *is* that edit: the runn
 
 Per feature × model:
 
-- **validated / n**, with a 95% Wilson interval — the right interval at the small n a paid run affords.
-- **first try** — validated on the first attempt, with no correction. This is the number that says
-  whether the prompt lands on this model, as opposed to whether the retry loop can rescue it.
-- **mean attempts**, censored one past the shipped ceiling for a case that never validated. Reported
-  next to the pass rate, never instead of it.
+- **validated / n**, with a 95% Wilson interval.
+- **first try** — validated on the first attempt, with no correction.
+- **mean attempts**, censored one past the shipped ceiling for a case that never validated.
 - **median seconds** per case.
-- **the commonest rejection**, in the validator's own words and bucketed by reason. A flat result is
-  only actionable if you can see *what* the model got wrong.
+- **the commonest rejection**, in the validator's own words and bucketed by reason.
 
-`unreachable` and `unsupported` bucket ahead of every quality reason, so a model that cannot be
-reached, or that refuses the input outright, is never reported as a model that answers badly.
+**Why those are the numbers reported — and why `unreachable` and `unsupported` bucket ahead of every
+quality reason — lives in
+[dokimasia's `METHOD.md`](https://github.com/promontory-studio/dokimasia-rk/blob/main/METHOD.md).**
+It is not restated here: a rule kept in two places drifts, and then one of the copies is a lie with
+no signal which.
 
 ### Which route a document takes
 
