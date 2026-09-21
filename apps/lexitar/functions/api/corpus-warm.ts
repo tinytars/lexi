@@ -89,7 +89,16 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
     return finish(200, { warmed: true, written: u.cache_creation_input_tokens ?? 0, read: u.cache_read_input_tokens ?? 0 },
       { usage: { input: message.usage.input_tokens, output: message.usage.output_tokens } });
   } catch (err) {
-    const { status, ...payload } = inferenceErrorReply(err, "corpus warm failed");
-    return finish(status, payload, { errorCode: payload.errorCode });
+    const { status, errorCode, ...payload } = inferenceErrorReply(err, "corpus warm failed");
+    // A pre-warm that fails costs the patient nothing but the cache write they would have paid at
+    // their first question anyway, and no caller reads this status: the browser discards it and
+    // shows nothing. So a 5xx here is a failure with no reader — except the browser's API-failure
+    // reporter (src/lib/error-reporter.ts), which files a GitHub issue for every one of them, so a
+    // momentarily overloaded provider fills the inbox with a condition the app decided to ignore.
+    // The failure is kept in the request log, where a route nobody watches belongs.
+    if (status >= 500) return finish(200, { warmed: false, reason: errorCode }, { errorCode });
+    // Under 500 it is the caller's own request that is wrong — a corpus past a ceiling, a namespace
+    // they may not read — and that is worth answering as such.
+    return finish(status, { errorCode, ...payload }, { errorCode });
   }
 }

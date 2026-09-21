@@ -146,6 +146,13 @@ into the prefix. `max_tokens: 0` is rejected alongside `stream: true`, enabled t
 `output_config.format`, a forced `tool_choice` and Message Batches — so a warm call is a plain
 non-streaming request, and is skipped entirely for a provider that rejects it.
 
+**The route never answers 5xx.** A provider that is overloaded when a record is opened leaves the
+entry cold, and a cold entry is the cache write the patient's first question would have paid
+anyway — so the failure is logged and reported as `{"warmed": false}` under the provider's own
+reason, rather than as a status the browser's 5xx reporter (`src/lib/error-reporter.ts`) would file
+as an issue. A refusal under 500 — a corpus past a ceiling, a namespace the caller may not read —
+is still answered as itself.
+
 **Keep-alive is capped, not indefinite** (`src/lib/corpus-warm.ts`). A read refreshes the entry's
 TTL, and a read costs 0.1× base input against a write's 1.25×, so twelve refreshes (1.2×) still
 come in under one write and the thirteenth would mean an idle tab quietly costing more than

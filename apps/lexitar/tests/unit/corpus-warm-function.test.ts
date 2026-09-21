@@ -103,6 +103,32 @@ describe("/api/corpus-warm", () => {
     expect(create).not.toHaveBeenCalled();
   });
 
+  // Nothing downstream of this route reads its status: the browser discards the result and the
+  // patient's only consequence is a first answer that pays the cache write it would have paid
+  // anyway. A 5xx here is therefore a failure nobody sees — except the browser's API-failure
+  // reporter, which files one issue per overloaded provider for a non-event.
+  it("reports a provider that is momentarily unavailable as 'not warmed', not as a 5xx", async () => {
+    const who = await alexWithAReport();
+    create.mockRejectedValueOnce(Object.assign(new Error("try again"), { status: 529, type: "overloaded_error" }));
+
+    const res = await post(who, { clientId: "alex" });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ warmed: false, reason: "ai_busy" });
+  });
+
+  // Still not a 5xx, and still not "off": the deployment does attach reports, so the browser must
+  // keep treating an attached PDF as already in the request (CORPUS.md).
+  it("reports a record whose reports cannot be sent at all as 'not warmed' under its own reason", async () => {
+    const who = await alexWithAReport();
+    create.mockRejectedValueOnce(Object.assign(new Error("nope"), { status: 500 }));
+
+    const res = await post(who, { clientId: "alex" });
+
+    expect(res.status).toBe(200);
+    expect((await res.json() as { reason: string }).reason).not.toBe("off");
+  });
+
   it("400s without a clientId", async () => {
     const who = await alexWithAReport();
 
