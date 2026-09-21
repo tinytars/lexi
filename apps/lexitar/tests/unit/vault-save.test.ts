@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { createVaultSave } from "../../src/lib/vault-save.svelte";
+import { createVaultSave as create } from "../../src/lib/vault-save.svelte";
 
 // W68 — the first unit tests this module has ever had. It was written in W67 and shipped on the
 // strength of e2e alone, and during that work I introduced a bug here and caught it by reading rather
@@ -8,6 +8,12 @@ import { createVaultSave } from "../../src/lib/vault-save.svelte";
 // below is that bug.
 
 const flush = () => new Promise<void>((r) => setTimeout(r, 0));
+
+// Every save here gets a collecting reporter rather than the real one, which would POST to
+// /api/client-error from a unit test.
+const reported: Error[] = [];
+beforeEach(() => (reported.length = 0));
+const createVaultSave = () => create((e) => reported.push(e));
 
 describe("vault-save: the queue writes what each caller handed it", () => {
   it("two pushes queued before the first resolves write their OWN snapshots, in order", async () => {
@@ -198,5 +204,25 @@ describe("a failed save survives, and retry replays the LATEST write", () => {
     vs.retry();
     await flush();
     expect(calls).toBe(1);
+  });
+});
+
+// The vault PUT's rejection is caught here and shown as a banner, so it never reaches the window
+// handlers the error reporter listens on — a save silently failing for a real user was invisible.
+describe("a failed save is filed, not just displayed", () => {
+  it("reports the failure under a name that groups its issues", async () => {
+    const vs = createVaultSave();
+    vs.push(() => Promise.reject(new Error("Failed to fetch")));
+    await flush();
+
+    expect(reported.map((e) => `${e.name}: ${e.message}`)).toEqual(["VaultSaveFailed: Failed to fetch"]);
+  });
+
+  it("reports nothing when writes succeed", async () => {
+    const vs = createVaultSave();
+    vs.push(() => Promise.resolve());
+    await flush();
+
+    expect(reported).toEqual([]);
   });
 });

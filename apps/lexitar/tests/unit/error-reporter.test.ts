@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { installErrorReporter, type ClientErrorPayload } from "../../src/lib/error-reporter";
+import { installErrorReporter, reportCaughtError, type ClientErrorPayload } from "../../src/lib/error-reporter";
 import { lazyImport } from "../../src/lib/lazy-import";
 
 const fire = (target: EventTarget, type: string, props: Record<string, unknown>) =>
@@ -55,5 +55,19 @@ describe("installErrorReporter", () => {
     const { target, reloads } = setup();
     fire(target, "error", { error: new Error("boom") });
     expect(reloads).toEqual([]);
+  });
+});
+
+describe("reportCaughtError", () => {
+  it("files a handled failure, sharing the page's dedupe and cap with uncaught ones", () => {
+    const { target, sent } = setup();
+    const failure = new Error("Failed to fetch");
+    failure.name = "VaultSaveFailed";
+
+    reportCaughtError(failure);
+    reportCaughtError(failure); // a retry of the same failing save must not file twice
+    fire(target, "error", { error: failure });
+
+    expect(sent.map((p) => `${p.name}: ${p.message}`)).toEqual(["VaultSaveFailed: Failed to fetch"]);
   });
 });

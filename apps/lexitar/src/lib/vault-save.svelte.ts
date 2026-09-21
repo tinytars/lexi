@@ -12,6 +12,8 @@
 // The write closure is passed per push rather than injected once: the vault, its key and its R2 id are
 // the host's, and each queued write must carry the snapshot it was made for.
 
+import { reportCaughtError } from "./error-reporter";
+
 export interface VaultSave {
   /** True for 2 seconds after a successful write — the "✓ saved" flash. */
   readonly saved: boolean;
@@ -37,7 +39,7 @@ export interface VaultSave {
 
 const SAVED_FLASH_MS = 2000;
 
-export function createVaultSave(): VaultSave {
+export function createVaultSave(report: (err: Error) => void = reportCaughtError): VaultSave {
   let saved = $state(false);
   let error = $state<string | null>(null);
 
@@ -77,6 +79,12 @@ export function createVaultSave(): VaultSave {
         })
         .catch((e) => {
           error = (e as Error).message;
+          // Writes are optimistic, so the UI already shows the edit as applied: to the user a failed
+          // PUT looks like a success until the data is missing on some later load. The banner is the
+          // only live signal and it is easy to miss, so file it rather than rely on being told.
+          const failure = new Error(error);
+          failure.name = "VaultSaveFailed";
+          report(failure);
         });
     },
     retry() {
