@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import raw from "../../inference.config.json";
-import { FEATURES, INFERENCE, modelId, parseInferenceConfig, providerFor } from "../../src/lib/model-config";
+import { DEFAULT_MAX_CORPUS_PAGES, FEATURES, INFERENCE, maxCorpusPagesFor, modelId, parseInferenceConfig, providerFor } from "../../src/lib/model-config";
 import { modelFor } from "../../functions/_lib/inference/resolve";
 
 function config(over: Record<string, unknown> = {}) {
@@ -56,6 +56,15 @@ describe("parseInferenceConfig", () => {
       withProvider({ api: "openai", baseUrl: "http://localhost:11434/v1", keyEnv: [], caps: { vision: false, pdf: false, jsonSchema: true, tools: true }, maxTokensField: "max_tokens", maxOutputTokens: 8192 }),
     );
     expect(providerFor("chat", ok).api).toBe("openai");
+  });
+
+  // The corpus page ceiling follows the MODEL's context window, so a deployment pointing a feature
+  // at a smaller one says so here rather than being silently over-served (CORPUS.md).
+  it("takes a per-provider corpus page ceiling, defaulting when none is given", () => {
+    expect(maxCorpusPagesFor("chat")).toBe(DEFAULT_MAX_CORPUS_PAGES);
+    const c = parseInferenceConfig(withProvider({ api: "anthropic", keyEnv: ["ANTHROPIC_API_KEY"], maxCorpusPages: 100 }));
+    expect(maxCorpusPagesFor("chat", c)).toBe(100);
+    expect(() => parseInferenceConfig(withProvider({ api: "anthropic", keyEnv: ["A"], maxCorpusPages: 0 }))).toThrow(/positive integer/);
   });
 
   it("applies dev overrides only in dev mode", () => {
