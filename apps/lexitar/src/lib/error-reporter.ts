@@ -50,6 +50,36 @@ export function reportCaughtError(err: unknown): void {
   capture(err);
 }
 
+// A 5xx is the one failure the server's own sink can miss entirely: the platform can answer before
+// any handler runs, and a handler that returns its own status has — by the middleware's rule —
+// already classified it. Only the browser sees both. Wrapping fetch reports every route at once
+// instead of threading a report through the sixteen call sites that make these requests.
+const SINK_PATH = "/api/client-error";
+
+// The path is a message field, so it must be code, not data: an id segment can be a vault slug.
+function maskApiPath(pathname: string): string {
+  const parts = pathname.split("/").filter(Boolean);
+  return parts.length > 2 ? `/${parts[0]}/${parts[1]}/…` : pathname;
+}
+
+export function installApiFailureReporting(
+  scope: { fetch: typeof fetch } = globalThis,
+  origin: string = location.origin,
+): void {
+  const inner = scope.fetch;
+  scope.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const res = await inner(input, init);
+    if (res.status < 500) return res;
+    const url = new URL(input instanceof Request ? input.url : String(input), origin);
+    if (url.origin !== origin || !url.pathname.startsWith("/api/") || url.pathname === SINK_PATH) return res;
+    const method = (input instanceof Request ? input.method : init?.method) ?? "GET";
+    const failure = new Error(`${method} ${maskApiPath(url.pathname)} → ${res.status}`);
+    failure.name = "ApiUnavailable";
+    capture(failure);
+    return res;
+  };
+}
+
 export function installErrorReporter(
   target: EventTarget = window,
   report: (p: ClientErrorPayload) => void = send,

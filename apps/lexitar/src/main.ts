@@ -3,9 +3,10 @@ import '@tinytars/frame/footer.css'
 import './app.css'
 import '@tinytars/frame/theme.css'
 import App from './App.svelte'
-import { installErrorReporter } from './lib/error-reporter'
+import { installApiFailureReporting, installErrorReporter } from './lib/error-reporter'
 
 installErrorReporter()
+installApiFailureReporting()
 
 const app = mount(App, {
   target: document.getElementById('app')!,
