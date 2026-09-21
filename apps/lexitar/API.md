@@ -58,8 +58,11 @@ allowlist match).
 
 ## `POST /api/chat`
 
-Answer a free-text question about one patient, grounded in a context block the caller
-supplies. The Function holds no patient data — the browser assembles and sends the context.
+Answer a free-text question about one patient, grounded in a context block the caller supplies
+**and in that patient's own source PDFs, which the Function attaches itself** ([`CORPUS.md`](CORPUS.md)).
+The Function still never inspects what the browser sent, but it is no longer a pass-through: it
+reads the originals from R2 and prepends them, so it holds patient data for the life of the
+request. A caller-supplied `document` block is refused.
 
 ### Request
 
@@ -77,9 +80,14 @@ supplies. The Function holds no patient data — the browser assembles and sends
   "question":   "what changed since my last echo?", // required, non-empty string
   "context":    { /* ChatContext — see below */ },   // optional; omit/empty = no record to reason over
   "history":    [ { "role": "user"|"assistant", "text": "…" } ], // optional prior turns (multi-turn)
-  "unitSystem": "imperial" | "metric"                // optional; default imperial (US). See note below.
+  "unitSystem": "imperial" | "metric",               // optional; default imperial (US). See note below.
+  "clientId":   "alex"                               // required — whose reports to attach
 }
 ```
+
+`clientId` names the R2 namespace the corpus is read from, and the session's account must own it
+(`functions/_lib/raw-owner.ts`) or the request is a 404. It is required whatever `REPORTS` is set
+to, so turning the corpus on never changes the request contract underneath a caller.
 
 `context` is an opaque JSON value to the Function — serialized into the prompt verbatim. The browser
 builds it with `src/lib/chat-context.ts → buildChatContext(client, unitSystem)`; an empty/absent
@@ -139,7 +147,13 @@ interface ChatContext {
 |---|---|---|
 | `400` | `{"error":"malformed JSON body"}` | Request body is not valid JSON. |
 | `400` | `{"error":"question is required"}` | `question` missing, not a string, or empty/whitespace. |
+| `400` | `{"errorCode":"no_client_id"}` | `clientId` missing or empty. |
+| `400` | `{"errorCode":"client_document"}` | The caller sent a `document` block. Documents are server-owned; `image` blocks are still the caller's. |
 | `401` | `{"error":"unauthorized"}` | Missing/invalid bearer (see Authentication). |
+| `404` | `{"errorCode":"not_found"}` | The session's account does not own that `clientId`'s namespace. Not a 403 — a 403 would confirm it exists. |
+| `422` | `{"errorCode":"corpus_too_large","limit":250,"actual":312,"max":…}` | The record holds more pages than one request can carry. No answer is produced; the numbers are the remedy. |
+| `422` | `{"errorCode":"corpus_unmeasured","unmeasured":3}` | Some PDFs have no recorded page count, so the ceiling cannot be checked. Never a partial corpus. Self-clears as the browser measures them. |
+| `422` | `{"errorCode":"corpus_missing"}` | A PDF listed in D1 is no longer in R2. |
 | `405` | — | Method other than `POST` (only `onRequestPost` is defined). |
 | `402` | `{"errorCode":"insufficient_credit"}` | The configured provider's account is out of credit. |
 | `422` | `{"errorCode":"model_unsupported"}` | The request carries input (a photo) the configured model can't read. |
@@ -151,6 +165,8 @@ interface ChatContext {
 - Model: the `chat` entry of `inference.config.json` (the cheap tier — chat is follow-on Q&A, not
   the Finding's tier). See `INFERENCE.md`.
 - Non-streaming, `max_tokens: 4096`, no extended thinking.
+- Messages: `[corpus turn, corpus ack, …the browser's own turns]`. The corpus turns are identical
+  on every round of the tool loop, which is what lets the prompt cache serve rounds 2…n.
 - System prompt: a **read-only** assistant over the supplied context; it does not diagnose and
   frames uncertain points as questions for the care team. It is passed today's date and is
   forbidden from attributing a marker change to a treatment whose start date is after the
