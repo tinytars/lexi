@@ -9,12 +9,15 @@ import { join } from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { modelFor } from "../../functions/_lib/inference/resolve";
+import { UNATTACHED_FEATURES, type AttachedFeature } from "../../functions/_lib/inference/attach";
 import { classifyModelError } from "../../functions/_lib/model-errors";
 import { FEATURES, capsFor, parseInferenceConfig, providerFor, type Feature, type InferenceConfig } from "../../src/lib/model-config";
 import { startFakeOpenAI, type FakeOpenAI } from "../fixtures/fake-openai";
 
 const DIR = join(import.meta.dirname, "..", "..", "inference.examples");
 const EXAMPLES = readdirSync(DIR).filter((f) => f.endsWith(".json"));
+
+const ATTACHED = FEATURES.filter((f): f is AttachedFeature => !(UNATTACHED_FEATURES as readonly Feature[]).includes(f));
 
 const TINY_JPEG = "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAg=";
 const TINY_PDF = "JVBERi0xLjQK";
@@ -65,6 +68,15 @@ describe("inference.examples", () => {
     it("carries env var names, never a credential", () => {
       expect(raw).not.toMatch(/sk-[A-Za-z0-9_-]{8,}/);
       expect(raw).not.toMatch(/Bearer\s+\S/i);
+    });
+
+    // A stack whose providers cannot take PDFs is still a supported stack — it just cannot attach
+    // reports, and a deployer finds that out here rather than from a 422 in front of a patient. The
+    // note has to be in the file they COPY, not only in MODELS.md, because the file is what travels.
+    it("serves every attached feature, or says in $doc that it needs REPORTS: never", () => {
+      const textOnly = ATTACHED.filter((f) => !capsFor(f, config).pdf);
+      if (textOnly.length === 0) return;
+      expect((JSON.parse(raw) as { $doc?: string }).$doc ?? "", textOnly.join(", ")).toContain('REPORTS: "never"');
     });
 
     it.each(FEATURES)("%s declares a capability the adapter agrees with", async (feature) => {

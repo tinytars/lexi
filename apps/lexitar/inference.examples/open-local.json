@@ -1,5 +1,5 @@
 {
-  "$doc": "Fully open weights, self-hosted, no vendor account and no key. Copy over inference.config.json. Measured numbers and the hardware they were measured on are in MEASUREMENT.md; MODELS.md says which features this stack can and cannot serve.",
+  "$doc": "Fully open weights, self-hosted, no vendor account and no key. Copy over inference.config.json. Measured numbers and the hardware they were measured on are in MEASUREMENT.md; MODELS.md says which features this stack can and cannot serve. Every feature that answers about a person's record is attached to that person's reports, which are PDFs, so this stack requires REPORTS: \"never\" in wrangler.jsonc's vars (CORPUS.md) — with it on, the features below whose provider declares pdf:false refuse with 422 model_unsupported rather than answering from less.",
   "providers": {
     "local-text": {
       "api": "openai",
