@@ -167,12 +167,13 @@ export function capsFor(feature: Feature, config: InferenceConfig = INFERENCE): 
 }
 
 /**
- * How many pages of the patient's reports one request to this feature's model may carry (CORPUS.md).
+ * How many pages of the patient's reports one request to this feature's model may carry (CORPUS.md
+ * §5), for a provider that declares no ceiling of its own. Every provider this repo ships does
+ * declare one, derived from its model's context window — this is what a deployer's own config falls
+ * back to when it says nothing, and it assumes the 1 M window the shipped models have.
  *
- * Here rather than in the assembler because it is a MODEL property, not a transport one: at
- * ~1,500–3,000 tokens a page, 250 pages is 375–750 K tokens, which fits a 1 M-context model with
- * room for history and output and does not fit a 200 K one. A deployer pointing a feature at a
- * smaller model says so per provider; the default suits the models this repo ships with.
+ * Here rather than in the assembler because it is a MODEL property, not a transport one: a 200 K
+ * model holds a quarter of what a 1 M one does, on the same bytes.
  */
 export const DEFAULT_MAX_CORPUS_PAGES = 250;
 

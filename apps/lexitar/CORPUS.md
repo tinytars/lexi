@@ -157,15 +157,22 @@ entry on its own and no "the patient just asked" signal is wired in.
 
 | Limit | Value | Where |
 |---|---|---|
-| Pages | `maxCorpusPages`, default **250** | per provider in `inference.config.json` — a property of the model's context window |
+| Pages | `maxCorpusPages`, **250** on every shipped provider | `inference.config.json` — a property of the model's context window, so it is declared per provider rather than hardcoded |
 | Bytes | **20 MB** | `MAX_CORPUS_BYTES` — ~27.4 MB as base64, under the 32 MB request cap |
 | Documents | **100** | `MAX_CORPUS_DOCS` |
 | Pages per document | **60** | akesi's existing per-document bound, enforced on upload |
 
-Pages bind before bytes. At the measured **2,239 tokens per page** (§8), the provider's own hard
-limit of 600 pages is 1.34 M tokens — past a 1 M window; 250 pages is ~560 K, which leaves room for
-history, context and output. A deployer pointing a feature at a 200 K-context model sets a lower
-`maxCorpusPages`, which is why that one lives in config and the other two do not.
+Pages bind before bytes, and **250 is derived, not chosen**. Both models this repo ships —
+`claude-opus-4-7` and `claude-sonnet-4-6` — have a **1 M-token context window** with no beta header.
+Budgeting the corpus at 60% of that window leaves 400 K for the feature's own system prompt, tools,
+conversation history and output, which is generous for every attached feature. At the worst page
+measured (**2,330 tokens**, against a mean of 2,239 — §8), 600,000 ÷ 2,330 = 257 pages, rounded down
+to 250. The provider's own hard limit of 600 pages would be 1.4 M tokens, past the window outright.
+
+That derivation is why the number is per provider in config and the other three limits are not: it
+is a property of the model, and it changes the moment a deployer points a feature somewhere else. A
+200 K-context model is a quarter of the window and takes roughly 50 pages; a provider that declares
+nothing falls back to `DEFAULT_MAX_CORPUS_PAGES`, which assumes the 1 M window above.
 
 **Page counts live in D1**, in `raw_objects` (`migrations/0015_raw_object_pages.sql`), not in R2
 metadata: `ObjectBucket` has no metadata channel, and widening that port would be a
