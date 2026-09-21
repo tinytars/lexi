@@ -28,7 +28,7 @@ jobs:
   notify-failure:
     needs: [analyze]
     if: always() && github.event_name != 'pull_request' && contains(needs.*.result, 'failure')
-    uses: promontory-studio/autopilot/.github/workflows/notify-failure.yml@866bdd4b9a5da161b0478f7871ea3c740d8e42b8
+    uses: promontory-studio/autopilot/.github/workflows/notify-failure.yml@0551d8e5ce9c539b501e478b1f8b791df3aa094a
     # `secrets: inherit` does not cross owners, so every secret is named.
     secrets:
       app-key: ${{ secrets.AUTOPILOT_APP_KEY }}
