@@ -18,7 +18,7 @@ const triggers = (yaml: string): string => {
 };
 
 const unattended = readdirSync(DIR)
-  .filter((f) => f.endsWith(".yml") && f !== "notify-failure.yml")
+  .filter((f) => f.endsWith(".yml"))
   .filter((f) => /^\s+(schedule|push):/m.test(triggers(readFileSync(join(DIR, f), "utf8"))));
 
 describe("unattended workflows report their own failures", () => {
@@ -29,6 +29,6 @@ describe("unattended workflows report their own failures", () => {
   });
 
   it.each(unattended)("%s calls notify-failure.yml", (file) => {
-    expect(readFileSync(join(DIR, file), "utf8")).toContain("./.github/workflows/notify-failure.yml");
+    expect(readFileSync(join(DIR, file), "utf8")).toMatch(/\/workflows\/notify-failure\.yml@[0-9a-f]{40}/);
   });
 });

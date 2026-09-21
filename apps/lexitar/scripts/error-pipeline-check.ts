@@ -3,7 +3,7 @@ import { isMain } from "./is-main";
 
 // The error pipeline is the only telemetry this product has, and it fails silently: a revoked token,
 // an unset secret, or a Worker that stopped filing all read from the outside exactly like a quiet
-// week. Everything here answers "is it still alive", so that scripts/promotion-gate.ts can refuse
+// week. Everything here answers "is it still alive", so that the promotion gate can refuse
 // to read silence as health.
 
 const DAY_MS = 86_400_000;
