@@ -4,6 +4,7 @@ import { inferenceErrorReply } from "../_lib/model-errors";
 import { attachedModelFor, type AttachedEnv } from "../_lib/inference/attach";
 import { GET_MARKER_READINGS_TOOL } from "../../src/lib/chat-tools";
 import { chatSystemPrompt } from "../../src/lib/chat-prompt";
+import { reportsAttached } from "../_lib/inference/corpus";
 import { providerFor } from "../../src/lib/model-config";
 
 // Reads a patient's reports into the prompt cache before they ask anything, so their first question
@@ -59,6 +60,12 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
   const clientId = typeof body.clientId === "string" ? body.clientId.trim() : "";
   if (!clientId) return finish(400, { error: "clientId is required", errorCode: "no_client_id" }, { errorCode: "no_client_id" });
 
+  // Answered before anything else, and separately from "this record holds no PDFs", because the
+  // browser reads this one field to decide whether a PDF attachment still needs its transcription
+  // sent as text: with the corpus on it is already in the request as a document block, with the
+  // corpus off that transcription is the only copy there is (CORPUS.md).
+  if (!reportsAttached(env)) return finish(200, { warmed: false, reason: "off" });
+
   // Pre-warming is an Anthropic-side optimization. An OpenAI-compatible provider has no equivalent
   // and would reject the zero budget, so it is skipped rather than translated — the corpus itself
   // stays portable, this is the layer on top of it that does not have to be.
@@ -66,8 +73,8 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
 
   try {
     const { client, model, corpus } = await attachedModelFor(env, FEATURE, { accountId: session.accountId, clientId });
-    // Nothing to warm: REPORTS is off, or this record holds no PDFs yet. Either way a cache entry
-    // over a bare system prompt is not worth a round trip.
+    // Nothing to warm: this record holds no PDFs yet. A cache entry over a bare system prompt is
+    // not worth a round trip.
     if (corpus.turns.length === 0) return finish(200, { warmed: false, reason: "no_corpus" });
 
     const message = await client.messages.create({

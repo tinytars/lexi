@@ -10,6 +10,7 @@ import { AiError, withDeadline } from "./ai-error";
 import { capDocuments, type DocumentText, type StoredExtraction } from "@pablotech/akesi/document-read";
 import type { PageImage } from "@pablotech/akesi/report-extract";
 import { normalizeClientId } from "./client-id";
+import { reportsAreAttached } from "./corpus-warm-client";
 
 // A model call on a long PDF is slower than a leaf regen's own scoped call but bounded the same
 // way — past this the attach reports a reason instead of spinning (leaf-regen-config.ts's comment
@@ -18,6 +19,15 @@ export const DOCUMENT_EXTRACT_DEADLINE_MS = 180_000;
 
 export function isPdfAttachment(a: Pick<Attachment, "name" | "mediaType">): boolean {
   return a.mediaType === "application/pdf" || /\.pdf$/i.test(a.name);
+}
+
+/**
+ * The attachments still worth transcribing. Where the deployment attaches reports, a PDF is already
+ * in the request as its own bytes and its transcription would be the same document a second time;
+ * where it is off, that transcription is the only copy the model gets (CORPUS.md).
+ */
+export function needTranscription<T extends Pick<Attachment, "name" | "mediaType">>(attachments: T[]): T[] {
+  return reportsAreAttached() ? attachments.filter((a) => !isPdfAttachment(a)) : attachments;
 }
 
 /** Readable as prose. Spreadsheets are deliberately absent — they route to the marker importer. */

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createCorpusWarmer, KEEPALIVE_INTERVAL_MS, MAX_IDLE_KEEPALIVES } from "../../src/lib/corpus-warm";
-import { warmCorpus } from "../../src/lib/corpus-warm-client";
+import { warmCorpus, reportsAreAttached } from "../../src/lib/corpus-warm-client";
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
@@ -104,5 +104,53 @@ describe("warmCorpus", () => {
 
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("not json")));
     expect(await warmCorpus("alex", "imperial")).toBe(false);
+  });
+});
+
+// Whether the PDF is already in the request decides whether its transcription is a second copy of
+// one document or the only copy there is, so a wrong answer here is either doubled tokens or a
+// model that cannot see the attachment at all (CORPUS.md).
+describe("reportsAreAttached", () => {
+  const replies = (payload: unknown, status = 200) =>
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(payload), { status })));
+
+  // A fresh module, because this pins the value the app starts life with: the safe default is to
+  // keep sending the transcription, so a deployment we have not heard from yet never loses a PDF.
+  it("answers no before the first warm has come back", async () => {
+    vi.resetModules();
+    const fresh = await import("../../src/lib/corpus-warm-client");
+    expect(fresh.reportsAreAttached()).toBe(false);
+  });
+
+  it("answers no once the deployment says REPORTS is off", async () => {
+    replies({ warmed: false, reason: "off" });
+    await warmCorpus("alex", "metric");
+    expect(reportsAreAttached()).toBe(false);
+  });
+
+  // Each of these means the documents ARE in the request — only the pre-warm did not happen.
+  it.each([
+    ["this record has no PDFs yet", { warmed: false, reason: "no_corpus" }],
+    ["the provider has no pre-warm", { warmed: false, reason: "unsupported" }],
+    ["the entry was written", { warmed: true, written: 5120, read: 0 }],
+  ])("answers yes when %s", async (_why, payload) => {
+    replies({ warmed: false, reason: "off" });
+    await warmCorpus("alex", "metric");
+
+    replies(payload);
+    await warmCorpus("alex", "metric");
+
+    expect(reportsAreAttached()).toBe(true);
+  });
+
+  // A refused or unreachable warm says nothing about the deployment, so the last known answer stands.
+  it("keeps the last answer when the warm call fails", async () => {
+    replies({ warmed: false, reason: "no_corpus" });
+    await warmCorpus("alex", "metric");
+
+    replies({ error: "corpus too large" }, 422);
+    await warmCorpus("alex", "metric");
+
+    expect(reportsAreAttached()).toBe(true);
   });
 });

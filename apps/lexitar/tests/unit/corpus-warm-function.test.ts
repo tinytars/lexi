@@ -72,12 +72,14 @@ describe("/api/corpus-warm", () => {
     expect(docs[docs.length - 1].cache_control).toEqual({ type: "ephemeral" });
   });
 
-  it("spends nothing when the deployment attaches no reports", async () => {
+  // "off" and not "no_corpus": this record HAS a report, and the browser reads this one field to
+  // decide whether an attached PDF still needs its transcription sent as text (CORPUS.md).
+  it("says the deployment attaches no reports at all, and spends nothing", async () => {
     const who = await alexWithAReport();
 
     const res = await post(who, { clientId: "alex" }, "never");
 
-    expect(await res.json()).toEqual({ warmed: false, reason: "no_corpus" });
+    expect(await res.json()).toEqual({ warmed: false, reason: "off" });
     expect(create).not.toHaveBeenCalled();
   });
 
