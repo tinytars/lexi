@@ -119,3 +119,5 @@ jobs:
       assignee: pablo-tech
       title: Nightly vault snapshot failed
       context: The vault backup did not complete. Its check step is the only alarm on backup integrity, and until this passes there is no verified recent snapshot.
+
+# (throwaway probe line)
