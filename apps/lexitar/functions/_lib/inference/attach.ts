@@ -6,15 +6,18 @@ import { ModelUnsupportedError } from "../model-errors";
 import { emptyCorpus, reportCorpus, reportsAttached, type Corpus, type CorpusEnv } from "./corpus";
 import { modelFor, type ResolvedModel } from "./resolve";
 
-// Every feature except these three answers a question about one person's record, and therefore
+// Every feature except these six answers a question about one person's record, and therefore
 // answers it in sight of that person's own reports (CORPUS.md).
 //
 // `extract` and `document` are handed THE document by the browser, at a moment when its bytes may
 // not be in R2 yet — attaching the corpus would double-count it and make a new client's first
 // import impossible against an empty namespace. `benchmarkWeakest` has no client, no R2 and no
-// session. Each is a decision, which is why it is spelled out in a type rather than left to
-// whichever call site remembered.
-export const UNATTACHED_FEATURES = ["extract", "document", "benchmarkWeakest"] as const;
+// session. `treatmentImage` and `treatmentText` read a pill bottle's own label, which is not in the
+// record at all — the route has no clientId to attach one against. `persona` restates a finished
+// answer that already holds every fact, which its own `missingFacts` check proves. Each is a
+// decision, which is why it is spelled out in a type rather than left to whichever call site
+// remembered.
+export const UNATTACHED_FEATURES = ["extract", "document", "benchmarkWeakest", "treatmentImage", "treatmentText", "persona"] as const;
 export type UnattachedFeature = (typeof UNATTACHED_FEATURES)[number];
 export type AttachedFeature = Exclude<Feature, UnattachedFeature>;
 

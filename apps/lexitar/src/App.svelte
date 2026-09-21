@@ -486,7 +486,7 @@
   // W84 — with Cody selected, any assistant bubble offers "Cody's take" on Lexi's words.
   $effect(() => {
     const p = persona;
-    configureRetell(p === "lexi" ? null : { label: `${PERSONAS[p].name}'s take`, voice: p, retell: (text) => personaTake(p, selectedClientId, text) });
+    configureRetell(p === "lexi" ? null : { label: `${PERSONAS[p].name}'s take`, voice: p, retell: (text) => personaTake(p, text) });
   });
   // Every login path re-reads the account; the persona rides along so no path can forget it.
   async function refreshAccount() {

@@ -42,7 +42,7 @@ describe("the configured stack can carry what it is asked to carry", () => {
   it("gives every attached feature a provider that declares pdf", () => {
     const withoutPdf = ATTACHED.filter((f) => !capsFor(f).pdf);
     expect(withoutPdf).toEqual([]);
-    expect(ATTACHED.length).toBeGreaterThanOrEqual(8);
+    expect(ATTACHED.length).toBeGreaterThanOrEqual(5);
   });
 
   it("refuses rather than answering from less when the provider cannot take PDFs", async () => {

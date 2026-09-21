@@ -17,6 +17,13 @@ describe("inference.config.json", () => {
     for (const f of FEATURES) expect(modelId(f)).toBeTruthy();
   });
 
+  // Falling back to DEFAULT_MAX_CORPUS_PAGES would be a guess about a window nobody wrote down, and
+  // a guess in the "it fits" direction is an over-limit request in front of a real question. Every
+  // shipped provider states its own, derived from its model (CORPUS.md §5).
+  it("declares a corpus page ceiling on every provider rather than falling back", () => {
+    for (const [name, p] of Object.entries(INFERENCE.providers)) expect(p.maxCorpusPages, name).toBeGreaterThan(0);
+  });
+
   // The repo is public: a key typed into this file would be published.
   it("names env vars, never holds a key", () => {
     const text = JSON.stringify(raw);
@@ -59,11 +66,12 @@ describe("parseInferenceConfig", () => {
   });
 
   // The corpus page ceiling follows the MODEL's context window, so a deployment pointing a feature
-  // at a smaller one says so here rather than being silently over-served (CORPUS.md).
+  // at a smaller one says so here rather than being silently over-served (CORPUS.md §5).
   it("takes a per-provider corpus page ceiling, defaulting when none is given", () => {
-    expect(maxCorpusPagesFor("chat")).toBe(DEFAULT_MAX_CORPUS_PAGES);
-    const c = parseInferenceConfig(withProvider({ api: "anthropic", keyEnv: ["ANTHROPIC_API_KEY"], maxCorpusPages: 100 }));
-    expect(maxCorpusPagesFor("chat", c)).toBe(100);
+    const declared = parseInferenceConfig(withProvider({ api: "anthropic", keyEnv: ["ANTHROPIC_API_KEY"], maxCorpusPages: 100 }));
+    expect(maxCorpusPagesFor("chat", declared)).toBe(100);
+    const silent = parseInferenceConfig(withProvider({ api: "anthropic", keyEnv: ["ANTHROPIC_API_KEY"] }));
+    expect(maxCorpusPagesFor("chat", silent)).toBe(DEFAULT_MAX_CORPUS_PAGES);
     expect(() => parseInferenceConfig(withProvider({ api: "anthropic", keyEnv: ["A"], maxCorpusPages: 0 }))).toThrow(/positive integer/);
   });
 

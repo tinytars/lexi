@@ -14,8 +14,8 @@ shape in which the question "what does my report actually say" has a truthful an
 ## 1. What every inference sees
 
 Every PDF stored under one person's namespace, ordered by key, attached as `document` blocks
-ahead of whatever the feature was going to ask. Eight features are attached in the type system; six
-of them carry it on the wire today:
+ahead of whatever the feature was going to ask. Five features are attached — every feature that
+answers a question about a person's record:
 
 | Feature | Route |
 |---|---|
@@ -24,8 +24,8 @@ of them carry it on the wire today:
 | `finding` | `functions/api/refresh-finding.ts` |
 | `ranges` | `functions/api/refresh-range.ts` |
 | `markerGroups` | `functions/api/refresh-marker-groups.ts` |
-| `persona` | `functions/api/persona-adapt.ts` |
-| `treatmentImage`, `treatmentText` | `functions/api/treatment-infer.ts` — **not yet attached**, see §6 |
+
+The other six are §6, each for a stated reason.
 
 Non-PDF originals (`.xlsx`, `.jpg`, `.json`) are not attached: there is no `document` block form
 for them. Their readings are in the vault, extracted at import, and that remains all the model
@@ -139,7 +139,7 @@ write is billed either way — this moves it off the patient's cursor, it does n
 | `chat` | **yes** | — |
 | `ranges`, `markerGroups` | no | they pin their output with `output_config.format`, which `max_tokens: 0` rejects |
 | `leafRegen` | no | each node forks its own entry, so warming the sweep is ~30 writes up front |
-| `persona`, `treatmentText` | no | they restate text that already holds every fact |
+| `finding` | no | it refreshes in the background, not at a cursor, and on its own key pool |
 
 A warm call must also match the follow-up's thinking configuration and effort, since both render
 into the prefix. `max_tokens: 0` is rejected alongside `stream: true`, enabled thinking,
@@ -157,15 +157,22 @@ entry on its own and no "the patient just asked" signal is wired in.
 
 | Limit | Value | Where |
 |---|---|---|
-| Pages | `maxCorpusPages`, default **250** | per provider in `inference.config.json` — a property of the model's context window |
+| Pages | `maxCorpusPages`, **250** on every shipped provider | `inference.config.json` — a property of the model's context window, so it is declared per provider rather than hardcoded |
 | Bytes | **20 MB** | `MAX_CORPUS_BYTES` — ~27.4 MB as base64, under the 32 MB request cap |
 | Documents | **100** | `MAX_CORPUS_DOCS` |
 | Pages per document | **60** | akesi's existing per-document bound, enforced on upload |
 
-Pages bind before bytes. At the measured **2,239 tokens per page** (§8), the provider's own hard
-limit of 600 pages is 1.34 M tokens — past a 1 M window; 250 pages is ~560 K, which leaves room for
-history, context and output. A deployer pointing a feature at a 200 K-context model sets a lower
-`maxCorpusPages`, which is why that one lives in config and the other two do not.
+Pages bind before bytes, and **250 is derived, not chosen**. Both models this repo ships —
+`claude-opus-4-7` and `claude-sonnet-4-6` — have a **1 M-token context window** with no beta header.
+Budgeting the corpus at 60% of that window leaves 400 K for the feature's own system prompt, tools,
+conversation history and output, which is generous for every attached feature. At the worst page
+measured (**2,330 tokens**, against a mean of 2,239 — §8), 600,000 ÷ 2,330 = 257 pages, rounded down
+to 250. The provider's own hard limit of 600 pages would be 1.4 M tokens, past the window outright.
+
+That derivation is why the number is per provider in config and the other three limits are not: it
+is a property of the model, and it changes the moment a deployer points a feature somewhere else. A
+200 K-context model is a quarter of the window and takes roughly 50 pages; a provider that declares
+nothing falls back to `DEFAULT_MAX_CORPUS_PAGES`, which assumes the 1 M window above.
 
 **Page counts live in D1**, in `raw_objects` (`migrations/0015_raw_object_pages.sql`), not in R2
 metadata: `ObjectBucket` has no metadata channel, and widening that port would be a
@@ -207,6 +214,12 @@ guess. Three things clear it, and all three ship:
 3. **Operator sweep** — `scripts/raw-pages-backfill.ts`, which resolves its bucket and its D1 from
    the worktree's `wrangler.jsonc`, so it runs once per environment.
 
+None of the three can measure a file pdf.js cannot open, and one such file freezes the corpus for
+that patient's whole namespace — a 0-byte upload or a `.pdf` that is not one holds no information
+but still counts as unmeasured. `npm run raw:pages -- --purge-unreadable --confirm` deletes those
+files and their transcription sidecars. It is irreversible outside the backup window, which is why
+it is a flag an owner types per environment rather than something the sweep does on its own.
+
 Estimating pages from byte size was rejected: a 12 MB scan can be 2 pages and a 300 KB text PDF 80,
 and an estimate wrong in the "it fits" direction silently sends an over-limit request — the exact
 failure this design exists to prevent.
@@ -218,16 +231,18 @@ failure this design exists to prevent.
 | `extract` | the browser hands it *the* document, at a moment when the bytes may not be in R2 yet; attaching the corpus would double-count it and make a new client's first import impossible against an empty namespace |
 | `document` | same argument — its output *feeds* the corpus |
 | `benchmarkWeakest` | no client, no R2, no session |
+| `treatmentImage`, `treatmentText` | they read a pill bottle's own label, which is not in the record; `functions/api/treatment-infer.ts` carries no `clientId` to read a record against |
+| `persona` | it restates a finished answer that already holds every fact — `missingFacts` (`functions/api/persona-adapt.ts`) proves that on every call, so a corpus could tell it nothing |
 
-These three are the `UNATTACHED_FEATURES` union in `functions/_lib/inference/attach.ts`. The type
-is the decision: `attachedModelFor` cannot be called for them, and `unattachedModelFor` cannot be
+These six are the `UNATTACHED_FEATURES` union in `functions/_lib/inference/attach.ts`. The type is
+the decision: `attachedModelFor` cannot be called for them, and `unattachedModelFor` cannot be
 called for anything else.
 
-**`treatmentImage` and `treatmentText` are attached features whose route does not yet attach.**
-`inferTreatment` is published from `@pablotech/akesi`, builds its own `content` array and takes no
-prefix parameter, so `functions/api/treatment-infer.ts` still resolves a bare model. It needs an
-akesi release adding that parameter. This is the one place where the type says "attached" and the
-wire does not, and it is a gap, not a decision.
+The first five are unattached because there is no record to read. `persona` is the one that is
+unattached on **cost**: it could have carried a corpus and simply would not have been better for
+it, at a ~350K-token cache write per patient per window. Measured first (§8), then detached — and
+`tests/unit/persona-adapt-function.test.ts` pins it, with `REPORTS: "always"` and a real PDF in the
+record, so the saving cannot quietly come back.
 
 **`documentsPromptBlock` and PDFs.** An attachment is stored under the same `raw/{clientId}/`
 prefix the corpus is assembled from, so where the corpus is on the model already holds an attached
@@ -305,8 +320,8 @@ Per request, for the largest measured namespace:
 
 | | cache write | cache read |
 |---|---|---|
-| `claude-sonnet-4-6` — chat, `leafRegen`, `persona`, `treatmentText` | $0.585 | $0.047 |
-| `claude-opus-4-7` — `ranges`, `markerGroups`, `finding`, `treatmentImage` | $2.927 | $0.234 |
+| `claude-sonnet-4-6` — `chat`, `leafRegen`, `ranges` | $0.585 | $0.047 |
+| `claude-opus-4-7` — `markerGroups`, `finding` | $0.976 | $0.078 |
 
 And per user action, on that same record:
 
@@ -315,18 +330,25 @@ And per user action, on that same record:
 | Chat turn, 5 tool rounds, warm | $0.23 | — |
 | Chat turn, 5 tool rounds, cold | $0.77 | — |
 | Translate-all, ~30 leaf regens | **$1.94** | $17.56 |
-| Marker sweep, ~120 ranges | **$30.80** | $351.29 |
+| Marker sweep, ~120 ranges | **$6.16** | $70.26 |
 
-The marker sweep is the number to look at before turning this on anywhere. Serializing the first
-call is what makes it $31 instead of $351, and $31 is still the most expensive button in the app
-by an order of magnitude — on Opus, against a record of 67 pages, well under the ceiling.
+The marker sweep is the number to look at before turning this on anywhere, and pricing it is what
+moved `ranges` off Opus: the same 120 calls cost $10.27 there, against $6.16 on Sonnet, for a
+feature `MODELS.md` measures a 4 B open model as holding at ceiling. Serializing the first call is
+the other half — it is what makes the sweep $6 instead of $70.
+
+Two corrections are folded into the table above, because both moved it by more than rounding. The
+Opus rows previously read $2.927 and $0.234: `scripts/inference-cost.ts` still carried the Opus 4.1
+price of $15/$75, so every Opus figure here was 3× its real cost, and the sweep was published at
+$30.80 when Opus would in fact have charged $10.27. And `ranges` now bills on Sonnet, which is the
+row it appears in. The price table is dated at the top for exactly this reason.
 
 **Observed spend is not reported here, because there is none to observe**: production runs
 `REPORTS: "never"` (§7), so no corpus traffic has been billed. The figures above are arithmetic
 over a measured token count, not a projection of usage. Once an environment has run the corpus for
 a week, the Usage and Cost Admin API is what replaces them, with the date it was taken.
 
-Two attached features are known to earn none of it and are flagged rather than silently dropped:
-`persona-adapt` restates a paragraph that already contains every fact — its own `missingFacts`
-check proves it — and `treatmentText` reads a pill-bottle label. Neither touches the patient's
-reports. They stay in scope; whether they stay attached is a decision for the measured numbers.
+These figures are what retired `persona` from the attached set (§6): a restatement could not be
+improved by a corpus, and the table prices what carrying one anyway would have cost — a write per
+patient per window, on the sonnet row, for nothing. `treatmentImage`/`treatmentText` never reached
+the wire at all, having no record to read.
