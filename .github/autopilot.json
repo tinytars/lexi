@@ -1,0 +1,22 @@
+{
+  "agentAuthor": "plover-autopilot[bot]",
+  "botAuthor": "dependabot[bot]",
+  "maxLines": 400,
+  "forbidden": [
+    "apps/lexitar/wrangler.jsonc",
+    "apps/lexitar/migrations/**",
+    "apps/lexitar/coverage-thresholds.json",
+    "apps/lexitar/vitest.config.ts",
+    "apps/lexitar/vitest.data.config.ts",
+    "apps/lexitar/playwright.config.ts",
+    "apps/lexitar/tests/setup.ts"
+  ],
+  "apps": [
+    {
+      "path": "apps/lexitar",
+      "run": ["npx", "vitest", "run"],
+      "tests": ["tests/**/*.test.ts", "tests/**/*.spec.ts"],
+      "unitTests": ["tests/unit/**/*.test.ts"]
+    }
+  ]
+}
