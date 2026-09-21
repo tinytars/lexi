@@ -44,7 +44,7 @@ jobs:
   notify-failure:
     needs: [alive]
     if: always() && contains(needs.*.result, 'failure')
-    uses: promontory-studio/autopilot/.github/workflows/notify-failure.yml@0551d8e5ce9c539b501e478b1f8b791df3aa094a
+    uses: promontory-studio/autopilot/.github/workflows/notify-failure.yml@a5fe74d4f3b2116304a21c1babf57114fe15bcbc
     # `secrets: inherit` does not cross owners, so every secret is named.
     secrets:
       app-key: ${{ secrets.AUTOPILOT_APP_KEY }}

@@ -33,7 +33,7 @@ jobs:
       github.event_name == 'workflow_run' &&
       github.event.workflow_run.event == 'pull_request' &&
       github.event.workflow_run.pull_requests[0] != null
-    uses: promontory-studio/autopilot/.github/workflows/review.yml@0551d8e5ce9c539b501e478b1f8b791df3aa094a
+    uses: promontory-studio/autopilot/.github/workflows/review.yml@a5fe74d4f3b2116304a21c1babf57114fe15bcbc
     # `secrets: inherit` does not cross owners, so every secret is named.
     secrets:
       anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -45,6 +45,11 @@ jobs:
       ci-conclusion: ${{ github.event.workflow_run.conclusion }}
       head-branch: ${{ github.event.workflow_run.head_branch }}
       allowed-bots: dependabot[bot],plover-autopilot[bot]
+      # A security update is raised against main whatever dependabot.yml targets, and main receives
+      # dev whole — a merge there diverges it. The host moves the pull request onto dev and asks
+      # Dependabot to rebase it there, so it stops carrying main's kept-back wrangler.jsonc. The
+      # promotion pull request is untouched: the move is keyed on the dependabot/ branch prefix.
+      retarget-base: dev
       # A promotion into main keeps dev's history, as every promotion has.
       merge-method-by-base: '{"main":"merge"}'
       app-id: ${{ vars.AUTOPILOT_APP_ID }}
@@ -77,7 +82,7 @@ jobs:
   notify-failure:
     needs: [review, push-audit]
     if: always() && contains(needs.*.result, 'failure')
-    uses: promontory-studio/autopilot/.github/workflows/notify-failure.yml@0551d8e5ce9c539b501e478b1f8b791df3aa094a
+    uses: promontory-studio/autopilot/.github/workflows/notify-failure.yml@a5fe74d4f3b2116304a21c1babf57114fe15bcbc
     # `secrets: inherit` does not cross owners, so every secret is named.
     secrets:
       app-key: ${{ secrets.AUTOPILOT_APP_KEY }}
