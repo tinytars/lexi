@@ -19,7 +19,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { d1, q, D1 } from "./d1-remote";
 import { LIVE_BUCKET, getObject, resolveStore } from "./vault-sync";
 import { isMain } from "./is-main";
-import { CORPUS_PREAMBLE, CORPUS_ACK } from "../functions/_lib/inference/corpus";
+import { CORPUS_PREAMBLE, CORPUS_ACK } from "../src/lib/corpus-prompt";
 import { chatSystemPrompt } from "../src/lib/chat-prompt";
 import { GET_MARKER_READINGS_TOOL } from "../src/lib/chat-tools";
 import { modelId, providerFor } from "../src/lib/model-config";
