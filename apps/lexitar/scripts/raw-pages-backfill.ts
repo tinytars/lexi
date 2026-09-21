@@ -6,18 +6,24 @@
 // refuse with `corpus_unmeasured` until they happen to open the app and the browser heals it
 // (src/lib/raw-pages-heal.ts). This is the operator's sweep for the rest.
 //
-//   npm run raw:pages              # report only
-//   npm run raw:pages -- --confirm # write the counts
+//   npm run raw:pages                                     # report only
+//   npm run raw:pages -- --confirm                        # write the counts
+//   npm run raw:pages -- --purge-unreadable --confirm     # also delete the files nothing can open
 //
 // Like every script here it targets THIS WORKTREE's environment (scripts/target.ts), so it runs once
 // per environment: from a `dev` checkout for health-identity-dev, from a `main` one for prod.
 //
 // It needs no org key and decrypts nothing: a page count keys off `r2_key` alone. Keys with no
 // `raw_objects` row are not its business — that is ownership, and scripts/raw-backfill.ts owns it.
+//
+// --purge-unreadable is IRREVERSIBLE outside the vault-sync backup window, so it is an owner
+// decision made per environment, never a default: a file nothing can open holds no information, but
+// it is still the patient's upload. What makes it worth offering is that one such file freezes the
+// corpus for that patient's whole namespace, and there is no other way out of `corpus_unmeasured`.
 
 import "./load-creds";
 import { d1, q, D1 } from "./d1-remote";
-import { LIVE_BUCKET, getObject, resolveStore } from "./vault-sync";
+import { LIVE_BUCKET, deleteObject, getObject, resolveStore } from "./vault-sync";
 import { isMain } from "./is-main";
 
 const STORE = resolveStore();
@@ -50,8 +56,31 @@ export function fillStatement(rows: Array<{ key: string; pages: number; bytes: n
   );
 }
 
+/**
+ * The transcription sidecar document-extract.ts caches beside a raw file (`text/{id}/{key}.json`).
+ * Purging the PDF without it would leave a transcription of a document that no longer exists.
+ */
+export function sidecarKeyOf(rawKey: string): string {
+  return `${rawKey.replace("/raw/", "/text/")}.json`;
+}
+
+/** Every key a purge removes, raw and sidecar, in the order it removes them. */
+export function purgedKeys(unreadable: string[]): string[] {
+  return unreadable.flatMap((k) => [k, sidecarKeyOf(k)]);
+}
+
+async function purge(unreadable: string[]): Promise<void> {
+  const keys = purgedKeys(unreadable);
+  for (const key of keys) await deleteObject(LIVE_BUCKET, key);
+  for (let i = 0; i < keys.length; i += CHUNK) {
+    await d1(`DELETE FROM raw_objects WHERE r2_key IN (${keys.slice(i, i + CHUNK).map(q).join(", ")})`);
+  }
+  process.stdout.write(`Purged ${unreadable.length} unreadable file(s) and their sidecars.\n`);
+}
+
 async function main(): Promise<void> {
   const confirm = process.argv.includes("--confirm");
+  const purgeUnreadable = process.argv.includes("--purge-unreadable");
 
   const unmeasured = await d1<{ r2_key: string }>(
     `SELECT r2_key FROM raw_objects WHERE pages IS NULL AND lower(r2_key) LIKE '%.pdf' AND r2_key LIKE ${q(`${STORE}/raw/%`)} ORDER BY r2_key`,
@@ -71,11 +100,12 @@ async function main(): Promise<void> {
 
   process.stdout.write(`Measured: ${measured.length}   unreadable: ${unreadable.length}\n`);
   // Named loudly: a PDF nothing can open stays unmeasured, and the corpus keeps refusing for that
-  // whole namespace. Deleting it or replacing it is an owner decision, not this script's.
+  // whole namespace. Deleting it or replacing it is an owner decision, which --purge-unreadable is.
   for (const key of unreadable) process.stdout.write(`  ! ${key}: not a readable PDF\n`);
 
   if (!confirm) {
-    process.stdout.write(`\nReport only. Re-run with --confirm to write ${measured.length} page count(s).\n`);
+    const also = purgeUnreadable ? ` and purge ${unreadable.length} unreadable file(s)` : "";
+    process.stdout.write(`\nReport only. Re-run with --confirm to write ${measured.length} page count(s)${also}.\n`);
     return;
   }
 
@@ -83,6 +113,7 @@ async function main(): Promise<void> {
     await d1(fillStatement(measured.slice(i, i + CHUNK)));
     process.stdout.write(`  wrote ${Math.min(i + CHUNK, measured.length)}/${measured.length}\n`);
   }
+  if (purgeUnreadable && unreadable.length) await purge(unreadable);
   process.stdout.write(`\nDone.\n`);
 }
 

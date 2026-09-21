@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { fillStatement } from "../../scripts/raw-pages-backfill";
+import { fillStatement, purgedKeys, sidecarKeyOf } from "../../scripts/raw-pages-backfill";
 
 // W77 — the sweep writes page counts straight into D1, bypassing every route's validation, and a
 // stored count is what the corpus ceiling is then checked against. So the one thing worth pinning is
@@ -25,5 +25,25 @@ describe("fillStatement", () => {
   it("escapes a quote in an R2 key rather than ending the literal", () => {
     const sql = fillStatement([{ key: "prod/raw/o'brien/a.pdf", pages: 1, bytes: 1 }]);
     expect(sql).toContain("'prod/raw/o''brien/a.pdf'");
+  });
+});
+
+// --purge-unreadable deletes a patient's upload, so what it reaches is worth pinning even though the
+// deletion itself is one deleteObject call.
+describe("purgedKeys", () => {
+  it("takes the transcription sidecar with the file it transcribes", () => {
+    expect(sidecarKeyOf("dev/raw/liz/scan.pdf")).toBe("dev/text/liz/scan.pdf.json");
+    expect(purgedKeys(["dev/raw/liz/a.pdf", "dev/raw/liz/b.pdf"])).toEqual([
+      "dev/raw/liz/a.pdf",
+      "dev/text/liz/a.pdf.json",
+      "dev/raw/liz/b.pdf",
+      "dev/text/liz/b.pdf.json",
+    ]);
+  });
+
+  // The store prefix is the first segment and the client id the third, so rewriting the LAST `/raw/`
+  // would rename a namespace that happens to be called "raw" instead of the segment that means it.
+  it("rewrites the store's raw segment, not a client id spelled the same", () => {
+    expect(sidecarKeyOf("dev/raw/raw/a.pdf")).toBe("dev/text/raw/a.pdf.json");
   });
 });

@@ -214,6 +214,12 @@ guess. Three things clear it, and all three ship:
 3. **Operator sweep** — `scripts/raw-pages-backfill.ts`, which resolves its bucket and its D1 from
    the worktree's `wrangler.jsonc`, so it runs once per environment.
 
+None of the three can measure a file pdf.js cannot open, and one such file freezes the corpus for
+that patient's whole namespace — a 0-byte upload or a `.pdf` that is not one holds no information
+but still counts as unmeasured. `npm run raw:pages -- --purge-unreadable --confirm` deletes those
+files and their transcription sidecars. It is irreversible outside the backup window, which is why
+it is a flag an owner types per environment rather than something the sweep does on its own.
+
 Estimating pages from byte size was rejected: a 12 MB scan can be 2 pages and a 300 KB text PDF 80,
 and an estimate wrong in the "it fits" direction silently sends an over-limit request — the exact
 failure this design exists to prevent.
