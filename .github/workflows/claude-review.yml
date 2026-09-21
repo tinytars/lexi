@@ -44,7 +44,7 @@ jobs:
       head-sha: ${{ github.event.workflow_run.head_sha }}
       ci-conclusion: ${{ github.event.workflow_run.conclusion }}
       head-branch: ${{ github.event.workflow_run.head_branch }}
-      allowed-bots: dependabot[bot],plover-autopilot[bot],pedalion[bot]
+      allowed-bots: dependabot[bot],pedalion-ci[bot]
       # A security update is raised against main whatever dependabot.yml targets, and main receives
       # dev whole — a merge there diverges it. The host moves the pull request onto dev and asks
       # Dependabot to rebase it there, so it stops carrying main's kept-back wrangler.jsonc. The
