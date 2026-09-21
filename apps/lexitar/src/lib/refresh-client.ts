@@ -113,6 +113,7 @@ function expectedFor(client: Client): { patient: string[]; planActions: string[]
 // (401/402/429/…) or the in-band [[REFRESH_ERROR]] sentinel (post-header Anthropic/credit error).
 async function streamAttempt(
   client: Client,
+  clientId: string | null,
   corrections: string[],
   token: string,
   attempt: number,
@@ -122,7 +123,9 @@ async function streamAttempt(
   const res = await fetch("/api/refresh-finding", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ client, corrections, attempt }),
+    // clientId names whose record this is: the Finding is generated in sight of that person's own
+    // reports (CORPUS.md), and the relay has to be able to authorise reading them.
+    body: JSON.stringify({ client, clientId, corrections, attempt }),
     signal,
   });
   if (!res.ok || !res.body) {
@@ -164,6 +167,7 @@ async function streamAttempt(
 // segmented bar + "Attempt k of K" indicator.
 export async function refreshFinding(
   client: Client,
+  clientId: string | null,
   token: string,
   onProgress?: (p: RefreshProgress) => void,
   signal?: AbortSignal,
@@ -178,7 +182,7 @@ export async function refreshFinding(
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     // A transport/auth/credit failure (streamAttempt throws with an errorCode) is terminal — don't
     // burn retries on it. Ditto an abort (AbortError propagates straight out).
-    const text = await streamAttempt(client, corrections, token, attempt, onProgress, signal);
+    const text = await streamAttempt(client, clientId, corrections, token, attempt, onProgress, signal);
 
     // W39: parse is TERMINAL, validation is RETRYABLE. If no complete JSON object came back the
     // stream was cut off (Cloudflare CPU/wall limit or a max_tokens truncation), not a fixable
@@ -257,7 +261,7 @@ export async function refreshFindingWithLeaves(
 ): Promise<OrchestratedRefresh> {
   const { onProgress, onStage, onEvent, save, signal, generateCore } = opts;
   return orchestrateRefresh(client, {
-    generateCore: generateCore ?? (() => refreshFinding(client, token, onProgress, signal, onEvent)),
+    generateCore: generateCore ?? (() => refreshFinding(client, clientId, token, onProgress, signal, onEvent)),
     runLeaf: async (c, node) => {
       // null = nothing populated for this node; leave what is already there rather than merging an
       // empty answer over it.
