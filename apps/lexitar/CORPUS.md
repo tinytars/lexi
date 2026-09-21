@@ -31,6 +31,18 @@ Non-PDF originals (`.xlsx`, `.jpg`, `.json`) are not attached: there is no `docu
 for them. Their readings are in the vault, extracted at import, and that remains all the model
 sees of them. Stated, not solved.
 
+**The claim is tested against a real model**, in `tests/live/corpus-answers-the-document.test.ts`.
+Every other suite proves the plumbing — which bytes are attached, in what order, by which route —
+and none of them can prove a model can read them, because none of them calls one. That file asks
+three questions whose answers exist only in a document's own pages (a prior study's score inside an
+imaging narrative, a reference interval in a table cell, a supplement dose in a clinic note), each
+one absent from any structured extraction of the same file. It is opt-in and never in CI, because
+it spends money:
+
+```
+BENCH_LIVE=1 npx vitest run --config vitest.live.config.ts tests/live/corpus-answers-the-document.test.ts
+```
+
 ## 2. Where the bytes come from
 
 `{STORE_PREFIX}/raw/{clientId}/` in R2 — the original upload, plaintext, deliberately outside the
