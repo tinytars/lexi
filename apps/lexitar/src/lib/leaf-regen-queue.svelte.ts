@@ -81,6 +81,22 @@ export interface LeafRegenQueue {
   trigger(key: string, targetLabels?: string[], force?: boolean): Promise<RegenStatus>;
 }
 
+// Low enough to stay well under a per-minute limit with a corpus-sized prefix, high enough that the
+// sweep is still visibly parallel. The sweep is unprompted background work — it can afford to be the
+// thing that waits.
+const SWEEP_CONCURRENCY = 2;
+
+async function sweepBounded(nodes: readonly string[], run: (key: string) => Promise<unknown>): Promise<void> {
+  const queue = [...nodes];
+  const worker = async (): Promise<void> => {
+    for (let key = queue.shift(); key !== undefined; key = queue.shift()) {
+      // One node failing must not strand the rest of the sweep behind it.
+      await run(key).catch(() => {});
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(SWEEP_CONCURRENCY, queue.length) }, worker));
+}
+
 export function createLeafRegenQueue(deps: LeafRegenQueueDeps): LeafRegenQueue {
   let stale = $state(false);
 
@@ -258,13 +274,18 @@ export function createLeafRegenQueue(deps: LeafRegenQueueDeps): LeafRegenQueue {
       if (!c?.finding || !id || !deps.getProviderToken()) return;
       void staleNodes(c).then((staleSet) => {
         if (deps.getClient() !== c) return;
-        // Deliberately parallel, unlike the range sweep (range-fill.ts), which awaits its first call
-        // so the rest read one warm corpus cache entry. That saving cannot exist here: a prompt cache
-        // prefix renders tools -> system -> messages, and each node sends its OWN tool schema and its
-        // own system prompt ahead of the corpus (leaf-regen-anthropic.ts), so every node's corpus is
-        // already a separate entry however these are ordered. Serializing would buy wall-clock time
-        // for nothing. See CORPUS.md's caching section.
-        for (const key of nodes) void regen(key, c, id, staleSet, undefined, false, true);
+        // Parallel, but no longer all at once — and the reason is the vendor's rate limit, not its
+        // cache. The cache argument still stands: a prompt cache prefix renders tools -> system ->
+        // messages, and each node sends its OWN tool schema and system prompt ahead of the corpus
+        // (leaf-regen-anthropic.ts), so every node's corpus is a separate entry however these are
+        // ordered. Ordering them buys no hits and awaiting each one fully would spend wall-clock for
+        // nothing.
+        //
+        // W85 — what that reasoning did not weigh is what SIX corpus-sized requests leaving together
+        // do to a per-minute limit. They are what produced the ai_busy 503s on dev (CORPUS.md's
+        // "Rate limits are the other cost"), and a 429 costs the whole answer — strictly worse than
+        // the wall-clock the full fan-out was buying.
+        void sweepBounded(nodes, (key) => regen(key, c, id, staleSet, undefined, false, true));
       });
     },
 

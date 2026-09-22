@@ -49,6 +49,8 @@
     // Bindable — App.svelte owns the array; send()/onPaste() append turns straight back through it.
     threads: Thread[];
     hydrated: boolean;
+    /** A chat save that failed and stayed failed (chat-thread-session). Distinct from `error`, which is this turn's request. */
+    saveError?: string | null;
     // M69 — pasted-permalink reference cards: vault to resolve against, onNavigate to reuse
     // App.svelte's navigate() when a card is clicked.
     vault: Vault | null;
@@ -66,6 +68,7 @@
     activeId,
     threads = $bindable(),
     hydrated,
+    saveError = null,
     vault,
     onNavigate,
     onPersist,
@@ -476,6 +479,8 @@
     </div>
 
     {#if attachError}<p class="chat-error">{attachError}</p>{/if}
+    <!-- Survives a thread switch, unlike `error` above: an unsaved conversation stays unsaved. -->
+    {#if saveError}<p class="chat-error">This conversation isn't saving — {saveError}</p>{/if}
     {#if pendingAttachments.length > 0}
       <AttachmentStrip
         attachments={pendingAttachments}

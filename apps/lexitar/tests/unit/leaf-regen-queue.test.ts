@@ -308,3 +308,39 @@ describe("App wires the two sweeps to different dependencies", () => {
     expect(openSweep[0]).not.toContain("currentClient");
   });
 });
+
+// W85 — the sweep used to fire every stale node at once. With a corpus-sized prefix that is six
+// whole-record requests leaving together, which is what produced the ai_busy 503s on dev
+// (CORPUS.md, "Rate limits are the other cost"). A 429 costs the whole answer, so the sweep gives up
+// peak parallelism rather than the result.
+describe("the background sweep does not fire every node at once", () => {
+  it("keeps at most two corpus-sized calls in flight", async () => {
+    let inFlight = 0;
+    let peak = 0;
+    const fetchLeafRegen = vi.fn<typeof FetchLeafRegen>(async () => {
+      peak = Math.max(peak, ++inFlight);
+      await new Promise((r) => setTimeout(r, 1));
+      inFlight--;
+      return regenerated();
+    });
+    const { q } = await makeQueue({ fetchLeafRegen });
+
+    q.sweep();
+    await vi.waitFor(() => expect(fetchLeafRegen).toHaveBeenCalledTimes(LEAF_REGEN_NODES.length));
+    expect(peak).toBeLessThanOrEqual(2);
+  });
+
+  it("still sweeps every stale node", async () => {
+    const { q, fetchLeafRegen } = await makeQueue();
+    q.sweep();
+    await vi.waitFor(() => expect(fetchLeafRegen).toHaveBeenCalledTimes(LEAF_REGEN_NODES.length));
+  });
+
+  it("does not strand the rest of the sweep behind one node that fails", async () => {
+    const fetchLeafRegen = vi.fn<typeof FetchLeafRegen>(async () => regenerated());
+    fetchLeafRegen.mockRejectedValueOnce(new Error("ai_busy"));
+    const { q } = await makeQueue({ fetchLeafRegen });
+    q.sweep();
+    await vi.waitFor(() => expect(fetchLeafRegen).toHaveBeenCalledTimes(LEAF_REGEN_NODES.length));
+  });
+});

@@ -156,10 +156,15 @@ entry on its own and no "the patient just asked" signal is wired in.
 ### Rate limits are the other cost, and they arrive first
 
 Price is per token; a rate limit is per minute. A corpus-sized prefix moves both, and the second
-one bites sooner. Opening a record fires the warm call and the leaf sweep about a second apart, so
-two requests each carrying the whole record reach the vendor back to back — which is exactly what
-produced the first two overload answers seen on dev, on 2026-09-21, minutes after the corpus was
-first turned on.
+one bites sooner. Opening a record fires the warm call and the leaf sweep about a second apart —
+and the sweep is not one request but one per stale node, which is what produced the overload
+answers seen on dev on 2026-09-21, minutes after the corpus was first turned on.
+
+W85 caps how many of those leave together (`SWEEP_CONCURRENCY` in leaf-regen-queue.svelte.ts). It
+buys no cache hits and is not meant to: each node sends its own tool schema and system prompt ahead
+of the corpus, so every node's prefix is a separate entry however they are ordered. It trades the
+sweep's peak parallelism — unprompted background work, so it is the thing that can afford to wait —
+against a 429, which costs the whole answer.
 
 Nothing is broken when that happens. `model-errors.ts` maps the vendor's 429/503/529 onto
 `ai_busy`; `refresh-range.ts` treats it as transient and retries inside the range call, and
