@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { requireSession } from "../_lib/session";
 import { logRequest } from "../_lib/log";
-import { inferenceErrorReply } from "../_lib/model-errors";
+import { classifyModelError, inferenceErrorReply } from "../_lib/model-errors";
 import { attachedModelFor, type AttachedEnv } from "../_lib/inference/attach";
 // W76 — the declaration and its executor are ONE object. This route used to hand-copy the schema,
 // under a comment claiming a Pages Function cannot import the CLI's tsconfig; chat-tools.ts is in
@@ -31,6 +31,26 @@ const ROUTE = "/api/chat";
 // alongside the same catalog+history payload — well under treatment-image-infer.ts's own 24 MB
 // relay cap, since chat images are compressed client-side first.
 const MAX_BODY_BYTES = 8 * 1024 * 1024;
+
+// A busy provider is the question never having been asked, not an answer to it. A corpus-sized
+// prefix reaches the per-minute rate limit long before the bill (CORPUS.md), so the vendor's
+// 429/503/529 — `ai_busy` once classified — is the failure this route sees most, and asking once
+// meant a single overloaded moment lost the patient's question. Same ladder, same delays as
+// leaf-regen-anthropic.ts: every rung sends the same bytes, so the attempts share one prompt-cache
+// entry rather than paying for the whole record again.
+const TRANSIENT_RETRY_DELAYS_MS = [300, 900];
+
+async function withBusyRetry<T>(attempt: () => Promise<T>): Promise<T> {
+  for (const delay of TRANSIENT_RETRY_DELAYS_MS) {
+    try {
+      return await attempt();
+    } catch (err) {
+      if (classifyModelError(err).errorCode !== "ai_busy") throw err;
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+  return attempt();
+}
 
 
 // The running messages array the browser owns (history text turns + the catalog+question turn + any
@@ -110,15 +130,17 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
 
   try {
     const { client, model, corpus } = await attachedModelFor(env, "chat", { accountId: session.accountId, clientId });
-    const message = await client.messages.create({
-      model,
-      max_tokens: 4096,
-      system: chatSystemPrompt(unitSystem),
-      ...(withTools ? { tools: [GET_MARKER_READINGS_TOOL] } : {}),
-      // The corpus leads, identically on every tool round — that sameness is what the prompt cache
-      // is keyed on, and what stops round 2 from re-reading 20 MB at full price.
-      messages: [...corpus.turns, ...messages],
-    });
+    const message = await withBusyRetry(() =>
+      client.messages.create({
+        model,
+        max_tokens: 4096,
+        system: chatSystemPrompt(unitSystem),
+        ...(withTools ? { tools: [GET_MARKER_READINGS_TOOL] } : {}),
+        // The corpus leads, identically on every tool round — that sameness is what the prompt cache
+        // is keyed on, and what stops round 2 from re-reading 20 MB at full price.
+        messages: [...corpus.turns, ...messages],
+      }),
+    );
     const usage = { usage: { input: message.usage.input_tokens, output: message.usage.output_tokens } };
 
     if (message.stop_reason === "tool_use") {
