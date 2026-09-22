@@ -66,12 +66,17 @@ function maskApiPath(pathname: string): string {
 // classified the failure, so it is a condition the app expects rather than a defect. `ai_busy` is
 // why this matters — the vendor answering 429/503/529 is a 503 here, which the app retries and
 // explains, and filing one as a bug also pins the promotion gate on a build no fix can clear.
-async function classifiedByHandler(res: Response): Promise<boolean> {
+//
+// Reading that body is itself inside the caller's deadline (ai-error.ts's withDeadline aborts the
+// request, and this read runs before the response is handed back), so a body that stops arriving is
+// NOT evidence the handler classified nothing — it is evidence nobody was left waiting for it. Only
+// a read that failed on a request nobody cancelled says anything about the route.
+async function classifiedByHandler(res: Response, signal?: AbortSignal | null): Promise<boolean> {
   try {
     const body = (await res.clone().json()) as { errorCode?: unknown } | null;
     return typeof body?.errorCode === "string";
   } catch {
-    return false;
+    return signal?.aborted === true;
   }
 }
 
@@ -85,7 +90,7 @@ export function installApiFailureReporting(
     if (res.status < 500) return res;
     const url = new URL(input instanceof Request ? input.url : String(input), origin);
     if (url.origin !== origin || !url.pathname.startsWith("/api/") || url.pathname === SINK_PATH) return res;
-    if (await classifiedByHandler(res)) return res;
+    if (await classifiedByHandler(res, input instanceof Request ? input.signal : init?.signal)) return res;
     const method = (input instanceof Request ? input.method : init?.method) ?? "GET";
     const failure = new Error(`${method} ${maskApiPath(url.pathname)} → ${res.status}`);
     failure.name = "ApiUnavailable";
