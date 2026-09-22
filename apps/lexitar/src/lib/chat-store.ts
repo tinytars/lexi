@@ -6,7 +6,7 @@
 // /api/chat-history/{id} Function (both hd_session-gated since W71); dev (vite, e2e) keeps the
 // encrypted blob in localStorage so a reload restores threads without a dev-server endpoint.
 
-import type { Thread } from "./chat-threads";
+import { mergeThreads, type Thread } from "./chat-threads";
 import { encryptVaultV2, decryptVaultV2 } from "@tinytars/vault/crypto";
 import { bytesToB64, b64ToBytes } from "@tinytars/vault/base64";
 import { normalizeClientId } from "./client-id";
@@ -24,6 +24,15 @@ const lsKey = (id: string) => `chat-history:${normalizeClientId(id)}`;
 // Module-level for the same reason vault-sink's is: it belongs to the connection, not to a component
 // that unmounts when the user switches tabs.
 const etags = new Map<string, string>();
+
+/** The stored blob moved between this tab's read and its write. Typed so the retry path can branch
+ * on identity rather than on the text of a message. */
+export class ChatHistoryConflict extends Error {
+  constructor() {
+    super("chat history changed since this tab read it");
+    this.name = "ChatHistoryConflict";
+  }
+}
 
 async function r2Load(id: string): Promise<Uint8Array | null> {
   const res = await fetch(`/api/chat-history/${encodeURIComponent(normalizeClientId(id))}`, { cache: "no-store" });
@@ -50,12 +59,11 @@ async function r2Save(id: string, blob: Uint8Array): Promise<void> {
     },
     body: blob as BodyInit,
   });
-  if (res.status === 412) {
-    // Another tab saved first. Drop our token so the next load re-reads theirs rather than retrying
-    // against a version that no longer exists — chat is append-mostly, so re-reading is the merge.
-    etags.delete(normalizeClientId(id));
-    throw new Error("chat history changed in another tab — reload the conversation");
-  }
+  // Another tab saved first. The etag is deliberately KEPT: dropping it used to send the next save
+  // down the `If-None-Match: "*"` branch above — create-only, against a blob that exists — so every
+  // subsequent save 412'd forever and the conversation silently stopped persisting. saveThreads
+  // resolves the conflict by re-reading; it needs a signal, not a cleared slot.
+  if (res.status === 412) throw new ChatHistoryConflict();
   if (!res.ok) throw new Error(`chat history save failed (${res.status})`);
   const etag = res.headers.get("etag");
   if (etag) etags.set(normalizeClientId(id), etag);
@@ -91,14 +99,35 @@ export async function loadThreads(id: string, dek: CryptoKey): Promise<Thread[] 
   }
 }
 
-export async function saveThreads(threads: Thread[], id: string, dek: CryptoKey): Promise<void> {
+function refuseIfUnreadable(id: string): void {
   if (unreadable.has(normalizeClientId(id))) {
     throw new Error("this conversation could not be opened with the current key — not overwriting it");
   }
-  const blob = await encryptVaultV2<ChatHistory>({ threads }, dek);
+}
+
+const encrypt = (threads: Thread[], dek: CryptoKey) => encryptVaultV2<ChatHistory>({ threads }, dek);
+
+export async function saveThreads(threads: Thread[], id: string, dek: CryptoKey): Promise<void> {
+  refuseIfUnreadable(id);
   if (import.meta.env.DEV) {
-    if (typeof localStorage !== "undefined") localStorage.setItem(lsKey(id), bytesToB64(blob));
-  } else {
-    await r2Save(id, blob);
+    if (typeof localStorage !== "undefined") localStorage.setItem(lsKey(id), bytesToB64(await encrypt(threads, dek)));
+    return;
   }
+  try {
+    await r2Save(id, await encrypt(threads, dek));
+  } catch (e) {
+    if (!(e instanceof ChatHistoryConflict)) throw e;
+    await saveMerged(threads, id, dek);
+  }
+}
+
+// The one retry a conflict gets. Re-reading does double duty: it refreshes the etag this tab writes
+// with AND yields the other tab's threads to merge, so neither side's turns are dropped. A second
+// conflict is a live race this tab cannot win by trying again, so it surfaces.
+async function saveMerged(threads: Thread[], id: string, dek: CryptoKey): Promise<void> {
+  const theirs = await loadThreads(id, dek);
+  // loadThreads re-evaluates readability, so a blob that has become undecryptable is caught here —
+  // the refusal to overwrite it outranks resolving the conflict.
+  refuseIfUnreadable(id);
+  await r2Save(id, await encrypt(theirs ? mergeThreads(threads, theirs) : threads, dek));
 }

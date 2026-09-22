@@ -96,6 +96,30 @@ export function adoptThreads(threads: Thread[]): Thread[] {
   return deduped.length > 0 ? deduped : [newThread()];
 }
 
+// W85 — reconciles this tab's threads with the ones another tab stored while we held a stale etag.
+// adoptThreads' dedupe is NOT this: it keeps the last occurrence, which would drop whichever side
+// lost the ordering. Chat is append-mostly, so a union by id that keeps the longer turn list
+// recovers both sides of the race in the overwhelmingly common case (the same thread, one extra
+// turn); title and pinned follow the more recently active side, since those are last-writer-wins by
+// nature.
+export function mergeThreads(mine: Thread[], theirs: Thread[]): Thread[] {
+  const merged = new Map(theirs.map((t) => [t.id, t]));
+  for (const ours of mine) {
+    const other = merged.get(ours.id);
+    merged.set(ours.id, other ? mergeThread(ours, other) : ours);
+  }
+  return [...merged.values()];
+}
+
+// Spreading the newer side carries its title/pinned AND its lastActivityAt, which is already the max
+// by construction — so the field is never synthesized, and a historical thread that lacks it keeps
+// lacking it rather than gaining a seq value masquerading as a timestamp (see sortThreads).
+function mergeThread(a: Thread, b: Thread): Thread {
+  const newer = (a.lastActivityAt ?? a.seq) >= (b.lastActivityAt ?? b.seq) ? a : b;
+  const longer = a.turns.length >= b.turns.length ? a : b;
+  return { ...newer, turns: longer.turns, seq: Math.max(a.seq, b.seq) };
+}
+
 // A turn saved under a renamed persona id reads as that persona today; one no longer offered shows
 // Lexi's original, which every adapted turn keeps.
 function withCurrentPersonas(thread: Thread): Thread {
