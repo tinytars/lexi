@@ -114,7 +114,7 @@ describe("/api/corpus-warm", () => {
     const res = await post(who, { clientId: "alex" });
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ warmed: false, reason: "ai_busy" });
+    expect(await res.json()).toEqual({ warmed: false, reason: "failed", errorCode: "ai_busy" });
   });
 
   // A 4xx is a verdict on the CALLER, not on the moment — softening it would hide it.
