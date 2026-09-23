@@ -23,7 +23,7 @@ import type { ObjectBucket } from "../object-bucket";
 import { normalizeClientId } from "../../../src/lib/client-id";
 import { DEFAULT_MAX_CORPUS_PAGES } from "../../../src/lib/model-config";
 import { CORPUS_PREAMBLE, CORPUS_ACK } from "../../../src/lib/corpus-prompt";
-import { CorpusDeniedError, CorpusMissingError, CorpusTooLargeError, CorpusUnmeasuredError } from "./corpus-errors";
+import { CorpusBusyError, CorpusDeniedError, CorpusMissingError, CorpusTooLargeError, CorpusUnmeasuredError } from "./corpus-errors";
 
 // Re-exported so the assembler stays the one door a reader looks behind for the prefix, wherever the
 // strings themselves have to live.
@@ -44,6 +44,22 @@ export interface CorpusEnv extends NamespaceEnv {
  */
 export const MAX_CORPUS_BYTES = 20 * 1024 * 1024;
 export const MAX_CORPUS_DOCS = 100;
+
+/**
+ * How many source bytes this INSTANCE will assemble at once.
+ *
+ * The 128 MB memory ceiling is per isolate, shared by every request that isolate is running, so the
+ * budget that matters is not per request and no client-side queue can hold it — one tab knows
+ * nothing about the other requests sharing its isolate. Module scope here IS isolate scope, which
+ * is why a counter is the right shape and a Durable Object is not: plain JavaScript, no coordination
+ * cost, identical behaviour on the Node host.
+ *
+ * Assembling n source bytes peaks near 2.4n — the raw document, the accumulated base64, and the
+ * body the SDK serialises from it. Set above MAX_CORPUS_BYTES so one maxed record always admits on
+ * its own, and below half of what the ceiling affords, so a second one never joins it.
+ */
+const MAX_IN_FLIGHT_CORPUS_BYTES = 24 * 1024 * 1024;
+let inFlightBytes = 0;
 
 export interface Corpus {
   /** The two leading turns, or none at all when the client has no stored PDFs. */
@@ -131,25 +147,22 @@ export async function reportCorpus(
   // to assume — one explicit comparator is what makes the bytes stable across both.
   const keys = rows.map((r) => r.r2_key).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
 
-  const docs: Anthropic.DocumentBlockParam[] = [];
-  let byteCount = 0;
-  for (const key of keys) {
-    const object = await env.VAULT.get(key);
-    if (!object) throw new CorpusMissingError();
-    const bytes = new Uint8Array(await object.arrayBuffer());
-    byteCount += bytes.length;
-    // The byte ceiling is checked on what was actually read, not on the stored `bytes` column, which
-    // a count-only backfill leaves null. Checked inside the loop so an oversized record stops at the
-    // document that crosses the line instead of buffering the whole of it first.
-    if (byteCount > MAX_CORPUS_BYTES) throw new CorpusTooLargeError("bytes", byteCount, MAX_CORPUS_BYTES);
-    docs.push({
-      type: "document",
-      source: { type: "base64", media_type: "application/pdf", data: bytesToBase64(bytes) },
-      // The filename and nothing else. A date, an etag or a page count here would be one more byte
-      // ahead of the breakpoint that can change without the document changing.
-      title: key.slice(prefix.length),
-      ...(opts.citations ? { citations: { enabled: true } } : {}),
-    });
+  // A row with no `bytes` is a count-only backfill, so this record's true size is unknown until it
+  // has been read — too late to admit on. Reserve the most one assembly can reach instead. Capped at
+  // MAX_CORPUS_BYTES so a lone request always admits, and so a record too big to send fails in the
+  // loop as CorpusTooLargeError rather than here as a refusal that suggests retrying.
+  const measured = rows.every((r) => r.bytes !== null);
+  const reserved = Math.min(measured ? rows.reduce((n, r) => n + (r.bytes ?? 0), 0) : MAX_CORPUS_BYTES, MAX_CORPUS_BYTES);
+  if (inFlightBytes + reserved > MAX_IN_FLIGHT_CORPUS_BYTES) throw new CorpusBusyError();
+  // No await between the test and the increment, which is what makes this safe on one thread.
+  inFlightBytes += reserved;
+
+  let docs: Anthropic.DocumentBlockParam[];
+  let byteCount: number;
+  try {
+    ({ docs, byteCount } = await readDocuments(env, keys, prefix, opts.citations === true));
+  } finally {
+    inFlightBytes -= reserved;
   }
 
   // The breakpoint sits on the LAST DOCUMENT, not on the preamble that follows it, so the preamble's
@@ -168,4 +181,33 @@ export async function reportCorpus(
     pageCount,
     byteCount,
   };
+}
+
+async function readDocuments(
+  env: CorpusEnv,
+  keys: string[],
+  prefix: string,
+  citations: boolean,
+): Promise<{ docs: Anthropic.DocumentBlockParam[]; byteCount: number }> {
+  const docs: Anthropic.DocumentBlockParam[] = [];
+  let byteCount = 0;
+  for (const key of keys) {
+    const object = await env.VAULT.get(key);
+    if (!object) throw new CorpusMissingError();
+    const bytes = new Uint8Array(await object.arrayBuffer());
+    byteCount += bytes.length;
+    // The byte ceiling is checked on what was actually read, not on the stored `bytes` column, which
+    // a count-only backfill leaves null. Checked inside the loop so an oversized record stops at the
+    // document that crosses the line instead of buffering the whole of it first.
+    if (byteCount > MAX_CORPUS_BYTES) throw new CorpusTooLargeError("bytes", byteCount, MAX_CORPUS_BYTES);
+    docs.push({
+      type: "document",
+      source: { type: "base64", media_type: "application/pdf", data: bytesToBase64(bytes) },
+      // The filename and nothing else. A date, an etag or a page count here would be one more byte
+      // ahead of the breakpoint that can change without the document changing.
+      title: key.slice(prefix.length),
+      ...(citations ? { citations: { enabled: true } } : {}),
+    });
+  }
+  return { docs, byteCount };
 }

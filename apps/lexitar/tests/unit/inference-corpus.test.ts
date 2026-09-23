@@ -8,6 +8,7 @@ import { createAccount } from "../../functions/_lib/identity-accounts";
 import { recordRawObject } from "../../functions/_lib/identity-audit";
 import { reportCorpus, type CorpusEnv, MAX_CORPUS_BYTES, MAX_CORPUS_DOCS, CORPUS_ACK, CORPUS_PREAMBLE } from "../../functions/_lib/inference/corpus";
 import {
+  CorpusBusyError,
   CorpusDeniedError,
   CorpusMissingError,
   CorpusTooLargeError,
@@ -33,6 +34,15 @@ async function store(owner: string, slug: string, file: string, opts: { pages?: 
   const bytes = opts.bytes ?? PDF(file);
   await w.bucket.put(key, bytes);
   await recordRawObject(w.db, key, owner, { ...(opts.pages !== undefined && { pages: opts.pages }), bytes: bytes.length });
+  return key;
+}
+
+/** The count-only backfill: a page count recorded and no byte size — the row shape that cannot be
+ *  admitted on its true size, because nobody has measured it yet. */
+async function storeUnmeasured(owner: string, slug: string, file: string, pages: number) {
+  const key = `${STORE}/raw/${slug}/${file}`;
+  await w.bucket.put(key, PDF(file));
+  await recordRawObject(w.db, key, owner, { pages });
   return key;
 }
 
@@ -239,6 +249,88 @@ describe("reportCorpus refuses rather than answers on part of a record", () => {
     const unreadable = { ...env(), VAULT: { list: w.bucket.list.bind(w.bucket), get: () => Promise.reject(new Error("read R2")) } } as unknown as CorpusEnv;
 
     await expect(reportCorpus(unreadable, who, "alex", { citations: true, maxPages: 250 })).rejects.toBeInstanceOf(CorpusTooLargeError);
+  });
+});
+
+// The 128 MB memory ceiling is per ISOLATE, shared by every request it is running, so two records
+// assembled at once is how this Function dies — and a killed isolate takes every unrelated request
+// in flight with it, answering a 5xx no handler wrote. These pin the admission gate that prevents it.
+describe("an instance assembles only as much as it can hold", () => {
+  /** A vault that blocks in `get`, so a second call can be made while the first still holds its budget. */
+  function heldVault() {
+    let open!: () => void;
+    let reading!: () => void;
+    const opened = new Promise<void>((r) => (open = r));
+    const reached = new Promise<void>((r) => (reading = r));
+    const VAULT = {
+      get: async (key: string) => {
+        reading();
+        await opened;
+        return w.bucket.get(key);
+      },
+    };
+    return { open, reached, env: { ...env(), VAULT } as unknown as CorpusEnv };
+  }
+
+  it("refuses the assembly it has no room for, and still finishes the one already running", async () => {
+    const who = await account("alex");
+    await storeUnmeasured(who, "alex", "labs.pdf", 1);
+    const held = heldVault();
+
+    const first = reportCorpus(held.env, who, "alex", { citations: true });
+    await held.reached;
+
+    await expect(reportCorpus(env(), who, "alex", { citations: true })).rejects.toBeInstanceOf(CorpusBusyError);
+
+    held.open();
+    await expect(first).resolves.toMatchObject({ docCount: 1 });
+  });
+
+  // A reservation that survives its own failure is worse than no reservation: the instance refuses
+  // work forever while holding nothing.
+  it("gives the budget back when an assembly throws", async () => {
+    const who = await account("alex");
+    await recordRawObject(w.db, `${STORE}/raw/gone/labs.pdf`, who, { pages: 1 });
+    await storeUnmeasured(who, "alex", "labs.pdf", 1);
+
+    await expect(reportCorpus(env(), who, "gone", { citations: true })).rejects.toBeInstanceOf(CorpusMissingError);
+
+    await expect(reportCorpus(env(), who, "alex", { citations: true })).resolves.toMatchObject({ docCount: 1 });
+  });
+
+  // Measured rows reserve what they actually weigh, so ordinary records still overlap freely.
+  it("runs two measured records at once when both really fit", async () => {
+    const who = await account("alex");
+    await store(who, "alex", "labs.pdf", { pages: 1 });
+    await store(who, "sam", "labs.pdf", { pages: 1 });
+    const held = heldVault();
+
+    const both = Promise.all([
+      reportCorpus(held.env, who, "alex", { citations: true }),
+      reportCorpus(held.env, who, "sam", { citations: true }),
+    ]);
+    await held.reached;
+    held.open();
+
+    expect((await both).map((c) => c.docCount)).toEqual([1, 1]);
+  });
+
+  // The reservation is capped at MAX_CORPUS_BYTES so a record nobody can send fails as "too large",
+  // which is final, rather than as "busy", which invites a retry that will never succeed.
+  it("calls a record too big to send too large, never busy", async () => {
+    const who = await account("alex");
+    await store(who, "alex", "huge.pdf", { pages: 1, bytes: new Uint8Array(MAX_CORPUS_BYTES + 1) });
+
+    await expect(reportCorpus(env(), who, "alex", { citations: true })).rejects.toBeInstanceOf(CorpusTooLargeError);
+  });
+
+  it("admits any number of assemblies in sequence", async () => {
+    const who = await account("alex");
+    await storeUnmeasured(who, "alex", "labs.pdf", 1);
+
+    for (let i = 0; i < 4; i += 1) {
+      await expect(reportCorpus(env(), who, "alex", { citations: true })).resolves.toMatchObject({ docCount: 1 });
+    }
   });
 });
 
