@@ -52,3 +52,18 @@ export class CorpusTooLargeError extends Error {
     this.name = "CorpusTooLargeError";
   }
 }
+
+/**
+ * This isolate is already assembling as much corpus as it can hold, so this request was refused
+ * before it allocated anything.
+ *
+ * Not a verdict on the record — the same request succeeds a moment later. It exists so the refusal
+ * is something a handler ANSWERS rather than something the platform does to it: an isolate killed
+ * for exceeding memory cannot reply at all, and takes every unrelated request in flight with it.
+ */
+export class CorpusBusyError extends Error {
+  constructor() {
+    super("this instance is already assembling as much of a report corpus as it can hold");
+    this.name = "CorpusBusyError";
+  }
+}

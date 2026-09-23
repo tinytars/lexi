@@ -16,9 +16,14 @@ export class AiError extends Error {
   }
 }
 
+// Shared by the two busy codes: one is the vendor at capacity, the other is this instance already
+// assembling as much of a record as it can hold. Different causes, same thing to do about it.
+const BUSY = "The AI is busy right now — try again in a moment.";
+
 export const AI_ERROR_MESSAGES: Record<string, string> = {
   insufficient_credit: "AI is temporarily unavailable: the account is out of credits.",
-  ai_busy: "The AI is busy right now — try again in a moment.",
+  ai_busy: BUSY,
+  corpus_busy: BUSY,
   model_error: "The AI service returned an error — try again in a moment.",
   model_unsupported: "The AI model this app is configured with can't read this kind of input.",
   no_tool_use: "The AI did not return a usable answer — try again.",

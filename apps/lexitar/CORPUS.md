@@ -220,31 +220,44 @@ browser sees a 503 that no handler wrote, on whatever routes were unlucky. That 
 record produced on dev through 2026-09-21..23 — a warm call and a six-node sweep a second apart —
 and it arrived in the tracker as several separate-looking application bugs, none of which existed.
 
-Two things hold it, and neither is a number in this table:
+Three things hold it, and none of them is a number in this table:
 
-- **One lane** (`src/lib/corpus-lane.ts`), shared by the warmer and the sweep, so no two unprompted
-  corpus-bearing requests are in the isolate at the same moment. A user's own turn is deliberately
-  not in it: that is one request at a time and someone is waiting on it.
-- **Chunked encoding** (`bytesToBase64` in `functions/_lib/inference/corpus.ts`), so the record is
-  never held as bytes *and* as a whole intermediate string *and* as base64 at once.
+- **An admission gate in the assembler** (`MAX_IN_FLIGHT_CORPUS_BYTES` in
+  `functions/_lib/inference/corpus.ts`). A module-level counter reserves a record's byte total
+  before the first R2 read and releases it when assembly ends; a request that does not fit is
+  refused as `corpus_busy` rather than allowed to help kill the isolate. **Module scope in a Worker
+  is isolate scope**, which is why a plain counter is the right shape and a Durable Object is not —
+  it measures exactly the thing that is being exceeded, costs nothing, and behaves identically on
+  the Node host. A row with no `bytes` recorded reserves the worst case instead of its true size,
+  capped at `MAX_CORPUS_BYTES` so one maxed record always admits alone.
+- **Chunked encoding** (`bytesToBase64`, same file), so the record is never held as bytes *and* as a
+  whole intermediate string *and* as base64 at once.
+- **One lane** (`src/lib/corpus-lane.ts`), shared by the warmer and the sweep, so one tab does not
+  fire its own unprompted corpus requests concurrently. This is a politeness, not a guarantee: the
+  lane is **client-side**, one instance per mounted app, so it knows nothing about other tabs, other
+  patients or other deployments sharing an isolate. It shipped first and did not stop the kills —
+  build `f49e0cb` carried it and still produced unattributable 503s — which is what the gate above
+  exists for.
 
 The durable fix is to stop moving the bytes at all — upload each PDF once and reference it by
 `file_id` — which also lifts the rate-limit ceiling above, since a cache miss would no longer
 re-upload the record. Planned, not built.
 
-### The three refusals
+### The four refusals
 
 | Code | Status | What it means to the person |
 |---|---|---|
 | `corpus_too_large` | 422 | the record holds more than one request can carry; the body names `limit`, `actual` and `max`, because the numbers are the remedy |
 | `corpus_unmeasured` | 422 | some PDFs have no page count yet, so the ceiling cannot be checked; reopening the record repairs it |
 | `corpus_missing` | 422 | D1 vouches for a document that is no longer in storage |
+| `corpus_busy` | 503 | this instance is already assembling as much as it can hold; the same request succeeds a moment later |
 | — | 404 | the account may not read this namespace |
 
 422, not 413: on these routes 413 already means "your request body was too big", and that is a
-different remedy from "your record is too big". Every refusal carries the same sentence — *no
+different remedy from "your record is too big". Each of the three carries the same sentence — *no
 answer was produced, an answer from part of the record would not be trustworthy* — because that is
-the decision being reported. The count of unmeasured files is sent, never their names: a file name
+the decision being reported. `corpus_busy` does not: it is a verdict on the moment, not on the
+record, and it reuses the "the AI is busy, try again in a moment" line the app already retries on. The count of unmeasured files is sent, never their names: a file name
 is PHI.
 
 Refusals are raised **before a streaming route commits its 200**. After the headers the only

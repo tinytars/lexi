@@ -2,7 +2,7 @@
 // a route returns to the browser. Read fields defensively: the caught value may be an SDK error, an
 // adapter's ModelHttpError, a network failure or a thrown string.
 import { AI_ERROR_MESSAGES } from "../../src/lib/ai-error";
-import { CorpusDeniedError, CorpusMissingError, CorpusTooLargeError, CorpusUnmeasuredError, type CorpusLimit } from "./inference/corpus-errors";
+import { CorpusBusyError, CorpusDeniedError, CorpusMissingError, CorpusTooLargeError, CorpusUnmeasuredError, type CorpusLimit } from "./inference/corpus-errors";
 
 export type ModelErrorCode = "insufficient_credit" | "ai_busy" | "model_unsupported" | "model_error";
 
@@ -69,7 +69,7 @@ export function modelErrorReply(err: unknown, fallback: string): { status: numbe
 // than `modelErrorReply`: catching these explicitly is what keeps them out of _middleware.ts, whose
 // one catch block files a GitHub issue and answers a generic 500 for anything that escapes a route.
 
-export type InferenceErrorCode = ModelErrorCode | "corpus_too_large" | "corpus_unmeasured" | "corpus_missing" | "not_found";
+export type InferenceErrorCode = ModelErrorCode | "corpus_too_large" | "corpus_unmeasured" | "corpus_missing" | "corpus_busy" | "not_found";
 
 export interface InferenceErrorReply {
   status: number;
@@ -114,6 +114,11 @@ export function inferenceErrorReply(err: unknown, fallback: string): InferenceEr
       error: `${err.files.length} of this record's source documents have not been measured yet, so they cannot all be sent. ${NO_PARTIAL} Reopening the record repairs this.`,
       unmeasured: err.files.length,
     };
+  }
+  // 503 and a code of its own, not a 500: this is the answer a healthy instance gives under load,
+  // and carrying an errorCode is what keeps the browser from filing it as a bug (error-reporter.ts).
+  if (err instanceof CorpusBusyError) {
+    return { status: 503, errorCode: "corpus_busy", error: AI_ERROR_MESSAGES.corpus_busy };
   }
   if (err instanceof CorpusMissingError) {
     return { status: 422, errorCode: "corpus_missing", error: `A source document this record lists is no longer in storage. ${NO_PARTIAL}` };
