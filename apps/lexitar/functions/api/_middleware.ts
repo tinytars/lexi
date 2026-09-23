@@ -7,6 +7,11 @@ import { detailFor, reportServerError, routePatternFor, type ServerErrorEnv } fr
 //
 // Only a THROWN error is reported. A handler that returns its own 500 has already classified the
 // failure; re-reporting it would file issues for conditions the code already understands.
+//
+// The 500 below carries `errorCode: "unhandled"` — the same word server-error.ts already logs for
+// this condition — because reportServerError has just filed the event as a `server-error`. It is
+// what tells the browser's installApiFailureReporting not to file it a SECOND time as a
+// `client-error`, which gates promotion and wakes the autopilot on a bug already in the tracker.
 
 export async function onRequest(context: {
   request: Request;
@@ -29,6 +34,6 @@ export async function onRequest(context: {
         detail: detailFor(route),
       }),
     );
-    return json(500, { error: "internal error" });
+    return json(500, { error: "internal error", errorCode: "unhandled" });
   }
 }

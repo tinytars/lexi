@@ -137,13 +137,27 @@ describe("installApiFailureReporting", () => {
     expect(sent).toEqual([]);
   });
 
+  // functions/api/_middleware.ts answers every uncaught throw with this body, AFTER reportServerError
+  // has already filed it as a `server-error`. Filing it here too would give one event two issues and
+  // pin the promotion gate on a `client-error` the server already owns.
+  it("leaves the middleware's own 500 alone — the server sink already filed it", async () => {
+    const { sent } = setup();
+    const scope = scopeAnsweringBody(500, { error: "internal error", errorCode: "unhandled" });
+
+    await scope.fetch(new Request("https://lexitar.example/api/vault/834bc60d", { method: "PUT" }));
+
+    expect(sent).toEqual([]);
+  });
+
+  // org-key's 500 carries its code in the log line only, and never throws — so reportServerError
+  // never runs and the browser is the only witness. That one still has to be reported.
   it("still reports a 5xx the server never classified", async () => {
     const { sent } = setup();
-    const scope = scopeAnsweringBody(500, { error: "internal error" });
+    const scope = scopeAnsweringBody(500, { error: "missing org public key" });
 
-    await scope.fetch("https://lexitar.example/api/corpus-warm", { method: "POST" });
+    await scope.fetch("https://lexitar.example/api/vault/org-key", { method: "GET" });
 
-    expect(sent.map((p) => p.message)).toEqual(["POST /api/corpus-warm → 500"]);
+    expect(sent.map((p) => p.message)).toEqual(["GET /api/vault/… → 500"]);
   });
 
   // The platform's own 5xx is HTML or nothing at all, and it is the one the server's sink misses.

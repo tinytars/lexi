@@ -56,7 +56,10 @@ describe("functions/api/_middleware", () => {
     const res = await run("/api/vault/alex-labs-2025", new Error("D1_ERROR: no such table: vault_envelopes"));
 
     expect(res.status).toBe(500);
-    expect(await res.json()).toEqual({ error: "internal error" });
+    // The errorCode is not decoration: reportServerError has just filed this event as a
+    // `server-error`, and this is what stops the browser's installApiFailureReporting filing it a
+    // second time as a promotion-gating `client-error`.
+    expect(await res.json()).toEqual({ error: "internal error", errorCode: "unhandled" });
     const create = calls.find((c) => c.method === "POST")!;
     expect(create.url).toBe("https://api.github.com/repos/promontory-studio/plover-factory/issues");
     expect(create.body!.title).toMatch(/^Server error: \/api\/vault\/:id — Error \[[0-9a-f]{8}\]$/);
