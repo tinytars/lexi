@@ -8,6 +8,7 @@ import { signSession } from "../../functions/_lib/session";
 import { createAccount } from "../../functions/_lib/identity-accounts";
 import { recordRawObject } from "../../functions/_lib/identity-audit";
 import { chatSystemPrompt } from "../../src/lib/chat-prompt";
+import { ModelUnsupportedError } from "../../functions/_lib/model-errors";
 import { useWorkerd } from "../support/miniflare";
 
 // What the platform returns for a zero-token budget: no content, and the usage that proves a write.
@@ -101,6 +102,30 @@ describe("/api/corpus-warm", () => {
     expect((await post(stranger, { clientId: "alex" })).status).toBe(404);
     expect((await post(null, { clientId: "alex" })).status).toBe(401);
     expect(create).not.toHaveBeenCalled();
+  });
+
+  // W86 — a pre-warm is fire-and-forget: the browser reads `warmed` and nothing else, and a cold
+  // cache is a slower first answer, never a wrong one. A 5xx here was a red request in the console
+  // and a candidate for the browser's own 5xx reporter, for an outcome the app is built to tolerate.
+  it("answers 200 warmed:false when the provider is busy, like its other refusals", async () => {
+    const who = await alexWithAReport();
+    create.mockRejectedValueOnce(Object.assign(new Error("overloaded"), { status: 529 }));
+
+    const res = await post(who, { clientId: "alex" });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ warmed: false, reason: "failed", errorCode: "ai_busy" });
+  });
+
+  // A 4xx is a verdict on the CALLER, not on the moment — softening it would hide it.
+  it("keeps a 4xx status, so a model that cannot take PDFs still says so", async () => {
+    const who = await alexWithAReport();
+    create.mockRejectedValueOnce(new ModelUnsupportedError("PDF documents"));
+
+    const res = await post(who, { clientId: "alex" });
+
+    expect(res.status).toBe(422);
+    expect((await res.json() as { errorCode: string }).errorCode).toBe("model_unsupported");
   });
 
   it("400s without a clientId", async () => {

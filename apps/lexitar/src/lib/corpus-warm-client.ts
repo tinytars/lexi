@@ -7,6 +7,16 @@ import type { UnitSystem } from "./units";
 // safe default before the first answer is FALSE — keep sending it, exactly as before this feature.
 let corpusAttached = false;
 
+// Which `reason` answers are a verdict on the DEPLOYMENT rather than on this one attempt. "off" is
+// the only one that means the documents are not in the request; "unsupported" (this provider has no
+// pre-warm) and "no_corpus" (this record holds no PDFs yet) both mean the corpus path is live.
+//
+// W86 — the route answers 200 for a failure too, so a busy provider is not a red request in the
+// console for an outcome a pre-warm is built to tolerate. That answer says nothing about whether
+// the documents will be attached, so it must leave this belief alone: reading it as "attached"
+// drops the transcription from the question while nothing is carrying the document at all.
+const VERDICTS = new Set(["off", "unsupported", "no_corpus"]);
+
 /** Whether the model will see attached PDFs as documents, so their transcription is redundant. */
 export function reportsAreAttached(): boolean {
   return corpusAttached;
@@ -26,8 +36,7 @@ export async function warmCorpus(clientId: string, unitSystem: UnitSystem): Prom
   });
   if (!res.ok) return false;
   const payload = (await res.json().catch(() => null)) as { warmed?: boolean; reason?: string } | null;
-  // "off" is the only answer that means the documents are NOT in the request. "unsupported" means
-  // this provider has no pre-warm, not that it has no corpus.
-  if (payload) corpusAttached = payload.reason !== "off";
+  if (payload?.warmed === true) corpusAttached = true;
+  else if (payload && VERDICTS.has(payload.reason ?? "")) corpusAttached = payload.reason !== "off";
   return payload?.warmed === true;
 }

@@ -113,6 +113,47 @@ describe("reportCorpus", () => {
   });
 });
 
+// W86 — the bytes are encoded a chunk at a time, so nothing holds the whole record twice inside a
+// 128 MB isolate. That makes the chunk BOUNDARY a correctness question it was not before: base64 is
+// three bytes to four characters, so a chunk that is not a multiple of three pads mid-stream and the
+// pieces no longer concatenate into the encoding of the original bytes. A PDF is binary, so a
+// corrupted one is not a garbled answer — it is a document the model cannot open at all.
+describe("the encoded document is the document", () => {
+  const decode = (b64: string) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+
+  // Deterministic, and every byte value occurs — including the 0x80..0xFF range a latin1 round trip
+  // would mangle and an ASCII fixture would never reach.
+  const bytes = (n: number) => Uint8Array.from({ length: n }, (_, i) => (i * 37 + (i >> 8)) & 0xff);
+
+  const CHUNK = 0xc000;
+
+  it.each([
+    ["exactly on a chunk boundary", CHUNK * 2],
+    ["one byte past one", CHUNK * 2 + 1],
+    ["two bytes past one", CHUNK * 2 + 2],
+    ["just short of one", CHUNK * 2 - 1],
+  ])("round-trips a document ending %s", async (_when, size) => {
+    const who = await account("alex");
+    const original = bytes(size);
+    await store(who, "alex", "labs.pdf", { pages: 1, bytes: original });
+
+    const docs = docsOf((await reportCorpus(env(), who, "alex", { citations: true })).turns);
+
+    expect(decode((docs[0].source as { data: string }).data)).toEqual(original);
+  });
+
+  // Padding only ever belongs at the very end: a `=` anywhere else is the mid-stream padding a
+  // wrongly-sized chunk produces, which decodes without throwing and gives back the wrong bytes.
+  it("pads once, at the end, however many chunks the document spans", async () => {
+    const who = await account("alex");
+    await store(who, "alex", "labs.pdf", { pages: 1, bytes: bytes(CHUNK * 3 + 1) });
+
+    const data = (docsOf((await reportCorpus(env(), who, "alex", { citations: true })).turns)[0].source as { data: string }).data;
+
+    expect(data.indexOf("=")).toBe(data.length - 2);
+  });
+});
+
 describe("reportCorpus refuses rather than answers on part of a record", () => {
   it("refuses a namespace the account does not own", async () => {
     const who = await account("alex");

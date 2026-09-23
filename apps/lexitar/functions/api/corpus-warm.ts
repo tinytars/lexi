@@ -90,6 +90,17 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
       { usage: { input: message.usage.input_tokens, output: message.usage.output_tokens } });
   } catch (err) {
     const { status, ...payload } = inferenceErrorReply(err, "corpus warm failed");
-    return finish(status, payload, { errorCode: payload.errorCode });
+    // A 5xx here answers 200, like the three `warmed: false` refusals above it. A pre-warm is
+    // fire-and-forget — the browser reads `warmed` and nothing else, and a cold cache is a slower
+    // first answer, never a wrong one. Answering 5xx made every busy provider a red request in the
+    // console and a candidate for the browser's own 5xx reporter, for an outcome the app is built
+    // to tolerate. A 4xx keeps its status: "this record is not yours" and "this model cannot take
+    // PDFs" are verdicts on the CALLER, not on the moment, and softening those would hide them.
+    if (status < 500) return finish(status, payload, { errorCode: payload.errorCode });
+    // `reason: "failed"` and not the errorCode itself: the browser reads `reason` to learn whether
+    // this DEPLOYMENT attaches reports, and a failed attempt is a verdict on the moment, not on the
+    // deployment. Naming it apart from "off"/"unsupported"/"no_corpus" is what keeps an attached
+    // PDF's transcription in the question when nothing else is carrying the document.
+    return finish(200, { warmed: false, reason: "failed", errorCode: payload.errorCode }, { errorCode: payload.errorCode });
   }
 }

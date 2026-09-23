@@ -1,6 +1,8 @@
 // Keeps the patient's reports warm in the prompt cache for as long as it is cheaper than letting
 // them go cold — and not one cycle longer. See CORPUS.md's caching section.
 
+import { createCorpusLane, type CorpusLane } from "./corpus-lane";
+
 /**
  * Just under the 5-minute entry lifetime. A read restarts that clock for free, so a request landing
  * inside the window keeps the entry alive indefinitely; one landing outside it pays a full write.
@@ -33,14 +35,19 @@ export interface CorpusWarmer {
  * the extra wiring would buy is resetting the idle budget during a conversation long enough to
  * exhaust it — an hour of it — which its own turns are already keeping alive.
  */
-export function createCorpusWarmer(warm: (clientId: string) => Promise<unknown>): CorpusWarmer {
+export function createCorpusWarmer(warm: (clientId: string) => Promise<unknown>, lane: CorpusLane = createCorpusLane()): CorpusWarmer {
   let current: string | null = null;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let refreshes = 0;
 
   const fire = (): void => {
     if (current === null) return;
-    void warm(current).catch(() => {});
+    const id = current;
+    // W86 — queued behind whatever corpus-sized request the leaf sweep already has in the isolate,
+    // and re-checked when its turn comes: warming a record the patient has since moved off would be
+    // a cache write nobody reads. Only the SELECT edge fires immediately-ish; the keepalive timer is
+    // 4.5 minutes apart and never contends with anything.
+    void lane.run(() => (current === id ? warm(id) : Promise.resolve())).catch(() => {});
   };
 
   const schedule = (): void => {

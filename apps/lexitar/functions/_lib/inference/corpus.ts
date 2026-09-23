@@ -70,13 +70,24 @@ export function reportsAttached(env: { REPORTS?: string }): boolean {
   return v === "always";
 }
 
+// A MULTIPLE OF 3, and that is the whole reason this constant exists rather than the round 0x8000
+// this loop used to use: 3 bytes are one base64 quartet, so only a chunk of that shape encodes
+// without padding, and only unpadded pieces concatenate into the string a single btoa over the whole
+// array would have produced. The bytes are a prompt-cache prefix — a different string is a different
+// prefix and pays a full cache write for every patient. It also has to stay under the argument count
+// String.fromCharCode(...) accepts, which is what the chunking was originally for.
+const BASE64_CHUNK_BYTES = 0xc000;
+
+// W86 — btoa per chunk, rather than building the whole latin1 string and encoding it once. Both
+// forms return the same string; this one never holds the input twice. A 15 MB record used to sit in
+// the isolate as bytes AND as a 15 MB intermediate AND as 20 MB of base64 at the same moment, and
+// the 128 MB ceiling is per ISOLATE, not per request — see the concurrency note in corpus-lane.ts.
 function bytesToBase64(bytes: Uint8Array): string {
-  let binary = "";
-  // Chunked — String.fromCharCode(...bytes) on a multi-MB array overflows the call stack.
-  for (let i = 0; i < bytes.length; i += 0x8000) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  let out = "";
+  for (let i = 0; i < bytes.length; i += BASE64_CHUNK_BYTES) {
+    out += btoa(String.fromCharCode(...bytes.subarray(i, i + BASE64_CHUNK_BYTES)));
   }
-  return btoa(binary);
+  return out;
 }
 
 /**

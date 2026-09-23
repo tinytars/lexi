@@ -15,6 +15,7 @@ import { dagNode } from "./finding-dag";
 import { nodeInputCanonical } from "./node-input-hash";
 import { isFindingStale, staleNodes } from "./staleness";
 import { fetchLeafRegen, type PendingLeafRegen } from "./leaf-regen-client";
+import { createCorpusLane, type CorpusLane } from "./corpus-lane";
 import { aiErrorCode, describeAiError } from "./ai-error";
 
 /**
@@ -60,6 +61,12 @@ export interface LeafRegenQueueDeps {
    */
   persist: (pending: PendingLeafRegen, id: string) => Promise<boolean>;
   fetchLeafRegen?: typeof fetchLeafRegen;
+  /**
+   * Shared with the corpus warmer, because both send the patient's whole record and the limit they
+   * are under is the isolate's, not this module's. A queue given no lane gets a private one, which
+   * is right for a test and wrong for the app — see App.svelte.
+   */
+  corpusLane?: CorpusLane;
 }
 
 export interface LeafRegenQueue {
@@ -81,24 +88,14 @@ export interface LeafRegenQueue {
   trigger(key: string, targetLabels?: string[], force?: boolean): Promise<RegenStatus>;
 }
 
-// Low enough to stay well under a per-minute limit with a corpus-sized prefix, high enough that the
-// sweep is still visibly parallel. The sweep is unprompted background work — it can afford to be the
-// thing that waits.
-const SWEEP_CONCURRENCY = 2;
-
-async function sweepBounded(nodes: readonly string[], run: (key: string) => Promise<unknown>): Promise<void> {
-  const queue = [...nodes];
-  const worker = async (): Promise<void> => {
-    for (let key = queue.shift(); key !== undefined; key = queue.shift()) {
-      // One node failing must not strand the rest of the sweep behind it.
-      await run(key).catch(() => {});
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(SWEEP_CONCURRENCY, queue.length) }, worker));
+async function sweepBounded(lane: CorpusLane, nodes: readonly string[], run: (key: string) => Promise<unknown>): Promise<void> {
+  // One node failing must not strand the rest of the sweep behind it.
+  for (const key of nodes) await lane.run(() => run(key)).catch(() => {});
 }
 
 export function createLeafRegenQueue(deps: LeafRegenQueueDeps): LeafRegenQueue {
   let stale = $state(false);
+  const lane = deps.corpusLane ?? createCorpusLane();
 
   // Plain objects, not $state: these coordinate in-flight requests and must never drive rendering.
   // Making them reactive would re-run every effect that reads the client on each regen.
@@ -274,18 +271,17 @@ export function createLeafRegenQueue(deps: LeafRegenQueueDeps): LeafRegenQueue {
       if (!c?.finding || !id || !deps.getProviderToken()) return;
       void staleNodes(c).then((staleSet) => {
         if (deps.getClient() !== c) return;
-        // Parallel, but no longer all at once — and the reason is the vendor's rate limit, not its
-        // cache. The cache argument still stands: a prompt cache prefix renders tools -> system ->
-        // messages, and each node sends its OWN tool schema and system prompt ahead of the corpus
-        // (leaf-regen-anthropic.ts), so every node's corpus is a separate entry however these are
-        // ordered. Ordering them buys no hits and awaiting each one fully would spend wall-clock for
-        // nothing.
+        // One at a time, and the cache is still not the reason. That argument stands on its own
+        // terms: a prompt cache prefix renders tools -> system -> messages, and each node sends its
+        // OWN tool schema and system prompt ahead of the corpus, so every node's corpus is a
+        // separate entry however these are ordered. Ordering them buys no hits.
         //
-        // W85 — what that reasoning did not weigh is what SIX corpus-sized requests leaving together
-        // do to a per-minute limit. They are what produced the ai_busy 503s on dev (CORPUS.md's
-        // "Rate limits are the other cost"), and a 429 costs the whole answer — strictly worse than
-        // the wall-clock the full fan-out was buying.
-        void sweepBounded(nodes, (key) => regen(key, c, id, staleSet, undefined, false, true));
+        // W85 weighed what six corpus-sized requests leaving together do to a per-minute rate limit
+        // and capped them at two. W86 is the ceiling underneath that one: each of those requests is
+        // assembled INSIDE a Pages Function isolate that has 128 MB for everything it is running, so
+        // two of them alongside a corpus-warm is an OOM — and Cloudflare's kill answers 503 for
+        // every request in flight, including ones that never touched the corpus. corpus-lane.ts.
+        void sweepBounded(lane, nodes, (key) => regen(key, c, id, staleSet, undefined, false, true));
       });
     },
 

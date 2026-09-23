@@ -92,9 +92,9 @@ describe("installApiFailureReporting", () => {
     return scope;
   };
 
-  it("reports a 5xx on an API route, naming the route and status", async () => {
+  it("reports a 5xx a handler wrote, naming the route and status", async () => {
     const { sent } = setup();
-    const scope = scopeAnswering(503);
+    const scope = scopeAnsweringBody(503, { error: "upstream refused" });
 
     await scope.fetch("https://lexitar.example/api/refresh-range", { method: "POST" });
 
@@ -160,8 +160,11 @@ describe("installApiFailureReporting", () => {
     expect(sent.map((p) => p.message)).toEqual(["GET /api/vault/… → 500"]);
   });
 
-  // The platform's own 5xx is HTML or nothing at all, and it is the one the server's sink misses.
-  it("still reports a 5xx whose body is not JSON", async () => {
+  // W86 — the platform's own 5xx is HTML or nothing at all, and it is the one the server's sink
+  // misses. It gets its own NAME, because the name is the first field of the fingerprint and the
+  // issue's title: an isolate killed for memory answers on whichever routes were in flight, and
+  // under one name those arrive as several unrelated-looking application bugs.
+  it("names a 5xx no handler wrote apart from one a handler wrote", async () => {
     const { sent } = setup();
     const scope = {
       fetch: (async () => new Response("<html>502 Bad Gateway</html>", { status: 502 })) as unknown as typeof fetch,
@@ -170,7 +173,37 @@ describe("installApiFailureReporting", () => {
 
     await scope.fetch("https://lexitar.example/api/chat", { method: "POST" });
 
-    expect(sent.map((p) => p.message)).toEqual(["POST /api/chat → 502"]);
+    expect(sent.map((p) => `${p.name}: ${p.message}`)).toEqual(["PlatformUnavailable: POST /api/chat → 502"]);
+  });
+
+  // A kill answers every request in flight, with no body at all on some of them.
+  it("names an empty-bodied 5xx as the platform's too", async () => {
+    const { sent } = setup();
+    const scope = scopeAnswering(503);
+
+    await scope.fetch("https://lexitar.example/api/leaf-regen", { method: "POST" });
+
+    expect(sent.map((p) => `${p.name}: ${p.message}`)).toEqual(["PlatformUnavailable: POST /api/leaf-regen → 503"]);
+  });
+
+  // The caller walked away mid-read: there is no answer left to classify and nobody waiting on it.
+  it("files nothing when reading the body is aborted", async () => {
+    const { sent } = setup();
+    const abort = Object.assign(new Error("The operation was aborted."), { name: "AbortError" });
+    const scope = {
+      fetch: (async () =>
+        new Response(
+          new ReadableStream({
+            start: (c) => c.error(abort),
+          }),
+          { status: 503, headers: { "content-type": "application/json" } },
+        )) as unknown as typeof fetch,
+    };
+    installApiFailureReporting(scope, "https://lexitar.example");
+
+    await scope.fetch("https://lexitar.example/api/chat", { method: "POST" });
+
+    expect(sent).toEqual([]);
   });
 
   it("leaves the body readable by the caller it was answered to", async () => {
