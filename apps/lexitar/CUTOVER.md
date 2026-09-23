@@ -31,8 +31,10 @@ migrated vault unopenable, which is precisely the failure this section exists to
 
 ## Preconditions
 
-- [ ] `npm run doctor:prod` is fully green (no ✗). In particular prod has every secret; a missing one
-      surfaces post-cutover as a broken route on a user's account.
+- [ ] `health-dash-main` carries every secret its routes read. A missing one surfaces post-cutover as
+      a broken route on a user's account, not as a failed deploy. Ask Cloudflare directly —
+      `bash scripts/wrangler.sh pages secret list --project-name health-dash-main` — and compare
+      against the bindings `wrangler.jsonc` declares.
 - [ ] `literacy.tinytars.foundation` is bound to `health-dash-main` and serving, and `WEBAUTHN_ORIGIN`
       matches it exactly. Do not cut over onto the `pages.dev` hostname. The zone is still on Google
       DNS. Proof is a passkey
