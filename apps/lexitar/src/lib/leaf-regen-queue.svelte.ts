@@ -54,6 +54,11 @@ export interface LeafRegenQueueDeps {
   /** The unprompted sweep is provider-gated; a user's own turn is not. See sweep()'s comment. */
   getProviderToken: () => string | null | undefined;
   /**
+   * Whether a background regen may fire, consuming the caller's single probe slot. The provider
+   * being out of credit halts the sweep and nothing else — see ai-availability.svelte.ts.
+   */
+  mayProbe: () => boolean;
+  /**
    * Merge the fetched result onto whatever client is live NOW and persist it. Stays with the host:
    * it owns the vault, the DEK and the R2 id, and none of those are this module's business. Returns
    * false when the context went away mid-flight (provider switched patients), which is a skip, not a
@@ -159,6 +164,10 @@ export function createLeafRegenQueue(deps: LeafRegenQueueDeps): LeafRegenQueue {
       });
     }
     if (!force && sig === lastSig[key]) return { status: "skipped" };
+    // Last gate before the request, so a sweep with nothing stale and a request the dedupe already
+    // answered both cost no probe. A user's own turn (background === false) is never held back: the
+    // account may have been topped up since, and a 402 they see is an answer.
+    if (background && !deps.mayProbe()) return { status: "skipped" };
     lastSig[key] = sig;
     busy[key] = true;
     try {

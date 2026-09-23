@@ -24,7 +24,8 @@
   import { ensureOrgRecoveryEnvelope } from "@tinytars/vault/org-recovery";
   import { fetchPersonalizedRange } from "./lib/ranges-client";
   import { b64ToBytes } from "@tinytars/vault/base64";
-  import { describeAiError } from "./lib/ai-error";
+  import { AI_ERROR_MESSAGES, describeAiError } from "./lib/ai-error";
+  import { aiAvailability } from "./lib/ai-availability.svelte";
   import { dagNode } from "./lib/finding-dag";
   import { tick } from "svelte";
   import { TABS, DEFAULT_TAB, type Tab } from "./lib/nav";
@@ -90,6 +91,7 @@
   import { loadLastSection, saveLastSection, loadLastGroup, saveLastGroup } from "./lib/nav-memory";
   import { loadJSON, saveJSON } from "@tinytars/frame/persisted-json";
   import { createCorpusWarmer } from "./lib/corpus-warm";
+  import { providerFor } from "./lib/model-config";
   import { createCorpusLane } from "./lib/corpus-lane";
   import { warmCorpus } from "./lib/corpus-warm-client";
 
@@ -130,8 +132,17 @@
   // ceiling they are under is the Pages Function isolate's memory, which is per deployment and not
   // per caller: two of them in flight is what took the dev worker down. corpus-lane.ts.
   const corpusLane = createCorpusLane();
-  const corpusWarmer = createCorpusWarmer((id) => warmCorpus(id, unitSystem), corpusLane);
+  // The warm is skipped rather than the timer stopped: out of credit, every call is refused, and a
+  // keepalive that keeps asking bills nothing but says "out of credits" into the console forever.
+  // MAX_IDLE_KEEPALIVES still bounds the ticks, which now cost nothing. ai-availability.svelte.ts.
+  const corpusWarmer = createCorpusWarmer(
+    (id) => (aiAvailability.mayProbe() ? warmCorpus(id, unitSystem) : Promise.resolve(false)),
+    corpusLane,
+  );
   $effect(() => {
+    // Opening a record is presence, so it earns the halted loops one attempt — the same grant the
+    // tab regaining focus makes below.
+    aiAvailability.rearm();
     corpusWarmer.select(vaultOpen ? selectedClientId : null);
     void unitSystem;
   });
@@ -338,7 +349,8 @@
   // that would be the same fact written in eight places, which is how they drift apart.
 
   const announcedError = $derived(
-    vaultSave.error ?? chatSession.saveError ?? error ?? vaultAccess.error ?? account.error ?? googleError ?? refreshError ?? recovery.issueError ?? "",
+    vaultSave.error ?? chatSession.saveError ?? error ?? vaultAccess.error ?? account.error ?? googleError ?? refreshError ?? recovery.issueError ??
+      (aiAvailability.outOfCredit ? AI_ERROR_MESSAGES.insufficient_credit : ""),
   );
 
 
@@ -363,7 +375,9 @@
     // keep-alive budget, which otherwise stops itself once holding the entry costs more than
     // rebuilding it (MAX_IDLE_KEEPALIVES).
     document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible") corpusWarmer.wake();
+      if (document.visibilityState !== "visible") return;
+      aiAvailability.rearm();
+      corpusWarmer.wake();
     });
     if (boot.cleanUrl) window.history.replaceState({}, "", boot.cleanUrl);
     // W45 — deferred so the rest of this instance script (the const helpers it calls) has initialized.
@@ -522,6 +536,7 @@
     getClient: () => currentClient,
     getClientId: () => selectedClientId,
     getProviderToken: () => providerToken,
+    mayProbe: () => aiAvailability.mayProbe(),
     // M55/M56 stale-draft-clobber fix — merge onto whichever client/vault is live right NOW, not the
     // pre-fetch snapshot: the network round-trip can take long enough for a concurrent edit to land
     // and save in the meantime, and merging onto the old snapshot would silently revert it once this
@@ -1414,6 +1429,8 @@
     onRetrySave={() => vaultSave.retry()}
     findingStale={leafRegen.stale}
     onOpenDag={() => (dagModalOpen = true)}
+    aiOutOfCredit={aiAvailability.outOfCredit}
+    billingUrl={providerFor("chat").billingUrl}
     {unitSystem}
     onSetUnitSystem={setUnitSystem}
     {persona}

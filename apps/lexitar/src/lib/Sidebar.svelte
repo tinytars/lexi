@@ -97,6 +97,9 @@ import { pinnedQueries } from "@pablotech/akesi/pinned-queries";
     onRetrySave?: () => void;
     // M78 Phase 12 — the "Some sections out of date" badge, likewise moved verbatim.
     findingStale?: boolean;
+    /** The provider refused a call for lack of credit — see ai-availability.svelte.ts. */
+    aiOutOfCredit?: boolean;
+    billingUrl?: string;
     onOpenDag?: () => void;
   }
   let {
@@ -116,6 +119,7 @@ import { pinnedQueries } from "@pablotech/akesi/pinned-queries";
     saveError = null, onRetrySave = undefined,
     onCancelRefresh, onDismissRefreshError,
     findingStale = false, onOpenDag,
+    aiOutOfCredit = false, billingUrl = undefined,
   }: Props = $props();
 
   // M78 Phase 10 — moved verbatim from App.svelte's own clientList().
@@ -124,6 +128,9 @@ import { pinnedQueries } from "@pablotech/akesi/pinned-queries";
   }
 
   const SAMPLE_ID = "persona-sample";
+  // One sentence, two render branches (link / plain) — written once so they cannot drift apart.
+  const CREDIT_TITLE =
+    "The AI provider's account is out of credits, so nothing can be translated or answered until it is topped up.";
   let lowerZoneKind = $derived(lowerZoneKindFor(activeTab, active));
   // W48 — Profile's own group list is real navigation (Bio/Allergies/Family are three distinct
   // top-level section keys), not an in-page filter — its render branch below wires onSelect to
@@ -487,6 +494,17 @@ import { pinnedQueries } from "@pablotech/akesi/pinned-queries";
   {#if client && findingStale}
     <button class="stale-badge" title="Some sections were generated from older inputs — see the ● chips on each section. Inspect what changed in the Translation DAG." onclick={onOpenDag}>Some sections out of date</button>
   {/if}
+  <!-- Sits with the stale badge because it answers the same question — what state is the Translation
+       in — with the one answer no retry can change: the account is out of credit, so nothing new can
+       be generated until someone tops it up. Not dismissible, for the same reason. -->
+  {#if aiOutOfCredit}
+    {#if billingUrl}
+      <a class="credit-badge" data-testid="ai-credit-badge" href={billingUrl} target="_blank" rel="noopener"
+        title="{CREDIT_TITLE} Opens the billing console.">AI unavailable — no credit</a>
+    {:else}
+      <div class="credit-badge" data-testid="ai-credit-badge" title={CREDIT_TITLE}>AI unavailable — no credit</div>
+    {/if}
+  {/if}
   {#if accountArea}
     <div class="sidebar-account">
       {#if onSetUnitSystem}
@@ -609,8 +627,17 @@ import { pinnedQueries } from "@pablotech/akesi/pinned-queries";
     border-radius: 6px; padding: 0.3rem 0.55rem; cursor: pointer; font-family: inherit;
   }
   .sidebar.rail .stale-badge { display: none; }
+  /* Same badge, one step up the severity scale: out of date is a warning, out of credit is a stop. */
+  .credit-badge {
+    display: block; flex: none; width: auto; box-sizing: border-box; margin: 0.5rem;
+    font-size: 0.7rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+    text-align: left; color: var(--alert); background: var(--alert-band); border: 1px solid var(--alert);
+    border-radius: 6px; padding: 0.3rem 0.55rem; cursor: pointer; font-family: inherit; text-decoration: none;
+  }
+  .sidebar.rail .credit-badge { display: none; }
   @media (max-width: 640px) {
     .sidebar.rail .stale-badge { display: block; }
+    .sidebar.rail .credit-badge { display: block; }
   }
 
   /* M78 Phase 11 — the provider-only refresh/"Generating…" status, moved from the header. */

@@ -35,6 +35,7 @@ async function makeQueue(over: Partial<Parameters<typeof createLeafRegenQueue>[0
     getClient,
     getClientId: () => "alex",
     getProviderToken: () => "tok",
+    mayProbe: () => true,
     persist,
     fetchLeafRegen,
     ...over,
@@ -360,5 +361,32 @@ describe("the background sweep does not fire every node at once", () => {
     const { q } = await makeQueue({ fetchLeafRegen });
     q.sweep();
     await vi.waitFor(() => expect(fetchLeafRegen).toHaveBeenCalledTimes(LEAF_REGEN_NODES.length));
+  });
+});
+
+// 402 is the one model failure a retry cannot fix, so the sweep stops asking until a presence signal
+// says it is worth one more try — ai-availability.svelte.ts owns that latch, this is its effect here.
+describe("the probe gate: an out-of-credit provider is not swept", () => {
+  it("asks for nothing while the latch is down", async () => {
+    const { q, fetchLeafRegen } = await makeQueue({ mayProbe: () => false });
+    q.sweep();
+    // A negative needs a bound: an ungated sweep's six regens land well inside it.
+    await new Promise((r) => setTimeout(r, 50));
+    expect(fetchLeafRegen).not.toHaveBeenCalled();
+  });
+
+  it("still runs a turn the user asked for themselves", async () => {
+    const { q, fetchLeafRegen } = await makeQueue({ mayProbe: () => false });
+    expect((await q.trigger("noteResults")).status).toBe("filled");
+    expect(fetchLeafRegen).toHaveBeenCalledTimes(1);
+  });
+
+  it("spends a single granted probe on one node, not on all six", async () => {
+    let probes = 1;
+    const { q, fetchLeafRegen } = await makeQueue({ mayProbe: () => probes-- > 0 });
+    q.sweep();
+    await vi.waitFor(() => expect(fetchLeafRegen).toHaveBeenCalledTimes(1));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(fetchLeafRegen).toHaveBeenCalledTimes(1);
   });
 });

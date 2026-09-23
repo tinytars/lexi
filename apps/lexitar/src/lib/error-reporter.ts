@@ -1,3 +1,4 @@
+import { aiAvailability } from "./ai-availability.svelte";
 import { onLazyImportFailure } from "./lazy-import";
 
 // Forwards uncaught errors, unhandled rejections, failed lazy chunk loads and explicitly reported
@@ -184,9 +185,13 @@ export function installApiFailureReporting(
   const inner = scope.fetch;
   scope.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const res = await inner(input, init);
-    if (res.status < 500) return res;
+    // The URL is parsed for every answered request now, not just the 5xx ones: the availability latch
+    // reads a 402 the reporter deliberately ignores. `fetch` already accepted this input, so there is
+    // no parse to fail here.
     const url = new URL(input instanceof Request ? input.url : String(input), origin);
     if (url.origin !== origin || !url.pathname.startsWith("/api/") || url.pathname === SINK_PATH) return res;
+    aiAvailability.observe(url.pathname, res.status);
+    if (res.status < 500) return res;
     const kind = await fiveHundredKind(res);
     if (kind === "skip") return res;
     const method = (input instanceof Request ? input.method : init?.method) ?? "GET";

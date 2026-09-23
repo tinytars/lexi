@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { installApiFailureReporting, installErrorReporter, reportCaughtError, type ClientErrorPayload } from "../../src/lib/error-reporter";
 import { lazyImport } from "../../src/lib/lazy-import";
+import { aiAvailability } from "../../src/lib/ai-availability.svelte";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -213,6 +214,19 @@ describe("installApiFailureReporting", () => {
     const res = await scope.fetch("https://lexitar.example/api/leaf-regen", { method: "POST" });
 
     expect(await res.json()).toEqual({ errorCode: "ai_busy" });
+  });
+
+  // The wrapper is also the availability latch's only seam (ai-availability.svelte.ts). A 402 has to
+  // reach it while staying below the <500 line above — an empty account is not a plover-factory bug.
+  it("raises the credit latch on a 402 without filing a report for it", async () => {
+    const { sent } = setup();
+    const scope = scopeAnsweringBody(402, { errorCode: "insufficient_credit" });
+
+    await scope.fetch("https://lexitar.example/api/leaf-regen", { method: "POST" });
+
+    expect(aiAvailability.outOfCredit).toBe(true);
+    expect(sent).toEqual([]);
+    aiAvailability.observe("/api/leaf-regen", 200);
   });
 });
 

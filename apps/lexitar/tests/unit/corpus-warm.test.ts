@@ -1,4 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { aiAvailability } from "../../src/lib/ai-availability.svelte";
 import { createCorpusWarmer, KEEPALIVE_INTERVAL_MS, MAX_IDLE_KEEPALIVES } from "../../src/lib/corpus-warm";
 import { createCorpusLane } from "../../src/lib/corpus-lane";
 import { warmCorpus, reportsAreAttached } from "../../src/lib/corpus-warm-client";
@@ -123,6 +127,36 @@ describe("createCorpusWarmer", () => {
     await vi.advanceTimersByTimeAsync(KEEPALIVE_INTERVAL_MS * 2);
 
     expect(warm).toHaveBeenCalledTimes(3);
+  });
+});
+
+// The gate lives in the lambda App hands the warmer, not in corpus-warm.ts: a cold cache is the
+// warmer's own business to swallow, an account with no credit is not (ai-availability.svelte.ts).
+describe("the out-of-credit gate App wraps the warm in", () => {
+  const app = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "src", "App.svelte"), "utf8");
+  // The singleton is shared with every other test in the process.
+  afterEach(() => aiAvailability.observe("/api/leaf-regen", 200));
+
+  it("is the latch, and both presence signals re-arm it", () => {
+    expect(app).toContain("createCorpusWarmer(\n    (id) => (aiAvailability.mayProbe() ?");
+    expect(app).toMatch(/aiAvailability\.rearm\(\);\s*\n\s*corpusWarmer\.wake\(\)/);
+    expect(app).toMatch(/aiAvailability\.rearm\(\);\s*\n\s*corpusWarmer\.select\(/);
+  });
+
+  it("makes no call while the latch is down, and exactly one for each re-arm", async () => {
+    const warm = vi.fn().mockResolvedValue(true);
+    const warmer = createCorpusWarmer((id) => (aiAvailability.mayProbe() ? warm(id) : Promise.resolve(false)));
+    aiAvailability.observe("/api/corpus-warm", 402);
+
+    warmer.select("alex");
+    await vi.advanceTimersByTimeAsync(KEEPALIVE_INTERVAL_MS * 3);
+    expect(warm).not.toHaveBeenCalled();
+
+    aiAvailability.rearm();
+    warmer.wake();
+    await vi.advanceTimersByTimeAsync(KEEPALIVE_INTERVAL_MS * 3);
+
+    expect(warm).toHaveBeenCalledExactlyOnceWith("alex");
   });
 });
 
