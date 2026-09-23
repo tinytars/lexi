@@ -144,10 +144,12 @@ function maskApiPath(pathname: string): string {
   return parts.length > 2 ? `/${parts[0]}/${parts[1]}/…` : pathname;
 }
 
-// The middleware's rule, read from this side: a handler that answers with its own `errorCode` has
-// classified the failure, so it is a condition the app expects rather than a defect. `ai_busy` is
-// why this matters — the vendor answering 429/503/529 is a 503 here, which the app retries and
-// explains, and filing one as a bug also pins the promotion gate on a build no fix can clear.
+// The middleware's rule, read from this side: an answer carrying its own `errorCode` is one the
+// server already accounted for, so reporting it here would file a second issue for one event.
+// `ai_busy` is why this matters — the vendor answering 429/503/529 is a 503 here, which the app
+// retries and explains, and filing one as a bug also pins the promotion gate on a build no fix can
+// clear. The catch-all's `unhandled` is the same rule: reportServerError filed it as a
+// `server-error` before the 500 was written, so a `client-error` twin adds nothing and gates.
 async function classifiedByHandler(res: Response): Promise<boolean> {
   try {
     const body = (await res.clone().json()) as { errorCode?: unknown } | null;
