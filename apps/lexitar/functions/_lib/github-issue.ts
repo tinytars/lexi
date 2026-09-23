@@ -120,6 +120,14 @@ export async function fileReport(env: GithubIssueEnv, report: Report): Promise<"
   return "created";
 }
 
+// W86 — a 5xx Cloudflare answered instead of a handler (error-reporter.ts's `platform` case). It
+// keeps its source label, because the promotion gate must still hold a build whose deployment is
+// doing this; the second label is what stops the autopilot opening a fix attempt against code that
+// has no defect in it. One infrastructure event surfaces on whichever routes were in flight, so
+// without this it arrives as several unrelated-looking bugs.
+const PLATFORM_LABEL = "platform-5xx";
+const PLATFORM_ERROR_NAME = "PlatformUnavailable";
+
 export function fileClientError(
   env: GithubIssueEnv,
   report: ClientErrorReport,
@@ -130,6 +138,6 @@ export function fileClientError(
     title: issueTitle(report),
     body: occurrence(report, context),
     fingerprint: report.fingerprint,
-    labels: [label],
+    labels: report.name === PLATFORM_ERROR_NAME ? [label, PLATFORM_LABEL] : [label],
   });
 }

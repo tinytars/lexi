@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createLeafRegenQueue, LEAF_REGEN_NODES, UNOWNED_LEAF_NODES } from "../../src/lib/leaf-regen-queue.svelte";
+import { createCorpusLane } from "../../src/lib/corpus-lane";
 import { nodeHashes, staleNodes } from "../../src/lib/staleness";
 import type { fetchLeafRegen as FetchLeafRegen, PendingLeafRegen } from "../../src/lib/leaf-regen-client";
 import type { Client } from "../../src/lib/types";
@@ -309,12 +310,13 @@ describe("App wires the two sweeps to different dependencies", () => {
   });
 });
 
-// W85 — the sweep used to fire every stale node at once. With a corpus-sized prefix that is six
-// whole-record requests leaving together, which is what produced the ai_busy 503s on dev
-// (CORPUS.md, "Rate limits are the other cost"). A 429 costs the whole answer, so the sweep gives up
-// peak parallelism rather than the result.
+// The sweep used to fire every stale node at once: with a corpus-sized prefix that is six whole-record
+// requests leaving together. W85 capped it at two for the vendor's rate limit; W86 takes it to one,
+// because the binding limit turned out to be the Pages Function isolate's memory rather than the
+// vendor's — and that one is shared with the corpus warmer, which is why the bound is a lane the
+// queue is handed rather than a number it owns (corpus-lane.ts).
 describe("the background sweep does not fire every node at once", () => {
-  it("keeps at most two corpus-sized calls in flight", async () => {
+  it("keeps one corpus-sized call in flight", async () => {
     let inFlight = 0;
     let peak = 0;
     const fetchLeafRegen = vi.fn<typeof FetchLeafRegen>(async () => {
@@ -327,7 +329,23 @@ describe("the background sweep does not fire every node at once", () => {
 
     q.sweep();
     await vi.waitFor(() => expect(fetchLeafRegen).toHaveBeenCalledTimes(LEAF_REGEN_NODES.length));
-    expect(peak).toBeLessThanOrEqual(2);
+    expect(peak).toBe(1);
+  });
+
+  // The failure this change exists for: a warm and a sweep a second apart, each carrying the whole
+  // record, both inside one isolate. A lane the queue merely shares is the only thing that orders them.
+  it("waits behind a corpus request the warmer already has in the shared lane", async () => {
+    const lane = createCorpusLane();
+    let release!: () => void;
+    void lane.run(() => new Promise<void>((r) => (release = r)));
+    const { q, fetchLeafRegen } = await makeQueue({ corpusLane: lane });
+
+    q.sweep();
+    await new Promise((r) => setTimeout(r, 1));
+    expect(fetchLeafRegen).not.toHaveBeenCalled();
+
+    release();
+    await vi.waitFor(() => expect(fetchLeafRegen).toHaveBeenCalledTimes(LEAF_REGEN_NODES.length));
   });
 
   it("still sweeps every stale node", async () => {

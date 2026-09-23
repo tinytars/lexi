@@ -160,11 +160,13 @@ one bites sooner. Opening a record fires the warm call and the leaf sweep about 
 and the sweep is not one request but one per stale node, which is what produced the overload
 answers seen on dev on 2026-09-21, minutes after the corpus was first turned on.
 
-W85 caps how many of those leave together (`SWEEP_CONCURRENCY` in leaf-regen-queue.svelte.ts). It
-buys no cache hits and is not meant to: each node sends its own tool schema and system prompt ahead
-of the corpus, so every node's prefix is a separate entry however they are ordered. It trades the
-sweep's peak parallelism — unprompted background work, so it is the thing that can afford to wait —
-against a 429, which costs the whole answer.
+One lane carries all of them (`src/lib/corpus-lane.ts`), so the warm call and every node of the
+sweep queue behind one another instead of leaving together. It buys no cache hits and is not meant
+to: each node sends its own tool schema and system prompt ahead of the corpus, so every node's
+prefix is a separate entry however they are ordered. It trades the sweep's peak parallelism —
+unprompted background work, so it is the thing that can afford to wait — against a 429, which costs
+the whole answer. A lane of one rather than W85's cap of two is the isolate's doing, not the
+vendor's; see "The isolate has a ceiling of its own" in §5.
 
 Nothing is broken when that happens. `model-errors.ts` maps the vendor's 429/503/529 onto
 `ai_busy`; `refresh-range.ts` treats it as transient and retries inside the range call, and
@@ -202,6 +204,33 @@ PDF, as `?pages=N` on the upload. A count can be filled in but never lowered.
 
 Both ceilings are checked against D1 **before a byte is read from R2**: a record that cannot be
 sent costs one query, not 20 MB of reads and a rejected request.
+
+### The isolate has a ceiling of its own
+
+The 20 MB above is a **transport** limit — what one request may carry. The binding limit in
+practice is smaller, is not per request, and is nowhere in this table: a Pages Function isolate has
+**128 MB of memory, shared by every request it happens to be running**. The corpus is assembled
+*inside* that isolate — read from R2, base64'd, and handed to the SDK, which serialises it again —
+so one 15 MB record is tens of megabytes of live objects while its call is in flight, and two such
+calls at once is most of the budget.
+
+Cloudflare's answer when the budget is gone is `exceededResources`, and it kills the **isolate**,
+not the request: every in-flight call dies with it, including ones carrying no corpus at all. The
+browser sees a 503 that no handler wrote, on whatever routes were unlucky. That is what opening a
+record produced on dev through 2026-09-21..23 — a warm call and a six-node sweep a second apart —
+and it arrived in the tracker as several separate-looking application bugs, none of which existed.
+
+Two things hold it, and neither is a number in this table:
+
+- **One lane** (`src/lib/corpus-lane.ts`), shared by the warmer and the sweep, so no two unprompted
+  corpus-bearing requests are in the isolate at the same moment. A user's own turn is deliberately
+  not in it: that is one request at a time and someone is waiting on it.
+- **Chunked encoding** (`bytesToBase64` in `functions/_lib/inference/corpus.ts`), so the record is
+  never held as bytes *and* as a whole intermediate string *and* as base64 at once.
+
+The durable fix is to stop moving the bytes at all — upload each PDF once and reference it by
+`file_id` — which also lifts the rate-limit ceiling above, since a cache miss would no longer
+re-upload the record. Planned, not built.
 
 ### The three refusals
 

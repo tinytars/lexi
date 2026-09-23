@@ -90,6 +90,7 @@
   import { loadLastSection, saveLastSection, loadLastGroup, saveLastGroup } from "./lib/nav-memory";
   import { loadJSON, saveJSON } from "@tinytars/frame/persisted-json";
   import { createCorpusWarmer } from "./lib/corpus-warm";
+  import { createCorpusLane } from "./lib/corpus-lane";
   import { warmCorpus } from "./lib/corpus-warm-client";
 
   // W84 — read-aloud uses the personas' neural voices, the browser voice only as a fallback.
@@ -125,7 +126,11 @@
   // (CORPUS.md). Tracks unitSystem too: it picks the chat system prompt, which sits AHEAD of the
   // documents in the cache prefix, so a toggle genuinely forks the entry and a warm-up for the
   // other one would be paid for and never read.
-  const corpusWarmer = createCorpusWarmer((id) => warmCorpus(id, unitSystem));
+  // W86 — ONE lane, shared with the leaf sweep below. Both send the patient's whole record, and the
+  // ceiling they are under is the Pages Function isolate's memory, which is per deployment and not
+  // per caller: two of them in flight is what took the dev worker down. corpus-lane.ts.
+  const corpusLane = createCorpusLane();
+  const corpusWarmer = createCorpusWarmer((id) => warmCorpus(id, unitSystem), corpusLane);
   $effect(() => {
     corpusWarmer.select(vaultOpen ? selectedClientId : null);
     void unitSystem;
@@ -513,6 +518,7 @@
   // component. What stays here is what App actually owns — the vault, its key, and the effects that
   // drive the queue from the component lifecycle.
   const leafRegen = createLeafRegenQueue({
+    corpusLane,
     getClient: () => currentClient,
     getClientId: () => selectedClientId,
     getProviderToken: () => providerToken,

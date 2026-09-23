@@ -144,6 +144,38 @@ describe("POST /api/client-error", () => {
     expect(writes[0].body).toEqual({ labels: ["client-error"] });
   });
 
+  // W86 — one isolate killed for memory answers 503 on whichever routes were in flight, and each
+  // arrives here as a separately-fingerprinted "client bug". The second label is what stops the
+  // autopilot opening a fix attempt against code that has no defect in it; the source label stays,
+  // because the promotion gate must still hold a build whose deployment is doing this.
+  it("labels a 5xx the platform answered, so the autopilot leaves it alone", async () => {
+    const calls = stubGithub(null);
+
+    await post({ ...baseEnv(), ...github }, { name: "PlatformUnavailable", message: "POST /api/leaf-regen → 503", stack: "" });
+
+    const create = calls.find((c) => c.method === "POST")!;
+    expect(create.body!.labels!.slice(0, 2)).toEqual(["client-error", "platform-5xx"]);
+  });
+
+  it("leaves an application error unlabelled as platform, so it still reaches the autopilot", async () => {
+    const calls = stubGithub(null);
+
+    await post({ ...baseEnv(), ...github }, EACH_KEY_DUPLICATE);
+
+    expect(calls.find((c) => c.method === "POST")!.body!.labels).not.toContain("platform-5xx");
+  });
+
+  // An earlier occurrence opened the issue before this label existed, or opened it pre-auth.
+  it("back-fills the platform label onto an issue already open for the same fingerprint", async () => {
+    const calls = stubGithub(42, ["client-error"]);
+
+    await post({ ...baseEnv(), ...github }, { name: "PlatformUnavailable", message: "POST /api/chat → 503", stack: "" });
+
+    const writes = calls.filter((c) => c.method === "POST");
+    expect(writes[0].url).toBe("https://api.github.com/repos/promontory-studio/plover-factory/issues/42/labels");
+    expect(writes[0].body).toEqual({ labels: ["platform-5xx"] });
+  });
+
   // fakeSessionDb throws on any query but the session lookup, so a budget write on this path would
   // make spendReportBudget fail closed and this report would never be filed.
   it("spends no report budget for a signed-in caller, so an anonymous flood cannot starve a real crash", async () => {
