@@ -1,12 +1,15 @@
 version: 2
 # Bumps land on dev and reach main through the normal promotion, never directly:
 # main carries prod-only config that a dev-first flow is built to protect.
+# One grouped pull request per ecosystem per week is the normal case; the cap is what keeps a
+# missed week from compounding into a backlog.
 updates:
   - package-ecosystem: "npm"
     directory: "/"
     target-branch: "dev"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 3
     groups:
       minor-and-patch:
         update-types: ["minor", "patch"]
@@ -15,6 +18,9 @@ updates:
     target-branch: "dev"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 3
     groups:
-      minor-and-patch:
-        update-types: ["minor", "patch"]
+      # Majors are grouped here too: an action pin merges on green with no model either way, so a
+      # separate pull request per major buys nothing but CI minutes.
+      actions:
+        patterns: ["*"]
