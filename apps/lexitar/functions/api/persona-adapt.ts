@@ -1,19 +1,27 @@
-import type { D1Database } from "../_lib/identity-types";
 import Anthropic from "@anthropic-ai/sdk";
 import { requireSession } from "../_lib/session";
 import { logRequest } from "../_lib/log";
 import { json } from "../_lib/http";
-import { classifyModelError } from "../_lib/model-errors";
-import { modelFor } from "../_lib/inference/resolve";
+import { modelErrorReply } from "../_lib/model-errors";
+import { unattachedModelFor } from "../_lib/inference/attach";
+import type { D1Database } from "../_lib/identity-types";
 import { CODY_ADAPTER_PROMPT, adapterMessage } from "../../src/lib/persona-adapter-prompt";
 import { readPersonaId } from "../../src/lib/personas";
 import { missingFacts } from "../../src/lib/persona-fidelity";
 
-// W84 — restates one finished Lexi answer in Cody's voice. Stateless relay like /api/chat: the answer
-// and the patient's question are PHI, so neither is logged or stored here. When the restatement cannot
-// be trusted to carry every fact, the reply is `fallback` and the browser shows Lexi's own words instead.
+// W84 — restates one finished Lexi answer in Cody's voice. The answer and the patient's question are
+// PHI, so neither is logged or stored here. When the restatement cannot be trusted to carry every
+// fact, the reply is `fallback` and the browser shows Lexi's own words instead.
+//
+// The reports are NOT attached here (CORPUS.md §6). Every other route answers a question; this one
+// changes the voice of a paragraph that already contains every fact, which `missingFacts` below
+// proves on every call. A corpus could not tell it anything the source text does not already say,
+// so attaching one bought a ~350K-token cache write per patient per window for no informational
+// gain. Measured, then detached — the one exception that is about cost rather than about the route
+// having no record to read.
 interface Env {
   SESSION_SECRET: string;
+  // requireSession reads accounts.sessions_valid_from, so every gated route needs the binding.
   DB: D1Database;
 }
 
@@ -40,7 +48,7 @@ export async function onRequestPost({ request, env }: { request: Request; env: E
   if (source.length > MAX_TEXT || (question?.length ?? 0) > MAX_QUESTION) return finish(413, { error: "answer too long to adapt" }, "too_large");
 
   try {
-    const { client, model } = modelFor(env, "persona");
+    const { client, model } = unattachedModelFor(env, "persona");
     let missing: string[] = [];
     for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
       const reminder = missing.length
@@ -64,7 +72,7 @@ export async function onRequestPost({ request, env }: { request: Request; env: E
     }
     return finish(200, { kind: "fallback" }, "fidelity");
   } catch (err) {
-    const { status, errorCode } = classifyModelError(err);
-    return finish(status, { error: "could not restate the answer", errorCode }, errorCode);
+    const { status, errorCode, error } = modelErrorReply(err, "could not restate the answer");
+    return finish(status, { error, errorCode }, errorCode);
   }
 }

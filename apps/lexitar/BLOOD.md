@@ -177,7 +177,7 @@ finding + ranges + latest readings into the on-screen tables and the PDF;
 | Mode | Finding | Ranges |
 |------|---------|--------|
 | `dev` | `claude-sonnet-4-6` | `claude-sonnet-4-6` |
-| `prod` | `claude-opus-4-7` | `claude-opus-4-7` |
+| `prod` | `claude-opus-4-7` | `claude-sonnet-4-6` |
 
 Default is `prod`. Select with `--mode dev|prod` or `INFERENCE_MODE=`. The model
 tier is a per-patient decision recorded in each artifact's `generatedBy`; confirm

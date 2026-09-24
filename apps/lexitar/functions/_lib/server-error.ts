@@ -113,14 +113,27 @@ function occurrence(r: ServerErrorReport, ctx: ServerErrorContext): string {
 const MAX_FINGERPRINTS = 50;
 const seen = new Set<string>();
 
+// Workers' wording for a request whose other end went away mid-body — the tab closed, the device
+// slept, the network dropped. The throw lands in whichever handler was reading, so it arrives here
+// unclassified and reads like a vault save that lost the patient's data. It is the server's
+// AbortError: a verdict on the moment, not on the code. Logged and never filed, because filing it
+// gates promotion on a build no fix can clear and sends the autopilot after a defect that is not
+// there. Matched on the exact message — the throw carries no code of its own, and a looser test
+// would swallow the R2 and D1 failures this sink exists for.
+const DISCONNECT_MESSAGE = "Network connection lost.";
+
+const isDisconnect = (error: unknown): boolean => (error as { message?: unknown } | null)?.message === DISCONNECT_MESSAGE;
+
 /**
  * Reports an exception that escaped a handler, or one a handler classified and answered itself. NEVER throws and never rejects — it is called from a
  * catch block and from waitUntil, where a second failure would be invisible anyway.
  */
-export async function reportServerError(env: ServerErrorEnv, error: unknown, ctx: ServerErrorContext): Promise<"filed" | "deduped" | "logged"> {
+export async function reportServerError(env: ServerErrorEnv, error: unknown, ctx: ServerErrorContext): Promise<"filed" | "deduped" | "logged" | "disconnected"> {
   try {
+    const disconnected = isDisconnect(error);
     // The log line goes out first and unconditionally: it is the signal that survives a dead GitHub.
-    logRequest({ route: ctx.route, status: ctx.status ?? 500, requestId: ctx.requestId, errorCode: ctx.errorCode ?? "unhandled" });
+    logRequest({ route: ctx.route, status: ctx.status ?? 500, requestId: ctx.requestId, errorCode: ctx.errorCode ?? (disconnected ? "disconnected" : "unhandled") });
+    if (disconnected) return "disconnected";
 
     const report = await toServerReport(error, ctx);
     if (seen.has(report.fingerprint)) return "deduped";

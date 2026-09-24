@@ -25,6 +25,10 @@ jobs:
   lexitar:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # `scope` below asks the API which files the pull request touches.
+    permissions:
+      contents: read
+      pull-requests: read
     defaults:
       run:
         working-directory: apps/lexitar
@@ -66,6 +70,20 @@ jobs:
         with:
           name: lexitar-coverage
           path: apps/lexitar/coverage/coverage-summary.json
+      # A bump that changes nothing but a manifest and its lockfile cannot break the self-host
+      # differently from the browser host, so it pays for one suite instead of two. Asked of the API
+      # rather than of git: the checkout is shallow and has no merge base to diff against.
+      - id: scope
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          files=$(gh api --paginate "repos/$REPO/pulls/$PR/files" -q '.[].filename')
+          if [ -n "$files" ] && ! grep -qvE '^(.*/)?package(-lock)?\.json$' <<<"$files"; then
+            echo "deps-only=true" >> "$GITHUB_OUTPUT"
+          fi
       - run: npx playwright install --with-deps chromium
       # Every spec runs against synthetic patients + the local e2e-only clinician/support accounts
       # (tests/e2e/_synthetic.ts) — none of them needs a credential or touches real patient data.
@@ -77,8 +95,10 @@ jobs:
         env:
           NODE_OPTIONS: --import ./scripts/e2e-node-modules-ts-register.mjs
       # The whole suite again against the Node self-host (server/node.ts): the proof that the backend
-      # is not tied to Cloudflare.
-      - run: npx playwright test
+      # is not tied to Cloudflare. Skipped as a step, never as a job — a required check that reports
+      # SKIPPED blocks the merge forever, which is what the autopilot-guard comment below explains.
+      - if: steps.scope.outputs.deps-only != 'true'
+        run: npx playwright test
         env:
           NODE_OPTIONS: --import ./scripts/e2e-node-modules-ts-register.mjs
           E2E_HOST: node

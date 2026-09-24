@@ -1,11 +1,12 @@
-import type { D1Database } from "../_lib/identity-types";
 import { requireBearer } from "../_lib/guard";
 import { requireSession } from "../_lib/session";
 import { logRequest } from "../_lib/log";
 import { auditor } from "../_lib/audit";
 import { distinctMarkerNames, markerGroupsHashOf, runMarkerGroupingPasses } from "@pablotech/akesi/marker-groups-prompt";
 import { runGroupingPass } from "../../src/lib/marker-groups-anthropic";
-import { modelFor } from "../_lib/inference/resolve";
+import { inferenceErrorReply } from "../_lib/model-errors";
+import { attachedModelFor, type AttachedEnv } from "../_lib/inference/attach";
+import { subjectOf } from "../_lib/inference/subject";
 import { systemOrder } from "@pablotech/akesi/system-groups";
 import type { Client, MarkerGrouping } from "../../src/lib/types";
 import type { ObjectBucket } from "../_lib/object-bucket";
@@ -18,13 +19,14 @@ import type { ObjectBucket } from "../_lib/object-bucket";
 // to 3 completeness re-passes, same shape as scripts/claude-marker-groups.ts), so this streams
 // like refresh-finding.ts to avoid an idle-timeout 524 during a long generation. Runs on the
 // shared key (on-demand, user-triggered — not worth a dedicated pooled key).
-interface Env {
+//
+// AttachedEnv brings DB (which requireSession needs anyway, W71 — it reads
+// accounts.sessions_valid_from) and STORE_PREFIX; VAULT is re-declared wider because the audit
+// trail writes through the same binding the corpus reads from.
+interface Env extends AttachedEnv {
   PROVIDER_TOKEN: string;
   SESSION_SECRET: string;
-  // W71 — requireSession reads accounts.sessions_valid_from, so every gated route needs the binding.
-  DB: D1Database;
-  VAULT?: Pick<ObjectBucket, "put">;
-  STORE_PREFIX: string;
+  VAULT: Pick<ObjectBucket, "get" | "list" | "put">;
 }
 
 const ROUTE = "/api/refresh-marker-groups";
@@ -35,23 +37,23 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
   const { request, env } = context;
   const start = Date.now();
   const requestId = request.headers.get("cf-ray") ?? undefined;
-  const jsonErr = (status: number, errorCode: string, error: string): Response => {
+  // `extra` carries a corpus refusal's limit/actual/max — the numbers are the remedy.
+  const jsonErr = (status: number, errorCode: string, error: string, extra: Record<string, unknown> = {}): Response => {
     logRequest({ route: ROUTE, status, latencyMs: Date.now() - start, requestId, errorCode });
-    return new Response(JSON.stringify({ error, errorCode }), { status, headers: { "content-type": "application/json" } });
+    return new Response(JSON.stringify({ error, errorCode, ...extra }), { status, headers: { "content-type": "application/json" } });
   };
 
-  // Bearer is checked BEFORE we do any generation — provider bearer, else a logged-in patient
-  // session (mirrors refresh-range.ts:54-58; the account owner viewing their own vault has no
-  // provider token).
-  const denied = requireBearer(request, env.PROVIDER_TOKEN);
-  if (denied) {
-    const session = await requireSession(request, env);
-    if (session instanceof Response) return jsonErr(401, "unauthorized", "unauthorized");
+  // Provider bearer, else a logged-in patient session (mirrors refresh-range.ts; the account owner
+  // viewing their own vault has no provider token). The session is tried first because only it
+  // carries the account the corpus is authorised against — see subject.ts.
+  const session = await requireSession(request, env);
+  if (session instanceof Response && requireBearer(request, env.PROVIDER_TOKEN)) {
+    return jsonErr(401, "unauthorized", "unauthorized");
   }
 
   const rawBody = await request.text();
   if (rawBody.length > MAX_BODY_BYTES) return jsonErr(413, "too_large", "client too large");
-  let body: { client?: unknown };
+  let body: { client?: unknown; clientId?: unknown; accountId?: unknown };
   try {
     body = JSON.parse(rawBody);
   } catch {
@@ -68,6 +70,27 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
   const markerNames = distinctMarkerNames(typedClient);
   const hash = markerGroupsHashOf(markerNames, systems);
 
+  // Required whatever REPORTS is set to, so enabling the corpus never changes the request contract.
+  const who = subjectOf(session instanceof Response ? null : session, body);
+  if ("error" in who) return jsonErr(who.status, who.errorCode, who.error);
+
+  // Hash short-circuit, hoisted out of the stream: a grouping that already matches costs no model
+  // call, and must therefore cost no report read either.
+  const cached = typedClient.markerGroups?.markerGroupsHash === hash;
+
+  // The model and the corpus are resolved BEFORE the 200 is committed to, which is the only moment
+  // a refusal can still be an HTTP status rather than an in-band sentinel. A record too large to
+  // send is not a generation failure, and the browser renders the two very differently.
+  let resolved: Awaited<ReturnType<typeof attachedModelFor>> | undefined;
+  if (!cached) {
+    try {
+      resolved = await attachedModelFor(env, "markerGroups", who);
+    } catch (e) {
+      const { status, errorCode, error, ...extra } = inferenceErrorReply(e, "marker grouping failed");
+      return jsonErr(status, errorCode, error, extra);
+    }
+  }
+
   // Committing to a 200 stream (same convention as refresh-finding.ts) — once headers are sent,
   // a downstream failure can only be signalled in-band via the SENTINEL below.
   const audit = auditor(env.VAULT, env, ROUTE, requestId);
@@ -78,13 +101,13 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
       try {
         // Hash short-circuit: the current marker/system set already matches the client's stored
         // grouping — zero Anthropic calls, even for a duplicate/accidental trigger.
-        if (typedClient.markerGroups?.markerGroupsHash === hash) {
+        if (cached) {
           await audit({ event: "success", status: 200, latencyMs: Date.now() - start, reasonCategory: "cached" });
           controller.enqueue(encoder.encode(JSON.stringify(typedClient.markerGroups)));
           return;
         }
 
-        const { client: anthropic, model } = modelFor(env, "markerGroups");
+        const { client: anthropic, model, corpus } = resolved!;
         let passes = 0;
         let inputTokens = 0;
         let outputTokens = 0;
@@ -98,6 +121,7 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
             markers,
             model,
             leftover,
+            prefixTurns: corpus.turns,
             signal: request.signal,
             onPass: (u: { input_tokens?: number | null; output_tokens?: number | null }) => {
               inputTokens += u.input_tokens ?? 0;

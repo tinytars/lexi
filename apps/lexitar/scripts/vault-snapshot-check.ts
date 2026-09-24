@@ -6,7 +6,8 @@
 // It runs three places on purpose:
 //   • at the end of the scheduled job (scripts/snapshot-cron.sh) — catches a job that "succeeded"
 //     without writing anything
-//   • in `npm run doctor` — surfaces a dead cron in the ordinary dev loop
+//   • as the last step of .github/workflows/snapshot.yml — catches the same thing on the scheduled
+//     path, where a hosted runner cannot raise the local notification
 //   • wherever an operator asks
 //
 //   npm run vault:snapshot:check

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import raw from "../../inference.config.json";
-import { FEATURES, INFERENCE, modelId, parseInferenceConfig, providerFor } from "../../src/lib/model-config";
+import { DEFAULT_MAX_CORPUS_PAGES, FEATURES, INFERENCE, maxCorpusPagesFor, modelId, parseInferenceConfig, providerFor } from "../../src/lib/model-config";
 import { modelFor } from "../../functions/_lib/inference/resolve";
 
 function config(over: Record<string, unknown> = {}) {
@@ -15,6 +15,13 @@ function withProvider(p: Record<string, unknown>) {
 describe("inference.config.json", () => {
   it("configures every feature", () => {
     for (const f of FEATURES) expect(modelId(f)).toBeTruthy();
+  });
+
+  // Falling back to DEFAULT_MAX_CORPUS_PAGES would be a guess about a window nobody wrote down, and
+  // a guess in the "it fits" direction is an over-limit request in front of a real question. Every
+  // shipped provider states its own, derived from its model (CORPUS.md §5).
+  it("declares a corpus page ceiling on every provider rather than falling back", () => {
+    for (const [name, p] of Object.entries(INFERENCE.providers)) expect(p.maxCorpusPages, name).toBeGreaterThan(0);
   });
 
   // The repo is public: a key typed into this file would be published.
@@ -56,6 +63,16 @@ describe("parseInferenceConfig", () => {
       withProvider({ api: "openai", baseUrl: "http://localhost:11434/v1", keyEnv: [], caps: { vision: false, pdf: false, jsonSchema: true, tools: true }, maxTokensField: "max_tokens", maxOutputTokens: 8192 }),
     );
     expect(providerFor("chat", ok).api).toBe("openai");
+  });
+
+  // The corpus page ceiling follows the MODEL's context window, so a deployment pointing a feature
+  // at a smaller one says so here rather than being silently over-served (CORPUS.md §5).
+  it("takes a per-provider corpus page ceiling, defaulting when none is given", () => {
+    const declared = parseInferenceConfig(withProvider({ api: "anthropic", keyEnv: ["ANTHROPIC_API_KEY"], maxCorpusPages: 100 }));
+    expect(maxCorpusPagesFor("chat", declared)).toBe(100);
+    const silent = parseInferenceConfig(withProvider({ api: "anthropic", keyEnv: ["ANTHROPIC_API_KEY"] }));
+    expect(maxCorpusPagesFor("chat", silent)).toBe(DEFAULT_MAX_CORPUS_PAGES);
+    expect(() => parseInferenceConfig(withProvider({ api: "anthropic", keyEnv: ["A"], maxCorpusPages: 0 }))).toThrow(/positive integer/);
   });
 
   it("applies dev overrides only in dev mode", () => {

@@ -27,6 +27,9 @@ export interface GroupingPassParams {
   signal?: AbortSignal;
   /** Called after each successful pass — usage accounting, and the Function's progress chunk. */
   onPass?: (usage: Anthropic.Message["usage"]) => void;
+  /** The patient's own reports, prepended verbatim ahead of the context block (CORPUS.md). Empty for
+   *  the CLI. The same turns on every pass, so the sweep-up pass reads the cache the first wrote. */
+  prefixTurns?: Anthropic.MessageParam[];
 }
 
 export async function runGroupingPass(p: GroupingPassParams): Promise<{ group: string; markers: string[] }[]> {
@@ -37,6 +40,7 @@ export async function runGroupingPass(p: GroupingPassParams): Promise<{ group: s
       system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
       output_config: { format: { type: "json_schema", schema: GROUPS_SCHEMA } },
       messages: [
+        ...(p.prefixTurns ?? []),
         { role: "user", content: `${contextBlock(p.client, p.markers, p.leftover)}\n\nReturn the body-system grouping as JSON.` },
       ],
     },

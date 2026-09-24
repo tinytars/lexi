@@ -44,17 +44,23 @@ the feature fails, and its error names the vars to set.
 
 | Feature | Where | What it sends | Needs |
 |---|---|---|---|
-| `chat` | `/api/chat` | the question, the patient context, attached photos | tools, and vision to read attached photos |
-| `persona` | `/api/persona-adapt` | a chat answer to restate | text only |
+| `chat` † | `/api/chat` | the question, the patient context, attached photos | tools, and vision to read attached photos |
+| `persona` | `/api/persona-adapt` | a chat answer to restate | — |
 | `extract` | `/api/extract`, CLI report import | an uploaded report | PDF input, JSON schema |
 | `document` | `/api/document-extract` | an attached document | PDF input, JSON schema |
 | `treatmentImage` | `/api/treatment-infer` | photos of a product | vision, JSON schema |
 | `treatmentText` | `/api/treatment-infer` | pasted product text | JSON schema |
-| `finding` | `/api/refresh-finding`, CLI | the whole record | text only (the reply is JSON written as prose) |
-| `ranges` | `/api/refresh-range`, CLI | one marker's history | JSON schema |
-| `markerGroups` | `/api/refresh-marker-groups`, CLI | marker names | JSON schema |
-| `leafRegen` | `/api/leaf-regen`, CLI | one section of the Finding, plus photos | tools, and vision for photos |
-| `benchmarkWeakest` | `scripts/brain-benchmark.ts` only | benchmark fixtures | text only |
+| `finding` † | `/api/refresh-finding`, CLI | the whole record | — (the reply is JSON written as prose) |
+| `ranges` † | `/api/refresh-range`, CLI | one marker's history | JSON schema |
+| `markerGroups` † | `/api/refresh-marker-groups`, CLI | marker names | JSON schema |
+| `leafRegen` † | `/api/leaf-regen`, CLI | one section of the Finding, plus photos | tools, and vision for photos |
+| `benchmarkWeakest` | `scripts/brain-benchmark.ts` only | benchmark fixtures | — |
+
+**†** — sends the patient's source PDFs ahead of everything in the "what it sends" column, so it
+additionally needs **PDF input** and answers `422 model_unsupported` on a provider without it.
+[`CORPUS.md`](CORPUS.md) is that mechanism in full: what is attached, the page ceiling, and the
+`REPORTS: "never"` switch that turns the whole column back off. The six unmarked features are
+unattached by design and `CORPUS.md` §6 says why.
 
 These work with no model at all: the vault, sign-in, manual entry, markers and charts, reference
 material, and CSV/JSON export.
@@ -106,8 +112,10 @@ Then set `OPENAI_API_KEY` in `.dev.vars` or as a Pages secret.
 - A model on `localhost` is reachable from the Node self-host (`npm run serve:node`, the
   `Dockerfile`) and the CLI, not from Cloudflare Pages.
 
-Point any subset of features at `local`. With the caps above, chat (without photos), persona, pasted
-treatment text, ranges and marker groups work. PDF extraction and photos answer `model_unsupported`.
+Point any subset of features at `local`. With the caps above and `REPORTS: "never"`, chat (without
+photos), persona, pasted treatment text, ranges and marker groups work. PDF extraction and photos
+answer `model_unsupported` — and so does every † feature above if reports are attached, since a
+model that cannot read a PDF cannot be shown the record.
 
 A missing capability is a routing problem, not a dead end: `features` maps **each feature to its own
 provider**, so the fix for "my local model cannot read PDFs" is a vision-capable model on `extract`,

@@ -7,6 +7,7 @@ vi.mock("../../src/lib/attachment-store", async (orig) => ({
 
 import { fetchLeafRegen, applyLeafRegen, type PendingLeafRegen } from "../../src/lib/leaf-regen-client";
 import { AiError } from "../../src/lib/ai-error";
+import { warmCorpus } from "../../src/lib/corpus-warm-client";
 import type { Client } from "../../src/lib/types";
 
 // Minimal client carrying exactly one allergy — allergyResults has the simplest non-empty context
@@ -170,5 +171,65 @@ describe("applyLeafRegen stamping", () => {
     };
     const result = await applyLeafRegen(client, pending, "translate");
     expect(result.finding!.nodeHashes!.allergyResults).toBe("request-time-hash");
+  });
+});
+
+describe("attached documents and the report corpus", () => {
+  // Where the corpus is on, the relay attaches the PDF itself and the transcription would be the
+  // same document a second time. Where it is off, the transcription is the only copy there is —
+  // which is why this is a question the client asks rather than a line that was deleted.
+  function clientWithAttachments(): Client {
+    const attachments = [
+      { key: "raw/alex/abc-report.pdf", name: "report.pdf", mediaType: "application/pdf" },
+      { key: "raw/alex/def-notes.txt", name: "notes.txt", mediaType: "text/plain" },
+    ];
+    return {
+      displayName: "Alex",
+      dob: "1980-01-01",
+      gender: "male",
+      watchlist: [],
+      results: [],
+      factors: { allergies: [{ id: "allergy-1", allergen: "Penicillin", reaction: "Hives", attachments }] },
+    } as unknown as Client;
+  }
+
+  /** Answers the sidecar reads with the file's own name, and the regen POST with the one row asked for. */
+  function route(): void {
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("/api/document-extract")) {
+        const key = new URL(url, "http://x").searchParams.get("key") ?? "";
+        return json(200, { text: `transcribed ${key}` });
+      }
+      return json(200, { result: { items: [{ allergyId: "allergy-1", result: "Avoid penicillin.", group: "Allergy" }] } });
+    });
+  }
+
+  const documentsSent = () => {
+    const post = vi.mocked(fetch).mock.calls.find(([u]) => String(u).startsWith("/api/leaf-regen"))!;
+    return (JSON.parse((post[1] as RequestInit).body as string) as { documents?: { name: string }[] }).documents;
+  };
+
+  async function withReports(reason: string): Promise<void> {
+    vi.mocked(fetch).mockResolvedValueOnce(json(200, { warmed: false, reason }));
+    await warmCorpus("alex", "metric");
+  }
+
+  it("leaves a PDF's transcription out when the model already has the PDF", async () => {
+    await withReports("no_corpus");
+    route();
+
+    await fetchLeafRegen(clientWithAttachments(), "allergyResults", undefined, "alex");
+
+    expect(documentsSent()?.map((d) => d.name)).toEqual(["notes.txt"]);
+  });
+
+  it("still sends it where reports are off, because then it is the only copy", async () => {
+    await withReports("off");
+    route();
+
+    await fetchLeafRegen(clientWithAttachments(), "allergyResults", undefined, "alex");
+
+    expect(documentsSent()?.map((d) => d.name)).toEqual(["report.pdf", "notes.txt"]);
   });
 });

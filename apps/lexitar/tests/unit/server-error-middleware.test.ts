@@ -56,7 +56,10 @@ describe("functions/api/_middleware", () => {
     const res = await run("/api/vault/alex-labs-2025", new Error("D1_ERROR: no such table: vault_envelopes"));
 
     expect(res.status).toBe(500);
-    expect(await res.json()).toEqual({ error: "internal error" });
+    // The errorCode is not decoration: reportServerError has just filed this event as a
+    // `server-error`, and this is what stops the browser's installApiFailureReporting filing it a
+    // second time as a promotion-gating `client-error`.
+    expect(await res.json()).toEqual({ error: "internal error", errorCode: "unhandled" });
     const create = calls.find((c) => c.method === "POST")!;
     expect(create.url).toBe("https://api.github.com/repos/promontory-studio/plover-factory/issues");
     expect(create.body!.title).toMatch(/^Server error: \/api\/vault\/:id — Error \[[0-9a-f]{8}\]$/);
@@ -105,6 +108,26 @@ describe("functions/api/_middleware", () => {
     expect(calls).toEqual([]);
     expect(log).toHaveBeenCalled();
     log.mockRestore();
+  });
+
+  // A patient who closes the tab mid-upload severs the request body, and whichever handler was
+  // reading it throws. Filed, it reads like a vault save that lost their data, and it gates
+  // promotion on a build no fix can clear.
+  it("does not file a request whose other end went away mid-body", async () => {
+    const calls = stubGithub(null);
+    const res = await run("/api/vault/alex-labs-2025", new Error("Network connection lost."));
+
+    expect(res.status).toBe(500);
+    expect(calls.filter((c) => c.method === "POST")).toEqual([]);
+  });
+
+  // The suppression is on the one message Workers uses for it, not on the route or the shape of the
+  // error, or it would swallow the R2 failure this sink exists for.
+  it("still files a genuine failure on the route a disconnect arrives from", async () => {
+    const calls = stubGithub(null);
+    await run("/api/vault/alex-labs-2025", new Error("Network connection reset by upstream"));
+
+    expect(calls.filter((c) => c.method === "POST")).toHaveLength(1);
   });
 
   it("passes a successful response through untouched", async () => {

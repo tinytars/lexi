@@ -64,6 +64,19 @@ const LEGACY_TAB_DEFAULT: Record<string, string> = {
   chat: "chat",
 };
 
+// parseHash is fed arbitrary text, not just hashes we wrote: ChatTab's composer paste handler
+// hands it everything after the first "#" of whatever was pasted, so a segment can hold a bare "%"
+// that is not a valid escape. decodeURIComponent throws URIError on those, which in a paste
+// listener is an uncaught error. An undecodable segment is simply not percent-encoded — keep it
+// verbatim and let the section-key lookup decide whether the text addresses anything.
+function decodeSegment(seg: string): string {
+  try {
+    return decodeURIComponent(seg);
+  } catch {
+    return seg;
+  }
+}
+
 // Parse a location.hash into a Permalink. New grammar: #<client>/<section>[/<anchor>], or
 // #<client>/chat/<threadId>[/<anchor>]. Back-compat: a pre-M82 #<client>/<tab>/<section>... link
 // is also accepted — a legacy tab id immediately followed by a real section-key segment drops the
@@ -72,7 +85,7 @@ const LEGACY_TAB_DEFAULT: Record<string, string> = {
 export function parseHash(hash: string): Permalink | null {
   const raw = hash.replace(/^#/, "");
   if (!raw) return null;
-  const segs = raw.split("/").filter((s) => s.length > 0).map(decodeURIComponent);
+  const segs = raw.split("/").filter((s) => s.length > 0).map(decodeSegment);
   const idx = segs.findIndex((s) => SECTION_KEYS.has(s) || isTab(s));
   if (idx < 0) return null;
   const seg = segs[idx];

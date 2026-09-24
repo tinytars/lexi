@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { documentTextsFor, isExtractableDocument, isPdfAttachment, extractedMetadata } from "../../src/lib/document-extract-client";
+import { documentTextsFor, isExtractableDocument, isPdfAttachment, needTranscription, extractedMetadata } from "../../src/lib/document-extract-client";
+import { warmCorpus } from "../../src/lib/corpus-warm-client";
 import { MAX_DOCUMENT_CHARS, MAX_DOCUMENTS_TOTAL_CHARS } from "@pablotech/akesi/document-read";
 import type { Attachment } from "../../src/lib/types";
 
@@ -80,5 +81,24 @@ describe("documentTextsFor", () => {
     const total = out.reduce((sum, d) => sum + d.text.length, 0);
     expect(total).toBeLessThanOrEqual(MAX_DOCUMENTS_TOTAL_CHARS + out.length * 200);
     expect(out.length).toBeLessThan(names.length);
+  });
+});
+
+describe("needTranscription", () => {
+  const files = [att("report.pdf", "application/pdf"), att("notes.txt", "text/plain")];
+  /** The only way the browser learns whether this deployment attaches reports. */
+  const learn = async (reason: string) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ warmed: false, reason }))));
+    await warmCorpus("alex", "metric");
+  };
+
+  it("drops a PDF the model is already holding as a document", async () => {
+    await learn("no_corpus");
+    expect(needTranscription(files).map((a) => a.name)).toEqual(["notes.txt"]);
+  });
+
+  it("keeps it where reports are off, because then the transcription is the only copy", async () => {
+    await learn("off");
+    expect(needTranscription(files).map((a) => a.name)).toEqual(["report.pdf", "notes.txt"]);
   });
 });

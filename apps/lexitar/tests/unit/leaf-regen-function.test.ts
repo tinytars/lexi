@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Mock the SDK so the Function's session gate + shape validation are exercised with no billable call.
 const { createMock } = vi.hoisted(() => ({ createMock: vi.fn() }));
@@ -13,9 +13,17 @@ vi.mock("@anthropic-ai/sdk", () => ({
 
 import { onRequestPost } from "../../functions/api/leaf-regen";
 import { signSession } from "../../functions/_lib/session";
+import { createAccount } from "../../functions/_lib/identity-accounts";
+import { recordRawObject } from "../../functions/_lib/identity-audit";
+import { CORPUS_ACK } from "../../functions/_lib/inference/corpus";
 import { fakeSessionDb } from "../support/session-db";
+import { useWorkerd } from "../support/miniflare";
 
-const ENV = { ANTHROPIC_API_KEY: "k", SESSION_SECRET: "test-secret", DB: fakeSessionDb() };
+// REPORTS is unset here — the deployment that never turned the corpus on — so a VAULT that throws
+// on contact is what proves these cases read no reports at all.
+const NO_STORAGE = new Proxy({}, { get: () => () => { throw new Error("touched storage"); } }) as never;
+const ENV = { ANTHROPIC_API_KEY: "k", SESSION_SECRET: "test-secret", DB: fakeSessionDb(),
+    VAULT: NO_STORAGE, STORE_PREFIX: "dev" };
 
 function toolResponse(input: unknown, name = "emit_study_results") {
   return {
@@ -27,8 +35,11 @@ function toolResponse(input: unknown, name = "emit_study_results") {
 async function call(body: unknown, opts: { auth?: boolean } = { auth: true }) {
   const headers: Record<string, string> = { "content-type": "application/json" };
   if (opts.auth) headers.cookie = `hd_session=${await signSession(ENV, "acct-1")}`;
+  // Every caller names the record the leaf belongs to; these cases are about the relay's other
+  // contracts, so the id is filled in here rather than repeated in twenty bodies.
+  const withClient = body && typeof body === "object" ? { clientId: "alex", ...body } : body;
   return onRequestPost({
-    request: new Request("http://x/api/leaf-regen", { method: "POST", headers, body: JSON.stringify(body) }),
+    request: new Request("http://x/api/leaf-regen", { method: "POST", headers, body: JSON.stringify(withClient) }),
     env: ENV,
   });
 }
@@ -220,5 +231,64 @@ describe("functions/api/leaf-regen: a user turn always gets its reply", () => {
   it("still requires a session — this is not an open relay", async () => {
     const res = await call(goodBody, { auth: false });
     expect(res.status).toBe(401);
+  });
+});
+
+describe("functions/api/leaf-regen: a leaf is regenerated in sight of the patient's reports", () => {
+  const w = useWorkerd({ r2: true, perTest: true });
+  beforeEach(() => createMock.mockReset());
+  const GOOD = { node: "studyResults", inputs: { pursuedStudy: { entries: [{ focus: "x", detail: "y" }] } } };
+
+  async function alexWithAReport(): Promise<string> {
+    const id = crypto.randomUUID();
+    await createAccount(w.db, { id, displayName: "alex", email: `alex-${id}@example.com` });
+    const key = "dev/raw/alex/report.pdf";
+    await w.bucket.put(key, new TextEncoder().encode("%PDF-1.4 report"));
+    await recordRawObject(w.db, key, id, { pages: 2, bytes: 15 });
+    return id;
+  }
+
+  const post = async (accountId: string, body: unknown) =>
+    onRequestPost({
+      request: new Request("http://x/api/leaf-regen", {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie: `hd_session=${await signSession(ENV, accountId)}` },
+        body: JSON.stringify(body),
+      }),
+      env: { ANTHROPIC_API_KEY: "k", SESSION_SECRET: "test-secret", DB: w.db, VAULT: w.bucket, STORE_PREFIX: "dev", REPORTS: "always" } as never,
+    });
+
+  it("leads with the reports, ahead of the node's own inputs", async () => {
+    const who = await alexWithAReport();
+    createMock.mockResolvedValueOnce(toolResponse({ items: [{ study: "x", result: "y", group: "g" }] }));
+
+    const res = await post(who, { ...GOOD, clientId: "alex" });
+
+    expect(res.status).toBe(200);
+    const messages = createMock.mock.calls.at(-1)![0].messages;
+    expect(messages[0].content[0].type).toBe("document");
+    expect(messages[1]).toEqual({ role: "assistant", content: CORPUS_ACK });
+    expect(JSON.parse(messages[2].content)).toEqual(GOOD.inputs);
+  });
+
+  it("400s without a clientId, and calls no model", async () => {
+    const who = await alexWithAReport();
+
+    const res = await post(who, GOOD);
+
+    expect(res.status).toBe(400);
+    expect((await bodyJson(res)).errorCode).toBe("no_client_id");
+    expect(createMock).not.toHaveBeenCalled();
+  });
+
+  it("404s on a namespace the session's account does not own", async () => {
+    await alexWithAReport();
+    const stranger = crypto.randomUUID();
+    await createAccount(w.db, { id: stranger, displayName: "nobody", email: `nobody-${stranger}@example.com` });
+
+    const res = await post(stranger, { ...GOOD, clientId: "alex" });
+
+    expect(res.status).toBe(404);
+    expect(createMock).not.toHaveBeenCalled();
   });
 });
