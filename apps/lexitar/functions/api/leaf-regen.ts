@@ -62,7 +62,7 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
   if (rawBody.length > MAX_BODY_BYTES) {
     return finish(413, { error: "inputs too large" }, { errorCode: "too_large" });
   }
-  let body: { node?: unknown; inputs?: unknown; targetLabels?: unknown; images?: unknown; documents?: unknown; clientId?: unknown };
+  let body: { node?: unknown; inputs?: unknown; targetLabels?: unknown; images?: unknown; documents?: unknown; clientId?: unknown; rawKeys?: unknown };
   try {
     body = JSON.parse(rawBody);
   } catch {

@@ -2,6 +2,7 @@
   import type { Attachment } from "./attachment-types";
   import Modal from "./Modal.svelte";
   import { openPdf, type PdfDoc } from "./pdf-render";
+  import { resolveAttachmentUrl, type AttachmentUrl } from "./attachment-url.svelte";
 
   // The in-app viewer every attachment click opens (AttachmentStrip.svelte) instead
   // of a bare new-tab link. Images render directly; PDFs render page-by-page onto a <canvas> via
@@ -12,7 +13,7 @@
     attachments: Attachment[];
     index: number;
     clientId: string;
-    attachmentUrl: (clientId: string, key: string) => string;
+    attachmentUrl: AttachmentUrl;
     onClose: () => void;
   }
   let { attachments, index = $bindable(), clientId, attachmentUrl, onClose }: Props = $props();
@@ -20,6 +21,9 @@
   let current = $derived(attachments[index]);
   let isImage = $derived(current?.mediaType.startsWith("image/") ?? false);
   let isPdf = $derived(current?.mediaType === "application/pdf");
+  // One resolution serves the image, the download link and the PDF open: all three want the bytes
+  // of whichever attachment is current, and the host may need a round trip to produce the URL.
+  const url = resolveAttachmentUrl(() => ({ url: attachmentUrl, clientId, key: current?.key ?? null }));
 
   function go(delta: number) {
     index = Math.max(0, Math.min(attachments.length - 1, index + delta));
@@ -39,9 +43,9 @@
     pdfDoc = null;
     pdfPage = 1;
     pdfError = null;
-    if (!isPdf || !current) return;
-    const url = attachmentUrl(clientId, current.key);
-    openPdf(url)
+    const src = url.current;
+    if (!isPdf || !src) return;
+    openPdf(src)
       .then((doc) => { pdfDoc = doc; })
       .catch((e) => { pdfError = e instanceof Error ? e.message : "Couldn't open this PDF."; });
   });
@@ -57,14 +61,14 @@
   <div class="viewer">
     <div class="viewer-head">
       <span class="viewer-name">{current?.name}</span>
-      <a class="viewer-download" href={clientId && current ? attachmentUrl(clientId, current.key) : "#"} download={current?.name} target="_blank" rel="noopener">⤓ Download</a>
+      <a class="viewer-download" href={url.current ?? "#"} download={current?.name} target="_blank" rel="noopener">⤓ Download</a>
     </div>
     <div class="viewer-body">
       {#if attachments.length > 1}
         <button type="button" class="viewer-nav prev" disabled={index === 0} onclick={() => go(-1)} aria-label="Previous attachment">‹</button>
       {/if}
-      {#if isImage && current}
-        <img class="viewer-image" src={attachmentUrl(clientId, current.key)} alt={current.name} />
+      {#if isImage && current && url.current}
+        <img class="viewer-image" src={url.current} alt={current.name} />
       {:else if isPdf}
         {#if pdfError}
           <p class="viewer-error">{pdfError}</p>

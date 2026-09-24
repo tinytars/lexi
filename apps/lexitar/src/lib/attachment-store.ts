@@ -1,10 +1,11 @@
 // W46 Phase 3 — generalizes treatment-image-store.ts (M54/5, treatment-photo-only) into the shared
 // browser-side helper for every leaf's Attach flow, wrapping the /api/raw/{id}/{file} PUT/GET/DELETE
 // contract (functions/api/raw/[[path]].ts). Keys mirror PendingUpload.file (types.ts):
-// "<sha8>-<safeName>" under raw/{id}/. GET is not wrapped here — the UI builds attachmentUrl()
-// directly for <img src>/download links.
+// "<sha8>-<safeName>" under raw/{id}/. GET goes through attachment-blob.ts, which decrypts and
+// mints the blob: URL the UI points <img src>/download links at.
 import { hashSourceWeb } from "@pablotech/akesi/ingest-core";
 import { compressImage } from "./image-compress";
+import { fetchAttachmentBytes } from "./attachment-blob";
 import { bytesToBase64 } from "./base64";
 import { openPdf, type PdfDoc } from "@tinytars/frame/pdf-render";
 import { MAX_DOCUMENT_PAGES } from "@pablotech/akesi/document-read";
@@ -65,9 +66,10 @@ export async function uploadAttachment(clientId: string, bytes: Uint8Array, key:
   }
 }
 
-export function attachmentUrl(clientId: string, key: string): string {
-  return `/api/raw/${normalizeClientId(clientId)}/${encodeURIComponent(key)}`;
-}
+// A `blob:` URL, not the API path: stored originals are ciphertext, so an element cannot render
+// `/api/raw/...` directly any more. The name and the (clientId, key) shape are unchanged — every
+// caller passes this straight to AttachmentStrip/AttachmentViewer, which resolve it.
+export { attachmentBlobUrl as attachmentUrl, fetchAttachmentBytes, revokeAttachmentBlobs } from "./attachment-blob";
 
 // W46 Phase 6 — chat vision needs an attachment's bytes back as base64 for an Anthropic `image`
 // content block (functions/api/chat.ts). Unlike treatment-image-client.ts's inference relay
@@ -76,9 +78,7 @@ export function attachmentUrl(clientId: string, key: string): string {
 // a PRIOR turn's image is resent as conversation history, since Anthropic has no server-side
 // image cache across turns.
 export async function fetchAttachmentBase64(clientId: string, key: string): Promise<string> {
-  const res = await fetch(attachmentUrl(clientId, key));
-  if (!res.ok) throw new Error(`fetching the attachment failed (${res.status})`);
-  return bytesToBase64(new Uint8Array(await res.arrayBuffer()));
+  return bytesToBase64(await fetchAttachmentBytes(clientId, key));
 }
 
 

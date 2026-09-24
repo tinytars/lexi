@@ -23,7 +23,8 @@ import type { ObjectBucket } from "../object-bucket";
 import { normalizeClientId } from "../../../src/lib/client-id";
 import { DEFAULT_MAX_CORPUS_PAGES } from "../../../src/lib/model-config";
 import { CORPUS_PREAMBLE, CORPUS_ACK } from "../../../src/lib/corpus-prompt";
-import { CorpusBusyError, CorpusDeniedError, CorpusMissingError, CorpusTooLargeError, CorpusUnmeasuredError } from "./corpus-errors";
+import { CorpusBusyError, CorpusDeniedError, CorpusKeyError, CorpusMissingError, CorpusTooLargeError, CorpusUnmeasuredError } from "./corpus-errors";
+import { openRaw, RawKeyError, type RawKeyMap } from "../../../src/lib/raw-cipher";
 
 // Re-exported so the assembler stays the one door a reader looks behind for the prefix, wherever the
 // strings themselves have to live.
@@ -117,7 +118,7 @@ export async function reportCorpus(
   env: CorpusEnv,
   accountId: string,
   clientId: string,
-  opts: { citations: boolean; maxPages?: number },
+  opts: { citations: boolean; maxPages?: number; rawKeys?: RawKeyMap },
 ): Promise<Corpus> {
   const slug = normalizeClientId(clientId);
   const access = await rawAccessFor(env.DB, env, accountId, slug);
@@ -160,7 +161,7 @@ export async function reportCorpus(
   let docs: Anthropic.DocumentBlockParam[];
   let byteCount: number;
   try {
-    ({ docs, byteCount } = await readDocuments(env, keys, prefix, opts.citations === true));
+    ({ docs, byteCount } = await readDocuments(env, keys, prefix, opts.citations === true, opts.rawKeys ?? {}));
   } finally {
     inFlightBytes -= reserved;
   }
@@ -188,13 +189,29 @@ async function readDocuments(
   keys: string[],
   prefix: string,
   citations: boolean,
+  rawKeys: RawKeyMap,
 ): Promise<{ docs: Anthropic.DocumentBlockParam[]; byteCount: number }> {
   const docs: Anthropic.DocumentBlockParam[] = [];
+  // Every unopenable document, not the first: the browser heals the whole record in one pass, and a
+  // refusal naming one file at a time would take one round trip per document to get there.
+  const unopenable: string[] = [];
   let byteCount = 0;
   for (const key of keys) {
     const object = await env.VAULT.get(key);
     if (!object) throw new CorpusMissingError();
-    const bytes = new Uint8Array(await object.arrayBuffer());
+    const file = key.slice(prefix.length);
+    let bytes: Uint8Array;
+    try {
+      // Decryption is deterministic, so a sealed document base64s to exactly the string its
+      // plaintext always did — the prompt-cache prefix is unchanged by encrypting the store.
+      bytes = await openRaw(new Uint8Array(await object.arrayBuffer()), file, rawKeys[file]);
+    } catch (err) {
+      if (!(err instanceof RawKeyError)) throw err;
+      unopenable.push(file);
+      continue;
+    }
+    // The ceiling counts PLAINTEXT, so the budget keeps meaning what it meant: the envelope's 48
+    // bytes per file are storage overhead, not something the model is sent.
     byteCount += bytes.length;
     // The byte ceiling is checked on what was actually read, not on the stored `bytes` column, which
     // a count-only backfill leaves null. Checked inside the loop so an oversized record stops at the
@@ -205,9 +222,10 @@ async function readDocuments(
       source: { type: "base64", media_type: "application/pdf", data: bytesToBase64(bytes) },
       // The filename and nothing else. A date, an etag or a page count here would be one more byte
       // ahead of the breakpoint that can change without the document changing.
-      title: key.slice(prefix.length),
+      title: file,
       ...(citations ? { citations: { enabled: true } } : {}),
     });
   }
+  if (unopenable.length > 0) throw new CorpusKeyError(unopenable);
   return { docs, byteCount };
 }

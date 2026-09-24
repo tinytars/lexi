@@ -64,7 +64,7 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
 
   const rawBody = await request.text();
   if (rawBody.length > MAX_BODY_BYTES) return jsonErr(413, "too_large", "client too large");
-  let body: { client?: unknown; marker?: unknown; clientId?: unknown; accountId?: unknown };
+  let body: { client?: unknown; marker?: unknown; clientId?: unknown; accountId?: unknown; rawKeys?: unknown };
   try {
     body = JSON.parse(rawBody);
   } catch {

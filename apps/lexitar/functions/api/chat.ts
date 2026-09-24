@@ -3,6 +3,7 @@ import { requireSession } from "../_lib/session";
 import { logRequest } from "../_lib/log";
 import { inferenceErrorReply } from "../_lib/model-errors";
 import { attachedModelFor, type AttachedEnv } from "../_lib/inference/attach";
+import { parseRawKeys } from "../../src/lib/raw-cipher";
 // W76 — the declaration and its executor are ONE object. This route used to hand-copy the schema,
 // under a comment claiming a Pages Function cannot import the CLI's tsconfig; chat-tools.ts is in
 // src/lib, which twenty Functions already import from, and the copy had silently dropped the
@@ -78,7 +79,7 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
   if (rawBody.length > MAX_BODY_BYTES) {
     return finish(413, { error: "conversation too large" }, { errorCode: "too_large" });
   }
-  let body: { messages?: unknown; unitSystem?: unknown; final?: unknown; clientId?: unknown };
+  let body: { messages?: unknown; unitSystem?: unknown; final?: unknown; clientId?: unknown; rawKeys?: unknown };
   try {
     body = JSON.parse(rawBody);
   } catch {
@@ -109,7 +110,7 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
   const withTools = body.final !== true;
 
   try {
-    const { client, model, corpus } = await attachedModelFor(env, "chat", { accountId: session.accountId, clientId });
+    const { client, model, corpus } = await attachedModelFor(env, "chat", { accountId: session.accountId, clientId, rawKeys: parseRawKeys(body) });
     const message = await client.messages.create({
       model,
       max_tokens: 4096,

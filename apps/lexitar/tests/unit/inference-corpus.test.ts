@@ -10,11 +10,14 @@ import { reportCorpus, type CorpusEnv, MAX_CORPUS_BYTES, MAX_CORPUS_DOCS, CORPUS
 import {
   CorpusBusyError,
   CorpusDeniedError,
+  CorpusKeyError,
   CorpusMissingError,
   CorpusTooLargeError,
   CorpusUnmeasuredError,
 } from "../../functions/_lib/inference/corpus-errors";
 import { useWorkerd } from "../support/miniflare";
+import { sealRaw } from "../../src/lib/raw-cipher";
+import { bytesToBase64 } from "../../src/lib/base64";
 
 const STORE = "dev";
 const w = useWorkerd({ r2: true, perTest: true });
@@ -350,5 +353,87 @@ describe("a client with nothing stored", () => {
     await store(who, "alex", "readings.xlsx");
 
     expect((await reportCorpus(env(), who, "alex", { citations: true })).turns).toEqual([]);
+  });
+});
+
+// The store is mid-migration for as long as the sweep runs, so every property above has to hold on
+// a namespace whose documents are AES-GCM ciphertext under a key that only arrives with the request.
+describe("reportCorpus on a sealed store", () => {
+  const newKey = (): string => bytesToBase64(crypto.getRandomValues(new Uint8Array(32)));
+
+  /** The same helper as `store`, with the bytes sealed the way the browser seals an upload. */
+  async function storeSealed(owner: string, slug: string, file: string, key: string, pages = 1) {
+    return store(owner, slug, file, { pages, bytes: await sealRaw(PDF(file), key) });
+  }
+
+  // The whole cost argument for the corpus: decryption is deterministic, so encrypting the store
+  // does not move the cache breakpoint. A prefix that differed by one byte would turn every
+  // patient's cache read into a full write.
+  it("builds the prefix a plaintext store builds, byte for byte", async () => {
+    const plain = await account("alex");
+    await store(plain, "alex", "labs.pdf", { pages: 1 });
+    const key = newKey();
+    const sealed = await account("sam");
+    await storeSealed(sealed, "sam", "labs.pdf", key);
+
+    const a = await reportCorpus(env(), plain, "alex", { citations: true });
+    const b = await reportCorpus(env(), sealed, "sam", { citations: true, rawKeys: { "labs.pdf": key } });
+
+    expect(JSON.stringify(b.turns)).toBe(JSON.stringify(a.turns));
+  });
+
+  // The envelope's 48 bytes are storage overhead, not something the model is sent, so the ceiling
+  // has to count what was read rather than what was stored.
+  it("budgets on the plaintext it sends, not on the envelope it read", async () => {
+    const who = await account("alex");
+    const key = newKey();
+    await storeSealed(who, "alex", "labs.pdf", key);
+
+    const corpus = await reportCorpus(env(), who, "alex", { citations: true, rawKeys: { "labs.pdf": key } });
+
+    expect(corpus.byteCount).toBe(PDF("labs.pdf").length);
+  });
+
+  it("refuses a sealed document the request carried no key for", async () => {
+    const who = await account("alex");
+    await storeSealed(who, "alex", "labs.pdf", newKey());
+
+    await expect(reportCorpus(env(), who, "alex", { citations: true })).rejects.toBeInstanceOf(CorpusKeyError);
+  });
+
+  it("refuses a key that does not open the document rather than sending garbage", async () => {
+    const who = await account("alex");
+    await storeSealed(who, "alex", "labs.pdf", newKey());
+
+    await expect(
+      reportCorpus(env(), who, "alex", { citations: true, rawKeys: { "labs.pdf": newKey() } }),
+    ).rejects.toBeInstanceOf(CorpusKeyError);
+  });
+
+  // The browser heals the whole record in one pass, so a refusal naming one file at a time would
+  // take one round trip per document to get there.
+  it("names every document it could not open, not the first", async () => {
+    const who = await account("alex");
+    const key = newKey();
+    await storeSealed(who, "alex", "labs.pdf", newKey());
+    await storeSealed(who, "alex", "scan.pdf", key);
+    await storeSealed(who, "alex", "xray.pdf", newKey());
+
+    await expect(
+      reportCorpus(env(), who, "alex", { citations: true, rawKeys: { "scan.pdf": key } }),
+    ).rejects.toMatchObject({ files: ["labs.pdf", "xray.pdf"] });
+  });
+
+  // THE PROPERTY THAT MUST NOT BE LOST: the key map decrypts, it never authorizes. Holding a valid
+  // content key for someone else's document buys nothing — `rawAccessFor` still decides.
+  it("refuses another account's namespace to a caller holding a valid key for it", async () => {
+    const who = await account("alex");
+    const key = newKey();
+    await storeSealed(who, "alex", "labs.pdf", key);
+    const stranger = await account("nobody");
+
+    await expect(
+      reportCorpus(env(), stranger, "alex", { citations: true, rawKeys: { "labs.pdf": key } }),
+    ).rejects.toBeInstanceOf(CorpusDeniedError);
   });
 });

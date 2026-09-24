@@ -10,10 +10,12 @@
 // one-off plover-code CLI scripts against the local plaintext mirror, now reimplemented against
 // R2/D1 directly below.
 
-import type { Client, InferenceMode, PendingUpload, TreatmentItem } from "../../src/lib/types";
+import type { Client, InferenceMode, PendingUpload, TreatmentItem, Vault } from "../../src/lib/types";
 import { UsageAccumulator } from "../inference-cost";
 import { recordOrgKeyUse } from "../access-log";
 import { getObject, r2RawKeyFor, LIVE_BUCKET } from "../vault-sync";
+import { openRaw } from "../../src/lib/raw-cipher";
+import { normalizeClientId } from "../../src/lib/client-id";
 import { withDeployedClient, listDeployedVaultIds } from "../vault-ops";
 import { refreshFindingFor, refreshRangesFor, refreshMarkerGroupsFor, type RefreshRangesOptions } from "./refresh";
 import { reconcileTreatmentAttachments, nodeHashesOf } from "../factors";
@@ -41,11 +43,23 @@ async function run<T>(
   store: string,
   dryRun: boolean,
   purpose: string,
-  mutate: (client: Client, vault: import("../../src/lib/types").Vault, clientKey: string) => Promise<T> | T,
+  mutate: (client: Client, vault: Vault, clientKey: string) => Promise<T> | T,
 ) {
   recordOrgKeyUse({ clientId: vaultId, purpose });
   const result = await withDeployedClient({ vaultId, store, dryRun, mutate });
   return result;
+}
+
+/**
+ * One stored original's PLAINTEXT bytes.
+ *
+ * Opened with the key ring of the vault this op has ALREADY decrypted (src/lib/raw-cipher.ts), which
+ * is why it takes the vault rather than going through scripts/raw-cipher-cli.ts: that would unwrap
+ * the same DEK with the org key a second time and log a second access for one operation.
+ */
+async function rawPlaintext(vault: Vault, store: string, id: string, file: string): Promise<Uint8Array | null> {
+  const stored = await getObject(LIVE_BUCKET, r2RawKeyFor(store, id, file));
+  return stored && openRaw(stored, file, vault.rawKeys?.[normalizeClientId(id)]?.[file]);
 }
 
 export async function opRefreshFinding(args: OpArgs, usage: UsageAccumulator) {
@@ -83,6 +97,7 @@ export interface PendingResult {
 // same foldReport/foldSource the browser and the old CLI both fold through.
 async function processOnePending(
   client: Client,
+  vault: Vault,
   clientId: string,
   store: string,
   pending: PendingUpload,
@@ -90,7 +105,7 @@ async function processOnePending(
   usage: UsageAccumulator,
 ): Promise<{ client: Client; ok: true } | { ok: false; message: string }> {
   const rawKey = r2RawKeyFor(store, clientId, pending.file);
-  const bytes = await getObject(LIVE_BUCKET, rawKey);
+  const bytes = await rawPlaintext(vault, store, clientId, pending.file);
   if (!bytes) return { ok: false, message: `raw object missing at ${LIVE_BUCKET}/${rawKey}` };
 
   const importedAt = new Date().toISOString();
@@ -124,11 +139,11 @@ function dropPending(client: Client, sha256: string): void {
   client.pendingUploads = client.pendingUploads.filter((p) => p.sha256 !== sha256);
 }
 
-async function foldAllPending(client: Client, clientId: string, store: string, mode: InferenceMode, usage: UsageAccumulator): Promise<{ client: Client; result: PendingResult }> {
+async function foldAllPending(client: Client, vault: Vault, clientId: string, store: string, mode: InferenceMode, usage: UsageAccumulator): Promise<{ client: Client; result: PendingResult }> {
   let current = client;
   const result: PendingResult = { processed: [], stillPending: [], failures: [] };
   for (const pending of [...(client.pendingUploads ?? [])]) {
-    const outcome = await processOnePending(current, clientId, store, pending, mode, usage);
+    const outcome = await processOnePending(current, vault, clientId, store, pending, mode, usage);
     if (outcome.ok) {
       current = outcome.client;
       result.processed.push(pending.id);
@@ -142,7 +157,7 @@ async function foldAllPending(client: Client, clientId: string, store: string, m
 
 export async function opProcessPending(args: OpArgs, usage: UsageAccumulator) {
   return run(args.vaultId, args.store, args.dryRun, "ingest:process-pending", async (client, vault, clientKey) => {
-    const { client: next, result } = await foldAllPending(client, args.vaultId, args.store, args.mode, usage);
+    const { client: next, result } = await foldAllPending(client, vault, args.vaultId, args.store, args.mode, usage);
     vault.clients[clientKey] = next;
     return result;
   });
@@ -280,7 +295,7 @@ export interface PhotoExtractResult {
 }
 
 export async function opTreatmentPhotoExtract(args: OpArgs, extract: PhotoExtractArgs, usage: UsageAccumulator) {
-  return run(args.vaultId, args.store, args.dryRun, "ingest:treatment-photo-extract", async (client) => {
+  return run(args.vaultId, args.store, args.dryRun, "ingest:treatment-photo-extract", async (client, vault) => {
     const rows = selectTreatmentRows(client.factors?.treatments ?? [], extract.name, extract.rowId);
     if (rows.length === 0) {
       throw new Error(
@@ -294,7 +309,7 @@ export async function opTreatmentPhotoExtract(args: OpArgs, extract: PhotoExtrac
     const images = await Promise.all(
       extract.keys.map(async (key) => {
         const rawKey = r2RawKeyFor(args.store, args.vaultId, key);
-        const bytes = await getObject(LIVE_BUCKET, rawKey);
+        const bytes = await rawPlaintext(vault, args.store, args.vaultId, key);
         if (!bytes) throw new Error(`raw object missing at ${LIVE_BUCKET}/${rawKey}`);
         const mediaType = key.toLowerCase().endsWith(".png") ? ("image/png" as const) : ("image/jpeg" as const);
         return { base64: bytesToBase64(bytes), mediaType };
