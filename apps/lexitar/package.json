@@ -39,6 +39,7 @@
     "recovery:approve": "tsx scripts/recovery-approve.ts",
     "raw:backfill": "tsx scripts/raw-backfill.ts",
     "raw:pages": "tsx scripts/raw-pages-backfill.ts",
+    "raw:encrypt": "tsx scripts/raw-encrypt-backfill.ts",
     "corpus:measure": "tsx scripts/corpus-measure.ts",
     "orphan:sweep": "tsx scripts/orphan-sweep.ts",
     "r2-ops": "tsx scripts/r2-ops-cli.ts",

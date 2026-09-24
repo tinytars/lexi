@@ -36,10 +36,11 @@ on:
           - treatment-photo-extract
           - raw-backfill
           - raw-pages-backfill
+          - raw-encrypt-backfill
           - orphan-sweep
           - recovery-approve
       client:
-        description: "Client id (e.g. alex). Ignored by raw-backfill, raw-pages-backfill and orphan-sweep, which are store-wide. recovery-approve reads this as the patient's account email instead. Omit for reconcile to fan out across every deployed vault."
+        description: "Client id (e.g. alex). Ignored by raw-backfill, raw-pages-backfill, raw-encrypt-backfill and orphan-sweep, which are store-wide. recovery-approve reads this as the patient's account email instead. Omit for reconcile to fan out across every deployed vault."
         required: false
         type: string
       preview:
@@ -87,7 +88,7 @@ concurrency:
 jobs:
   op:
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ inputs.preview && 10 || fromJSON('{"refresh-finding":45,"refresh-ranges":30,"refresh-marker-groups":20,"process-pending":30,"reconcile":20,"sync-treatment-attachments":10,"treatment-groups-backfill":30,"treatment-photo-extract":10,"raw-backfill":15,"raw-pages-backfill":30,"orphan-sweep":15,"recovery-approve":5}')[inputs.op] }}
+    timeout-minutes: ${{ inputs.preview && 10 || fromJSON('{"refresh-finding":45,"refresh-ranges":30,"refresh-marker-groups":20,"process-pending":30,"reconcile":20,"sync-treatment-attachments":10,"treatment-groups-backfill":30,"treatment-photo-extract":10,"raw-backfill":15,"raw-pages-backfill":30,"raw-encrypt-backfill":45,"orphan-sweep":15,"recovery-approve":5}')[inputs.op] }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -223,6 +224,17 @@ jobs:
                 else
                   note="This run DELETES the unreadable files it finds. The nightly snapshot is the only undo."
                 fi
+              fi
+              ;;
+            raw-encrypt-backfill)
+              # Store-wide, like raw-backfill. It reads and rewrites every plaintext original, so the
+              # preview reads them all too and writes nothing — the counts it prints are the migration's
+              # remaining work. A real run overwrites patient objects IN PLACE; the nightly snapshot is
+              # the only undo, so verify `npm run vault:snapshot:check` is green before dispatching one.
+              cmd="npx tsx scripts/raw-encrypt-backfill.ts"
+              if ! $preview; then
+                cmd="$cmd --confirm"
+                note="This run OVERWRITES patient objects in place with their sealed form. The nightly snapshot is the only undo."
               fi
               ;;
             orphan-sweep)

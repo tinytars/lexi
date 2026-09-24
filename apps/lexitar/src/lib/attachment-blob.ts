@@ -9,11 +9,16 @@ import { openStored } from "./vault-raw-keys";
 
 const rawUrl = (clientId: string, key: string): string => `/api/raw/${normalizeClientId(clientId)}/${encodeURIComponent(key)}`;
 
-/** The PLAINTEXT bytes of one stored original, whichever format the store currently holds it in. */
-export async function fetchAttachmentBytes(clientId: string, key: string): Promise<Uint8Array> {
+/** The bytes as STORED — still sealed if the store holds them sealed. The sealing sweep needs these. */
+export async function fetchStoredBytes(clientId: string, key: string): Promise<Uint8Array> {
   const res = await fetch(rawUrl(clientId, key));
   if (!res.ok) throw new Error(`fetching the attachment failed (${res.status})`);
-  return openStored(new Uint8Array(await res.arrayBuffer()), clientId, key);
+  return new Uint8Array(await res.arrayBuffer());
+}
+
+/** The PLAINTEXT bytes of one stored original, whichever format the store currently holds it in. */
+export async function fetchAttachmentBytes(clientId: string, key: string): Promise<Uint8Array> {
+  return openStored(await fetchStoredBytes(clientId, key), clientId, key);
 }
 
 // Keyed by client and file, holding the PROMISE rather than the URL so two surfaces opening the

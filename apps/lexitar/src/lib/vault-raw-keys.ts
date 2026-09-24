@@ -11,11 +11,23 @@
 import type { RawKeyMap } from "./raw-cipher";
 import { openRaw } from "./raw-cipher";
 import { normalizeClientId } from "./client-id";
+import { bytesToBase64 } from "./base64";
 import type { Vault } from "./types";
 
 type Keyring = Record<string, RawKeyMap>;
 
 let keyring: Keyring = {};
+
+/**
+ * Writes one content key into the vault blob and returns once the write has landed.
+ *
+ * It applies the key to the in-memory vault SYNCHRONOUSLY and only then awaits the write, which is
+ * what lets two uploads mint at once: each reads a vault the other has already added its key to, so
+ * neither whole-blob write drops the other's key.
+ */
+type KeySink = (clientId: string, file: string, key: string) => Promise<void>;
+
+let sink: KeySink | null = null;
 
 /** Publishes the open vault's keys. Called wherever the decrypted vault becomes the app's state. */
 export function setRawKeyring(vault: Pick<Vault, "rawKeys">): void {
@@ -25,6 +37,7 @@ export function setRawKeyring(vault: Pick<Vault, "rawKeys">): void {
 /** Locking the vault takes the keys with it — nothing decryptable should outlive the session. */
 export function clearRawKeyring(): void {
   keyring = {};
+  sink = null;
 }
 
 /** One client's keys, as the `rawKeys` field of a request body. Empty until anything is sealed. */
@@ -63,4 +76,28 @@ export function withRawKey(vault: Vault, clientId: string, file: string, key: st
   const keys = { ...vault.rawKeys?.[id], [file]: key };
   keyring = { ...keyring, [id]: keys };
   return { ...vault, rawKeys: { ...vault.rawKeys, [id]: keys } };
+}
+
+/** Registered once where the vault is held. `null` while it is closed — nothing can record a key. */
+export function setRawKeySink(fn: KeySink | null): void {
+  sink = fn;
+}
+
+/**
+ * A fresh content key for one file, DURABLE BEFORE ITS CIPHERTEXT EXISTS.
+ *
+ * The ordering is the whole point. A sealed object whose key was never saved is unopenable, and
+ * because the corpus reads every `raw_objects` row under a namespace, one of them refuses that
+ * patient's every question with `corpus_key_missing` — a loss no later sweep can undo. Saving first
+ * risks only an unused key, and an unused key costs nothing: `openRaw` passes plaintext through
+ * whether or not the ring holds one for it.
+ *
+ * Returns null when there is no open vault to record it in, which is the signal to store plaintext.
+ */
+export async function mintRawKey(clientId: string, file: string): Promise<string | null> {
+  const write = sink;
+  if (!write) return null;
+  const key = bytesToBase64(crypto.getRandomValues(new Uint8Array(32)));
+  await write(normalizeClientId(clientId), file, key);
+  return key;
 }
