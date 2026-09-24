@@ -59,6 +59,8 @@
   import { importFileForChat, type ChatImportResult } from "./lib/import-flow";
   import { withClient } from "./lib/vault-clients";
   import { reclaimOrphans } from "./lib/orphan-claim";
+  import { setRawKeyring, clearRawKeyring } from "./lib/vault-raw-keys";
+  import { revokeAttachmentBlobs } from "./lib/attachment-store";
   import { putRaw } from "./lib/attachment-store";
   import { healRawPageCounts } from "./lib/raw-pages-heal";
   import { togglePinnedIn, renameIn, removeFrom, labelOf, type SidebarItemKind } from "./lib/vault-item-ops";
@@ -121,6 +123,19 @@
     void vaultOpen;
     void selectedClientId;
     speechRegistry.stop();
+  });
+
+  // The content keys that open stored originals, published for the life of the open vault. Here
+  // rather than at each `vault = ...` assignment because there are six of them and a missed one is
+  // a record whose own attachments will not open (vault-raw-keys.ts).
+  $effect(() => {
+    if (vault) {
+      setRawKeyring(vault);
+      return;
+    }
+    // Closing the vault takes the keys AND the decrypted copies already handed to the page.
+    clearRawKeyring();
+    revokeAttachmentBlobs();
   });
 
   // Reads the open record's reports into the prompt cache before the patient asks anything, so the

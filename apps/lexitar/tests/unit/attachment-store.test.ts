@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  buildAttachmentKey, attachmentUrl, attachmentsOf, attachFiles, MAX_ATTACHMENT_BYTES,
+  buildAttachmentKey, attachmentsOf, attachFiles, MAX_ATTACHMENT_BYTES,
 } from "../../src/lib/attachment-store";
 
 describe("buildAttachmentKey", () => {
@@ -21,12 +21,6 @@ describe("buildAttachmentKey", () => {
     const bytes = new TextEncoder().encode("abc");
     const key = await buildAttachmentKey(bytes, "IMG_2024-01-02.jpeg");
     expect(key.slice(9)).toBe("IMG_2024-01-02.jpeg");
-  });
-});
-
-describe("attachmentUrl", () => {
-  it("lowercases the client id and encodes the key", () => {
-    expect(attachmentUrl("Alex", "ab12cd34-my file.jpg")).toBe("/api/raw/alex/ab12cd34-my%20file.jpg");
   });
 });
 

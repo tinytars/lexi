@@ -5,6 +5,7 @@ import { INFERENCE, capsFor, maxCorpusPagesFor, type Feature, type InferenceConf
 import { ModelUnsupportedError } from "../model-errors";
 import { emptyCorpus, reportCorpus, reportsAttached, type Corpus, type CorpusEnv } from "./corpus";
 import { modelFor, type ResolvedModel } from "./resolve";
+import type { Subject } from "./subject";
 
 // Every feature except these six answers a question about one person's record, and therefore
 // answers it in sight of that person's own reports (CORPUS.md).
@@ -43,7 +44,7 @@ const FORMATTED_OUTPUT: readonly AttachedFeature[] = ["ranges", "markerGroups"];
 export async function attachedModelFor(
   env: AttachedEnv,
   feature: AttachedFeature,
-  who: { accountId: string; clientId: string },
+  who: Subject,
   config: InferenceConfig = INFERENCE,
 ): Promise<ResolvedModel & { corpus: Corpus }> {
   const resolved = modelFor(env, feature, "prod", config);
@@ -52,6 +53,7 @@ export async function attachedModelFor(
   const corpus = await reportCorpus(env, who.accountId, who.clientId, {
     citations: !FORMATTED_OUTPUT.includes(feature),
     maxPages: maxCorpusPagesFor(feature, config),
+    rawKeys: who.rawKeys,
   });
   return { ...resolved, corpus };
 }

@@ -55,7 +55,7 @@ describe("the configured stack can carry what it is asked to carry", () => {
         ]),
       ),
     });
-    const who = { accountId: await clientWithOneReport("alex"), clientId: "alex" };
+    const who = { accountId: await clientWithOneReport("alex"), clientId: "alex", rawKeys: {} };
 
     await expect(attachedModelFor(env("always"), "chat", who, textOnly)).rejects.toBeInstanceOf(ModelUnsupportedError);
   });
@@ -63,7 +63,7 @@ describe("the configured stack can carry what it is asked to carry", () => {
 
 describe("REPORTS", () => {
   it("attaches the client's reports when it is on", async () => {
-    const who = { accountId: await clientWithOneReport("alex"), clientId: "alex" };
+    const who = { accountId: await clientWithOneReport("alex"), clientId: "alex", rawKeys: {} };
 
     const { corpus } = await attachedModelFor(env("always"), "chat", who);
 
@@ -74,13 +74,13 @@ describe("REPORTS", () => {
   // An unset flag is a deployment that never asked for this: it keeps the behaviour, and the bill,
   // it had before the feature existed.
   it("attaches nothing, and reads no storage at all, when it is unset", async () => {
-    const { corpus } = await attachedModelFor(noStorage(), "chat", { accountId: "anyone", clientId: "alex" });
+    const { corpus } = await attachedModelFor(noStorage(), "chat", { accountId: "anyone", clientId: "alex", rawKeys: {} });
 
     expect(corpus).toEqual({ turns: [], docCount: 0, pageCount: 0, byteCount: 0 });
   });
 
   it("attaches nothing when it is explicitly off", async () => {
-    const { corpus } = await attachedModelFor(noStorage("never"), "chat", { accountId: "anyone", clientId: "alex" });
+    const { corpus } = await attachedModelFor(noStorage("never"), "chat", { accountId: "anyone", clientId: "alex", rawKeys: {} });
 
     expect(corpus.docCount).toBe(0);
   });
@@ -88,13 +88,13 @@ describe("REPORTS", () => {
   // A typo here would silently serve partial-knowledge answers to every patient, which is the one
   // outcome this design refuses — so it is loud instead.
   it("throws on any other value rather than quietly falling back to off", async () => {
-    await expect(attachedModelFor(noStorage("Always"), "chat", { accountId: "a", clientId: "alex" })).rejects.toThrow(/REPORTS/);
+    await expect(attachedModelFor(noStorage("Always"), "chat", { accountId: "a", clientId: "alex", rawKeys: {} })).rejects.toThrow(/REPORTS/);
   });
 });
 
 describe("citations", () => {
   it("asks for page cites on a feature that answers in prose", async () => {
-    const who = { accountId: await clientWithOneReport("alex"), clientId: "alex" };
+    const who = { accountId: await clientWithOneReport("alex"), clientId: "alex", rawKeys: {} };
 
     const { corpus } = await attachedModelFor(env("always"), "chat", who);
 
@@ -104,7 +104,7 @@ describe("citations", () => {
   // output_config.format and citations are mutually exclusive; ranges and markerGroups use the
   // former, so asking for both would be a 400 in front of a real question.
   it("omits them on the features that pin their output shape", async () => {
-    const who = { accountId: await clientWithOneReport("alex"), clientId: "alex" };
+    const who = { accountId: await clientWithOneReport("alex"), clientId: "alex", rawKeys: {} };
 
     for (const feature of ["ranges", "markerGroups"] as const) {
       const { corpus } = await attachedModelFor(env("always"), feature, who);

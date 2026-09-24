@@ -8,6 +8,7 @@
 import { AiError, withDeadline } from "./ai-error";
 import { LEAF_REGEN_DEADLINE_MS } from "./leaf-regen-config";
 import type { Client, PersonalizedRange } from "./types";
+import { corpusSubject } from "./vault-raw-keys";
 
 /**
  * One marker's personalized range. Throws AiError with the relay's machine-readable errorCode so the
@@ -28,7 +29,7 @@ export async function fetchPersonalizedRange(
     fetch("/api/refresh-range", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${providerToken}` },
-      body: JSON.stringify({ client, clientId, marker }),
+      body: JSON.stringify({ client, ...corpusSubject(clientId), marker }),
       signal,
     }).catch((e) => {
       if ((e as Error).name === "AbortError") throw e;

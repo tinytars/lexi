@@ -2,6 +2,7 @@ import { requireSession } from "../_lib/session";
 import { logRequest } from "../_lib/log";
 import { inferenceErrorReply } from "../_lib/model-errors";
 import { attachedModelFor, type AttachedEnv } from "../_lib/inference/attach";
+import { parseRawKeys } from "../../src/lib/raw-cipher";
 import { GET_MARKER_READINGS_TOOL } from "../../src/lib/chat-tools";
 import { chatSystemPrompt } from "../../src/lib/chat-prompt";
 import { reportsAttached } from "../_lib/inference/corpus";
@@ -51,7 +52,7 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
   const session = await requireSession(request, env);
   if (session instanceof Response) return finish(401, { error: "unauthorized" }, { errorCode: "unauthorized" });
 
-  let body: { clientId?: unknown; unitSystem?: unknown };
+  let body: { clientId?: unknown; unitSystem?: unknown; rawKeys?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -72,7 +73,7 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
   if (providerFor(FEATURE).api !== "anthropic") return finish(200, { warmed: false, reason: "unsupported" });
 
   try {
-    const { client, model, corpus } = await attachedModelFor(env, FEATURE, { accountId: session.accountId, clientId });
+    const { client, model, corpus } = await attachedModelFor(env, FEATURE, { accountId: session.accountId, clientId, rawKeys: parseRawKeys(body) });
     // Nothing to warm: this record holds no PDFs yet. A cache entry over a bare system prompt is
     // not worth a round trip.
     if (corpus.turns.length === 0) return finish(200, { warmed: false, reason: "no_corpus" });
