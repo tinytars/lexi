@@ -84,7 +84,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@tinytars/vault": "^0.1.18",
+    "@tinytars/vault": "^0.1.28",
     "pdfjs-dist": "^6.2.108"
   },
   "peerDependencies": {

@@ -58,7 +58,7 @@
     "playwright": "^1.60.0",
     "svelte": "^5.57.1",
     "svelte-check": "^4.4.8",
-    "tsx": "^4.22.3",
+    "tsx": "^4.23.15",
     "typescript": "~7.0.2",
     "vite": "^8.0.12",
     "vitest": "^5.0.0",
@@ -66,12 +66,12 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.127.0",
-    "@pablotech/akesi": "^0.1.56",
-    "@pablotech/neuro": "^0.1.53",
+    "@pablotech/akesi": "^0.1.58",
+    "@pablotech/neuro": "^0.1.58",
     "@simplewebauthn/browser": "^14.0.0",
     "@simplewebauthn/server": "^14.0.2",
     "@tinytars/frame": "^0.1.5",
-    "@tinytars/vault": "^0.1.18",
+    "@tinytars/vault": "^0.1.28",
     "pdfjs-dist": "^6.2.108",
     "xlsx": "^0.18.5"
   }
