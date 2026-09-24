@@ -1,5 +1,5 @@
 import type { D1Database } from "../../_lib/identity-types";
-import { recordRawObject } from "../../_lib/identity-audit";
+import { recordRawObject, listRawPdfsUnder } from "../../_lib/identity-audit";
 import { requireSession } from "../../_lib/session";
 import { logRequest } from "../../_lib/log";
 import { normalizeClientId } from "../../../src/lib/client-id";
@@ -7,6 +7,7 @@ import { storeKey } from "../../_lib/store";
 import { rawAccessFor, mayRead, mayWrite, mayDestroy, type RawAccess } from "../../_lib/raw-owner";
 import { json } from "../../_lib/http";
 import type { ObjectBucket } from "../../_lib/object-bucket";
+import { MAX_PAGE_COUNT, isPageCount, isPdfFile } from "../../_lib/raw-files";
 
 // W13d — GET /api/raw/{id}/{file}: stream an original raw source (PDF/XLSX) from R2.
 // Raw originals are PLAINTEXT PHI, so unlike the open /api/vault .enc GET this is
@@ -64,7 +65,10 @@ export async function onRequestGet(context: Ctx): Promise<Response> {
   }
 
   // {id}/{file} required; reject path traversal / empties (segments can't contain "/").
-  if (!id || !file || segs.some((s) => s === "" || s === "." || s === "..")) {
+  // `?unmeasured=1` is the one shape with no file segment: it asks which PDFs in this namespace
+  // have no page count yet, so the browser can measure them (see below).
+  const unmeasured = new URL(request.url).searchParams.get("unmeasured") === "1";
+  if (!id || segs.some((s) => s === "" || s === "." || s === "..") || (!file && !unmeasured)) {
     log(400, { errorCode: "bad_path" });
     return json(400, { error: "expected /api/raw/{id}/{file}" });
   }
@@ -78,6 +82,18 @@ export async function onRequestGet(context: Ctx): Promise<Response> {
   if (!mayRead(access)) {
     log(404, { errorCode: refusal(access), access: access.kind });
     return json(404, { error: "not found" });
+  }
+
+  // W77 — the corpus refuses to assemble while any PDF is unmeasured, which would strand every
+  // object uploaded before page counts existed. Rather than guess a count from byte size (a 12 MB
+  // scan can be 2 pages), the browser re-opens each named PDF with pdf.js and PUTs `?pages=`. This
+  // returns KEYS only — no bytes, no PHI beyond the filenames the caller already owns.
+  if (unmeasured) {
+    const prefix = storeKey(env, "raw", normalizeClientId(id), "");
+    const rows = await listRawPdfsUnder(env.DB, prefix);
+    const files = rows.filter((r) => r.pages === null).map((r) => r.r2_key.slice(prefix.length));
+    log(200, { access: access.kind });
+    return json(200, { files });
   }
 
   const obj = await env.VAULT.get(storeKey(env, "raw", normalizeClientId(id), file));
@@ -100,6 +116,15 @@ export async function onRequestGet(context: Ctx): Promise<Response> {
 // design — no HD1 check. Path/guard logic mirrors onRequestGet; idempotent (a re-PUT
 // of the same content-addressed file is a harmless overwrite).
 const MAX_RAW_BYTES = 24 * 1024 * 1024;
+
+/** `?pages=N` from the browser's pdf.js. Returns undefined when absent, null when present but unusable. */
+function parsePages(url: string, file: string): number | undefined | null {
+  const raw = new URL(url).searchParams.get("pages");
+  if (raw === null) return undefined;
+  if (!isPdfFile(file)) return null;
+  const n = Number(raw);
+  return isPageCount(n) ? n : null;
+}
 export async function onRequestPut(context: Ctx): Promise<Response> {
   const { request, env, params } = context;
   const start = Date.now();
@@ -138,13 +163,21 @@ export async function onRequestPut(context: Ctx): Promise<Response> {
     return json(404, { error: "not found" });
   }
 
+  const pages = parsePages(request.url, file);
+  if (pages === null) {
+    log(400, { errorCode: "bad_pages" });
+    return json(400, { error: `pages must be an integer 1-${MAX_PAGE_COUNT} on a .pdf upload` });
+  }
+
   const key = storeKey(env, "raw", normalizeClientId(id), file);
   await env.VAULT.put(key, bytes);
   // W72 — record who wrote it. The key carries a client DISPLAY NAME, which lives only inside the
   // encrypted vault, so without this row the server can never afterwards say whose object this is —
   // which is why erasure could not promise to delete a patient's originals. Written after the put, so
   // a failed upload leaves no ownership claim; INSERT OR IGNORE, so a re-PUT does not reassign it.
-  await recordRawObject(env.DB, key, session.accountId);
+  // W77 — `pages` rides along because pdf.js does not run on Workers, so this request is the only
+  // moment the page count is known server-side without a second round trip for the bytes.
+  await recordRawObject(env.DB, key, session.accountId, { ...(pages !== undefined && { pages }), bytes: bytes.length });
   log(204, { bytes: bytes.length, access: access.kind }); // W8d: audit the write — id + size, never the bytes
   return new Response(null, { status: 204 });
 }

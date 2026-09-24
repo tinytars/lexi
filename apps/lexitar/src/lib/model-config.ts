@@ -31,6 +31,7 @@ export interface AnthropicProvider {
   api: "anthropic";
   keyEnv: string[];
   billingUrl?: string;
+  maxCorpusPages?: number;
 }
 
 export interface OpenAIProvider {
@@ -44,6 +45,7 @@ export interface OpenAIProvider {
   maxTokensField?: "max_completion_tokens" | "max_tokens";
   /** Clamp on output tokens, for a local model whose context is smaller than the app asks for. */
   maxOutputTokens?: number;
+  maxCorpusPages?: number;
 }
 
 export type Provider = AnthropicProvider | OpenAIProvider;
@@ -84,13 +86,16 @@ function parseProvider(name: string, p: unknown): Provider {
   if (p.billingUrl !== undefined && (typeof p.billingUrl !== "string" || !p.billingUrl.startsWith("https://"))) {
     fail(`${where}.billingUrl must be an https URL`);
   }
+  if (p.maxCorpusPages !== undefined && !(Number.isInteger(p.maxCorpusPages) && (p.maxCorpusPages as number) > 0)) {
+    fail(`${where}.maxCorpusPages must be a positive integer`);
+  }
   if (p.api === "anthropic") {
-    onlyKeys(p, ["api", "keyEnv", "billingUrl"], where);
+    onlyKeys(p, ["api", "keyEnv", "billingUrl", "maxCorpusPages"], where);
     if (keyEnv.length === 0) fail(`${where}.keyEnv: an anthropic provider needs a key`);
     return p as unknown as AnthropicProvider;
   }
   if (p.api === "openai") {
-    onlyKeys(p, ["api", "baseUrl", "keyEnv", "caps", "billingUrl", "maxTokensField", "maxOutputTokens"], where);
+    onlyKeys(p, ["api", "baseUrl", "keyEnv", "caps", "billingUrl", "maxTokensField", "maxOutputTokens", "maxCorpusPages"], where);
     if (typeof p.baseUrl !== "string" || !/^https?:\/\//.test(p.baseUrl)) fail(`${where}.baseUrl must be an http(s) URL`);
     if (!isRecord(p.caps) || !CAPS.every((c) => typeof (p.caps as Record<string, unknown>)[c] === "boolean")) {
       fail(`${where}.caps must set ${CAPS.join(", ")} to true or false`);
@@ -159,4 +164,19 @@ const ANTHROPIC_CAPS: Caps = { vision: true, pdf: true, jsonSchema: true, tools:
 export function capsFor(feature: Feature, config: InferenceConfig = INFERENCE): Caps {
   const p = providerFor(feature, config);
   return p.api === "openai" ? p.caps : ANTHROPIC_CAPS;
+}
+
+/**
+ * How many pages of the patient's reports one request to this feature's model may carry (CORPUS.md
+ * §5), for a provider that declares no ceiling of its own. Every provider this repo ships does
+ * declare one, derived from its model's context window — this is what a deployer's own config falls
+ * back to when it says nothing, and it assumes the 1 M window the shipped models have.
+ *
+ * Here rather than in the assembler because it is a MODEL property, not a transport one: a 200 K
+ * model holds a quarter of what a 1 M one does, on the same bytes.
+ */
+export const DEFAULT_MAX_CORPUS_PAGES = 250;
+
+export function maxCorpusPagesFor(feature: Feature, config: InferenceConfig = INFERENCE): number {
+  return providerFor(feature, config).maxCorpusPages ?? DEFAULT_MAX_CORPUS_PAGES;
 }

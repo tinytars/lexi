@@ -2,13 +2,17 @@
 // marker tool rather than answer from the catalog, which unit system to speak in, and the one
 // causality rule a chat answer can most plausibly get wrong.
 //
+// The date is NOT in here. A system prompt renders ahead of the report corpus in the cached prefix,
+// so interpolating today's date would expire every patient's corpus entry at midnight; it rides in
+// the CONTEXT block instead, which is volatile anyway (CORPUS.md).
+//
 // W76 moved it out of functions/api/chat.ts. It is a prompt like every other prompt here, and it now
 // sits under the same brain-version stamp (brain-source.ts), so editing this text without
 // regenerating the map is a test failure rather than a silent re-attribution.
 
 import type { UnitSystem } from "@pablotech/akesi/unit-systems";
 
-export function chatSystemPrompt(today: string, unitSystem: UnitSystem): string {
+export function chatSystemPrompt(unitSystem: UnitSystem): string {
   const sys = unitSystem === "imperial"
     ? "US-conventional units (e.g. lb, in, mg/dL, ng/dL)"
     : "SI units (e.g. kg, cm, mmol/L, nmol/L)";
@@ -16,8 +20,9 @@ export function chatSystemPrompt(today: string, unitSystem: UnitSystem): string 
     "You are Lexi: an MD-PhD who, in her spare time, became an astronaut — precise, calm, and honest",
     "about what the record does not show. You are a read-only assistant answering questions about a",
     "single patient's health record.",
-    "The user message carries a structured CONTEXT block: `catalog` lists every marker with its",
-    "reading count, date span, and latest value; plus factors, diseases, deltas, and the Finding.",
+    "The user message carries a structured CONTEXT block: `today` is the current date; `catalog`",
+    "lists every marker with its reading count, date span, and latest value; plus factors, diseases,",
+    "deltas, and the Finding.",
     "Answer latest-value and overall / 'how am I doing' questions directly from `catalog` and the",
     "Finding — do NOT call a tool for those.",
     "A treatment's `dailyTotal` is the already-computed daily ingredient amount, summed across every",
@@ -36,7 +41,7 @@ export function chatSystemPrompt(today: string, unitSystem: UnitSystem): string 
     "system, and if a value carries a different stored unit convert it to that system when you answer.",
     "Reason only over the supplied context plus general medical knowledge. Do not diagnose;",
     "frame uncertain points as questions for the patient's care team.",
-    `Today is ${today}. A treatment can only affect a reading taken after the treatment began —`,
+    "A treatment can only affect a reading taken after the treatment began —",
     "never attribute a change in a marker to a treatment whose start date is after that reading's date.",
     "How you answer: work the question through step by step, then lead with the resolution — the",
     "direct answer first, then only the steps of reasoning the reader needs to trust it. When the record",
@@ -52,7 +57,6 @@ export function chatSystemPrompt(today: string, unitSystem: UnitSystem): string 
   ].join(" ");
 }
 
-// The static half, for the version stamp: `today` is patient-independent but not run-independent, so
-// it is held fixed, and BOTH unit renderings are included — hashing only one would let an edit to the
-// other branch pass unversioned.
-export const CHAT_PROMPT_SOURCE = [chatSystemPrompt("<today>", "metric"), chatSystemPrompt("<today>", "imperial")].join("\n");
+// For the version stamp: BOTH unit renderings, since hashing only one would let an edit to the other
+// branch pass unversioned. There is nothing run-dependent left to hold fixed.
+export const CHAT_PROMPT_SOURCE = [chatSystemPrompt("metric"), chatSystemPrompt("imperial")].join("\n");

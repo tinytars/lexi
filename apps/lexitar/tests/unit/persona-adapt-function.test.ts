@@ -5,7 +5,10 @@ vi.mock("@anthropic-ai/sdk", () => ({ default: class { messages = { create }; } 
 
 import { onRequestPost } from "../../functions/api/persona-adapt";
 import { signSession } from "../../functions/_lib/session";
+import { createAccount } from "../../functions/_lib/identity-accounts";
+import { recordRawObject } from "../../functions/_lib/identity-audit";
 import { fakeSessionDb } from "../support/session-db";
+import { useWorkerd } from "../support/miniflare";
 
 const ENV = { SESSION_SECRET: "test-secret", DB: fakeSessionDb(), ANTHROPIC_API_KEY: "k" };
 const LEXI = "• ApoB 92 mg/dL on 2026-07-21, up 3% since 2026-03-03.";
@@ -15,7 +18,8 @@ const reply = (text: string, stop_reason = "end_turn") => ({ content: [{ type: "
 async function call(body: unknown, auth = true) {
   const headers: Record<string, string> = { "content-type": "application/json" };
   if (auth) headers.cookie = `hd_session=${await signSession(ENV, "acct-1")}`;
-  return onRequestPost({ request: new Request("http://x/api/persona-adapt", { method: "POST", headers, body: typeof body === "string" ? body : JSON.stringify(body) }), env: ENV });
+  const payload = typeof body === "string" ? body : JSON.stringify(body);
+  return onRequestPost({ request: new Request("http://x/api/persona-adapt", { method: "POST", headers, body: payload }), env: ENV });
 }
 
 beforeEach(() => create.mockReset());
@@ -50,7 +54,9 @@ describe("/api/persona-adapt", () => {
     expect(await (await call({ persona: "cody", text: LEXI })).json()).toEqual({ kind: "fallback" });
   });
 
-  it("never sends the adapter the record — only Lexi's answer", async () => {
+  // The ANSWER turn is the whole of what Cody is asked to restate, with no record spliced into it
+  // — see the describe below for why that holds even where every other route attaches one.
+  it("sends only Lexi's answer", async () => {
     create.mockResolvedValueOnce(reply(LEXI));
     await call({ persona: "cody", text: LEXI });
     const req = create.mock.calls[0][0];
@@ -82,5 +88,37 @@ describe("/api/persona-adapt", () => {
     expect((await call("{not json")).status).toBe(400);
     expect((await call({ persona: "cody", text: LEXI }, false)).status).toBe(401);
     expect(create).not.toHaveBeenCalled();
+  });
+});
+
+describe("/api/persona-adapt carries no corpus", () => {
+  const w = useWorkerd({ r2: true, perTest: true });
+  beforeEach(() => create.mockReset());
+
+  // A restatement changes the voice of a paragraph that already holds every fact — `missingFacts`
+  // proves that on every call — so a corpus could tell it nothing, and this is the one route that
+  // is detached on cost rather than because it has no record to read (CORPUS.md §6). REPORTS is
+  // "always" and the record really does hold a PDF, so an attachment would show up here.
+  it("sends only the answer even with REPORTS on and a report in the record", async () => {
+    const accountId = crypto.randomUUID();
+    await createAccount(w.db, { id: accountId, displayName: "alex", email: `alex-${accountId}@example.com` });
+    const key = "dev/raw/alex/report.pdf";
+    await w.bucket.put(key, new TextEncoder().encode("%PDF-1.4 report"));
+    await recordRawObject(w.db, key, accountId, { pages: 2, bytes: 15 });
+    create.mockResolvedValueOnce(reply(LEXI));
+
+    await onRequestPost({
+      request: new Request("http://x/api/persona-adapt", {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie: `hd_session=${await signSession(ENV, accountId)}` },
+        body: JSON.stringify({ persona: "cody", clientId: "alex", text: LEXI }),
+      }),
+      env: { SESSION_SECRET: "test-secret", DB: w.db, ANTHROPIC_API_KEY: "k", VAULT: w.bucket,
+             STORE_PREFIX: "dev", REPORTS: "always" } as never,
+    });
+
+    const { messages } = create.mock.calls[0][0];
+    expect(messages).toHaveLength(1);
+    expect(messages[0].content).toBe(`THE ANSWER:\n${LEXI}`);
   });
 });

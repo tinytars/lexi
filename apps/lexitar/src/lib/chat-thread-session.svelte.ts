@@ -12,6 +12,7 @@ import type { Permalink } from "./permalink";
 import { newThread, sortThreads, adoptThreads, seedNewThread, type Thread } from "./chat-threads";
 import { loadThreads, saveThreads } from "./chat-store";
 import { resolveReference } from "./reference-resolver";
+import { reportCaughtError } from "./error-reporter";
 
 export interface ChatThreadSessionDeps {
   getSelectedClientId: () => string | null;
@@ -31,6 +32,8 @@ export interface ChatThreadSessionDeps {
 export interface ChatThreadSession {
   threads: Thread[];
   readonly hydrated: boolean;
+  /** A save that failed and stayed failed. Cleared by the next save that succeeds, not by the next attempt. */
+  readonly saveError: string | null;
   renamingId: string | null;
   renameText: string;
   startNewChatThread(): void;
@@ -45,12 +48,21 @@ export interface ChatThreadSession {
   resolveSeedRequest(): void;
 }
 
+// The reporter fingerprints by `name: message`, so a bare Error would bucket a failed chat save with
+// every other Error carrying the same text.
+function named(err: unknown, name: string): Error {
+  const e = err instanceof Error ? err : new Error(String(err));
+  e.name = name;
+  return e;
+}
+
 export function createChatThreadSession(deps: ChatThreadSessionDeps): ChatThreadSession {
   let chatThreads = $state<Thread[]>([newThread()]);
   let chatRenamingId = $state<string | null>(null);
   let chatRenameText = $state("");
   let chatLoadedForId = $state<string | null>(null);
   let chatHydrated = $state(false);
+  let chatSaveError = $state<string | null>(null);
   let chatSaveTimer: ReturnType<typeof setTimeout> | null = null;
   const store = deps.store ?? { loadThreads, saveThreads };
 
@@ -63,7 +75,12 @@ export function createChatThreadSession(deps: ChatThreadSessionDeps): ChatThread
       .then((loaded) => {
         chatThreads = loaded && loaded.length ? adoptThreads(loaded) : [newThread()];
       })
-      .catch(() => {})
+      .catch((e) => {
+        // Opening fresh is still right — a chat tab that will not open is worse than an empty one.
+        // What was wrong is that this was the ONLY record of the failure, and it lived in a
+        // swallowed promise: a 5xx here leaves the tab with no etag, and the user none the wiser.
+        reportCaughtError(named(e, "ChatHistoryLoadFailed"));
+      })
       .finally(() => {
         chatHydrated = true;
       });
@@ -106,7 +123,18 @@ export function createChatThreadSession(deps: ChatThreadSessionDeps): ChatThread
     const snapshot = $state.snapshot(chatThreads) as Thread[];
     if (chatSaveTimer) clearTimeout(chatSaveTimer);
     chatSaveTimer = setTimeout(() => {
-      store.saveThreads(snapshot, id, key).catch(() => {});
+      store
+        .saveThreads(snapshot, id, key)
+        .then(() => {
+          chatSaveError = null; // cleared by a success, not by the next attempt
+        })
+        .catch((e) => {
+          // Threads are rendered from memory, so an unsaved conversation looks identical to a saved
+          // one until the next load finds it missing. The store already retries a conflict once;
+          // reaching here means it could not be resolved, which is a defect worth filing.
+          chatSaveError = (e as Error).message;
+          reportCaughtError(named(e, "ChatSaveFailed"));
+        });
     }, 500);
   }
 
@@ -150,6 +178,9 @@ export function createChatThreadSession(deps: ChatThreadSessionDeps): ChatThread
     },
     get hydrated() {
       return chatHydrated;
+    },
+    get saveError() {
+      return chatSaveError;
     },
     get renamingId() {
       return chatRenamingId;

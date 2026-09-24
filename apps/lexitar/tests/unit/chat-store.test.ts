@@ -15,7 +15,16 @@ import type { Thread } from "../../src/lib/chat-threads";
 // on GET, 412 on a failed If-Match. `DEV` has to be stubbed off because vitest sets it — and the
 // localStorage branch it otherwise takes is the one path where none of this applies.
 
-const threads = (label: string): Thread[] => [{ id: "t1", title: label, messages: [] } as unknown as Thread];
+const thread = (id: string, title: string, turnTexts: string[] = [], at = 1): Thread => ({
+  id,
+  title,
+  pinned: false,
+  turns: turnTexts.map((text) => ({ role: "user", text })),
+  seq: Number(id.slice(1)),
+  lastActivityAt: at,
+});
+
+const threads = (label: string): Thread[] => [thread("t1", label)];
 
 function fakeServer() {
   const state = { blob: null as Uint8Array | null, etag: "", seq: 0, puts: 0 };
@@ -27,8 +36,9 @@ function fakeServer() {
     const headers = new Headers(init.headers);
     const ifMatch = headers.get("If-Match");
     const ifNoneMatch = headers.get("If-None-Match");
-    if (ifMatch && ifMatch !== state.etag) return new Response(null, { status: 412 });
-    if (ifNoneMatch === "*" && state.blob) return new Response(null, { status: 412 });
+    const conflict = () => new Response(null, { status: 412, headers: { etag: state.etag } });
+    if (ifMatch && ifMatch !== state.etag) return conflict();
+    if (ifNoneMatch === "*" && state.blob) return conflict();
     state.puts++;
     state.blob = new Uint8Array(init.body as ArrayBuffer);
     state.etag = `e${++state.seq}`;
@@ -104,14 +114,64 @@ describe("two tabs cannot silently overwrite each other", () => {
     expect((await loadThreads("Alex", dek))![0].title).toBe("two");
   });
 
-  it("the second tab is refused rather than allowed to discard the first tab's write", async () => {
+  it("a second tab's save merges the first tab's write instead of discarding it", async () => {
+    fakeServer();
+    await saveThreads([thread("t1", "tab A", ["a1"], 1)], "Alex", dek);
+
+    // Tab B never read the blob, so it has no token: it claims create-only and is refused. It used
+    // to give up here, having silently lost the message the patient just typed.
+    const fresh = await tab();
+    await expect(fresh.saveThreads([thread("t2", "tab B", ["b1"], 2)], "Alex", dek)).resolves.toBeUndefined();
+
+    const stored = await fresh.loadThreads("Alex", dek);
+    expect(stored!.map((t) => t.title).sort()).toEqual(["tab A", "tab B"]);
+  });
+
+  it("keeps both sides' turns when the two tabs edited the SAME thread", async () => {
+    fakeServer();
+    await saveThreads([thread("t1", "shared", ["q1", "a1", "q2"], 5)], "Alex", dek);
+
+    const fresh = await tab();
+    await fresh.saveThreads([thread("t1", "shared", ["q1"], 1)], "Alex", dek);
+
+    // Chat is append-mostly: the longer turn list is the one that has not lost anything.
+    const stored = await fresh.loadThreads("Alex", dek);
+    expect(stored![0].turns.map((t) => t.text)).toEqual(["q1", "a1", "q2"]);
+  });
+
+  // The regression this whole change exists for. A 412 used to delete the tab's etag, which sent the
+  // NEXT save down the create-only branch against a blob that exists — 412 again, forever, with
+  // every message after it dropped and nothing anywhere saying so.
+  it("does not wedge the tab into a permanent 412 after a conflict", async () => {
     const server = fakeServer();
     await saveThreads(threads("tab A"), "Alex", dek);
-    const winner = server.blob;
 
-    // Tab B never read the blob, so it has no token: it must claim create-only and lose.
     const fresh = await tab();
-    await expect(fresh.saveThreads(threads("tab B"), "Alex", dek)).rejects.toThrow(/another tab/i);
-    expect(server.blob).toBe(winner);
+    await fresh.saveThreads([thread("t2", "first", ["x"], 2)], "Alex", dek);
+    const putsAfterConflict = server.puts;
+
+    await expect(fresh.saveThreads([thread("t2", "second", ["x", "y"], 3)], "Alex", dek)).resolves.toBeUndefined();
+    expect(server.puts).toBe(putsAfterConflict + 1);
+    expect((await fresh.loadThreads("Alex", dek))!.find((t) => t.id === "t2")!.title).toBe("second");
+  });
+
+  it("surfaces a conflict it cannot resolve rather than retrying forever", async () => {
+    const server = fakeServer();
+    await saveThreads(threads("tab A"), "Alex", dek);
+
+    // A conversation that keeps moving underneath us: the GET hands back a version that the PUT
+    // then finds stale, every time. One retry, then it must give up and say so.
+    const fresh = await tab();
+    const body = server.blob!;
+    let served = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        if ((init?.method ?? "GET") === "GET") return new Response(body as BodyInit, { status: 200, headers: { etag: `v${++served}` } });
+        return new Response(null, { status: 412, headers: { etag: `v${++served}` } });
+      }),
+    );
+
+    await expect(fresh.saveThreads(threads("tab B"), "Alex", dek)).rejects.toThrow(/changed since/i);
   });
 });

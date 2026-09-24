@@ -12,10 +12,19 @@ vi.mock("@anthropic-ai/sdk", () => ({
 
 import { onRequestPost } from "../../functions/api/refresh-marker-groups";
 import { markerGroupsHashOf } from "@pablotech/akesi/marker-groups-prompt";
+import { signSession } from "../../functions/_lib/session";
+import { createAccount } from "../../functions/_lib/identity-accounts";
+import { recordRawObject } from "../../functions/_lib/identity-audit";
+import { CORPUS_ACK } from "../../functions/_lib/inference/corpus";
 import { fakeSessionDb } from "../support/session-db";
+import { useWorkerd } from "../support/miniflare";
 
+// REPORTS is unset here — a deployment that never turned the corpus on — so a VAULT that throws on
+// contact is the assertion that these cases read no reports. The audit trail's own put throws too,
+// which auditor() swallows by design: a log write never breaks the request it logs.
+const NO_STORAGE = new Proxy({}, { get: () => () => { throw new Error("touched storage"); } }) as never;
 const ENV = { PROVIDER_TOKEN: "provtok", ANTHROPIC_API_KEY: "k", SESSION_SECRET: "test-secret",
-    DB: fakeSessionDb(), STORE_PREFIX: "dev" };
+    DB: fakeSessionDb(), VAULT: NO_STORAGE, STORE_PREFIX: "dev" };
 
 const SYSTEMS = ["Cardiovascular Risk", "Metabolic Health"];
 const MARKER_NAMES = ["ApoB", "Glucose"];
@@ -54,7 +63,7 @@ function call(opts: { auth?: string; body?: string } = {}) {
     request: new Request("http://x/api/refresh-marker-groups", {
       method: "POST",
       headers,
-      body: opts.body ?? JSON.stringify({ client: CLIENT }),
+      body: opts.body ?? JSON.stringify({ client: CLIENT, clientId: "alex", accountId: "acct-1" }),
     }),
     env: ENV,
   });
@@ -82,7 +91,7 @@ describe("/api/refresh-marker-groups guard", () => {
 
   it("400s when the client has no System Analysis yet", async () => {
     const noFinding = { ...CLIENT, finding: undefined };
-    const res = await call({ auth: "Bearer provtok", body: JSON.stringify({ client: noFinding }) });
+    const res = await call({ auth: "Bearer provtok", body: JSON.stringify({ client: noFinding, clientId: "alex", accountId: "acct-1" }) });
     expect(res.status).toBe(400);
     expect(createMock).not.toHaveBeenCalled();
   });
@@ -97,7 +106,7 @@ describe("/api/refresh-marker-groups hash short-circuit", () => {
       generatedBy: { mode: "prod", model: modelId("markerGroups") },
     };
     const client = { ...CLIENT, markerGroups: cachedGrouping };
-    const res = await call({ auth: "Bearer provtok", body: JSON.stringify({ client }) });
+    const res = await call({ auth: "Bearer provtok", body: JSON.stringify({ client, clientId: "alex", accountId: "acct-1" }) });
     expect(res.status).toBe(200);
     expect(JSON.parse(lastLine(await bodyText(res)))).toEqual(cachedGrouping);
     expect(createMock).not.toHaveBeenCalled();
@@ -111,7 +120,7 @@ describe("/api/refresh-marker-groups hash short-circuit", () => {
       generatedBy: { mode: "prod", model: modelId("markerGroups") },
     };
     const client = { ...CLIENT, markerGroups: staleGrouping };
-    const res = await call({ auth: "Bearer provtok", body: JSON.stringify({ client }) });
+    const res = await call({ auth: "Bearer provtok", body: JSON.stringify({ client, clientId: "alex", accountId: "acct-1" }) });
     expect(res.status).toBe(200);
     expect(createMock).toHaveBeenCalledTimes(1);
   });
@@ -154,3 +163,102 @@ describe("/api/refresh-marker-groups generation", () => {
     expect(await bodyText(res)).toContain("[[REFRESH_ERROR]] overloaded_error");
   });
 });
+
+describe("/api/refresh-marker-groups groups in sight of the patient's reports", () => {
+  const w = useWorkerd({ r2: true, perTest: true });
+  beforeEach(() => {
+    createMock.mockReset();
+    createMock.mockResolvedValue(fakeResponse());
+  });
+
+  async function alexWithAReport(): Promise<string> {
+    const id = crypto.randomUUID();
+    await createAccount(w.db, { id, displayName: "alex", email: `alex-${id}@example.com` });
+    const key = "dev/raw/alex/report.pdf";
+    await w.bucket.put(key, new TextEncoder().encode("%PDF-1.4 report"));
+    await recordRawObject(w.db, key, id, { pages: 2, bytes: 15 });
+    return id;
+  }
+
+  const post = async (headers: Record<string, string>, body: unknown) =>
+    onRequestPost({
+      request: new Request("http://x/api/refresh-marker-groups", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...headers },
+        body: JSON.stringify(body),
+      }),
+      env: { PROVIDER_TOKEN: "provtok", ANTHROPIC_API_KEY: "k", SESSION_SECRET: "test-secret",
+             DB: w.db, VAULT: w.bucket, STORE_PREFIX: "dev", REPORTS: "always" } as never,
+    });
+
+  it("leads every pass with the reports, so the sweep-up pass reads what the first wrote", async () => {
+    const who = await alexWithAReport();
+    createMock
+      .mockResolvedValueOnce(fakeResponse({ groups: [{ group: "Cardiovascular Risk", markers: ["ApoB"] }] }))
+      .mockResolvedValueOnce(fakeResponse({ groups: [{ group: "Metabolic Health", markers: ["Glucose"] }] }));
+
+    const res = await post({ cookie: `hd_session=${await signSession(ENV, who)}` }, { client: CLIENT, clientId: "alex" });
+    await bodyText(res);
+
+    expect(createMock).toHaveBeenCalledTimes(2);
+    const prefixOf = (pass: number) => JSON.stringify(createMock.mock.calls[pass][0].messages.slice(0, 2));
+    expect(createMock.mock.calls[0][0].messages[0].content[0].type).toBe("document");
+    expect(createMock.mock.calls[0][0].messages[1]).toEqual({ role: "assistant", content: CORPUS_ACK });
+    expect(prefixOf(1)).toBe(prefixOf(0));
+  });
+
+  // The hash short-circuit is hoisted out of the stream precisely so a cached grouping costs no
+  // report read; a bucket that is never touched is how that stays true.
+  it("reads no reports when the stored hash already matches", async () => {
+    const who = await alexWithAReport();
+    const cached = {
+      groups: FULL_GROUPING_JSON.groups,
+      markerGroupsHash: markerGroupsHashOf(MARKER_NAMES, SYSTEMS),
+      generatedAt: "2026-01-01T00:00:00.000Z",
+      generatedBy: { mode: "prod", model: modelId("markerGroups") },
+    };
+
+    const res = await onRequestPost({
+      request: new Request("http://x/api/refresh-marker-groups", {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie: `hd_session=${await signSession(ENV, who)}` },
+        body: JSON.stringify({ client: { ...CLIENT, markerGroups: cached }, clientId: "alex" }),
+      }),
+      env: { PROVIDER_TOKEN: "provtok", ANTHROPIC_API_KEY: "k", SESSION_SECRET: "test-secret",
+             DB: w.db, VAULT: NO_STORAGE_READS(w), STORE_PREFIX: "dev", REPORTS: "always" } as never,
+    });
+
+    expect(JSON.parse(lastLine(await bodyText(res)))).toEqual(cached);
+    expect(createMock).not.toHaveBeenCalled();
+  });
+
+  it("404s before the stream on a namespace the session's account does not own", async () => {
+    await alexWithAReport();
+    const stranger = crypto.randomUUID();
+    await createAccount(w.db, { id: stranger, displayName: "nobody", email: `nobody-${stranger}@example.com` });
+
+    const res = await post({ cookie: `hd_session=${await signSession(ENV, stranger)}` }, { client: CLIENT, clientId: "alex" });
+
+    expect(res.status).toBe(404);
+    expect(createMock).not.toHaveBeenCalled();
+  });
+
+  it("400s when a bearer-only caller names no account", async () => {
+    await alexWithAReport();
+
+    const res = await post({ authorization: "Bearer provtok" }, { client: CLIENT, clientId: "alex" });
+
+    expect(res.status).toBe(400);
+    expect(JSON.parse(await bodyText(res)).errorCode).toBe("no_account_id");
+    expect(createMock).not.toHaveBeenCalled();
+  });
+});
+
+// The audit trail still has to write, so only the corpus reads are booby-trapped.
+function NO_STORAGE_READS(w: { bucket: { put: unknown } }) {
+  return {
+    put: (w.bucket as { put: (...a: never[]) => unknown }).put.bind(w.bucket),
+    get: () => { throw new Error("touched storage"); },
+    list: () => { throw new Error("touched storage"); },
+  };
+}

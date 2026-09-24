@@ -6,6 +6,7 @@ import { storeKey } from "../../_lib/store";
 import { rawAccessFor, mayRead, claimNamespace, type RawAccess } from "../../_lib/raw-owner";
 import type { ObjectBucket } from "../../_lib/object-bucket";
 import { json } from "../../_lib/http";
+import { isRawFileSegment } from "../../_lib/raw-files";
 
 // W76 — POST /api/raw/claim: take ownership of an ORPHANED client namespace by proving possession.
 //
@@ -34,7 +35,6 @@ interface Ctx {
 const ROUTE = "/api/raw/claim";
 const MAX_PROOFS = 5;
 const SHA256 = /^[0-9a-f]{64}$/;
-const segment = (s: unknown): s is string => typeof s === "string" && /^[^/]+$/.test(s) && s !== "." && s !== "..";
 
 interface Proof {
   file: string;
@@ -43,11 +43,11 @@ interface Proof {
 
 function parseBody(body: unknown): { clientId: string; proofs: Proof[] } | null {
   const b = body as { clientId?: unknown; proofs?: unknown };
-  if (!segment(b?.clientId) || !Array.isArray(b.proofs)) return null;
+  if (!isRawFileSegment(b?.clientId) || !Array.isArray(b.proofs)) return null;
   if (b.proofs.length === 0 || b.proofs.length > MAX_PROOFS) return null;
   const proofs = b.proofs as Proof[];
   const valid = proofs.every(
-    (p) => segment(p?.file) && typeof p.sha256 === "string" && SHA256.test(p.sha256),
+    (p) => isRawFileSegment(p?.file) && typeof p.sha256 === "string" && SHA256.test(p.sha256),
   );
   return valid ? { clientId: b.clientId, proofs } : null;
 }

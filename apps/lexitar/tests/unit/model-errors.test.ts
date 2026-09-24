@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { classifyModelError, modelErrorReply, ModelHttpError, ModelUnsupportedError } from "../../functions/_lib/model-errors";
+import { classifyModelError, inferenceErrorReply, modelErrorReply, ModelHttpError, ModelUnsupportedError } from "../../functions/_lib/model-errors";
+import { CorpusBusyError } from "../../functions/_lib/inference/corpus-errors";
 
 // Pins every route's failure → (status, errorCode) contract. The browser branches on errorCode to
 // show the billing link, so a misclassification here silently hides the recovery path.
@@ -56,5 +57,19 @@ describe("modelErrorReply", () => {
   it("uses the shared sentence for a classified failure", () => {
     expect(modelErrorReply({ status: 402 }, "chat backend error").error).toContain("out of credits");
     expect(modelErrorReply(new ModelUnsupportedError("images"), "x").error).toContain("can't read this kind of input");
+  });
+});
+
+// An instance that refuses before it allocates can answer; one killed for exceeding memory cannot,
+// and takes every unrelated request in flight with it. Carrying an errorCode is what makes the
+// refusal an answer: the browser's reporter skips a classified 5xx, so a busy moment retries
+// instead of filing a GitHub issue and pinning the promotion gate (error-reporter.ts).
+describe("inferenceErrorReply", () => {
+  it("answers a busy instance as a classified 503, not an unclassified failure", () => {
+    const reply = inferenceErrorReply(new CorpusBusyError(), "chat backend error");
+
+    expect(reply.status).toBe(503);
+    expect(reply.errorCode).toBe("corpus_busy");
+    expect(reply.error).toMatch(/try again/i);
   });
 });

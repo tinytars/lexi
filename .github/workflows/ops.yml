@@ -35,10 +35,11 @@ on:
           - treatment-groups-backfill
           - treatment-photo-extract
           - raw-backfill
+          - raw-pages-backfill
           - orphan-sweep
           - recovery-approve
       client:
-        description: "Client id (e.g. alex). Ignored by raw-backfill and orphan-sweep, which are store-wide. recovery-approve reads this as the patient's account email instead. Omit for reconcile to fan out across every deployed vault."
+        description: "Client id (e.g. alex). Ignored by raw-backfill, raw-pages-backfill and orphan-sweep, which are store-wide. recovery-approve reads this as the patient's account email instead. Omit for reconcile to fan out across every deployed vault."
         required: false
         type: string
       preview:
@@ -66,6 +67,10 @@ on:
         description: "Why this run is happening — echoed into the summary"
         type: string
         default: ""
+      purge_unreadable:
+        description: "raw-pages-backfill only: also DELETE the PDFs no parser can open. Irreversible outside the snapshot window; ignored unless preview is false."
+        type: boolean
+        default: false
       sync_pages_secret:
         description: "Push secrets.ANTHROPIC_API_KEY to health-dash-dev's Cloudflare Pages project as ANTHROPIC_API_KEY + RANGES_ANTHROPIC_API_KEY, then exit. Ignores op/client/preview/etc — op still must be picked to satisfy the form, but does nothing."
         type: boolean
@@ -82,7 +87,7 @@ concurrency:
 jobs:
   op:
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ inputs.preview && 10 || fromJSON('{"refresh-finding":45,"refresh-ranges":30,"refresh-marker-groups":20,"process-pending":30,"reconcile":20,"sync-treatment-attachments":10,"treatment-groups-backfill":30,"treatment-photo-extract":10,"raw-backfill":15,"orphan-sweep":15,"recovery-approve":5}')[inputs.op] }}
+    timeout-minutes: ${{ inputs.preview && 10 || fromJSON('{"refresh-finding":45,"refresh-ranges":30,"refresh-marker-groups":20,"process-pending":30,"reconcile":20,"sync-treatment-attachments":10,"treatment-groups-backfill":30,"treatment-photo-extract":10,"raw-backfill":15,"raw-pages-backfill":30,"orphan-sweep":15,"recovery-approve":5}')[inputs.op] }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -134,6 +139,7 @@ jobs:
           FORCE: ${{ inputs.force }}
           MARKER: ${{ inputs.marker }}
           NAME: ${{ inputs.name }}
+          PURGE: ${{ inputs.purge_unreadable }}
           EXTRA: ${{ inputs.extra_args }}
         run: |
           set -euo pipefail
@@ -201,6 +207,23 @@ jobs:
               # Store-wide against D1, not per-client; `client` only sets the concurrency key.
               cmd="npx tsx scripts/raw-backfill.ts"
               if ! $preview; then cmd="$cmd --confirm"; fi
+              ;;
+            raw-pages-backfill)
+              # Store-wide, like raw-backfill. Reads every PDF in the store to count its pages, so it
+              # is the slowest op here; the preview reads them too and writes nothing.
+              cmd="npx tsx scripts/raw-pages-backfill.ts"
+              if ! $preview; then cmd="$cmd --confirm"; fi
+              # The purge deletes patient files whose only undo is the nightly snapshot, so it is its
+              # own input rather than an extra_args token: a run's recorded parameters then say
+              # whether this run could delete, without anyone parsing a command line.
+              if [ "$PURGE" = "true" ]; then
+                cmd="$cmd --purge-unreadable"
+                if $preview; then
+                  exception="purge_unreadable was requested; this preview still writes and deletes nothing."
+                else
+                  note="This run DELETES the unreadable files it finds. The nightly snapshot is the only undo."
+                fi
+              fi
               ;;
             orphan-sweep)
               # A real run only dates orphans; deleting them needs --delete in extra_args, deliberately.

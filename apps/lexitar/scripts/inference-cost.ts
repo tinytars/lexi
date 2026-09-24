@@ -13,10 +13,16 @@ export interface TokenUsage {
   cache_read_input_tokens?: number | null;
 }
 
-// List prices, USD per 1M tokens: [input, output, cacheWrite(5m), cacheRead].
-// Matched by family substring so dated/aliased model ids both resolve.
+// List prices, USD per 1M tokens: [input, output, cacheWrite(5m), cacheRead], for the models
+// `inference.config.json` configures, checked against the vendor's published list on 2026-09-21.
+//
+// Matched by FAMILY substring so dated/aliased ids both resolve, which means a price here is only
+// right for as long as the family's current model carries it: Opus was $15/$75 through 4.1 and is
+// $5/$25 from 4.5 on, and this table billed every Opus call at the old price until that was caught.
+// Re-check it when a feature moves to a new generation — `tests/unit/inference-cost.test.ts` pins
+// that every configured model still resolves to a row, not that the row is current.
 const PRICES: { match: string; in: number; out: number; cw: number; cr: number }[] = [
-  { match: "opus", in: 15, out: 75, cw: 18.75, cr: 1.5 },
+  { match: "opus", in: 5, out: 25, cw: 6.25, cr: 0.5 },
   { match: "sonnet", in: 3, out: 15, cw: 3.75, cr: 0.3 },
   { match: "haiku", in: 1, out: 5, cw: 1.25, cr: 0.1 },
 ];

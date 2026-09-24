@@ -20,7 +20,14 @@ export async function savePersona(persona: PersonaId): Promise<void> {
 // W84 — Lexi's answer restated by `persona`, or null when it should be shown as Lexi's own: Lexi was
 // chosen, the adapter could not keep every fact, or the call failed. Never throws; the answer stands.
 // `question` is what the patient asked, so the persona can show it was heard.
-export async function adaptAnswer(persona: PersonaId, text: string, question?: string): Promise<{ persona: PersonaId; text: string } | null> {
+//
+// It needs no record: the restatement is of the answer's own words, and the route carries no corpus
+// (CORPUS.md §6).
+export async function adaptAnswer(
+  persona: PersonaId,
+  text: string,
+  question?: string,
+): Promise<{ persona: PersonaId; text: string } | null> {
   if (persona === DEFAULT_PERSONA) return null;
   try {
     const res = await fetch("/api/persona-adapt", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ persona, text, question }) });

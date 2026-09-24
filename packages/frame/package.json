@@ -84,7 +84,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@tinytars/vault": "^0.1.18",
+    "@tinytars/vault": "^0.1.28",
     "pdfjs-dist": "^6.2.108"
   },
   "peerDependencies": {
@@ -92,7 +92,7 @@
   },
   "devDependencies": {
     "@tsconfig/svelte": "^5.0.8",
-    "svelte": "^5.55.5",
+    "svelte": "^5.57.1",
     "svelte-check": "^4.4.8",
     "typescript": "~7.0.2",
     "vite": "^8.0.12",

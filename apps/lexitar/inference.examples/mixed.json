@@ -1,5 +1,5 @@
 {
-  "$doc": "Best per feature: the open model runs the one feature it was MEASURED to hold at ceiling, the vendor runs the rest. Copy over inference.config.json. Numbers in MEASUREMENT.md, the stack description in MODELS.md.",
+  "$doc": "Best per feature: the open model runs the one feature it was MEASURED to hold at ceiling, the vendor runs the rest. Copy over inference.config.json. Numbers in MEASUREMENT.md, the stack description in MODELS.md. Every feature that answers about a person's record is attached to that person's reports, which are PDFs, so this stack requires REPORTS: \"never\" in wrangler.jsonc's vars (CORPUS.md) — with it on, the features below whose provider declares pdf:false refuse with 422 model_unsupported rather than answering from less.",
   "providers": {
     "anthropic": {
       "api": "anthropic",

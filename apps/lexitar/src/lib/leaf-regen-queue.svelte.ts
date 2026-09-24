@@ -15,6 +15,7 @@ import { dagNode } from "./finding-dag";
 import { nodeInputCanonical } from "./node-input-hash";
 import { isFindingStale, staleNodes } from "./staleness";
 import { fetchLeafRegen, type PendingLeafRegen } from "./leaf-regen-client";
+import { createCorpusLane, type CorpusLane } from "./corpus-lane";
 import { aiErrorCode, describeAiError } from "./ai-error";
 
 /**
@@ -53,6 +54,11 @@ export interface LeafRegenQueueDeps {
   /** The unprompted sweep is provider-gated; a user's own turn is not. See sweep()'s comment. */
   getProviderToken: () => string | null | undefined;
   /**
+   * Whether a background regen may fire, consuming the caller's single probe slot. The provider
+   * being out of credit halts the sweep and nothing else — see ai-availability.svelte.ts.
+   */
+  mayProbe: () => boolean;
+  /**
    * Merge the fetched result onto whatever client is live NOW and persist it. Stays with the host:
    * it owns the vault, the DEK and the R2 id, and none of those are this module's business. Returns
    * false when the context went away mid-flight (provider switched patients), which is a skip, not a
@@ -60,6 +66,12 @@ export interface LeafRegenQueueDeps {
    */
   persist: (pending: PendingLeafRegen, id: string) => Promise<boolean>;
   fetchLeafRegen?: typeof fetchLeafRegen;
+  /**
+   * Shared with the corpus warmer, because both send the patient's whole record and the limit they
+   * are under is the isolate's, not this module's. A queue given no lane gets a private one, which
+   * is right for a test and wrong for the app — see App.svelte.
+   */
+  corpusLane?: CorpusLane;
 }
 
 export interface LeafRegenQueue {
@@ -81,8 +93,14 @@ export interface LeafRegenQueue {
   trigger(key: string, targetLabels?: string[], force?: boolean): Promise<RegenStatus>;
 }
 
+async function sweepBounded(lane: CorpusLane, nodes: readonly string[], run: (key: string) => Promise<unknown>): Promise<void> {
+  // One node failing must not strand the rest of the sweep behind it.
+  for (const key of nodes) await lane.run(() => run(key)).catch(() => {});
+}
+
 export function createLeafRegenQueue(deps: LeafRegenQueueDeps): LeafRegenQueue {
   let stale = $state(false);
+  const lane = deps.corpusLane ?? createCorpusLane();
 
   // Plain objects, not $state: these coordinate in-flight requests and must never drive rendering.
   // Making them reactive would re-run every effect that reads the client on each regen.
@@ -146,6 +164,10 @@ export function createLeafRegenQueue(deps: LeafRegenQueueDeps): LeafRegenQueue {
       });
     }
     if (!force && sig === lastSig[key]) return { status: "skipped" };
+    // Last gate before the request, so a sweep with nothing stale and a request the dedupe already
+    // answered both cost no probe. A user's own turn (background === false) is never held back: the
+    // account may have been topped up since, and a 402 they see is an answer.
+    if (background && !deps.mayProbe()) return { status: "skipped" };
     lastSig[key] = sig;
     busy[key] = true;
     try {
@@ -258,7 +280,17 @@ export function createLeafRegenQueue(deps: LeafRegenQueueDeps): LeafRegenQueue {
       if (!c?.finding || !id || !deps.getProviderToken()) return;
       void staleNodes(c).then((staleSet) => {
         if (deps.getClient() !== c) return;
-        for (const key of nodes) void regen(key, c, id, staleSet, undefined, false, true);
+        // One at a time, and the cache is still not the reason. That argument stands on its own
+        // terms: a prompt cache prefix renders tools -> system -> messages, and each node sends its
+        // OWN tool schema and system prompt ahead of the corpus, so every node's corpus is a
+        // separate entry however these are ordered. Ordering them buys no hits.
+        //
+        // W85 weighed what six corpus-sized requests leaving together do to a per-minute rate limit
+        // and capped them at two. W86 is the ceiling underneath that one: each of those requests is
+        // assembled INSIDE a Pages Function isolate that has 128 MB for everything it is running, so
+        // two of them alongside a corpus-warm is an OOM — and Cloudflare's kill answers 503 for
+        // every request in flight, including ones that never touched the corpus. corpus-lane.ts.
+        void sweepBounded(lane, nodes, (key) => regen(key, c, id, staleSet, undefined, false, true));
       });
     },
 

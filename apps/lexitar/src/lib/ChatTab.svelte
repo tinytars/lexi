@@ -19,7 +19,7 @@
   // carry to a vision model. A document rides as text and a plain attachment costs nothing at all,
   // so capping a chat attach at four was the image tier leaking into a surface that isn't one.
   import { MAX_ATTACHMENTS, appendAttachments, fetchAttachmentBase64, attachFiles, attachmentUrl } from "./attachment-store";
-  import { documentTextsFor } from "./document-extract-client";
+  import { documentTextsFor, needTranscription } from "./document-extract-client";
   import { documentsPromptBlock } from "@pablotech/akesi/document-read";
   import { DEFAULT_ATTACH_ACCEPT } from "@tinytars/frame/attach-controller";
   import { ABILITY_UNAVAILABLE, supports } from "./model-ability";
@@ -49,6 +49,8 @@
     // Bindable — App.svelte owns the array; send()/onPaste() append turns straight back through it.
     threads: Thread[];
     hydrated: boolean;
+    /** A chat save that failed and stayed failed (chat-thread-session). Distinct from `error`, which is this turn's request. */
+    saveError?: string | null;
     // M69 — pasted-permalink reference cards: vault to resolve against, onNavigate to reuse
     // App.svelte's navigate() when a card is clicked.
     vault: Vault | null;
@@ -66,6 +68,7 @@
     activeId,
     threads = $bindable(),
     hydrated,
+    saveError = null,
     vault,
     onNavigate,
     onPersist,
@@ -192,10 +195,13 @@
   // round — there is no server-side cache across turns. A document was transcribed ONCE at attach
   // time, so it rides as text: dramatically cheaper on a surface that replays its whole history on
   // every send, and quotable, which is the point of attaching it.
+  //
+  // Except a PDF, where the corpus is on: an attached PDF is stored under the same raw/ prefix the
+  // corpus is assembled from, so the model already has the original — see needTranscription.
   async function turnContent(text: string, attachments: Attachment[] | undefined): Promise<unknown> {
     const all = attachments ?? [];
     const images = all.filter((a) => a.mediaType.startsWith("image/"));
-    const docs = clientId ? await documentTextsFor(clientId, all) : [];
+    const docs = clientId ? await documentTextsFor(clientId, needTranscription(all)) : [];
     const block = documentsPromptBlock(docs);
     const full = block ? `${block}\n\n${text}` : text;
     if (images.length === 0) return full;
@@ -245,7 +251,7 @@
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ messages, unitSystem, final: round === MAX_ROUNDS - 1 }),
+          body: JSON.stringify({ messages, unitSystem, clientId, final: round === MAX_ROUNDS - 1 }),
         });
         if (!res.ok) {
           const body = (await res.json().catch(() => ({}))) as { error?: string; errorCode?: string };
@@ -473,6 +479,8 @@
     </div>
 
     {#if attachError}<p class="chat-error">{attachError}</p>{/if}
+    <!-- Survives a thread switch, unlike `error` above: an unsaved conversation stays unsaved. -->
+    {#if saveError}<p class="chat-error">This conversation isn't saving — {saveError}</p>{/if}
     {#if pendingAttachments.length > 0}
       <AttachmentStrip
         attachments={pendingAttachments}

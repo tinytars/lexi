@@ -24,7 +24,8 @@
   import { ensureOrgRecoveryEnvelope } from "@tinytars/vault/org-recovery";
   import { fetchPersonalizedRange } from "./lib/ranges-client";
   import { b64ToBytes } from "@tinytars/vault/base64";
-  import { describeAiError } from "./lib/ai-error";
+  import { AI_ERROR_MESSAGES, describeAiError } from "./lib/ai-error";
+  import { aiAvailability } from "./lib/ai-availability.svelte";
   import { dagNode } from "./lib/finding-dag";
   import { tick } from "svelte";
   import { TABS, DEFAULT_TAB, type Tab } from "./lib/nav";
@@ -41,7 +42,7 @@
   import { createConflictResolver } from "./lib/conflict-resolver";
   import { buildRefreshMessage } from "./lib/refresh-message";
   import { patientSwitchedMidRequest } from "./lib/stale-guard";
-  import { eligibleMarkersForRangeFill } from "./lib/range-eligibility";
+  import { fillMissingRanges } from "./lib/range-fill";
   import { decideSidebarAction } from "./lib/sidebar-dispatch";
   import ReportSections from "./lib/ReportSections.svelte";
   import { ALL_SECTIONS, presentSections } from "./lib/report-sections";
@@ -59,6 +60,7 @@
   import { withClient } from "./lib/vault-clients";
   import { reclaimOrphans } from "./lib/orphan-claim";
   import { putRaw } from "./lib/attachment-store";
+  import { healRawPageCounts } from "./lib/raw-pages-heal";
   import { togglePinnedIn, renameIn, removeFrom, labelOf, type SidebarItemKind } from "./lib/vault-item-ops";
   import { pinnedQueries } from "@pablotech/akesi/pinned-queries";
   import Onboarding, { type OnboardingField } from "@tinytars/frame/Onboarding.svelte";
@@ -85,10 +87,13 @@
   import { PRODUCT_NAME, FOUNDATION } from "./lib/brand";
   import OrgFooter from "@tinytars/frame/OrgFooter.svelte";
   import Disclaimer from "./lib/Disclaimer.svelte";
-  import { runWithConcurrency } from "@tinytars/frame/concurrency";
   import { loadSidebarMode, modeForSection } from "./lib/sidebar-mode";
   import { loadLastSection, saveLastSection, loadLastGroup, saveLastGroup } from "./lib/nav-memory";
   import { loadJSON, saveJSON } from "@tinytars/frame/persisted-json";
+  import { createCorpusWarmer } from "./lib/corpus-warm";
+  import { providerFor } from "./lib/model-config";
+  import { createCorpusLane } from "./lib/corpus-lane";
+  import { warmCorpus } from "./lib/corpus-warm-client";
 
   // W84 — read-aloud uses the personas' neural voices, the browser voice only as a fallback.
   configureSpeech(neuralSpeech);
@@ -116,6 +121,30 @@
     void vaultOpen;
     void selectedClientId;
     speechRegistry.stop();
+  });
+
+  // Reads the open record's reports into the prompt cache before the patient asks anything, so the
+  // first question is answered against a warm entry rather than waiting out a cache write
+  // (CORPUS.md). Tracks unitSystem too: it picks the chat system prompt, which sits AHEAD of the
+  // documents in the cache prefix, so a toggle genuinely forks the entry and a warm-up for the
+  // other one would be paid for and never read.
+  // W86 — ONE lane, shared with the leaf sweep below. Both send the patient's whole record, and the
+  // ceiling they are under is the Pages Function isolate's memory, which is per deployment and not
+  // per caller: two of them in flight is what took the dev worker down. corpus-lane.ts.
+  const corpusLane = createCorpusLane();
+  // The warm is skipped rather than the timer stopped: out of credit, every call is refused, and a
+  // keepalive that keeps asking bills nothing but says "out of credits" into the console forever.
+  // MAX_IDLE_KEEPALIVES still bounds the ticks, which now cost nothing. ai-availability.svelte.ts.
+  const corpusWarmer = createCorpusWarmer(
+    (id) => (aiAvailability.mayProbe() ? warmCorpus(id, unitSystem) : Promise.resolve(false)),
+    corpusLane,
+  );
+  $effect(() => {
+    // Opening a record is presence, so it earns the halted loops one attempt — the same grant the
+    // tab regaining focus makes below.
+    aiAvailability.rearm();
+    corpusWarmer.select(vaultOpen ? selectedClientId : null);
+    void unitSystem;
   });
   // W72 — the unlocked-session key material lives in one object with one transition each way
   // (vault-session.svelte.ts). These were four separate $state declarations set and cleared in eight
@@ -320,7 +349,8 @@
   // that would be the same fact written in eight places, which is how they drift apart.
 
   const announcedError = $derived(
-    vaultSave.error ?? error ?? vaultAccess.error ?? account.error ?? googleError ?? refreshError ?? recovery.issueError ?? "",
+    vaultSave.error ?? chatSession.saveError ?? error ?? vaultAccess.error ?? account.error ?? googleError ?? refreshError ?? recovery.issueError ??
+      (aiAvailability.outOfCredit ? AI_ERROR_MESSAGES.insufficient_credit : ""),
   );
 
 
@@ -340,6 +370,14 @@
     window.addEventListener("hashchange", () => {
       const pl = parseHash(window.location.hash);
       if (pl) applyNav(pl);
+    });
+    // Coming back to the tab is the one signal of presence this app gets for free. It restarts the
+    // keep-alive budget, which otherwise stops itself once holding the entry costs more than
+    // rebuilding it (MAX_IDLE_KEEPALIVES).
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState !== "visible") return;
+      aiAvailability.rearm();
+      corpusWarmer.wake();
     });
     if (boot.cleanUrl) window.history.replaceState({}, "", boot.cleanUrl);
     // W45 — deferred so the rest of this instance script (the const helpers it calls) has initialized.
@@ -494,9 +532,11 @@
   // component. What stays here is what App actually owns — the vault, its key, and the effects that
   // drive the queue from the component lifecycle.
   const leafRegen = createLeafRegenQueue({
+    corpusLane,
     getClient: () => currentClient,
     getClientId: () => selectedClientId,
     getProviderToken: () => providerToken,
+    mayProbe: () => aiAvailability.mayProbe(),
     // M55/M56 stale-draft-clobber fix — merge onto whichever client/vault is live right NOW, not the
     // pre-fetch snapshot: the network round-trip can take long enough for a concurrent edit to land
     // and save in the meantime, and merging onto the old snapshot would silently revert it once this
@@ -549,6 +589,14 @@
   $effect(() => {
     void openSweepKey;
     leafRegen.sweep();
+  });
+
+  // W77 — a PDF stored before page counts were kept leaves the report corpus refusing to assemble
+  // (CORPUS.md), and only a browser can count its pages. Once per selected client, unawaited: it is
+  // a repair of stored data, not part of rendering anything.
+  $effect(() => {
+    const id = selectedClientId;
+    if (id) void healRawPageCounts(id);
   });
 
   $effect(() => {
@@ -780,9 +828,9 @@
   // so no progress/abort plumbing. Throws on failure so MarkerChart's own doTranslate can surface the
   // error scoped to that one marker instead of the page-level refreshError.
   async function translateMarker(client: Client, marker: string): Promise<void> {
-    if (!currentClient) return;
+    if (!currentClient || !selectedClientId) return;
     const c = currentClient;
-    const range = await fetchPersonalizedRange(client, marker, providerToken);
+    const range = await fetchPersonalizedRange(client, selectedClientId, marker, providerToken);
     if (patientSwitchedMidRequest(currentClient, c)) return;
     saveEdits({ ...c, personalizedRanges: { ...c.personalizedRanges, [marker]: range } });
   }
@@ -794,9 +842,9 @@
   // path, same as every other in-app mutation) — no providerToken precondition, so the account
   // owner's own session (cookie auth, no token) works too.
   async function handleCategorizeMarkers(client: Client): Promise<void> {
-    if (!currentClient) return;
+    if (!currentClient || !selectedClientId) return;
     const c = currentClient;
-    const markerGroups = await refreshMarkerGroups(client, { providerToken: providerToken ?? undefined });
+    const markerGroups = await refreshMarkerGroups(client, selectedClientId, { providerToken: providerToken ?? undefined });
     if (patientSwitchedMidRequest(currentClient, c)) return;
     saveEdits({ ...c, markerGroups });
   }
@@ -809,10 +857,8 @@
   // cookie auth (translateMarker's providerToken precondition was dropped for this). Fire-and-forget
   // from the caller; failures here are silent — MarkerChart's per-marker Translate button already
   // covers a marker that didn't get filled.
-  async function fillMissingRanges(client: Client): Promise<void> {
-    const eligible = eligibleMarkersForRangeFill(client);
-    if (eligible.length === 0) return;
-    await runWithConcurrency(eligible, 4, async (marker) => {
+  function fillRanges(client: Client): Promise<void> {
+    return fillMissingRanges(client, async (marker) => {
       try {
         await translateMarker(client, marker);
       } catch {
@@ -826,7 +872,7 @@
   // so Health Reports + the stale chips recompute. ImportTab handles the raw PUT.
   async function handleImported(updated: Client, reportId?: string) {
     if (!selectedClientId || !(await persistClient(selectedClientId, updated))) return;
-    void fillMissingRanges(updated);
+    void fillRanges(updated);
     // W38/5 — headline case: after a report import, close the modal and auto-follow to it in
     // Reports, highlighted (no confirming click).
     if (reportId) {
@@ -841,7 +887,7 @@
       storeOriginal: putRaw,
       persist: async (id, next) => {
         if (!(await persistClient(id, next))) return false;
-        void fillMissingRanges(next);
+        void fillRanges(next);
         return true;
       },
     });
@@ -1383,6 +1429,8 @@
     onRetrySave={() => vaultSave.retry()}
     findingStale={leafRegen.stale}
     onOpenDag={() => (dagModalOpen = true)}
+    aiOutOfCredit={aiAvailability.outOfCredit}
+    billingUrl={providerFor("chat").billingUrl}
     {unitSystem}
     onSetUnitSystem={setUnitSystem}
     {persona}
@@ -1460,7 +1508,7 @@
         onClose={() => (searchOpen = false)}
       />
     {:else if activeTab === "chat" && currentClient}
-      <ChatTab client={currentClient} dek={session.dek} clientId={selectedClientId} {unitSystem} {persona} activeId={section} bind:threads={chatSession.threads} hydrated={chatSession.hydrated} {vault} onNavigate={navigate} onPersist={chatSession.persistChatThreads} onImportFile={importChatFile} onCreateNote={createNoteFromAttachment} />
+      <ChatTab client={currentClient} dek={session.dek} clientId={selectedClientId} {unitSystem} {persona} activeId={section} bind:threads={chatSession.threads} hydrated={chatSession.hydrated} saveError={chatSession.saveError} {vault} onNavigate={navigate} onPersist={chatSession.persistChatThreads} onImportFile={importChatFile} onCreateNote={createNoteFromAttachment} />
     {:else if currentClient}
       <ReportSections client={currentClient} sections={ALL_SECTIONS} bind:active={section} clientId={selectedClientId} providerSession={roster.isProvider} canTranslate={roster.isProvider && !!providerToken} onTranslate={translateMarker} onCategorizeMarkers={handleCategorizeMarkers} {vault} {unitSystem} bind:windowYears onToggleWatchlist={toggleWatchlist} onTogglePinnedRatio={togglePinnedRatio} onSave={saveEdits} onSaved={(anchor) => navigate({ anchor })} onTriggerRegen={triggerLeafRegen} saved={vaultSave.saved} saveError={vaultSave.error} onStartChat={startChatFromLeaf} onCreateNote={createNoteFromAttachment} pendingSidebarAction={pendingSidebarAction} onConsumeSidebarAction={() => (pendingSidebarAction = null)} bind:activeGroup {activeLeaf} {pendingAnchor} onConsumeAnchor={() => (pendingAnchor = null)} pendingNoteAttachment={pendingNoteAttachment} onPendingNoteAttachmentConsumed={() => (pendingNoteAttachment = null)} onNavigate={navigate} />
     {/if}

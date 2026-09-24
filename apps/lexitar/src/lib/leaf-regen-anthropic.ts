@@ -23,6 +23,18 @@ function sdkImageType(mediaType: string): SdkImageType | null {
   return (SDK_IMAGE_TYPES as readonly string[]).includes(mediaType) ? (mediaType as SdkImageType) : null;
 }
 
+// A 429/503/529 is the request never having been asked, not an answer to it. `generateRange`
+// (ranges-anthropic.ts) has climbed a ladder over these since the CLI and the Function were merged,
+// for the reason its header names — one 429 used to mark a marker permanently FAILED. This path,
+// the busiest model call in the app, had no ladder at all, so a single overloaded moment lost the
+// patient's Translate and reached the browser as an ai_busy 5xx. Same delays, same three attempts.
+const TRANSIENT_RETRY_DELAYS_MS = [300, 900];
+
+function isTransientModelError(err: unknown): boolean {
+  const status = (err as { status?: number } | null)?.status;
+  return status === 429 || status === 503 || status === 529;
+}
+
 
 // Clones toolSchema and rewrites its own (and its row-array property's) description so the tool
 // definition agrees with a SCOPE OVERRIDE instead of contradicting it — see the scopeInstruction
@@ -70,6 +82,10 @@ export interface RunLeafRegenParams {
   /** Aborts the generation when the caller goes away — see the request.signal pass-through in
    *  functions/api/leaf-regen.ts. Without it a browser disconnect leaves the model generating. */
   signal?: AbortSignal;
+  /** The patient's own reports, prepended verbatim ahead of this node's inputs (CORPUS.md). Empty
+   *  for the CLI backfill, which calls this in-process with no R2. Unchanged by the correction
+   *  retry below, so the second attempt reads the cache entry the first one wrote. */
+  prefixTurns?: Anthropic.MessageParam[];
 }
 
 // Throws on an unknown node (caller's responsibility to pass a valid one) or on an Anthropic SDK
@@ -195,11 +211,26 @@ export async function runLeafRegen(params: RunLeafRegenParams): Promise<LeafRege
         system: `${BASE_SYSTEM_PROMPT}\n\n${scopeInstruction}${spec.systemPromptExtra}`,
         tools: [toolSchema],
         tool_choice: { type: "tool", name: toolSchema.name },
-        messages: [{ role: "user", content: withCorrection }],
+        messages: [...(params.prefixTurns ?? []), { role: "user", content: withCorrection }],
       },
       params.signal ? { signal: params.signal } : undefined,
     );
     return stream.finalMessage();
+  };
+
+  // Distinct from the correction loop below, which spends its single re-ask on a model that DID
+  // answer and answered wrongly. Every rung sends the same bytes, so the three attempts share one
+  // prompt-cache entry rather than paying for the patient's whole record again.
+  const attemptOrRetry = async (correction?: string) => {
+    for (const delay of TRANSIENT_RETRY_DELAYS_MS) {
+      try {
+        return await attempt(correction);
+      } catch (e) {
+        if (!isTransientModelError(e)) throw e;
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+    return attempt(correction);
   };
 
   // Both attempts are billed, so both are reported — a retry that vanished from the cost line would
@@ -207,7 +238,7 @@ export async function runLeafRegen(params: RunLeafRegenParams): Promise<LeafRege
   const usage = { input: 0, output: 0 };
   let last: LeafRegenOutcome | undefined;
   for (let i = 0; i < 2; i++) {
-    const message = await attempt(i === 0 ? undefined : (last as { error: Error }).error.message.slice(0, 400));
+    const message = await attemptOrRetry(i === 0 ? undefined : (last as { error: Error }).error.message.slice(0, 400));
     usage.input += message.usage.input_tokens;
     usage.output += message.usage.output_tokens;
 
