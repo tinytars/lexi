@@ -86,6 +86,27 @@ Documents are attached **server-side, by the route**. `chat` rejects a caller-su
 block with `400 client_document`: server ownership has to be a property, not a convention, or the
 tool loop would replay ~20 MB of base64 through an 8 MB body limit on every round.
 
+**The keys come from the client; the documents do not.** Stored originals are sealed under per-file
+content keys that live only inside the patient's encrypted vault (`VAULT.md` §2a), so each attached
+request carries a `rawKeys` map — `{file: base64}` for the record being asked about — and
+`readDocuments` opens the bytes in memory as it reads them. The size argument above is exactly why
+that split is the right one: a hundred files of keys is ~12 KB and does not grow with page count,
+four orders of magnitude below the documents themselves.
+
+Three consequences worth stating:
+
+- **Authorisation is unchanged.** A key decrypts; it never authorises. `rawAccessFor` still picks
+  which namespace may be read, so keys for someone else's record get the same `404` they always did,
+  and a wrong key fails GCM authentication rather than yielding anything.
+- **A missing key is a classified refusal**, `400 corpus_key_missing` (`CorpusKeyError`), not a 5xx —
+  an unclassified 5xx would file a `plover-factory` issue and block the promotion gate.
+- **Caching is unaffected.** AES-GCM decryption is deterministic, so the base64 prefix this file
+  describes is byte-identical to the one built from plaintext and the breakpoint keeps hitting.
+
+The deployment therefore still sees the documents in plaintext *while it is answering a question the
+owner asked*. That is the limit of this design, stated in the same words in `SECURITY.md` and
+`DPGA.md`, and it is not the same as holding them readable at rest.
+
 ## 4. Caching
 
 A prompt-cache entry is keyed on `(workspace key, model, exact prefix bytes)`, and the prefix

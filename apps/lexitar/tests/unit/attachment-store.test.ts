@@ -1,7 +1,12 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  buildAttachmentKey, attachmentsOf, attachFiles, MAX_ATTACHMENT_BYTES,
+  buildAttachmentKey, attachmentsOf, attachFiles, putRaw, MAX_ATTACHMENT_BYTES,
 } from "../../src/lib/attachment-store";
+import { clearRawKeyring, rawKeyFor, setRawKeyring, setRawKeySink, withRawKey } from "../../src/lib/vault-raw-keys";
+import { isSealed, openRaw } from "../../src/lib/raw-cipher";
+import type { Vault } from "../../src/lib/types";
+
+const KEY = "A".repeat(43) + "=";
 
 describe("buildAttachmentKey", () => {
   it("prefixes with sha8 and sanitizes unsafe filename characters", async () => {
@@ -91,5 +96,83 @@ describe("attachFiles", () => {
     const [attachment] = await attachFiles("alex", [file]);
     expect(attachment.mediaType).toBe("image/heic");
     expect(attachment.bytes).toBe(3);
+  });
+});
+
+describe("putRaw", () => {
+  const bytes = new TextEncoder().encode("%PDF-1.7 a patient's report");
+
+  /** Records what reached /api/raw, and the order the key write and the upload happened in. */
+  function upload() {
+    const sent: { url: string; body: Uint8Array }[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit) => {
+      sent.push({ url, body: new Uint8Array(init.body as ArrayBuffer) });
+      return new Response(null, { status: 204 });
+    }));
+    return sent;
+  }
+
+  afterEach(clearRawKeyring);
+
+  it("seals the bytes, so the bucket never receives the document", async () => {
+    setRawKeySink(async (id, file, key) => void withRawKey({ clients: {} } as Vault, id, file, key));
+    const sent = upload();
+
+    await putRaw("alex", "ab12cd34-report.pdf", bytes);
+
+    expect(isSealed(sent[0].body)).toBe(true);
+    expect(await openRaw(sent[0].body, "ab12cd34-report.pdf", rawKeyFor("alex", "ab12cd34-report.pdf"))).toEqual(bytes);
+  });
+
+  // The ordering the migration turns on: an upload that races ahead of its key write could leave a
+  // sealed object nothing can ever open.
+  it("saves the content key before it uploads the ciphertext", async () => {
+    const order: string[] = [];
+    setRawKeySink(async (id, file, key) => {
+      withRawKey({ clients: {} } as Vault, id, file, key);
+      order.push("key");
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      order.push("upload");
+      return new Response(null, { status: 204 });
+    }));
+
+    await putRaw("alex", "ab12cd34-report.pdf", bytes);
+
+    expect(order).toEqual(["key", "upload"]);
+  });
+
+  // A re-PUT is the same content-addressed bytes. Minting a second key would strand the copy already
+  // in R2 if this upload then failed.
+  it("reuses the key already on the ring rather than minting a second", async () => {
+    setRawKeyring({ rawKeys: { alex: { "ab12cd34-report.pdf": KEY } } });
+    let minted = 0;
+    setRawKeySink(async () => void (minted += 1));
+    const sent = upload();
+
+    await putRaw("alex", "ab12cd34-report.pdf", bytes);
+
+    expect(minted).toBe(0);
+    expect(await openRaw(sent[0].body, "ab12cd34-report.pdf", KEY)).toEqual(bytes);
+  });
+
+  // No open vault is no place to record a key. Plaintext is recoverable; a sealed object with no key
+  // is not — and the reader passes plaintext through, so the sweep can still seal it later.
+  it("uploads plaintext when there is no vault to record a key in", async () => {
+    const sent = upload();
+
+    await putRaw("alex", "ab12cd34-report.pdf", bytes);
+
+    expect(sent[0].body).toEqual(bytes);
+  });
+
+  // pdf.js cannot count the pages of an envelope, and the corpus checks its ceiling against this.
+  it("carries the plaintext page count through unchanged", async () => {
+    setRawKeySink(async (id, file, key) => void withRawKey({ clients: {} } as Vault, id, file, key));
+    const sent = upload();
+
+    await putRaw("alex", "ab12cd34-report.pdf", bytes, 9);
+
+    expect(sent[0].url).toBe("/api/raw/alex/ab12cd34-report.pdf?pages=9");
   });
 });

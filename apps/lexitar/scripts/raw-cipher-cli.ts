@@ -38,13 +38,21 @@ export function parseRawKey(r2Key: string): { slug: string; file: string } | nul
   return { slug, file: kind === "text" ? tail.replace(/\.json$/, "") : tail };
 }
 
+/** One patient's vault, open: enough to read its key ring and to write a new key into it. */
+export interface OpenVault {
+  vault: Vault;
+  dek: CryptoKey;
+  /** The blob's key in the live bucket, store prefix included. */
+  r2Key: string;
+}
+
 // Both caches are per-run and per-account, which is what keeps a store-wide sweep to one org-key
 // unwrap and one vault fetch per patient rather than one per file.
 const ownerBySlug = new Map<string, string | null>();
-const keysByAccount = new Map<string, Record<string, Record<string, string>>>();
+const vaultByAccount = new Map<string, OpenVault | null>();
 let orgKey: CryptoKey | undefined;
 
-async function ownerOf(store: string, slug: string): Promise<string | null> {
+export async function ownerOf(store: string, slug: string): Promise<string | null> {
   const hit = ownerBySlug.get(slug);
   if (hit !== undefined) return hit;
   // The namespace's owner, resolved the way functions/_lib/raw-owner.ts resolves it — by PREFIX and
@@ -57,29 +65,35 @@ async function ownerOf(store: string, slug: string): Promise<string | null> {
   return owner;
 }
 
-/** One account's whole key ring, or an empty one when nothing here can open their vault. */
-async function keyringFor(store: string, accountId: string): Promise<Record<string, Record<string, string>>> {
-  const hit = keysByAccount.get(accountId);
-  if (hit) return hit;
+/**
+ * One account's vault, opened through the org recovery envelope, or null when nothing here can.
+ *
+ * Cached per run, and `refresh` is how the sealing sweep re-reads a vault it has just written: the
+ * write has no compare-and-swap (scripts/vault-ops.ts), so confirming a key landed means reading it
+ * back rather than trusting the PUT.
+ */
+export async function openVaultFor(store: string, accountId: string, refresh = false): Promise<OpenVault | null> {
+  const hit = vaultByAccount.get(accountId);
+  if (hit !== undefined && !refresh) return hit;
 
-  const empty: Record<string, Record<string, string>> = {};
-  const [vault] = await d1<{ vault_id: string; r2_key: string; org_recovery_revoked_at: string | null }>(
+  const [row] = await d1<{ vault_id: string; r2_key: string; org_recovery_revoked_at: string | null }>(
     `SELECT vault_id, r2_key, org_recovery_revoked_at FROM vaults WHERE owner_account_id = ${q(accountId)}`,
   );
   // Revocation is absolute here for the same reason it is in recovery-approve.ts: it is the one lever
   // a patient has to say "not even the operator", and there is no --force.
-  if (!vault || vault.org_recovery_revoked_at) {
-    keysByAccount.set(accountId, empty);
-    return empty;
+  if (!row || row.org_recovery_revoked_at) {
+    vaultByAccount.set(accountId, null);
+    return null;
   }
 
   const [envelope] = await d1<{ wrapped_dek: string; ephemeral_public_key_jwk: string }>(
-    `SELECT hex(wrapped_dek) AS wrapped_dek, ephemeral_public_key_jwk FROM vault_envelopes WHERE vault_id = ${q(vault.vault_id)} AND principal_account_id = ${q(ORG_ACCOUNT_ID)}`,
+    `SELECT hex(wrapped_dek) AS wrapped_dek, ephemeral_public_key_jwk FROM vault_envelopes WHERE vault_id = ${q(row.vault_id)} AND principal_account_id = ${q(ORG_ACCOUNT_ID)}`,
   );
-  const blob = await getObject(LIVE_BUCKET, `${store}/${vault.r2_key}`);
+  const r2Key = `${store}/${row.r2_key}`;
+  const blob = await getObject(LIVE_BUCKET, r2Key);
   if (!envelope || !blob) {
-    keysByAccount.set(accountId, empty);
-    return empty;
+    vaultByAccount.set(accountId, null);
+    return null;
   }
 
   orgKey ??= await loadOrgPrivateKey();
@@ -90,11 +104,16 @@ async function keyringFor(store: string, accountId: string): Promise<Record<stri
   );
   // The audited identifier is the vault's own r2_key stem, which migration 0011 made the account id —
   // access-log.ts looks the vault up by `data-{id}.enc` and would find nothing for a client slug.
-  recordOrgKeyUse({ clientId: vault.r2_key.replace(/^data-/, "").replace(/\.enc$/, ""), purpose: "raw:open" });
+  recordOrgKeyUse({ clientId: row.r2_key.replace(/^data-/, "").replace(/\.enc$/, ""), purpose: "raw:open" });
 
-  const keys = (await decryptVaultV2<Vault>(blob, dek)).rawKeys ?? empty;
-  keysByAccount.set(accountId, keys);
-  return keys;
+  const open: OpenVault = { vault: await decryptVaultV2<Vault>(blob, dek), dek, r2Key };
+  vaultByAccount.set(accountId, open);
+  return open;
+}
+
+/** One account's whole key ring, or an empty one when nothing here can open their vault. */
+async function keyringFor(store: string, accountId: string): Promise<Record<string, Record<string, string>>> {
+  return (await openVaultFor(store, accountId))?.vault.rawKeys ?? {};
 }
 
 /** The content key for one stored object, or undefined when nothing here can produce it. */

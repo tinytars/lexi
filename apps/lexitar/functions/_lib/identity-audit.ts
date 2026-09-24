@@ -140,6 +140,21 @@ export async function listRawPdfsUnder(db: D1Database, keyPrefix: string): Promi
   return results;
 }
 
+/**
+ * Every raw object recorded under one client namespace, ordered by key.
+ *
+ * D1 rather than an R2 listing, and not only the PDFs, because this is the set the browser's sealing
+ * sweep has to close: the corpus reads these same rows, so an object the vault holds no content key
+ * for refuses that patient's every question even when nothing in the record still points at it.
+ */
+export async function listRawObjectsUnder(db: D1Database, keyPrefix: string): Promise<string[]> {
+  const { results } = await db
+    .prepare("SELECT r2_key FROM raw_objects WHERE r2_key LIKE ? ORDER BY r2_key")
+    .bind(`${keyPrefix}%`)
+    .all<{ r2_key: string }>();
+  return results.map((r) => r.r2_key);
+}
+
 export async function listRawObjectsForAccount(db: D1Database, accountId: string): Promise<string[]> {
   const { results } = await db
     .prepare("SELECT r2_key FROM raw_objects WHERE account_id = ? ORDER BY r2_key")

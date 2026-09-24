@@ -6,6 +6,8 @@
 import { hashSourceWeb } from "@pablotech/akesi/ingest-core";
 import { compressImage } from "./image-compress";
 import { fetchAttachmentBytes } from "./attachment-blob";
+import { mintRawKey, rawKeyFor } from "./vault-raw-keys";
+import { sealRaw } from "./raw-cipher";
 import { bytesToBase64 } from "./base64";
 import { openPdf, type PdfDoc } from "@tinytars/frame/pdf-render";
 import { MAX_DOCUMENT_PAGES } from "@pablotech/akesi/document-read";
@@ -49,13 +51,25 @@ export async function countPdfPages(bytes: Uint8Array, name: string, mediaType?:
   }
 }
 
-export function putRaw(clientId: string, key: string, bytes: Uint8Array, pages?: number): Promise<Response> {
+// The one choke point every upload funnels through, which is why the sealing lives here and not at
+// each Attach handler: a lane that forgot to seal would put plaintext PHI back in the bucket.
+//
+// `?pages=N` is counted on the PLAINTEXT above and rides along unchanged — pdf.js cannot count the
+// pages of an envelope, and the corpus checks its page ceiling against this number.
+export async function putRaw(clientId: string, key: string, bytes: Uint8Array, pages?: number): Promise<Response> {
   const query = pages === undefined ? "" : `?pages=${pages}`;
+  // A key already on the ring is REUSED, never replaced: attachment keys are content-addressed, so a
+  // re-PUT is the same bytes, and minting a second key would strand the copy already in R2 if the
+  // upload then failed. No open vault means no way to record a key at all, so the upload stays
+  // plaintext rather than becoming a file nobody can ever open — the self-heal seals it on the next
+  // open (vault-raw-keys.ts).
+  const contentKey = rawKeyFor(clientId, key) ?? (await mintRawKey(clientId, key));
+  const body = contentKey ? await sealRaw(bytes, contentKey) : bytes;
   return fetch(`/api/raw/${normalizeClientId(clientId)}/${key}${query}`, {
     method: "PUT",
     // /api/raw is gated by the hd_session cookie (W44) — same-origin fetch sends it automatically.
     headers: { "Content-Type": "application/octet-stream" },
-    body: bytes as BodyInit,
+    body: body as BodyInit,
   });
 }
 
