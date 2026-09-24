@@ -60,7 +60,7 @@ export function openStored(stored: Uint8Array, clientId: string, file: string): 
  */
 export function withRawKey(vault: Vault, clientId: string, file: string, key: string): Vault {
   const id = normalizeClientId(clientId);
-  const keys = { ...(vault.rawKeys?.[id] ?? {}), [file]: key };
+  const keys = { ...vault.rawKeys?.[id], [file]: key };
   keyring = { ...keyring, [id]: keys };
   return { ...vault, rawKeys: { ...vault.rawKeys, [id]: keys } };
 }
