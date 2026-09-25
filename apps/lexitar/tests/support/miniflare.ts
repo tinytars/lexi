@@ -19,6 +19,14 @@ export interface Bucket {
 
 const SCRIPT = "export default { fetch() { return new Response('ok'); } }";
 
+// A streaming route's writes can still be landing in the bucket directory when the test file that
+// started it ends, and a removal that meets one dies with ENOTEMPTY: `force` forgives a directory
+// that is already gone, not one that refills between the readdir and the rmdir. Retrying is what
+// node's own options are for, and the backoff outlasts a drained write queue by a wide margin.
+export function removeTestDir(dir: string): void {
+  rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+}
+
 export interface Workerd {
   readonly db: D1Database;
   readonly bucket: Bucket;
@@ -57,7 +65,7 @@ export function useWorkerd(opts: { r2?: boolean; perTest?: boolean; workerdOnly?
   const dispose = async () => {
     await mf?.dispose();
     sqlite?.close();
-    if (dir) rmSync(dir, { recursive: true, force: true });
+    if (dir) removeTestDir(dir);
     mf = sqlite = dir = undefined;
   };
   (opts.perTest ? beforeEach : beforeAll)(async () => {
