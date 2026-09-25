@@ -1,7 +1,20 @@
 #!/usr/bin/env bash
 # Thin shim: the shared size/agent-memory/credentials guards live in plover-context, never copied here.
 # Opt in with `git config core.hooksPath .githooks`; external contributors are unaffected.
-GUARD="${PLOVER_GIT_HOOKS:-$HOME/.claude/infra/git-hooks}/guards.sh"
+# Which checkout of the hub this shim loads is the one thing it decides, because that choice precedes
+# reading anything from it — a derivation inside guards.sh cannot pick the guards.sh that runs. ~/.claude
+# can never hold main (a standing worktree does, and git allows one worktree per branch), so its guards
+# are frozen at whatever branch the last session left it on; naming it here kept every commit on a stale
+# chain. Ask git which worktree holds main — a single-tree clone has none and resolves to itself.
+HUB="${PLOVER_CONTEXT_DIR:-$HOME/.claude}"
+live=""
+if [ -z "${PLOVER_GIT_HOOKS:-}" ]; then
+  # env -u: git exports GIT_DIR to the hooks of a linked worktree, and GIT_DIR wins over -C, so without
+  # this the question asked is which of the COMMITTING repo's worktrees holds main.
+  live="$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR git -C "$HUB" worktree list --porcelain 2>/dev/null |
+    awk '/^worktree /{w=substr($0,10)} /^branch refs\/heads\/main$/{print w; exit}')"
+fi
+GUARD="${PLOVER_GIT_HOOKS:-${live:-$HUB}/infra/git-hooks}/guards.sh"
 
 if [ ! -x "$GUARD" ]; then
   echo "pre-commit: shared guards not found at $GUARD"
