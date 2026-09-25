@@ -20,10 +20,10 @@ describe("removeTestDir", () => {
       writeFile(join(dir, `object-${i}`), "x").catch(() => {}),
     );
 
-    expect(() => removeTestDir(dir)).not.toThrow();
+    await expect(removeTestDir(dir)).resolves.toBeUndefined();
 
     await Promise.all(inFlight);
-    removeTestDir(dir);
+    await removeTestDir(dir);
     expect(existsSync(dir)).toBe(false);
   });
 });
