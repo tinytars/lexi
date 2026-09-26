@@ -177,12 +177,52 @@ KEK or a DEK, and moves only sealed blobs. The org key is an out-of-band operato
 (`ORG_KEY_PASSPHRASE`, a local credentials file), not something the Functions hold.
 `src/lib/crypto.ts`: AES-GCM-256, key from **PBKDF2-SHA256, 200k iterations**; blob layout is `"HD1"`
 magic (`0x48 0x44 0x31`) + version + 16-byte salt + 12-byte IV + ciphertext. The Functions only ever
-move **already-encrypted HD1 blobs** (vault) or **plaintext raw bytes** (raw originals) — never a key.
+move **already-encrypted HD1 blobs** — the vault under its DEK, each raw original under its own
+content key (§2a) — never a key.
 
 ```
 encryptVault(data, pass) -> [ HD1 | ver | salt | iv | AES-GCM(JSON) ]
 decryptVault(blob, pass) -> data        (throws on wrong pass / non-HD1 / corrupt)
 ```
+
+## 2a. Raw originals are sealed too (2026-09-24)
+
+An uploaded original — the PDF a patient hands LexiTar — used to sit in R2 as the file itself. It was
+authorised (session + `rawAccessFor`), which is real, but authorisation is not encryption: anyone
+holding the bucket read them. They were the most sensitive files here and the only ones outside the
+boundary above.
+
+Each one now carries **its own AES-GCM-256 content key, minted in the browser**, and is stored as an
+HD1 v3 envelope (`@tinytars/vault`'s `encryptBytes` — the same 32-byte header, an opaque payload
+instead of UTF-8 JSON). The keys live in **`Vault.rawKeys`**, a `{clientId: {file: base64}}` map
+*inside the vault blob*, so they are encrypted at rest by construction and three properties come for
+free rather than being built:
+
+| Property | Why it is free |
+|---|---|
+| Who can decrypt | Exactly whoever can open the vault — owner, org (unless revoked), active providers. No new principal set. |
+| Revocation | `DELETE /api/vault/recovery-envelope` already removes org access to the vault, and so to the keyring. |
+| DEK rotation | `/api/vault/rotate` re-encrypts the blob that *contains* the keyring; no object moves. |
+
+A document and its `text/{id}/{key}.json` transcription sidecar share **one** content key — a
+cleartext transcription beside sealed bytes would make the sealing cosmetic.
+
+**The key is written to the vault before the ciphertext is uploaded** (`src/lib/vault-raw-keys.ts`).
+The ordering is the whole invariant: a sealed object whose key was never saved is unopenable, and
+because the report corpus reads every `raw_objects` row under a namespace, one of them refuses that
+patient's *every* question. An unused key costs nothing; a lost one cannot be recovered.
+
+**Two lanes seal what was already there**, and both are needed. `src/lib/raw-seal-heal.ts` runs in
+the browser on each record open, diffing the namespace's recorded objects (`GET /api/raw/{id}?files=1`)
+against this vault's ring — **the only lane that reaches an account which revoked org recovery**.
+`scripts/raw-encrypt-backfill.ts` (`npm run raw:encrypt`, and the `raw-encrypt-backfill` op in
+`ops.yml`) does the same store-wide through the org recovery envelope, and refuses an orphaned
+namespace so its bytes stay claimable.
+
+**The deployment still sees plaintext while it answers a question.** It must: it is the thing that
+base64s the document into the model request, and the browser hands it the ~12 KB key map per request
+(`CORPUS.md`). What this buys is everything at rest — bucket exposure, a leaked storage token, a
+snapshot, the backup bucket — and the end of any standing operator ability to read a patient's files.
 
 ## 3. Bearer auth (no secret in the bundle)
 
@@ -192,8 +232,9 @@ The browser proves "I can already unlock this vault" without sending the passphr
 
 - `CHAT_TOKEN` — **deleted 2026-08-26**; `POST /api/chat` is gated by `hd_session`.
 - `VAULT_TOKEN` — gates `PUT /api/vault/{id}`.
-- `RAW_TOKEN` — **deleted 2026-08-26**; `/api/raw` is gated by `hd_session` + `rawAccessFor`. Raw originals are **plaintext PHI**, so unlike
-  the open `.enc` GET this route is bearer-gated.
+- `RAW_TOKEN` — **deleted 2026-08-26**; `/api/raw` is gated by `hd_session` + `rawAccessFor`. Raw
+  originals are sealed (§2a), but the gate stays: encryption is not authorisation, and unlike the
+  open `.enc` GET this route answers for one named patient.
 
 All three are **distinct secrets** (rotate independently) but hold the **same value today** — the
 `npm run allowlist` output. Re-run + redeploy when a client is added. See `AUTH.md`.
@@ -241,15 +282,18 @@ can't drift from the served `.enc`.
 **`functions/api/raw/[[path]].ts`** — **`GET /api/raw/{id}/{file}`**, session-gated
 (`hd_session`; the `RAW_TOKEN` this line used to name is not read by the Function — corrected,
 along with the authorisation gap recorded in `API.md`):
-`env.VAULT.get(storeKey(env, "raw", id.toLowerCase(), file))` → streams the plaintext original with a
-content-type by extension; `400` bad path, `404` miss, PHI-free log `{route:"/api/raw", status, id}`.
-Never decrypts (raw is stored unencrypted).
+`env.VAULT.get(storeKey(env, "raw", id.toLowerCase(), file))` → streams whatever is stored, with a
+content-type describing the **document** rather than the envelope; `400` bad path, `404` miss,
+PHI-free log `{route:"/api/raw", status, id}`. It never decrypts — a caller that can read the bytes
+is a caller that holds the key (§2a). `PUT` accepts both formats while the store migrates and logs
+`sealed`, so the sweep's remaining work is readable off the logs rather than by listing a bucket of
+patient files; rejecting plaintext is a later, separate change.
 
-Because these objects are plaintext and outside the encryption boundary, a Worker can read them —
-and since W-corpus every AI route does: the PDFs under `raw/{id}/` are attached to each inference
-about that person as `document` blocks ([`CORPUS.md`](CORPUS.md)), through the same `rawAccessFor`
-gate this route uses. Encrypting raw originals would end that, which is the trade the boundary
-here was already making and is now paying for.
+Every AI route still attaches these documents server-side: the PDFs under `raw/{id}/` ride along with
+each inference about that person as `document` blocks ([`CORPUS.md`](CORPUS.md)), through the same
+`rawAccessFor` gate this route uses. Sealing them did **not** end that — the corpus needs the bytes
+readable *during a request the owner is making*, which is not the same as readable *at rest*, so the
+browser sends the content keys with the request and the Worker opens them in memory.
 
 **`DELETE /api/raw/{id}/{file}`**
 (same gate) expunges one raw object from R2 (`env.VAULT.delete(...)`) → `{deleted:true}`;
@@ -268,7 +312,7 @@ adopted target is separate per-environment buckets — see §8.)
 health-vault/
   {store}/                         per-deployment namespace (env.STORE_PREFIX; dev branch = "dev")
     data-{id}.enc                  vault ciphertext
-    raw/{id}/{file}                originals (plaintext PHI) — session-gated via /api/raw
+    raw/{id}/{file}                originals, sealed under a per-file content key (§2a)
     processed/{id}/{sha8}.json     extractions (lets a CLI pull web-extracted artifacts)
 ```
 

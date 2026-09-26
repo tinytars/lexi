@@ -15,6 +15,8 @@ import { signSession } from "../../functions/_lib/session";
 import { fakeSessionDb } from "../support/session-db";
 import type { StoredObject } from "../../functions/_lib/object-bucket";
 import { storedObject } from "../../server/fs-bucket";
+import { isSealed, openRaw, sealRaw } from "../../src/lib/raw-cipher";
+import { bytesToBase64 } from "../../src/lib/base64";
 
 // W73 — the routes now resolve who owns a client namespace before touching R2. These tests are about
 // content types, etags and path handling, so they seed "acct-1 owns the fixture namespaces" and leave
@@ -231,5 +233,98 @@ describe("GET /api/document-extract", () => {
   it("401s without a session", async () => {
     const env = makeEnv();
     expect((await get(env, "id=alex&key=x.pdf", false)).status).toBe(401);
+  });
+});
+
+// The transcription is the document in cleartext, so a sealed store that left its sidecars in the
+// open would make the whole exercise cosmetic. Both are sealed under ONE key — the one the request
+// already carried to read the PDF.
+describe("/api/document-extract on a sealed store", () => {
+  const PDF = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x37]);
+  const RAW = "test/raw/alex/ab12cd34-report.pdf";
+  const SIDECAR = "test/text/alex/ab12cd34-report.pdf.json";
+  const newKey = (): string => bytesToBase64(crypto.getRandomValues(new Uint8Array(32)));
+  const withKey = (rawKey: string) => ({ id: "alex", key: "ab12cd34-report.pdf", mediaType: "application/pdf", rawKey });
+
+  async function sealedEnv(rawKey: string) {
+    return makeEnv({ [RAW]: await sealRaw(PDF, rawKey) });
+  }
+
+  it("sends the model the document, not the envelope", async () => {
+    const rawKey = newKey();
+    const res = await call(await sealedEnv(rawKey), { auth: "valid", body: withKey(rawKey) });
+
+    expect(res.status).toBe(200);
+    expect(create.mock.calls[0][0].messages[0].content[0].source.data).toBe(bytesToBase64(PDF));
+  });
+
+  it("seals the transcription under the same key as the document it transcribes", async () => {
+    const rawKey = newKey();
+    const env = await sealedEnv(rawKey);
+
+    await call(env, { auth: "valid", body: withKey(rawKey) });
+
+    const stored = env._store.get(SIDECAR) as Uint8Array;
+    expect(isSealed(stored)).toBe(true);
+    const plain = await openRaw(stored, "ab12cd34-report.pdf.json", rawKey);
+    expect(JSON.parse(new TextDecoder().decode(plain)).text).toBe(READING.text);
+  });
+
+  it("serves the sealed sidecar back with no second model call", async () => {
+    const rawKey = newKey();
+    const env = await sealedEnv(rawKey);
+    await call(env, { auth: "valid", body: withKey(rawKey) });
+    create.mockClear();
+
+    const res = await call(env, { auth: "valid", body: withKey(rawKey) });
+
+    expect((await res.json()).cached).toBe(true);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  // Mid-migration a document can be sealed while the sidecar written before the sweep is not.
+  it("still reads a plaintext sidecar left from before the sweep", async () => {
+    const rawKey = newKey();
+    const env = makeEnv({
+      [RAW]: await sealRaw(PDF, rawKey),
+      [SIDECAR]: JSON.stringify({ ...READING, at: "then", chars: 3 }),
+    });
+
+    const res = await call(env, { auth: "valid", body: withKey(rawKey) });
+
+    expect((await res.json()).text).toBe(READING.text);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  // Classified, so the middleware's catch-all never files it as a bug: the caller holds the key and
+  // simply did not send it.
+  it("refuses a sealed document with no key as a 400, before billing an extraction", async () => {
+    const env = await sealedEnv(newKey());
+
+    const res = await call(env, { auth: "valid" });
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).errorCode).toBe("raw_key_missing");
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  // A key in a query string is a key in a log, so the GET route holds none and hands the bytes back
+  // exactly as stored — the caller has the ring the seal came from.
+  it("hands a sealed sidecar back sealed, as bytes rather than JSON", async () => {
+    const rawKey = newKey();
+    const sealed = await sealRaw(new TextEncoder().encode(JSON.stringify({ ...READING, at: "now", chars: 3 })), rawKey);
+    const env = makeEnv({ [SIDECAR]: sealed });
+
+    const res = await onRequestGet({
+      request: new Request("http://local/api/document-extract?id=alex&key=ab12cd34-report.pdf", {
+        headers: { cookie: `hd_session=${await signSession(env, "acct-1")}` },
+      }),
+      env,
+    });
+
+    expect(res.headers.get("content-type")).toBe("application/octet-stream");
+    const body = new Uint8Array(await res.arrayBuffer());
+    expect(isSealed(body)).toBe(true);
+    expect(JSON.parse(new TextDecoder().decode(await openRaw(body, "ab12cd34-report.pdf.json", rawKey))).text).toBe(READING.text);
   });
 });

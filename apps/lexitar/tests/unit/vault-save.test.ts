@@ -226,3 +226,35 @@ describe("a failed save is filed, not just displayed", () => {
     expect(reported).toEqual([]);
   });
 });
+
+describe("vault-save: what a push resolves to", () => {
+  // Awaited by recordRawKey (App.svelte), which must not seal an upload under a key whose write failed.
+  it("resolves true only once that write has landed", async () => {
+    const vs = createVaultSave();
+    const order: string[] = [];
+
+    const landed = vs.push(async () => {
+      await flush();
+      order.push("wrote");
+    });
+
+    expect(await landed).toBe(true);
+    order.push("resolved");
+    expect(order).toEqual(["wrote", "resolved"]);
+  });
+
+  it("resolves false rather than rejecting, so a caller that only wants the banner can ignore it", async () => {
+    const vs = createVaultSave();
+
+    expect(await vs.push(async () => Promise.reject(new Error("R2 said no")))).toBe(false);
+    expect(vs.error).toBe("R2 said no");
+  });
+
+  it("keeps the queue running after a failure, so the next write still lands", async () => {
+    const vs = createVaultSave();
+
+    void vs.push(async () => Promise.reject(new Error("R2 said no")));
+
+    expect(await vs.push(async () => undefined)).toBe(true);
+  });
+});

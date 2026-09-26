@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { Client } from "../../src/lib/types";
-import { fillMissingRanges, RANGE_FILL_CONCURRENCY } from "../../src/lib/range-fill";
+import { fillMissingRanges } from "../../src/lib/range-fill";
 
 const clientWith = (markers: string[]): Client =>
   ({
@@ -24,44 +24,25 @@ function deferredFill() {
 }
 
 describe("fillMissingRanges", () => {
-  // Every range call sends the same corpus prefix, and a cache entry is not readable until the first
-  // response begins. Four simultaneous first calls write four copies of the same reports.
-  it("runs the first marker alone, and starts the rest only once it finishes", async () => {
+  // Two of these at once is two copies of the same report corpus live in one Function isolate,
+  // which is what the server's budget now refuses (CORPUS.md) — and a refusal here is a marker
+  // silently left without a range. Serial also keeps the prompt cache readable: an entry cannot be
+  // read until the first response begins, so simultaneous calls each write their own copy.
+  it("runs one marker at a time", async () => {
     const { started, fill, finish } = deferredFill();
-
-    const done = fillMissingRanges(clientWith(["a", "b", "c", "d", "e", "f"]), fill);
-    await Promise.resolve();
-    expect(started).toEqual(["a"]);
-
-    finish("a");
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(started.slice(1)).toEqual(["b", "c", "d", "e"]);
-
-    for (const m of ["b", "c", "d", "e", "f"]) {
-      finish(m);
-      await Promise.resolve();
-    }
-    await done;
-    expect(started).toEqual(["a", "b", "c", "d", "e", "f"]);
-  });
-
-  it("fans the rest out no wider than the concurrency limit", async () => {
-    const { started, fill, finish } = deferredFill();
-    const markers = Array.from({ length: 12 }, (_, i) => `m${i}`);
+    const markers = ["a", "b", "c", "d", "e", "f"];
 
     const done = fillMissingRanges(clientWith(markers), fill);
     await Promise.resolve();
-    finish("m0");
-    await Promise.resolve();
-    await Promise.resolve();
+    expect(started).toEqual(["a"]);
 
-    expect(started.length - 1).toBe(RANGE_FILL_CONCURRENCY);
-
-    for (const m of markers) {
-      finish(m);
+    for (const [i, marker] of markers.entries()) {
+      finish(marker);
       await Promise.resolve();
+      await Promise.resolve();
+      expect(started).toEqual(markers.slice(0, i + 2));
     }
+
     await done;
   });
 

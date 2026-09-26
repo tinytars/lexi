@@ -18,6 +18,7 @@ import { CORE_BRAIN } from "./finding-config";
 import { modelId } from "./model-config";
 import { BRAIN_VERSIONS } from "./brain-versions";
 import { plannedLabels, populatedNoteEntries } from "@pablotech/akesi/finding-generate";
+import { corpusSubject } from "./vault-raw-keys";
 
 const SENTINEL = "[[REFRESH_ERROR]]";
 // W39: 3, not 6. Worst case is 3 full Opus generations, and only a *validation* miss burns a retry —
@@ -125,7 +126,7 @@ async function streamAttempt(
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     // clientId names whose record this is: the Finding is generated in sight of that person's own
     // reports (CORPUS.md), and the relay has to be able to authorise reading them.
-    body: JSON.stringify({ client, clientId, corrections, attempt }),
+    body: JSON.stringify({ client, ...corpusSubject(clientId), corrections, attempt }),
     signal,
   });
   if (!res.ok || !res.body) {

@@ -67,3 +67,20 @@ export class CorpusBusyError extends Error {
     this.name = "CorpusBusyError";
   }
 }
+
+/**
+ * A stored document is sealed and the request did not carry a key that opens it.
+ *
+ * The browser holds the keyring, inside the encrypted vault, so this is a caller-side omission
+ * rather than a fault in the record — which is why it is the one corpus refusal that is a 400.
+ * Carries the file name for the same reason CorpusUnmeasuredError does: the remedy is per-file, and
+ * a route answering a browser sends the COUNT only.
+ */
+export class CorpusKeyError extends Error {
+  readonly files: string[];
+  constructor(files: string[]) {
+    super(`${files.length} source document(s) could not be opened with the keys supplied`);
+    this.files = files;
+    this.name = "CorpusKeyError";
+  }
+}

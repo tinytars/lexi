@@ -6,15 +6,18 @@ import { describe, it, expect } from "vitest";
 import type Anthropic from "@anthropic-ai/sdk";
 import { createAccount } from "../../functions/_lib/identity-accounts";
 import { recordRawObject } from "../../functions/_lib/identity-audit";
-import { reportCorpus, type CorpusEnv, MAX_CORPUS_BYTES, MAX_CORPUS_DOCS, CORPUS_ACK, CORPUS_PREAMBLE } from "../../functions/_lib/inference/corpus";
+import { openReportCorpus, type Corpus, type CorpusEnv, MAX_CORPUS_BYTES, MAX_CORPUS_DOCS, CORPUS_ACK, CORPUS_PREAMBLE } from "../../functions/_lib/inference/corpus";
 import {
   CorpusBusyError,
   CorpusDeniedError,
+  CorpusKeyError,
   CorpusMissingError,
   CorpusTooLargeError,
   CorpusUnmeasuredError,
 } from "../../functions/_lib/inference/corpus-errors";
 import { useWorkerd } from "../support/miniflare";
+import { sealRaw } from "../../src/lib/raw-cipher";
+import { bytesToBase64 } from "../../src/lib/base64";
 
 const STORE = "dev";
 const w = useWorkerd({ r2: true, perTest: true });
@@ -46,10 +49,18 @@ async function storeUnmeasured(owner: string, slug: string, file: string, pages:
   return key;
 }
 
+/** The corpus alone, its isolate reservation released immediately — what every test outside the
+ *  admission-gate block below is asserting about. The gate's own tests hold the scope open instead. */
+async function corpusOf(...args: Parameters<typeof openReportCorpus>): Promise<Corpus> {
+  const { corpus, release } = await openReportCorpus(...args);
+  release();
+  return corpus;
+}
+
 const docsOf = (turns: Anthropic.MessageParam[]): Anthropic.DocumentBlockParam[] =>
   (turns[0]?.content as Anthropic.ContentBlockParam[] | undefined)?.flatMap((b) => (b.type === "document" ? [b] : [])) ?? [];
 
-describe("reportCorpus", () => {
+describe("openReportCorpus", () => {
   it("attaches every PDF in the namespace and nothing else", async () => {
     const who = await account("alex");
     await store(who, "alex", "labs.pdf", { pages: 3 });
@@ -57,7 +68,7 @@ describe("reportCorpus", () => {
     await store(who, "alex", "readings.xlsx", { pages: undefined });
     await store(who, "alex", "bottle.jpg", { pages: undefined });
 
-    const corpus = await reportCorpus(env(), who, "alex", { citations: true });
+    const corpus = await corpusOf(env(), who, "alex", { citations: true });
 
     expect(corpus.docCount).toBe(2);
     expect(corpus.pageCount).toBe(5);
@@ -68,7 +79,7 @@ describe("reportCorpus", () => {
     const who = await account("alex");
     await store(who, "alex", "labs.pdf", { pages: 1 });
 
-    const { turns } = await reportCorpus(env(), who, "alex", { citations: true });
+    const { turns } = await corpusOf(env(), who, "alex", { citations: true });
 
     expect(turns).toHaveLength(2);
     const first = turns[0].content as Anthropic.ContentBlockParam[];
@@ -82,7 +93,7 @@ describe("reportCorpus", () => {
     await store(who, "alex", "apple.pdf", { pages: 1 });
     await store(who, "alex", "middle.pdf", { pages: 1 });
 
-    const corpus = await reportCorpus(env(), who, "alex", { citations: true });
+    const corpus = await corpusOf(env(), who, "alex", { citations: true });
 
     expect(docsOf(corpus.turns).map((d) => d.title)).toEqual(["apple.pdf", "middle.pdf", "zebra.pdf"]);
   });
@@ -94,8 +105,8 @@ describe("reportCorpus", () => {
     await store(who, "alex", "labs.pdf", { pages: 2 });
     await store(who, "alex", "scan.pdf", { pages: 1 });
 
-    const a = await reportCorpus(env(), who, "alex", { citations: true });
-    const b = await reportCorpus(env(), who, "alex", { citations: true });
+    const a = await corpusOf(env(), who, "alex", { citations: true });
+    const b = await corpusOf(env(), who, "alex", { citations: true });
 
     expect(JSON.stringify(a.turns)).toBe(JSON.stringify(b.turns));
   });
@@ -106,7 +117,7 @@ describe("reportCorpus", () => {
     await store(who, "alex", "b.pdf", { pages: 1 });
     await store(who, "alex", "c.pdf", { pages: 1 });
 
-    const docs = docsOf((await reportCorpus(env(), who, "alex", { citations: true })).turns);
+    const docs = docsOf((await corpusOf(env(), who, "alex", { citations: true })).turns);
 
     expect(docs.map((d) => d.cache_control)).toEqual([undefined, undefined, { type: "ephemeral" }]);
   });
@@ -115,8 +126,8 @@ describe("reportCorpus", () => {
     const who = await account("alex");
     await store(who, "alex", "labs.pdf", { pages: 1 });
 
-    const cited = await reportCorpus(env(), who, "alex", { citations: true });
-    const plain = await reportCorpus(env(), who, "alex", { citations: false });
+    const cited = await corpusOf(env(), who, "alex", { citations: true });
+    const plain = await corpusOf(env(), who, "alex", { citations: false });
 
     expect(docsOf(cited.turns)[0].citations).toEqual({ enabled: true });
     expect(docsOf(plain.turns)[0].citations).toBeUndefined();
@@ -147,7 +158,7 @@ describe("the encoded document is the document", () => {
     const original = bytes(size);
     await store(who, "alex", "labs.pdf", { pages: 1, bytes: original });
 
-    const docs = docsOf((await reportCorpus(env(), who, "alex", { citations: true })).turns);
+    const docs = docsOf((await corpusOf(env(), who, "alex", { citations: true })).turns);
 
     expect(decode((docs[0].source as { data: string }).data)).toEqual(original);
   });
@@ -158,19 +169,19 @@ describe("the encoded document is the document", () => {
     const who = await account("alex");
     await store(who, "alex", "labs.pdf", { pages: 1, bytes: bytes(CHUNK * 3 + 1) });
 
-    const data = (docsOf((await reportCorpus(env(), who, "alex", { citations: true })).turns)[0].source as { data: string }).data;
+    const data = (docsOf((await corpusOf(env(), who, "alex", { citations: true })).turns)[0].source as { data: string }).data;
 
     expect(data.indexOf("=")).toBe(data.length - 2);
   });
 });
 
-describe("reportCorpus refuses rather than answers on part of a record", () => {
+describe("openReportCorpus refuses rather than answers on part of a record", () => {
   it("refuses a namespace the account does not own", async () => {
     const who = await account("alex");
     await store(who, "alex", "labs.pdf", { pages: 1 });
     const stranger = await account("nobody");
 
-    await expect(reportCorpus(env(), stranger, "alex", { citations: true })).rejects.toBeInstanceOf(CorpusDeniedError);
+    await expect(corpusOf(env(), stranger, "alex", { citations: true })).rejects.toBeInstanceOf(CorpusDeniedError);
   });
 
   // Objects with no ownership row belong to nobody until they are claimed deliberately (W76), so a
@@ -179,7 +190,7 @@ describe("reportCorpus refuses rather than answers on part of a record", () => {
     const who = await account("alex");
     await w.bucket.put(`${STORE}/raw/alex/labs.pdf`, PDF("orphan"));
 
-    await expect(reportCorpus(env(), who, "alex", { citations: true })).rejects.toBeInstanceOf(CorpusDeniedError);
+    await expect(corpusOf(env(), who, "alex", { citations: true })).rejects.toBeInstanceOf(CorpusDeniedError);
   });
 
   // The test that pins "fail loudly" as behaviour and not intent: one unmeasured PDF refuses the
@@ -189,7 +200,7 @@ describe("reportCorpus refuses rather than answers on part of a record", () => {
     await store(who, "alex", "measured.pdf", { pages: 4 });
     await store(who, "alex", "unmeasured.pdf");
 
-    const err = await reportCorpus(env(), who, "alex", { citations: true }).catch((e: unknown) => e);
+    const err = await corpusOf(env(), who, "alex", { citations: true }).catch((e: unknown) => e);
 
     expect(err).toBeInstanceOf(CorpusUnmeasuredError);
     expect((err as CorpusUnmeasuredError).files).toEqual(["unmeasured.pdf"]);
@@ -200,7 +211,7 @@ describe("reportCorpus refuses rather than answers on part of a record", () => {
     await store(who, "alex", "labs.pdf", { pages: 1 });
     await w.bucket.delete(`${STORE}/raw/alex/labs.pdf`);
 
-    await expect(reportCorpus(env(), who, "alex", { citations: true })).rejects.toBeInstanceOf(CorpusMissingError);
+    await expect(corpusOf(env(), who, "alex", { citations: true })).rejects.toBeInstanceOf(CorpusMissingError);
   });
 
   it("names the page ceiling it could not meet", async () => {
@@ -208,7 +219,7 @@ describe("reportCorpus refuses rather than answers on part of a record", () => {
     await store(who, "alex", "a.pdf", { pages: 180 });
     await store(who, "alex", "b.pdf", { pages: 132 });
 
-    const err = await reportCorpus(env(), who, "alex", { citations: true, maxPages: 250 }).catch((e: unknown) => e);
+    const err = await corpusOf(env(), who, "alex", { citations: true, maxPages: 250 }).catch((e: unknown) => e);
 
     expect(err).toBeInstanceOf(CorpusTooLargeError);
     expect(err).toMatchObject({ limit: "pages", actual: 312, max: 250 });
@@ -218,8 +229,8 @@ describe("reportCorpus refuses rather than answers on part of a record", () => {
     const who = await account("alex");
     await store(who, "alex", "a.pdf", { pages: 120 });
 
-    await expect(reportCorpus(env(), who, "alex", { citations: true, maxPages: 100 })).rejects.toMatchObject({ max: 100 });
-    await expect(reportCorpus(env(), who, "alex", { citations: true, maxPages: 250 })).resolves.toMatchObject({ docCount: 1 });
+    await expect(corpusOf(env(), who, "alex", { citations: true, maxPages: 100 })).rejects.toMatchObject({ max: 100 });
+    await expect(corpusOf(env(), who, "alex", { citations: true, maxPages: 250 })).resolves.toMatchObject({ docCount: 1 });
   });
 
   it("names the document ceiling it could not meet", async () => {
@@ -228,7 +239,7 @@ describe("reportCorpus refuses rather than answers on part of a record", () => {
       await recordRawObject(w.db, `${STORE}/raw/alex/r${String(i).padStart(3, "0")}.pdf`, who, { pages: 1 });
     }
 
-    await expect(reportCorpus(env(), who, "alex", { citations: true })).rejects.toMatchObject({
+    await expect(corpusOf(env(), who, "alex", { citations: true })).rejects.toMatchObject({
       limit: "documents",
       actual: MAX_CORPUS_DOCS + 1,
       max: MAX_CORPUS_DOCS,
@@ -239,7 +250,7 @@ describe("reportCorpus refuses rather than answers on part of a record", () => {
     const who = await account("alex");
     await store(who, "alex", "huge.pdf", { pages: 1, bytes: new Uint8Array(MAX_CORPUS_BYTES + 1) });
 
-    await expect(reportCorpus(env(), who, "alex", { citations: true })).rejects.toMatchObject({ limit: "bytes", max: MAX_CORPUS_BYTES });
+    await expect(corpusOf(env(), who, "alex", { citations: true })).rejects.toMatchObject({ limit: "bytes", max: MAX_CORPUS_BYTES });
   });
 
   // A record too big to send should cost one query, not 20 MB of reads and a rejected request.
@@ -248,7 +259,7 @@ describe("reportCorpus refuses rather than answers on part of a record", () => {
     await store(who, "alex", "a.pdf", { pages: 400 });
     const unreadable = { ...env(), VAULT: { list: w.bucket.list.bind(w.bucket), get: () => Promise.reject(new Error("read R2")) } } as unknown as CorpusEnv;
 
-    await expect(reportCorpus(unreadable, who, "alex", { citations: true, maxPages: 250 })).rejects.toBeInstanceOf(CorpusTooLargeError);
+    await expect(corpusOf(unreadable, who, "alex", { citations: true, maxPages: 250 })).rejects.toBeInstanceOf(CorpusTooLargeError);
   });
 });
 
@@ -272,30 +283,49 @@ describe("an instance assembles only as much as it can hold", () => {
     return { open, reached, env: { ...env(), VAULT } as unknown as CorpusEnv };
   }
 
+  // THE WINDOW, not the counter, is what makes this gate real. Assembly ending is not the peak: the
+  // base64 stays live for the whole upstream call and the SDK serialises a second copy of it, so a
+  // reservation released when `readDocuments` returned read 0 during the seconds the isolate held the
+  // most — and two requests whose assemblies merely did not overlap killed it between them.
+  it("holds the record's bytes until the scope is released, not until the assembly ends", async () => {
+    const who = await account("alex");
+    await storeUnmeasured(who, "alex", "labs.pdf", 1);
+
+    const first = await openReportCorpus(env(), who, "alex", { citations: true });
+    expect(first.corpus.docCount).toBe(1);
+
+    await expect(openReportCorpus(env(), who, "alex", { citations: true })).rejects.toBeInstanceOf(CorpusBusyError);
+
+    first.release();
+    await expect(corpusOf(env(), who, "alex", { citations: true })).resolves.toMatchObject({ docCount: 1 });
+  });
+
   it("refuses the assembly it has no room for, and still finishes the one already running", async () => {
     const who = await account("alex");
     await storeUnmeasured(who, "alex", "labs.pdf", 1);
     const held = heldVault();
 
-    const first = reportCorpus(held.env, who, "alex", { citations: true });
+    const first = openReportCorpus(held.env, who, "alex", { citations: true });
     await held.reached;
 
-    await expect(reportCorpus(env(), who, "alex", { citations: true })).rejects.toBeInstanceOf(CorpusBusyError);
+    await expect(corpusOf(env(), who, "alex", { citations: true })).rejects.toBeInstanceOf(CorpusBusyError);
 
     held.open();
-    await expect(first).resolves.toMatchObject({ docCount: 1 });
+    const opened = await first;
+    expect(opened.corpus).toMatchObject({ docCount: 1 });
+    opened.release();
   });
 
   // A reservation that survives its own failure is worse than no reservation: the instance refuses
-  // work forever while holding nothing.
+  // work forever while holding nothing, and nobody is left holding a release to call.
   it("gives the budget back when an assembly throws", async () => {
     const who = await account("alex");
     await recordRawObject(w.db, `${STORE}/raw/gone/labs.pdf`, who, { pages: 1 });
     await storeUnmeasured(who, "alex", "labs.pdf", 1);
 
-    await expect(reportCorpus(env(), who, "gone", { citations: true })).rejects.toBeInstanceOf(CorpusMissingError);
+    await expect(corpusOf(env(), who, "gone", { citations: true })).rejects.toBeInstanceOf(CorpusMissingError);
 
-    await expect(reportCorpus(env(), who, "alex", { citations: true })).resolves.toMatchObject({ docCount: 1 });
+    await expect(corpusOf(env(), who, "alex", { citations: true })).resolves.toMatchObject({ docCount: 1 });
   });
 
   // Measured rows reserve what they actually weigh, so ordinary records still overlap freely.
@@ -306,13 +336,15 @@ describe("an instance assembles only as much as it can hold", () => {
     const held = heldVault();
 
     const both = Promise.all([
-      reportCorpus(held.env, who, "alex", { citations: true }),
-      reportCorpus(held.env, who, "sam", { citations: true }),
+      openReportCorpus(held.env, who, "alex", { citations: true }),
+      openReportCorpus(held.env, who, "sam", { citations: true }),
     ]);
     await held.reached;
     held.open();
 
-    expect((await both).map((c) => c.docCount)).toEqual([1, 1]);
+    const opened = await both;
+    expect(opened.map((o) => o.corpus.docCount)).toEqual([1, 1]);
+    opened.forEach((o) => o.release());
   });
 
   // The reservation is capped at MAX_CORPUS_BYTES so a record nobody can send fails as "too large",
@@ -321,15 +353,15 @@ describe("an instance assembles only as much as it can hold", () => {
     const who = await account("alex");
     await store(who, "alex", "huge.pdf", { pages: 1, bytes: new Uint8Array(MAX_CORPUS_BYTES + 1) });
 
-    await expect(reportCorpus(env(), who, "alex", { citations: true })).rejects.toBeInstanceOf(CorpusTooLargeError);
+    await expect(corpusOf(env(), who, "alex", { citations: true })).rejects.toBeInstanceOf(CorpusTooLargeError);
   });
 
-  it("admits any number of assemblies in sequence", async () => {
+  it("admits any number of requests in sequence", async () => {
     const who = await account("alex");
     await storeUnmeasured(who, "alex", "labs.pdf", 1);
 
     for (let i = 0; i < 4; i += 1) {
-      await expect(reportCorpus(env(), who, "alex", { citations: true })).resolves.toMatchObject({ docCount: 1 });
+      await expect(corpusOf(env(), who, "alex", { citations: true })).resolves.toMatchObject({ docCount: 1 });
     }
   });
 });
@@ -340,7 +372,7 @@ describe("a client with nothing stored", () => {
   it("is an empty corpus, not a refusal", async () => {
     const who = await account("alex");
 
-    const corpus = await reportCorpus(env(), who, "alex", { citations: true });
+    const corpus = await corpusOf(env(), who, "alex", { citations: true });
 
     expect(corpus).toEqual({ turns: [], docCount: 0, pageCount: 0, byteCount: 0 });
   });
@@ -349,6 +381,88 @@ describe("a client with nothing stored", () => {
     const who = await account("alex");
     await store(who, "alex", "readings.xlsx");
 
-    expect((await reportCorpus(env(), who, "alex", { citations: true })).turns).toEqual([]);
+    expect((await corpusOf(env(), who, "alex", { citations: true })).turns).toEqual([]);
+  });
+});
+
+// The store is mid-migration for as long as the sweep runs, so every property above has to hold on
+// a namespace whose documents are AES-GCM ciphertext under a key that only arrives with the request.
+describe("openReportCorpus on a sealed store", () => {
+  const newKey = (): string => bytesToBase64(crypto.getRandomValues(new Uint8Array(32)));
+
+  /** The same helper as `store`, with the bytes sealed the way the browser seals an upload. */
+  async function storeSealed(owner: string, slug: string, file: string, key: string, pages = 1) {
+    return store(owner, slug, file, { pages, bytes: await sealRaw(PDF(file), key) });
+  }
+
+  // The whole cost argument for the corpus: decryption is deterministic, so encrypting the store
+  // does not move the cache breakpoint. A prefix that differed by one byte would turn every
+  // patient's cache read into a full write.
+  it("builds the prefix a plaintext store builds, byte for byte", async () => {
+    const plain = await account("alex");
+    await store(plain, "alex", "labs.pdf", { pages: 1 });
+    const key = newKey();
+    const sealed = await account("sam");
+    await storeSealed(sealed, "sam", "labs.pdf", key);
+
+    const a = await corpusOf(env(), plain, "alex", { citations: true });
+    const b = await corpusOf(env(), sealed, "sam", { citations: true, rawKeys: { "labs.pdf": key } });
+
+    expect(JSON.stringify(b.turns)).toBe(JSON.stringify(a.turns));
+  });
+
+  // The envelope's 48 bytes are storage overhead, not something the model is sent, so the ceiling
+  // has to count what was read rather than what was stored.
+  it("budgets on the plaintext it sends, not on the envelope it read", async () => {
+    const who = await account("alex");
+    const key = newKey();
+    await storeSealed(who, "alex", "labs.pdf", key);
+
+    const corpus = await corpusOf(env(), who, "alex", { citations: true, rawKeys: { "labs.pdf": key } });
+
+    expect(corpus.byteCount).toBe(PDF("labs.pdf").length);
+  });
+
+  it("refuses a sealed document the request carried no key for", async () => {
+    const who = await account("alex");
+    await storeSealed(who, "alex", "labs.pdf", newKey());
+
+    await expect(corpusOf(env(), who, "alex", { citations: true })).rejects.toBeInstanceOf(CorpusKeyError);
+  });
+
+  it("refuses a key that does not open the document rather than sending garbage", async () => {
+    const who = await account("alex");
+    await storeSealed(who, "alex", "labs.pdf", newKey());
+
+    await expect(
+      corpusOf(env(), who, "alex", { citations: true, rawKeys: { "labs.pdf": newKey() } }),
+    ).rejects.toBeInstanceOf(CorpusKeyError);
+  });
+
+  // The browser heals the whole record in one pass, so a refusal naming one file at a time would
+  // take one round trip per document to get there.
+  it("names every document it could not open, not the first", async () => {
+    const who = await account("alex");
+    const key = newKey();
+    await storeSealed(who, "alex", "labs.pdf", newKey());
+    await storeSealed(who, "alex", "scan.pdf", key);
+    await storeSealed(who, "alex", "xray.pdf", newKey());
+
+    await expect(
+      corpusOf(env(), who, "alex", { citations: true, rawKeys: { "scan.pdf": key } }),
+    ).rejects.toMatchObject({ files: ["labs.pdf", "xray.pdf"] });
+  });
+
+  // THE PROPERTY THAT MUST NOT BE LOST: the key map decrypts, it never authorizes. Holding a valid
+  // content key for someone else's document buys nothing — `rawAccessFor` still decides.
+  it("refuses another account's namespace to a caller holding a valid key for it", async () => {
+    const who = await account("alex");
+    const key = newKey();
+    await storeSealed(who, "alex", "labs.pdf", key);
+    const stranger = await account("nobody");
+
+    await expect(
+      corpusOf(env(), stranger, "alex", { citations: true, rawKeys: { "labs.pdf": key } }),
+    ).rejects.toBeInstanceOf(CorpusDeniedError);
   });
 });

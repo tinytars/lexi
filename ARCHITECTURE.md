@@ -25,8 +25,11 @@ apps/lexitar
 
 Encryption and decryption happen only in the browser and in the local CLI. `functions/` — the
 Cloudflare Pages backend — never decrypts in the request path and never sees a password, KEK, or
-DEK; it moves sealed HD1 blobs (the vault) and, separately, plaintext raw file bytes for source
-documents that are stored unencrypted by design. The mechanism is `@tinytars/vault`'s: a per-vault
+DEK; it moves sealed HD1 blobs — the vault under its DEK, and each uploaded source document under
+its own content key, which exists only inside that vault (`apps/lexitar/VAULT.md` §2a). The one
+place the backend holds a document in plaintext is in memory, while answering a question its owner
+asked about it: the browser sends the content keys with that request, and the deployment keeps no
+standing key of its own. The mechanism is `@tinytars/vault`'s: a per-vault
 DEK encrypts the record, and the DEK is wrapped once per authorized principal via ECDH-ES — see
 `@tinytars/vault`'s own `ARCHITECTURE.md` for the byte layout and the full principal model (owner /
 org-recovery / grantee) that this app's `functions/_lib/identity-vault.ts` composes against.

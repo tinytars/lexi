@@ -11,6 +11,8 @@ import { capDocuments, type DocumentText, type StoredExtraction } from "@pablote
 import type { PageImage } from "@pablotech/akesi/report-extract";
 import { normalizeClientId } from "./client-id";
 import { reportsAreAttached } from "./corpus-warm-client";
+import { rawKeyFor } from "./vault-raw-keys";
+import { openRaw } from "./raw-cipher";
 
 // A model call on a long PDF is slower than a leaf regen's own scoped call but bounded the same
 // way — past this the attach reports a reason instead of spinning (leaf-regen-config.ts's comment
@@ -42,11 +44,20 @@ export function isExtractableDocument(a: Pick<Attachment, "name" | "mediaType">)
  * bytes in R2 already and normally needs nothing but the key, but it has no pdfjs to render them.
  */
 export async function extractDocument(clientId: string, a: Attachment, pageImages?: PageImage[]): Promise<StoredExtraction> {
+  const rawKey = rawKeyFor(clientId, a.key);
   const res = await withDeadline(DOCUMENT_EXTRACT_DEADLINE_MS, (signal) =>
     fetch("/api/document-extract", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: normalizeClientId(clientId), key: a.key, mediaType: a.mediaType, ...(pageImages ? { pageImages } : {}) }),
+      // The key the relay needs to open the stored document, and to seal the transcription it
+      // writes back beside it. Absent for a document stored before the sweep, which still reads.
+      body: JSON.stringify({
+        id: normalizeClientId(clientId),
+        key: a.key,
+        mediaType: a.mediaType,
+        ...(rawKey ? { rawKey } : {}),
+        ...(pageImages ? { pageImages } : {}),
+      }),
       signal,
     }).catch((e) => {
       if ((e as Error).name === "AbortError") throw e;
@@ -82,9 +93,21 @@ export async function fetchExtractedText(clientId: string, key: string): Promise
   // A miss is NOT cached: extraction may still be in flight, or may be retried, and caching the
   // absence would make the document permanently invisible for this page load.
   if (!res.ok) return null;
-  const parsed = (await res.json().catch(() => null)) as StoredExtraction | null;
+  // The sidecar is sealed under the SAME content key as the document it transcribes, and the route
+  // hands back whichever format it holds — so the bytes are read raw and opened, not res.json()'d.
+  const parsed = await openSidecar(await res.arrayBuffer(), clientId, key);
   if (parsed) sidecarCache.set(cacheKey, parsed);
   return parsed;
+}
+
+/** The sidecar's JSON, decrypting first where the store already holds it sealed. */
+async function openSidecar(body: ArrayBuffer, clientId: string, key: string): Promise<StoredExtraction | null> {
+  try {
+    const plain = await openRaw(new Uint8Array(body), `${key}.json`, rawKeyFor(clientId, key));
+    return JSON.parse(new TextDecoder().decode(plain)) as StoredExtraction;
+  } catch {
+    return null;
+  }
 }
 
 /**

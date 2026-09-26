@@ -1,5 +1,6 @@
 <script lang="ts">
   import { openPdf } from "./pdf-render";
+  import { resolveLazyUrl, type LazyUrl } from "./attachment-url.svelte";
 
   // A report's first-page thumbnail on a reports list — the ER-doctor path: see the first page ->
   // click to scroll through the rest -> Download, no menu digging. Loads pdfjs (via the shared
@@ -7,7 +8,8 @@
   // with many reports doesn't pay pdfjs's ~500 KB cost until a thumbnail is actually about to
   // render.
   interface Props {
-    url: string;
+    /** A thunk keeps the host's fetch-and-decrypt inside the IntersectionObserver gate below. */
+    url: LazyUrl;
     onOpen?: () => void;
   }
   let { url, onOpen }: Props = $props();
@@ -31,7 +33,7 @@
   async function load() {
     thumbState = "loading";
     try {
-      const doc = await openPdf(url);
+      const doc = await openPdf(await resolveLazyUrl(url));
       thumbState = "ready";
       // canvasEl only exists once thumbState flips to "ready" and Svelte re-renders; await a tick via
       // requestAnimationFrame so bind:this has landed before we render into it.

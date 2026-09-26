@@ -9,6 +9,7 @@
 //
 // Pure, and separate from the route, because it is the same decision three times: session first,
 // bearer second, and no answer at all without a subject.
+import { parseRawKeys, type RawKeyMap } from "../../../src/lib/raw-cipher";
 
 /** A refusal, in the shape a route's own error reply takes. */
 export interface SubjectRefusal {
@@ -20,18 +21,27 @@ export interface SubjectRefusal {
 export interface Subject {
   accountId: string;
   clientId: string;
+  /**
+   * The content keys that open this client's stored originals, from the caller's own vault.
+   *
+   * It rides with the subject because it is scoped to exactly the namespace the subject names: a key
+   * for someone else's file is not a key to anything, since `rawAccessFor` decides WHICH objects are
+   * read and this map only decides whether they can be opened.
+   */
+  rawKeys: RawKeyMap;
 }
 
 export function subjectOf(
   session: { accountId: string } | null,
-  body: { clientId?: unknown; accountId?: unknown },
+  body: { clientId?: unknown; accountId?: unknown; rawKeys?: unknown },
 ): Subject | SubjectRefusal {
   const clientId = typeof body.clientId === "string" ? body.clientId.trim() : "";
   if (!clientId) return { status: 400, errorCode: "no_client_id", error: "clientId is required" };
-  if (session) return { accountId: session.accountId, clientId };
+  const rawKeys = parseRawKeys(body);
+  if (session) return { accountId: session.accountId, clientId, rawKeys };
   const accountId = typeof body.accountId === "string" ? body.accountId.trim() : "";
   if (!accountId) {
     return { status: 400, errorCode: "no_account_id", error: "accountId is required when authenticating with the provider token" };
   }
-  return { accountId, clientId };
+  return { accountId, clientId, rawKeys };
 }

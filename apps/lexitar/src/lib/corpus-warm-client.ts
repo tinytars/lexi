@@ -1,6 +1,7 @@
 // The browser's /api/corpus-warm caller.
 
 import type { UnitSystem } from "./units";
+import { corpusSubject } from "./vault-raw-keys";
 
 // Whether this deployment attaches reports, learned from the warm call the app makes when a record
 // is opened. It decides whether an attached PDF still needs its transcription sent as text, so the
@@ -32,7 +33,7 @@ export async function warmCorpus(clientId: string, unitSystem: UnitSystem): Prom
   const res = await fetch("/api/corpus-warm", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ clientId, unitSystem }),
+    body: JSON.stringify({ ...corpusSubject(clientId), unitSystem }),
   });
   if (!res.ok) return false;
   const payload = (await res.json().catch(() => null)) as { warmed?: boolean; reason?: string } | null;

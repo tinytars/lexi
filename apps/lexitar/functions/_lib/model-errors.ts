@@ -2,7 +2,7 @@
 // a route returns to the browser. Read fields defensively: the caught value may be an SDK error, an
 // adapter's ModelHttpError, a network failure or a thrown string.
 import { AI_ERROR_MESSAGES } from "../../src/lib/ai-error";
-import { CorpusBusyError, CorpusDeniedError, CorpusMissingError, CorpusTooLargeError, CorpusUnmeasuredError, type CorpusLimit } from "./inference/corpus-errors";
+import { CorpusBusyError, CorpusDeniedError, CorpusKeyError, CorpusMissingError, CorpusTooLargeError, CorpusUnmeasuredError, type CorpusLimit } from "./inference/corpus-errors";
 
 export type ModelErrorCode = "insufficient_credit" | "ai_busy" | "model_unsupported" | "model_error";
 
@@ -69,7 +69,7 @@ export function modelErrorReply(err: unknown, fallback: string): { status: numbe
 // than `modelErrorReply`: catching these explicitly is what keeps them out of _middleware.ts, whose
 // one catch block files a GitHub issue and answers a generic 500 for anything that escapes a route.
 
-export type InferenceErrorCode = ModelErrorCode | "corpus_too_large" | "corpus_unmeasured" | "corpus_missing" | "corpus_busy" | "not_found";
+export type InferenceErrorCode = ModelErrorCode | "corpus_too_large" | "corpus_unmeasured" | "corpus_missing" | "corpus_key_missing" | "corpus_busy" | "not_found";
 
 export interface InferenceErrorReply {
   status: number;
@@ -79,6 +79,7 @@ export interface InferenceErrorReply {
   actual?: number;
   max?: number;
   unmeasured?: number;
+  unopenable?: number;
 }
 
 // The same sentence on every corpus refusal, because it is the decision being reported: this app
@@ -119,6 +120,16 @@ export function inferenceErrorReply(err: unknown, fallback: string): InferenceEr
   // and carrying an errorCode is what keeps the browser from filing it as a bug (error-reporter.ts).
   if (err instanceof CorpusBusyError) {
     return { status: 503, errorCode: "corpus_busy", error: AI_ERROR_MESSAGES.corpus_busy };
+  }
+  // 400, not 422: nothing is wrong with the record — the request left out a key the caller holds.
+  // The count, never the file names, for the same reason CorpusUnmeasuredError sends a count.
+  if (err instanceof CorpusKeyError) {
+    return {
+      status: 400,
+      errorCode: "corpus_key_missing",
+      error: `${err.files.length} of this record's source documents could not be opened. ${NO_PARTIAL} Reopening the record repairs this.`,
+      unopenable: err.files.length,
+    };
   }
   if (err instanceof CorpusMissingError) {
     return { status: 422, errorCode: "corpus_missing", error: `A source document this record lists is no longer in storage. ${NO_PARTIAL}` };

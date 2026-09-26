@@ -16,6 +16,10 @@ import { signSession } from "../../functions/_lib/session";
 import { createAccount } from "../../functions/_lib/identity-accounts";
 import { recordRawObject } from "../../functions/_lib/identity-audit";
 import { CORPUS_ACK } from "../../functions/_lib/inference/corpus";
+import { sealRaw } from "../../src/lib/raw-cipher";
+import { bytesToBase64 } from "../../src/lib/base64";
+
+const REPORT_PDF = new TextEncoder().encode("%PDF-1.4 report");
 import { fakeSessionDb } from "../support/session-db";
 import { useWorkerd } from "../support/miniflare";
 
@@ -264,6 +268,17 @@ describe("/api/chat answers in sight of the patient's reports", () => {
     return id;
   }
 
+  /** The same account and the same report, stored the way the browser stores one: sealed. */
+  async function alexWithASealedReport(contentKey: string): Promise<string> {
+    const id = crypto.randomUUID();
+    await createAccount(w.db, { id, displayName: "alex", email: `alex-${id}@example.com` });
+    const key = "dev/raw/alex/report.pdf";
+    const sealed = await sealRaw(REPORT_PDF, contentKey);
+    await w.bucket.put(key, sealed);
+    await recordRawObject(w.db, key, id, { pages: 2, bytes: sealed.length });
+    return id;
+  }
+
   const post = async (accountId: string, body: unknown) =>
     onRequestPost({
       request: new Request("http://local/api/chat", {
@@ -299,6 +314,31 @@ describe("/api/chat answers in sight of the patient's reports", () => {
     await post(who, { messages: toolRound, clientId: "alex" });
 
     expect(JSON.stringify(sentMessages(1).slice(0, 2))).toBe(JSON.stringify(sentMessages(0).slice(0, 2)));
+  });
+
+  // End to end on a sealed store: the key never touches the deployment's storage or config — it
+  // arrives on the request, opens the document, and is gone when the request ends.
+  it("opens a sealed report with the key the browser sent", async () => {
+    const key = bytesToBase64(crypto.getRandomValues(new Uint8Array(32)));
+    const who = await alexWithASealedReport(key);
+
+    const res = await post(who, { messages: MSGS, clientId: "alex", rawKeys: { "report.pdf": key } });
+
+    expect(res.status).toBe(200);
+    const first = sentMessages(0)[0].content as Anthropic.ContentBlockParam[];
+    expect(first[0]).toMatchObject({ type: "document", source: { data: bytesToBase64(REPORT_PDF) } });
+  });
+
+  // 400 and a code of its own: nothing is wrong with the record, the request left out a key the
+  // caller holds — and a classified refusal is what keeps the browser from filing it as a bug.
+  it("400s a sealed report it was sent no key for, and calls no model", async () => {
+    const who = await alexWithASealedReport(bytesToBase64(crypto.getRandomValues(new Uint8Array(32))));
+
+    const res = await post(who, { messages: MSGS, clientId: "alex" });
+
+    expect(res.status).toBe(400);
+    expect((await res.json() as { errorCode: string }).errorCode).toBe("corpus_key_missing");
+    expect(create).not.toHaveBeenCalled();
   });
 
   // A 403 would confirm the namespace exists; this route says only that there is nothing here.

@@ -5,6 +5,7 @@
 import type { Client, MarkerGrouping } from "./types";
 import { distinctMarkerNames, markerGroupsHashOf } from "@pablotech/akesi/marker-groups-prompt";
 import { systemOrder } from "@pablotech/akesi/system-groups";
+import { corpusSubject } from "./vault-raw-keys";
 
 const SENTINEL = "[[REFRESH_ERROR]]";
 
@@ -29,7 +30,7 @@ export async function refreshMarkerGroups(
   const res = await fetch("/api/refresh-marker-groups", {
     method: "POST",
     headers,
-    body: JSON.stringify({ client, clientId }),
+    body: JSON.stringify({ client, ...corpusSubject(clientId) }),
   });
   if (!res.ok || !res.body) {
     let payload: { error?: string; errorCode?: string } = {};

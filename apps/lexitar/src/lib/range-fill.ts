@@ -1,29 +1,27 @@
 // The post-import range backfill: one personalized range per marker that has none yet.
 //
 // Extracted from App.svelte (W79 phase 3b took the eligibility half; this takes the sweep) so the
-// warm-up below is a property that can be tested rather than a line in a component.
+// pacing below is a property that can be tested rather than a line in a component.
 
 import type { Client } from "./types";
-import { runWithConcurrency } from "@tinytars/frame/concurrency";
 import { eligibleMarkersForRangeFill } from "./range-eligibility";
 
-export const RANGE_FILL_CONCURRENCY = 4;
-
 /**
- * The first marker runs ALONE; the rest fan out behind it.
+ * ONE MARKER AT A TIME, and the caller puts the whole sweep on the shared corpus lane
+ * (src/lib/corpus-lane.ts) so it does not overlap the corpus warmer or the leaf sweep either.
  *
- * Every range call carries the patient's whole report corpus (CORPUS.md) and every one of them sends
- * the identical prefix — same system prompt, same documents — so the first response to begin
- * streaming leaves a cache entry the others read at a tenth of the price. A cache entry is not
- * readable until then, so four simultaneous first calls write four copies of the same 270K tokens
- * instead of one. Waiting for one call is the whole saving.
+ * Every range call carries the patient's whole report corpus (CORPUS.md), which the Function holding
+ * it reserves against its isolate's 128 MB ceiling for as long as the request runs. Two of them on
+ * one isolate is what that budget refuses, and the refusal arrives here as a swallowed failure — a
+ * marker silently left without a range. Serial also keeps what the old fan-out was written for: a
+ * prompt-cache entry is not readable until the first response begins, so simultaneous calls each
+ * write their own copy of the same 270K tokens instead of reading one.
  *
  * `fill` owns its own failures: a marker that cannot be filled must not stop the sweep, and
  * MarkerChart's per-marker Translate button is the recovery.
  */
 export async function fillMissingRanges(client: Client, fill: (marker: string) => Promise<void>): Promise<void> {
-  const [first, ...rest] = eligibleMarkersForRangeFill(client);
-  if (first === undefined) return;
-  await fill(first);
-  await runWithConcurrency(rest, RANGE_FILL_CONCURRENCY, fill);
+  for (const marker of eligibleMarkersForRangeFill(client)) {
+    await fill(marker);
+  }
 }

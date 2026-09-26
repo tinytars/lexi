@@ -24,8 +24,12 @@ export interface VaultSave {
    * Queue a write. The caller has already applied the change optimistically, and passes a closure that
    * captures THAT snapshot — not a shared slot: two edits queued before the first PUT resolves must
    * write their own snapshots in order, the way a per-call closure has always done here.
+   *
+   * Resolves true once THIS write has landed and false if it failed — never rejects, so a caller that
+   * only wants the banner can ignore it. Awaiting it is for a change that something else is only safe
+   * to build on once it is durable, such as a content key whose ciphertext has not been uploaded yet.
    */
-  push(write: () => Promise<void>): void;
+  push(write: () => Promise<void>): Promise<boolean>;
   /**
    * Re-queue the LATEST write after a failure.
    *
@@ -67,7 +71,7 @@ export function createVaultSave(report: (err: Error) => void = reportCaughtError
       // survives until a write actually SUCCEEDS — which is sound precisely because writes are
       // whole-vault, so a later success genuinely carries the failed edit's bytes.
       lastWrite = write;
-      chain = chain
+      const landed = chain
         .then(write)
         .then(() => {
           error = null; // cleared by success, not by the next attempt
@@ -76,6 +80,7 @@ export function createVaultSave(report: (err: Error) => void = reportCaughtError
           flashTimer = setTimeout(() => {
             saved = false;
           }, SAVED_FLASH_MS);
+          return true;
         })
         .catch((e) => {
           error = (e as Error).message;
@@ -85,11 +90,14 @@ export function createVaultSave(report: (err: Error) => void = reportCaughtError
           const failure = new Error(error);
           failure.name = "VaultSaveFailed";
           report(failure);
+          return false;
         });
+      chain = landed.then(() => undefined);
+      return landed;
     },
     retry() {
       if (error === null || lastWrite === null) return;
-      this.push(lastWrite);
+      void this.push(lastWrite);
     },
   };
 }

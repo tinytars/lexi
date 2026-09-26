@@ -8,6 +8,7 @@ import { storeKey } from "../_lib/store";
 import { rawAccessFor, mayRead, type RawAccess } from "../_lib/raw-owner";
 import { readDocument, DOCUMENT_READ_FAILURE, type DocumentReading, type StoredExtraction } from "@pablotech/akesi/document-read";
 import { validatePageImages } from "../_lib/page-images";
+import { isSealed, openRaw, RawKeyError, sealRaw } from "../../src/lib/raw-cipher";
 import type { ObjectBucket } from "../_lib/object-bucket";
 
 // Read one ALREADY-UPLOADED attachment as text, and cache the result forever.
@@ -20,8 +21,11 @@ import type { ObjectBucket } from "../_lib/object-bucket";
 //
 // The extracted text is stored as an R2 SIDECAR (text/{id}/{key}.json), not in the vault. A long
 // PDF's transcription in a vault blob would be re-encrypted and rewritten on every unrelated edit;
-// the vault keeps metadata only (Attachment.extracted, types.ts). The sidecar is plaintext PHI in
-// exactly the same sense raw/ already is, under the same session gate, in the same bucket.
+// the vault keeps metadata only (Attachment.extracted, types.ts).
+//
+// The sidecar is sealed under the SAME content key as the document it transcribes, which this
+// request has just used to read that document. It has to be: a full transcription lying in
+// cleartext beside the ciphertext of its own source would make encrypting the source cosmetic.
 
 interface Env {
   VAULT: Pick<ObjectBucket, "get" | "put" | "list">;
@@ -79,7 +83,7 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
   if (rawBody.length > MAX_BODY_BYTES) {
     return finish(413, { error: "request too large", errorCode: "too_large" }, { errorCode: "too_large" });
   }
-  let body: { id?: unknown; key?: unknown; mediaType?: unknown; pageImages?: unknown };
+  let body: { id?: unknown; key?: unknown; mediaType?: unknown; pageImages?: unknown; rawKey?: unknown };
   try {
     body = JSON.parse(rawBody);
   } catch {
@@ -93,6 +97,7 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
   const id = typeof body.id === "string" ? body.id.trim().toLowerCase() : "";
   const key = typeof body.key === "string" ? body.key.trim() : "";
   const mediaType = typeof body.mediaType === "string" ? body.mediaType : undefined;
+  const rawKey = typeof body.rawKey === "string" ? body.rawKey : undefined;
   // Same path discipline as /api/raw: no traversal, no empties — these become R2 key segments.
   if (!id || !key || id.includes("/") || key.includes("/") || key === "." || key === "..") {
     return finish(400, { error: "id and key are required", errorCode: "bad_path" }, { errorCode: "bad_path" });
@@ -117,10 +122,13 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
   const cached = await env.VAULT.get(sidecarKey);
   if (cached) {
     try {
-      const parsed = JSON.parse(await cached.text()) as StoredExtraction;
+      const plain = await openRaw(new Uint8Array(await cached.arrayBuffer()), `${key}.json`, rawKey);
+      const parsed = JSON.parse(new TextDecoder().decode(plain)) as StoredExtraction;
       return finish(200, { ...parsed, cached: true }, { access: access.kind });
     } catch {
       // A corrupt sidecar re-extracts rather than failing the request; the put below overwrites it.
+      // A sidecar this request holds no key for lands here too, and the raw read below refuses for
+      // the same reason before anything is billed.
     }
   }
 
@@ -128,7 +136,15 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
   if (!raw) {
     return finish(404, { error: "attachment not found", errorCode: "not_found" }, { errorCode: "not_found" });
   }
-  const bytes = new Uint8Array(await raw.arrayBuffer());
+  let bytes: Uint8Array;
+  try {
+    bytes = await openRaw(new Uint8Array(await raw.arrayBuffer()), key, rawKey);
+  } catch (err) {
+    if (!(err instanceof RawKeyError)) throw err;
+    // Classified, so _middleware.ts's catch-all never files this as a bug: the caller holds the key
+    // and simply did not send it.
+    return finish(400, { error: "this document could not be opened", errorCode: "raw_key_missing" }, { errorCode: "raw_key_missing" });
+  }
 
   let reading: DocumentReading;
   let model: string | undefined;
@@ -171,7 +187,8 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
     chars: reading.text.length,
     ...(model ? { model } : {}),
   };
-  await env.VAULT.put(sidecarKey, JSON.stringify(stored));
+  const sidecar = new TextEncoder().encode(JSON.stringify(stored));
+  await env.VAULT.put(sidecarKey, rawKey ? await sealRaw(sidecar, rawKey) : sidecar);
   // W72 — the sidecar is extracted PLAINTEXT PHI, so it is erasable data in its own right and gets the
   // same ownership row the original does. Without it an erasure would delete the PDF and leave its
   // readable text behind, which is the worst of the two outcomes.
@@ -213,6 +230,13 @@ export async function onRequestGet(context: { request: Request; env: Env }): Pro
     log(404, { errorCode: "not_found", access: readAccess.kind });
     return new Response(JSON.stringify({ error: "not extracted" }), { status: 404, headers: { "content-type": "application/json" } });
   }
+  // The sidecar goes back exactly as stored, sealed or not. This route holds no key and never asks
+  // for one: a key in a query string is a key in a log, and the caller that wants the text already
+  // has the keyring the seal came from.
+  const stored = new Uint8Array(await cached.arrayBuffer());
   log(200, { access: readAccess.kind });
-  return new Response(await cached.text(), { status: 200, headers: { "content-type": "application/json", "cache-control": "no-store" } });
+  return new Response(stored, {
+    status: 200,
+    headers: { "content-type": isSealed(stored) ? "application/octet-stream" : "application/json", "cache-control": "no-store" },
+  });
 }

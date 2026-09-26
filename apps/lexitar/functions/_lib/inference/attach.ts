@@ -3,8 +3,10 @@
 // the vault adapters, and the CLI scripts that resolve a model must not drag any of that in.
 import { INFERENCE, capsFor, maxCorpusPagesFor, type Feature, type InferenceConfig } from "../../../src/lib/model-config";
 import { ModelUnsupportedError } from "../model-errors";
-import { emptyCorpus, reportCorpus, reportsAttached, type Corpus, type CorpusEnv } from "./corpus";
+import { emptyCorpus, openReportCorpus, reportsAttached, type Corpus, type CorpusEnv } from "./corpus";
 import { modelFor, type ResolvedModel } from "./resolve";
+import { textStream } from "../text-stream";
+import type { Subject } from "./subject";
 
 // Every feature except these six answers a question about one person's record, and therefore
 // answers it in sight of that person's own reports (CORPUS.md).
@@ -30,8 +32,19 @@ export interface AttachedEnv extends CorpusEnv {
 // the route: a route that forgot would find out as a 400 in front of a real question.
 const FORMATTED_OUTPUT: readonly AttachedFeature[] = ["ranges", "markerGroups"];
 
+/** A model AND the reports it must answer from — the only way a route reaches either. */
+export type AttachedModel = ResolvedModel & { corpus: Corpus };
+
 /**
- * A model AND the reports it must answer from — the only way a route reaches either.
+ * WHY A ROUTE GETS A SCOPE AND NEVER A `release`.
+ *
+ * A corpus occupies isolate memory for as long as the request carrying it runs, not for as long as
+ * assembling it takes, so the reservation the budget is made of has to be held across the upstream
+ * call (see MAX_IN_FLIGHT_CORPUS_BYTES in corpus.ts). Handing six routes a `release()` to call in a
+ * `finally` would be strictly worse than not reserving at all: a route that forgets one wedges the
+ * isolate's budget permanently, for every request that lands on it afterwards. So the release lives
+ * in the two functions below and is unreachable from a route — the same argument that puts
+ * `rawAccessFor` inside the assembler rather than in the routes.
  *
  * `who` is not optional and has no default: a new route cannot get a client for `chat` without
  * naming whose record it is answering about, which is what makes forgetting the corpus, or
@@ -40,20 +53,61 @@ const FORMATTED_OUTPUT: readonly AttachedFeature[] = ["ranges", "markerGroups"];
  * Throws `ModelUnsupportedError` when the configured provider cannot take PDFs. That is the
  * capability contract working as designed — refuse with 422, never quietly answer from less.
  */
-export async function attachedModelFor(
+async function openAttachedModel(
   env: AttachedEnv,
   feature: AttachedFeature,
-  who: { accountId: string; clientId: string },
-  config: InferenceConfig = INFERENCE,
-): Promise<ResolvedModel & { corpus: Corpus }> {
+  who: Subject,
+  config: InferenceConfig,
+): Promise<AttachedModel & { release: () => void }> {
   const resolved = modelFor(env, feature, "prod", config);
-  if (!reportsAttached(env)) return { ...resolved, corpus: emptyCorpus() };
+  if (!reportsAttached(env)) return { ...resolved, corpus: emptyCorpus(), release: () => {} };
   if (!capsFor(feature, config).pdf) throw new ModelUnsupportedError("PDF documents");
-  const corpus = await reportCorpus(env, who.accountId, who.clientId, {
+  const { corpus, release } = await openReportCorpus(env, who.accountId, who.clientId, {
     citations: !FORMATTED_OUTPUT.includes(feature),
     maxPages: maxCorpusPagesFor(feature, config),
+    rawKeys: who.rawKeys,
   });
-  return { ...resolved, corpus };
+  return { ...resolved, corpus, release };
+}
+
+/** The door for a route that answers when its own work is done. */
+export async function withAttachedModel<T>(
+  env: AttachedEnv,
+  feature: AttachedFeature,
+  who: Subject,
+  use: (attached: AttachedModel) => Promise<T>,
+  config: InferenceConfig = INFERENCE,
+): Promise<T> {
+  const { release, ...attached } = await openAttachedModel(env, feature, who, config);
+  try {
+    return await use(attached);
+  } finally {
+    release();
+  }
+}
+
+/**
+ * The door for a route that answers 200 and then keeps generating: the corpus outlives the handler,
+ * so the reservation is released when the STREAM ends, not when this function returns.
+ *
+ * Still resolved before the Response exists, which is the point of resolving early in both streaming
+ * routes: a refusal can only be an HTTP status carrying its limits until the headers are sent.
+ */
+export async function streamWithAttachedModel(
+  env: AttachedEnv,
+  feature: AttachedFeature,
+  who: Subject,
+  pump: (attached: AttachedModel, write: (text: string) => void) => Promise<void>,
+  config: InferenceConfig = INFERENCE,
+): Promise<Response> {
+  const { release, ...attached } = await openAttachedModel(env, feature, who, config);
+  return textStream(async (write) => {
+    try {
+      await pump(attached, write);
+    } finally {
+      release();
+    }
+  });
 }
 
 /** The same door for the three features that deliberately carry no corpus. */

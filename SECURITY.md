@@ -13,10 +13,18 @@ volunteer-maintained project from a 501(c)(3).
 
 Nothing under `apps/lexitar` or `packages/frame` stores, seeds, or fixtures real account or health
 data. A running deployment's actual patient data lives only in Cloudflare R2 and D1, encrypted
-client-side under a key the operator never holds — reachable exclusively through the deployed app
-over its authenticated API, never through this repository or its git history. If you believe you
-have found real patient data committed here, treat it as the most urgent class of report this
-policy covers.
+client-side under keys the operator never holds — the vault blob under the account's own key, and
+each uploaded original under a per-file content key that exists only inside that blob. It is
+reachable exclusively through the deployed app over its authenticated API, never through this
+repository or its git history. If you believe you have found real patient data committed here,
+treat it as the most urgent class of report this policy covers.
+
+One limit, stated plainly: answering a question about a patient's own documents means decrypting
+them in memory, in the deployment, to send them to the model provider. Encryption at rest defeats
+bucket exposure, a leaked storage token, a snapshot and a backup copy, and it removes the
+operator's standing ability to read any patient's files — it does not hide a document from the
+running deployment at the moment its owner asks about it. `apps/lexitar/VAULT.md` and
+`apps/lexitar/DPGA.md` describe that path in full.
 
 ## Scope
 

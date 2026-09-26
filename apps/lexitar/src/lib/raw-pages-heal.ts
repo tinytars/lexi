@@ -7,7 +7,7 @@
 // re-uploaded, and the server refuses to CHANGE a count that is already recorded, so a second tab
 // doing the same work costs bandwidth and nothing else.
 import { normalizeClientId } from "./client-id";
-import { attachmentUrl, countPdfPages } from "./attachment-store";
+import { countPdfPages, fetchAttachmentBytes } from "./attachment-store";
 
 /** Matches MAX_COUNTS in functions/api/raw/measure.ts. */
 const BATCH = 200;
@@ -18,9 +18,11 @@ interface Count {
 }
 
 async function measure(clientId: string, file: string): Promise<Count | null> {
-  const res = await fetch(attachmentUrl(clientId, file));
-  if (!res.ok) return null;
-  const pages = await countPdfPages(new Uint8Array(await res.arrayBuffer()), file, "application/pdf");
+  // The PLAINTEXT bytes: pdf.js counts pages of a PDF, not of an envelope. A file this vault holds
+  // no key for stays unmeasured, exactly like one pdf.js cannot open — see below.
+  const bytes = await fetchAttachmentBytes(clientId, file).catch(() => null);
+  if (!bytes) return null;
+  const pages = await countPdfPages(bytes, file, "application/pdf");
   // A PDF pdf.js cannot open stays unmeasured, and the corpus keeps refusing rather than guessing.
   // That is the intended end state for a file nothing in the app can read: scripts/raw-pages-backfill.ts
   // is the operator's second attempt, not a silent default.

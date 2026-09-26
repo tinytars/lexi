@@ -17,6 +17,12 @@ import { isRawFileSegment } from "../../_lib/raw-files";
 // (SourceRecord / PendingUpload), and nobody else can produce it without already holding the file.
 // One matching proof claims the whole namespace — ownership resolves by namespace, not per key.
 //
+// The proof is over the STORED bytes, which are ciphertext for anything sealed since raw-cipher.ts —
+// and this route is unaffected, because an orphan can only ever hold plaintext. Sealing requires a
+// PUT, `mayWrite` refuses an orphaned namespace (raw-owner.ts), and a claimed namespace never becomes
+// an orphan again. So the plaintext sha the vault records is the stored sha, for exactly as long as
+// the namespace is claimable. The operator sweep keeps it that way by skipping unowned namespaces.
+//
 // Anything but an orphan answers 404 like every other refusal here, so the route is not an oracle for
 // which client names exist. An owner or grantee gets 204 without effect, so the client may call it
 // whenever a read 404s.

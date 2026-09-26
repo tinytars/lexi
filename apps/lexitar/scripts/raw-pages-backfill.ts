@@ -13,8 +13,10 @@
 // Like every script here it targets THIS WORKTREE's environment (scripts/target.ts), so it runs once
 // per environment: from a `dev` checkout for health-identity-dev, from a `main` one for prod.
 //
-// It needs no org key and decrypts nothing: a page count keys off `r2_key` alone. Keys with no
-// `raw_objects` row are not its business — that is ownership, and scripts/raw-backfill.ts owns it.
+// It needs ORG_KEY_PASSPHRASE only once it meets a SEALED object: pdf.js counts pages of a PDF, not
+// of an envelope, so a sealed file is opened through scripts/raw-cipher-cli.ts first. A store still
+// holding plaintext is measured without the org key ever being loaded. Keys with no `raw_objects`
+// row are not its business — that is ownership, and scripts/raw-backfill.ts owns it.
 //
 // --purge-unreadable is IRREVERSIBLE outside the vault-sync backup window, so it is an owner
 // decision made per environment, never a default: a file nothing can open holds no information, but
@@ -24,6 +26,9 @@
 import "./load-creds";
 import { d1, q, D1 } from "./d1-remote";
 import { LIVE_BUCKET, deleteObject, getObject, resolveStore } from "./vault-sync";
+import { openStored } from "./raw-cipher-cli";
+import { flushOrgKeyUses } from "./access-log";
+import { RawKeyError } from "../src/lib/raw-cipher";
 import { isMain } from "./is-main";
 
 const STORE = resolveStore();
@@ -91,17 +96,36 @@ async function main(): Promise<void> {
 
   const measured: Array<{ key: string; pages: number; bytes: number }> = [];
   const unreadable: string[] = [];
+  // SEALED AND UNOPENABLE IS NOT UNREADABLE, and keeping the two apart is what stops --purge-unreadable
+  // from deleting a perfectly good file whose owner revoked org recovery. Only the browser can open
+  // those, so this run reports them and leaves them exactly where they are.
+  const unreachable: string[] = [];
   for (const { r2_key } of unmeasured) {
-    const bytes = await getObject(LIVE_BUCKET, r2_key);
-    const pages = bytes && (await countPages(bytes));
-    if (!bytes || !pages) unreadable.push(r2_key);
-    else measured.push({ key: r2_key, pages, bytes: bytes.length });
+    const stored = await getObject(LIVE_BUCKET, r2_key);
+    if (!stored) {
+      unreadable.push(r2_key);
+      continue;
+    }
+    let plain: Uint8Array;
+    try {
+      plain = await openStored(r2_key, stored, STORE);
+    } catch (e) {
+      if (!(e instanceof RawKeyError)) throw e;
+      unreachable.push(r2_key);
+      continue;
+    }
+    const pages = await countPages(plain);
+    // `bytes` records what STORAGE holds, matching what the PUT route records for a new upload — the
+    // envelope's 48 bytes are storage, and the corpus budgets against this column.
+    if (!pages) unreadable.push(r2_key);
+    else measured.push({ key: r2_key, pages, bytes: stored.length });
   }
 
-  process.stdout.write(`Measured: ${measured.length}   unreadable: ${unreadable.length}\n`);
+  process.stdout.write(`Measured: ${measured.length}   unreadable: ${unreadable.length}   unreachable: ${unreachable.length}\n`);
   // Named loudly: a PDF nothing can open stays unmeasured, and the corpus keeps refusing for that
   // whole namespace. Deleting it or replacing it is an owner decision, which --purge-unreadable is.
   for (const key of unreadable) process.stdout.write(`  ! ${key}: not a readable PDF\n`);
+  for (const key of unreachable) process.stdout.write(`  ~ ${key}: sealed, and no key here opens it — the owner's browser heals this\n`);
 
   if (!confirm) {
     const also = purgeUnreadable ? ` and purge ${unreadable.length} unreadable file(s)` : "";
@@ -118,8 +142,13 @@ async function main(): Promise<void> {
 }
 
 if (isMain(import.meta.url)) {
-  main().catch((e) => {
-    process.stderr.write(`\n${(e as Error).message}\n`);
-    process.exit(1);
-  });
+  // The flush runs on both exits: an org-key decrypt that happened must be logged even when the run
+  // then fails (scripts/access-log.ts).
+  main()
+    .then(() => flushOrgKeyUses())
+    .catch(async (e) => {
+      await flushOrgKeyUses().catch(() => undefined);
+      process.stderr.write(`\n${(e as Error).message}\n`);
+      process.exit(1);
+    });
 }

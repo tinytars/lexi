@@ -1,7 +1,7 @@
 import { requireSession } from "../_lib/session";
 import { logRequest } from "../_lib/log";
 import { inferenceErrorReply } from "../_lib/model-errors";
-import { attachedModelFor, type AttachedEnv } from "../_lib/inference/attach";
+import { withAttachedModel, type AttachedEnv } from "../_lib/inference/attach";
 import { subjectOf } from "../_lib/inference/subject";
 import { LEAF_REGEN_SPECS } from "../../src/lib/leaf-regen-registry";
 import { runLeafRegen } from "../../src/lib/leaf-regen-anthropic";
@@ -62,7 +62,7 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
   if (rawBody.length > MAX_BODY_BYTES) {
     return finish(413, { error: "inputs too large" }, { errorCode: "too_large" });
   }
-  let body: { node?: unknown; inputs?: unknown; targetLabels?: unknown; images?: unknown; documents?: unknown; clientId?: unknown };
+  let body: { node?: unknown; inputs?: unknown; targetLabels?: unknown; images?: unknown; documents?: unknown; clientId?: unknown; rawKeys?: unknown };
   try {
     body = JSON.parse(rawBody);
   } catch {
@@ -72,9 +72,12 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
   if (typeof body.node !== "string") {
     return finish(400, { error: "node is required" }, { errorCode: "no_node" });
   }
-  const spec = LEAF_REGEN_SPECS[body.node];
+  // Bound once: `body` is a `let`, so its narrowing does not survive into the closure the corpus
+  // scope below runs the generation in.
+  const node = body.node;
+  const spec = LEAF_REGEN_SPECS[node];
   if (!spec) {
-    return finish(400, { error: `unknown node "${body.node}"` }, { errorCode: "unknown_node" });
+    return finish(400, { error: `unknown node "${node}"` }, { errorCode: "unknown_node" });
   }
   if (!body.inputs || typeof body.inputs !== "object") {
     return finish(400, { error: "inputs is required" }, { errorCode: "no_inputs" });
@@ -136,34 +139,35 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
     // request.signal upstream (mirrors refresh-finding.ts): a browser that disconnects — a
     // navigation, or the client-side deadline firing — stops the generation instead of leaving
     // the model producing tokens nobody will read.
-    const { corpus, ...resolved } = await attachedModelFor(env, "leafRegen", who);
-    const outcome = await runLeafRegen({ ...resolved, node: body.node, inputs, targetLabels, images, documents, prefixTurns: corpus.turns, signal: request.signal });
-    switch (outcome.kind) {
-      case "empty":
-        return finish(200, { result: null });
-      case "truncated":
-        // Distinct from no_tool_use on purpose: the model DID answer, and was cut off mid-tool-call.
-        // Retrying identically truncates identically, so the honest answer is to say so and let the
-        // caller narrow the request rather than bill a second doomed attempt.
-        return finish(502, { error: "the model's answer was cut off before it finished", errorCode: "truncated" }, { errorCode: "truncated", usage: outcome.usage });
-      case "no_tool_use":
-        return finish(502, { error: "model did not emit the leaf-regen tool", errorCode: "no_tool_use" }, { errorCode: "no_tool_use", usage: outcome.usage });
-      case "invalid":
-        // Debug aid for the live "items missing or not an array" reports (2026-07-18, post-272b6c7) —
-        // shape/metadata only (key names, array length, stop_reason), never patient content, so this
-        // is safe under the "never log PHI" rule in _lib/log.ts.
-        console.log(JSON.stringify({
-          at: new Date().toISOString(),
-          debug: "leaf-regen-invalid",
-          node: body.node,
-          scoped: targetLabels !== undefined && targetLabels.length > 0,
-          ...outcome.debug,
-          ...outcome.usage,
-        }));
-        return finish(422, { error: outcome.error.message, errorCode: "invalid_leaf_regen" }, { errorCode: "invalid_leaf_regen", usage: outcome.usage });
-      case "ok":
-        return finish(200, { result: outcome.result }, { usage: outcome.usage });
-    }
+    return await withAttachedModel(env, "leafRegen", who, async ({ corpus, ...resolved }) => {
+      const outcome = await runLeafRegen({ ...resolved, node, inputs, targetLabels, images, documents, prefixTurns: corpus.turns, signal: request.signal });
+      switch (outcome.kind) {
+        case "empty":
+          return finish(200, { result: null });
+        case "truncated":
+          // Distinct from no_tool_use on purpose: the model DID answer, and was cut off mid-tool-call.
+          // Retrying identically truncates identically, so the honest answer is to say so and let the
+          // caller narrow the request rather than bill a second doomed attempt.
+          return finish(502, { error: "the model's answer was cut off before it finished", errorCode: "truncated" }, { errorCode: "truncated", usage: outcome.usage });
+        case "no_tool_use":
+          return finish(502, { error: "model did not emit the leaf-regen tool", errorCode: "no_tool_use" }, { errorCode: "no_tool_use", usage: outcome.usage });
+        case "invalid":
+          // Debug aid for the live "items missing or not an array" reports (2026-07-18, post-272b6c7) —
+          // shape/metadata only (key names, array length, stop_reason), never patient content, so this
+          // is safe under the "never log PHI" rule in _lib/log.ts.
+          console.log(JSON.stringify({
+            at: new Date().toISOString(),
+            debug: "leaf-regen-invalid",
+            node,
+            scoped: targetLabels !== undefined && targetLabels.length > 0,
+            ...outcome.debug,
+            ...outcome.usage,
+          }));
+          return finish(422, { error: outcome.error.message, errorCode: "invalid_leaf_regen" }, { errorCode: "invalid_leaf_regen", usage: outcome.usage });
+        case "ok":
+          return finish(200, { result: outcome.result }, { usage: outcome.usage });
+      }
+    });
   } catch (err) {
     // Spread rather than picked apart: a corpus refusal's limit/actual/max is the whole remedy.
     const { status, ...payload } = inferenceErrorReply(err, "leaf-regen backend error");

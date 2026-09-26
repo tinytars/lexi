@@ -30,6 +30,7 @@
   import { messageAnchor, reportAnchor } from "./anchor";
   import { type Permalink, parseHash } from "./permalink";
   import { resolveReference } from "./reference-resolver";
+  import { corpusSubject } from "./vault-raw-keys";
 
   // Chat is the primary experience: a Gemini-style thread shell. Threads persist per client as an
   // in-browser-encrypted blob (W16, chat-store.ts) — restored on return, PHI never plaintext at rest.
@@ -251,7 +252,7 @@
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ messages, unitSystem, clientId, final: round === MAX_ROUNDS - 1 }),
+          body: JSON.stringify({ messages, unitSystem, ...corpusSubject(clientId), final: round === MAX_ROUNDS - 1 }),
         });
         if (!res.ok) {
           const body = (await res.json().catch(() => ({}))) as { error?: string; errorCode?: string };

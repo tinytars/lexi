@@ -4,7 +4,7 @@ import { requireSession } from "../_lib/session";
 import { logRequest } from "../_lib/log";
 import { auditor } from "../_lib/audit";
 import { classifyModelError, inferenceErrorReply } from "../_lib/model-errors";
-import { attachedModelFor, type AttachedEnv } from "../_lib/inference/attach";
+import { withAttachedModel, type AttachedEnv } from "../_lib/inference/attach";
 import { subjectOf } from "../_lib/inference/subject";
 import { generateRange, NoMeasuredUnitError } from "../../src/lib/ranges-anthropic";
 import { factorsCanonicalString } from "../../src/lib/factors-hash";
@@ -64,7 +64,7 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
 
   const rawBody = await request.text();
   if (rawBody.length > MAX_BODY_BYTES) return jsonErr(413, "too_large", "client too large");
-  let body: { client?: unknown; marker?: unknown; clientId?: unknown; accountId?: unknown };
+  let body: { client?: unknown; marker?: unknown; clientId?: unknown; accountId?: unknown; rawKeys?: unknown };
   try {
     body = JSON.parse(rawBody);
   } catch {
@@ -85,63 +85,63 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
   const audit = auditor(env.VAULT, env, ROUTE, requestId);
   await audit({ event: "accepted", status: 200, latencyMs: Date.now() - start });
 
-  // Resolved OUTSIDE the generation try on purpose. Failing to assemble a request — the record is
-  // too large, a PDF has no page count, the model cannot take PDFs — is not `generation_failed`,
-  // and answering it as one would tell the patient to retry something that can only fail again.
-  let resolved: Awaited<ReturnType<typeof attachedModelFor>>;
+  // The ASSEMBLY failure is caught outside the generation try, and the scope that holds the corpus
+  // wraps both. Failing to assemble a request — the record is too large, a PDF has no page count,
+  // the model cannot take PDFs — is not `generation_failed`, and answering it as one would tell the
+  // patient to retry something that can only fail again. The inner catch answers every generation
+  // failure itself, so the outer one only ever sees an assembly that never happened.
   try {
-    resolved = await attachedModelFor(env, "ranges", who);
+    return await withAttachedModel(env, "ranges", who, async ({ client: anthropic, model, corpus }) => {
+      try {
+        // W64 — the prompt, the retry ladder, the dimensionless-ratio handling and the assembly all
+        // live in src/lib/ranges-anthropic.ts now, shared with the CLI. What stays here is the HTTP
+        // shell: auth, the body cap, the audit trail, the error→status mapping, and factorsHash (which
+        // hashes through node:crypto here on purpose — see the module-graph note above).
+        const usage = { input: 0, output: 0 };
+        const range: PersonalizedRange = {
+          ...(await generateRange({
+            anthropic,
+            marker,
+            client: typedClient,
+            model,
+            mode: "prod",
+            prefixTurns: corpus.turns,
+            onUsage: (u: { input_tokens?: number | null; output_tokens?: number | null }) => {
+              usage.input += u.input_tokens ?? 0;
+              usage.output += u.output_tokens ?? 0;
+            },
+            isTransient: (err: unknown) => {
+              const { status, errorCode } = classifyModelError(err);
+              return status === 503 && errorCode === "ai_busy";
+            },
+          })),
+          factorsHash: hash12(factorsCanonicalString(typedClient)),
+        };
+
+        await audit({ event: "success", status: 200, latencyMs: Date.now() - start, usage });
+
+        return new Response(JSON.stringify({ marker, range }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      } catch (e) {
+        // W64 — a marker with no readings still answers 400 no_unit, as it did when this check ran
+        // inline before the call. Only the check MOVED (into the shared module, which is where the
+        // dimensionless-ratio exemption it pairs with now lives); the contract did not.
+        if (e instanceof NoMeasuredUnitError) {
+          await audit({ event: "error", status: 400, latencyMs: Date.now() - start, errorCode: "no_unit" });
+          return jsonErr(400, "no_unit", e.message);
+        }
+        await audit({ event: "error", status: 500, latencyMs: Date.now() - start, errorCode: "generation_failed" });
+        return new Response(
+          JSON.stringify({ error: (e as Error).message ?? "range generation failed", errorCode: "generation_failed" }),
+          { status: 500, headers: { "content-type": "application/json" } },
+        );
+      }
+    });
   } catch (e) {
     const { status, errorCode, error, ...extra } = inferenceErrorReply(e, "range generation failed");
     await audit({ event: "error", status, latencyMs: Date.now() - start, errorCode });
     return jsonErr(status, errorCode, error, extra);
-  }
-
-  try {
-    // W64 — the prompt, the retry ladder, the dimensionless-ratio handling and the assembly all
-    // live in src/lib/ranges-anthropic.ts now, shared with the CLI. What stays here is the HTTP
-    // shell: auth, the body cap, the audit trail, the error→status mapping, and factorsHash (which
-    // hashes through node:crypto here on purpose — see the module-graph note above).
-    const usage = { input: 0, output: 0 };
-    const { client: anthropic, model, corpus } = resolved;
-    const range: PersonalizedRange = {
-      ...(await generateRange({
-        anthropic,
-        marker,
-        client: typedClient,
-        model,
-        mode: "prod",
-        prefixTurns: corpus.turns,
-        onUsage: (u: { input_tokens?: number | null; output_tokens?: number | null }) => {
-          usage.input += u.input_tokens ?? 0;
-          usage.output += u.output_tokens ?? 0;
-        },
-        isTransient: (err: unknown) => {
-          const { status, errorCode } = classifyModelError(err);
-          return status === 503 && errorCode === "ai_busy";
-        },
-      })),
-      factorsHash: hash12(factorsCanonicalString(typedClient)),
-    };
-
-    await audit({ event: "success", status: 200, latencyMs: Date.now() - start, usage });
-
-    return new Response(JSON.stringify({ marker, range }), {
-      status: 200,
-      headers: { "content-type": "application/json" },
-    });
-  } catch (e) {
-    // W64 — a marker with no readings still answers 400 no_unit, as it did when this check ran
-    // inline before the call. Only the check MOVED (into the shared module, which is where the
-    // dimensionless-ratio exemption it pairs with now lives); the contract did not.
-    if (e instanceof NoMeasuredUnitError) {
-      await audit({ event: "error", status: 400, latencyMs: Date.now() - start, errorCode: "no_unit" });
-      return jsonErr(400, "no_unit", e.message);
-    }
-    await audit({ event: "error", status: 500, latencyMs: Date.now() - start, errorCode: "generation_failed" });
-    return new Response(
-      JSON.stringify({ error: (e as Error).message ?? "range generation failed", errorCode: "generation_failed" }),
-      { status: 500, headers: { "content-type": "application/json" } },
-    );
   }
 }

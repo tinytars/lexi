@@ -1,10 +1,13 @@
 // W46 Phase 3 — generalizes treatment-image-store.ts (M54/5, treatment-photo-only) into the shared
 // browser-side helper for every leaf's Attach flow, wrapping the /api/raw/{id}/{file} PUT/GET/DELETE
 // contract (functions/api/raw/[[path]].ts). Keys mirror PendingUpload.file (types.ts):
-// "<sha8>-<safeName>" under raw/{id}/. GET is not wrapped here — the UI builds attachmentUrl()
-// directly for <img src>/download links.
+// "<sha8>-<safeName>" under raw/{id}/. GET goes through attachment-blob.ts, which decrypts and
+// mints the blob: URL the UI points <img src>/download links at.
 import { hashSourceWeb } from "@pablotech/akesi/ingest-core";
 import { compressImage } from "./image-compress";
+import { fetchAttachmentBytes } from "./attachment-blob";
+import { mintRawKey, rawKeyFor } from "./vault-raw-keys";
+import { sealRaw } from "./raw-cipher";
 import { bytesToBase64 } from "./base64";
 import { openPdf, type PdfDoc } from "@tinytars/frame/pdf-render";
 import { MAX_DOCUMENT_PAGES } from "@pablotech/akesi/document-read";
@@ -48,13 +51,25 @@ export async function countPdfPages(bytes: Uint8Array, name: string, mediaType?:
   }
 }
 
-export function putRaw(clientId: string, key: string, bytes: Uint8Array, pages?: number): Promise<Response> {
+// The one choke point every upload funnels through, which is why the sealing lives here and not at
+// each Attach handler: a lane that forgot to seal would put plaintext PHI back in the bucket.
+//
+// `?pages=N` is counted on the PLAINTEXT above and rides along unchanged — pdf.js cannot count the
+// pages of an envelope, and the corpus checks its page ceiling against this number.
+export async function putRaw(clientId: string, key: string, bytes: Uint8Array, pages?: number): Promise<Response> {
   const query = pages === undefined ? "" : `?pages=${pages}`;
+  // A key already on the ring is REUSED, never replaced: attachment keys are content-addressed, so a
+  // re-PUT is the same bytes, and minting a second key would strand the copy already in R2 if the
+  // upload then failed. No open vault means no way to record a key at all, so the upload stays
+  // plaintext rather than becoming a file nobody can ever open — the self-heal seals it on the next
+  // open (vault-raw-keys.ts).
+  const contentKey = rawKeyFor(clientId, key) ?? (await mintRawKey(clientId, key));
+  const body = contentKey ? await sealRaw(bytes, contentKey) : bytes;
   return fetch(`/api/raw/${normalizeClientId(clientId)}/${key}${query}`, {
     method: "PUT",
     // /api/raw is gated by the hd_session cookie (W44) — same-origin fetch sends it automatically.
     headers: { "Content-Type": "application/octet-stream" },
-    body: bytes as BodyInit,
+    body: body as BodyInit,
   });
 }
 
@@ -65,9 +80,10 @@ export async function uploadAttachment(clientId: string, bytes: Uint8Array, key:
   }
 }
 
-export function attachmentUrl(clientId: string, key: string): string {
-  return `/api/raw/${normalizeClientId(clientId)}/${encodeURIComponent(key)}`;
-}
+// A `blob:` URL, not the API path: stored originals are ciphertext, so an element cannot render
+// `/api/raw/...` directly any more. The name and the (clientId, key) shape are unchanged — every
+// caller passes this straight to AttachmentStrip/AttachmentViewer, which resolve it.
+export { attachmentBlobUrl as attachmentUrl, fetchAttachmentBytes, revokeAttachmentBlobs } from "./attachment-blob";
 
 // W46 Phase 6 — chat vision needs an attachment's bytes back as base64 for an Anthropic `image`
 // content block (functions/api/chat.ts). Unlike treatment-image-client.ts's inference relay
@@ -76,9 +92,7 @@ export function attachmentUrl(clientId: string, key: string): string {
 // a PRIOR turn's image is resent as conversation history, since Anthropic has no server-side
 // image cache across turns.
 export async function fetchAttachmentBase64(clientId: string, key: string): Promise<string> {
-  const res = await fetch(attachmentUrl(clientId, key));
-  if (!res.ok) throw new Error(`fetching the attachment failed (${res.status})`);
-  return bytesToBase64(new Uint8Array(await res.arrayBuffer()));
+  return bytesToBase64(await fetchAttachmentBytes(clientId, key));
 }
 
 
