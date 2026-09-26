@@ -150,5 +150,7 @@ laptop.
 - A snapshot takes ~7.5 minutes, almost all of it fetching audit-log objects one at a time. The
   Cloudflare API rate limit (~1200 requests / 5 min, account-wide) is why `scripts/vault-sync.ts`
   throttles to 3 requests/second; `CF_API_RPS` overrides it for a one-off catch-up.
-- Snapshots contain **plaintext PHI** (the `raw/` originals) and the wrapped DEKs. The backup bucket
-  is as sensitive as the live one; treat any new access to it accordingly.
+- Snapshots copy bodies byte for byte, so once a store is sealed they hold no plaintext PHI — the
+  `raw/` originals arrive as ciphertext under keys that live only inside the vault blobs
+  (`VAULT.md` §2a). They still hold the **wrapped DEKs**, so the backup bucket remains exactly as
+  sensitive as the live one: whoever can open a vault there can open its originals too.

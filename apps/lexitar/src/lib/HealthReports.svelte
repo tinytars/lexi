@@ -21,8 +21,7 @@
   import { sortPinnedFirst } from "./pin-sort";
   import { cellPin, type PinItem } from "./body-pin";
   import { standardLeafActions, buildNoteAttachment } from "./leaf-actions";
-  import { attachmentUrl } from "./attachment-store";
-  import { normalizeClientId } from "./client-id";
+  import { attachmentUrl, fetchAttachmentBytes } from "./attachment-store";
   import ReportCell from "./ReportCell.svelte";
   import DictateButton from "@tinytars/frame/DictateButton.svelte";
   import AttachmentViewer from "@tinytars/frame/AttachmentViewer.svelte";
@@ -272,12 +271,16 @@
     downloadingId = s.id;
     try {
       const file = s.file.split("/").pop()!;
-      // R2 raw keys are keyed by the lowercase id, so normalize here to match dev/raw/{id}/ and the
-      // Function — a vault predating G1 can still carry a display-cased key. /api/raw is session-gated (W44)
-      // — same-origin fetch sends the hd_session cookie automatically.
-      const res = await fetch(`/api/raw/${normalizeClientId(clientId)}/${encodeURIComponent(file)}`);
-      if (!res.ok) { rawError = `Couldn't download “${s.originalName}” (${res.status}).`; return; }
-      const url = URL.createObjectURL(await res.blob());
+      // The download is the PLAINTEXT file the patient gave us, not the envelope R2 holds — so it
+      // goes through the same fetch-and-decrypt every other surface uses (attachment-blob.ts).
+      let bytes: Uint8Array;
+      try {
+        bytes = await fetchAttachmentBytes(clientId, file);
+      } catch (e) {
+        rawError = `Couldn't download “${s.originalName}” (${(e as Error).message}).`;
+        return;
+      }
+      const url = URL.createObjectURL(new Blob([bytes as BlobPart]));
       const a = document.createElement("a");
       a.href = url;
       a.download = s.originalName;
@@ -327,7 +330,7 @@
         onTogglePin={pin?.onTogglePin}
         onTogglePinDiagnosis={canEdit ? togglePinDisease : undefined}
         {clientId}
-        thumbnailUrl={clientId ? attachmentUrl(clientId, sourceKey(s)) : undefined}
+        thumbnailUrl={clientId ? () => attachmentUrl(clientId, sourceKey(s)) : undefined}
         onOpenAttachment={() => (viewerSource = s)}
       />
     {/each}

@@ -49,7 +49,7 @@ BENCH_LIVE=1 npx vitest run --config vitest.live.config.ts tests/live/corpus-ans
 vault's encryption boundary (`VAULT.md`). Nothing read the objects again after import until this
 feature; now every attached inference does.
 
-**Authorisation runs inside the assembler, not in the routes.** `reportCorpus`
+**Authorisation runs inside the assembler, not in the routes.** `openReportCorpus`
 (`functions/_lib/inference/corpus.ts`) calls `rawAccessFor` itself before it lists anything. A
 route that forgets the check cannot exist, because there is no way to obtain a corpus without
 passing an `accountId` through that function. A namespace the account may not read is a **404**,
@@ -85,6 +85,27 @@ Two details are load-bearing:
 Documents are attached **server-side, by the route**. `chat` rejects a caller-supplied `document`
 block with `400 client_document`: server ownership has to be a property, not a convention, or the
 tool loop would replay ~20 MB of base64 through an 8 MB body limit on every round.
+
+**The keys come from the client; the documents do not.** Stored originals are sealed under per-file
+content keys that live only inside the patient's encrypted vault (`VAULT.md` §2a), so each attached
+request carries a `rawKeys` map — `{file: base64}` for the record being asked about — and
+`readDocuments` opens the bytes in memory as it reads them. The size argument above is exactly why
+that split is the right one: a hundred files of keys is ~12 KB and does not grow with page count,
+four orders of magnitude below the documents themselves.
+
+Three consequences worth stating:
+
+- **Authorisation is unchanged.** A key decrypts; it never authorises. `rawAccessFor` still picks
+  which namespace may be read, so keys for someone else's record get the same `404` they always did,
+  and a wrong key fails GCM authentication rather than yielding anything.
+- **A missing key is a classified refusal**, `400 corpus_key_missing` (`CorpusKeyError`), not a 5xx —
+  an unclassified 5xx would file a `plover-factory` issue and block the promotion gate.
+- **Caching is unaffected.** AES-GCM decryption is deterministic, so the base64 prefix this file
+  describes is byte-identical to the one built from plaintext and the breakpoint keeps hitting.
+
+The deployment therefore still sees the documents in plaintext *while it is answering a question the
+owner asked*. That is the limit of this design, stated in the same words in `SECURITY.md` and
+`DPGA.md`, and it is not the same as holding them readable at rest.
 
 ## 4. Caching
 
@@ -224,16 +245,24 @@ Three things hold it, and none of them is a number in this table:
 
 - **An admission gate in the assembler** (`MAX_IN_FLIGHT_CORPUS_BYTES` in
   `functions/_lib/inference/corpus.ts`). A module-level counter reserves a record's byte total
-  before the first R2 read and releases it when assembly ends; a request that does not fit is
-  refused as `corpus_busy` rather than allowed to help kill the isolate. **Module scope in a Worker
-  is isolate scope**, which is why a plain counter is the right shape and a Durable Object is not —
-  it measures exactly the thing that is being exceeded, costs nothing, and behaves identically on
-  the Node host. A row with no `bytes` recorded reserves the worst case instead of its true size,
-  capped at `MAX_CORPUS_BYTES` so one maxed record always admits alone.
+  before the first R2 read and holds it **for as long as the request carrying the corpus runs** —
+  the peak is the upstream call, where the base64 is live and the SDK is serialising a second copy
+  of it, not the assembly. A request that does not fit is refused as `corpus_busy` rather than
+  allowed to help kill the isolate. **Module scope in a Worker is isolate scope**, which is why a
+  plain counter is the right shape and a Durable Object is not — it measures exactly the thing that
+  is being exceeded, costs nothing, and behaves identically on the Node host. A row with no `bytes`
+  recorded reserves the worst case instead of its true size, capped at `MAX_CORPUS_BYTES` so one
+  maxed record always admits alone.
+- **A scope, never a release** (`withAttachedModel` / `streamWithAttachedModel` in
+  `functions/_lib/inference/attach.ts`). A route asks for a model and a corpus and gets them inside
+  a callback; the reservation is given back by the door, when the callback returns or, for the two
+  streaming routes, when the stream ends. Handing six routes a `release()` to call would be worse
+  than not reserving at all — one forgotten `finally` wedges the isolate's budget for every request
+  that lands on it afterwards.
 - **Chunked encoding** (`bytesToBase64`, same file), so the record is never held as bytes *and* as a
   whole intermediate string *and* as base64 at once.
-- **One lane** (`src/lib/corpus-lane.ts`), shared by the warmer and the sweep, so one tab does not
-  fire its own unprompted corpus requests concurrently. This is a politeness, not a guarantee: the
+- **One lane** (`src/lib/corpus-lane.ts`), shared by the warmer, the leaf sweep and the post-import
+  range backfill, so one tab does not fire its own unprompted corpus requests concurrently. This is a politeness, not a guarantee: the
   lane is **client-side**, one instance per mounted app, so it knows nothing about other tabs, other
   patients or other deployments sharing an isolate. It shipped first and did not stop the kills —
   build `f49e0cb` carried it and still produced unattributable 503s — which is what the gate above
@@ -297,7 +326,7 @@ failure this design exists to prevent.
 | `persona` | it restates a finished answer that already holds every fact — `missingFacts` (`functions/api/persona-adapt.ts`) proves that on every call, so a corpus could tell it nothing |
 
 These six are the `UNATTACHED_FEATURES` union in `functions/_lib/inference/attach.ts`. The type is
-the decision: `attachedModelFor` cannot be called for them, and `unattachedModelFor` cannot be
+the decision: the attached scopes cannot be called for them, and `unattachedModelFor` cannot be
 called for anything else.
 
 The first five are unattached because there is no record to read. `persona` is the one that is

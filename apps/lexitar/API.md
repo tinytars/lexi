@@ -461,8 +461,11 @@ fingerprint hashes name + scrubbed message, so the same crash on a later deploy 
 ## `GET` / `DELETE /api/raw/[[path]]` (raw-original download + delete)
 
 Stream an **original imported file** (PDF/XLSX) for the Export tab's "Imported files" section
-(`functions/api/raw/[[path]].ts`). Raw originals are **plaintext PHI**. The Function never decrypts:
-raw is stored **unencrypted** in R2 under `{STORE_PREFIX}/raw/{id}/{file}`. The id is **lowercased**
+(`functions/api/raw/[[path]].ts`). Raw originals are stored **sealed** in R2 under
+`{STORE_PREFIX}/raw/{id}/{file}` — an HD1 v3 envelope under a per-file content key that exists only
+inside the patient's encrypted vault (`VAULT.md` §2a). The Function never decrypts; it hands back
+whatever is stored and the browser opens it, which is why the content-type below describes the
+**document** rather than the envelope. Both formats are accepted while the store migrates. The id is **lowercased**
 server-side — a no-op since G1 made client keys the lowercased account id, kept because a vault
 predating G1 can still carry a display-cased key.
 
@@ -481,6 +484,11 @@ predating G1 can still carry a display-cased key.
   stream bytes with a content-type by extension (`pdf`/`xlsx`/`xls`/`json`, else octet-stream),
   `cache-control: no-store`. `400` on a missing segment or path traversal (`.`/`..`); `404` on a miss.
   PHI-free log `{route:"/api/raw", status, id}` — id + outcome, never the filename or bytes.
+- **`GET /api/raw/{id}?files=1`** (same gate): `{files:[...]}`, every object recorded under the
+  namespace in `raw_objects`, keys only. This is the set the browser's sealing sweep diffs against its
+  key ring, and deliberately the same set the corpus reads — an object the record no longer points at
+  is still one that can refuse a question. `?unmeasured=1` is the narrower sibling: the PDFs with no
+  page count yet.
 - **`DELETE /api/raw/{id}/{file}`** (`hd_session` cookie): `env.VAULT.delete(storeKey(env,"raw",id,file))`
   → `200 {deleted:true}`. Same path/guard rules (`400`/`401`). **Idempotent** — deleting an absent object
   still `200`s. This is the web-delete shape: the browser runs the pure `removeSource()`,

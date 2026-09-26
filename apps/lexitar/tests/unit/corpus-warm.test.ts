@@ -6,9 +6,13 @@ import { aiAvailability } from "../../src/lib/ai-availability.svelte";
 import { createCorpusWarmer, KEEPALIVE_INTERVAL_MS, MAX_IDLE_KEEPALIVES } from "../../src/lib/corpus-warm";
 import { createCorpusLane } from "../../src/lib/corpus-lane";
 import { warmCorpus, reportsAreAttached } from "../../src/lib/corpus-warm-client";
+import { clearRawKeyring, setRawKeyring } from "../../src/lib/vault-raw-keys";
 
 beforeEach(() => vi.useFakeTimers());
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  vi.useRealTimers();
+  clearRawKeyring();
+});
 
 // W86 — a warm now queues through the corpus lane (corpus-lane.ts) instead of leaving inside
 // select(), so it lands a microtask later. Every assertion below drains the lane first; the async
@@ -168,7 +172,22 @@ describe("warmCorpus", () => {
     expect(await warmCorpus("alex", "metric")).toBe(true);
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe("/api/corpus-warm");
-    expect(JSON.parse(init.body as string)).toEqual({ clientId: "alex", unitSystem: "metric" });
+    expect(JSON.parse(init.body as string)).toEqual({ clientId: "alex", rawKeys: {}, unitSystem: "metric" });
+  });
+
+  // The warm assembles the same corpus the question will read, so it needs the same keys — a warm
+  // sent without them refuses with `corpus_key_missing` and the patient waits for a cache that
+  // never lands.
+  it("carries the content keys that open this record's sealed documents", async () => {
+    const key = "A".repeat(43) + "=";
+    setRawKeyring({ rawKeys: { Alex: { "ab12cd34-report.pdf": key } } });
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ warmed: true })));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await warmCorpus("alex", "metric");
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(body.rawKeys).toEqual({ "ab12cd34-report.pdf": key });
   });
 
   // A record with no reports, a deployment with REPORTS off, a provider without prompt caching, a

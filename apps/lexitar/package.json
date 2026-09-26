@@ -39,6 +39,7 @@
     "recovery:approve": "tsx scripts/recovery-approve.ts",
     "raw:backfill": "tsx scripts/raw-backfill.ts",
     "raw:pages": "tsx scripts/raw-pages-backfill.ts",
+    "raw:encrypt": "tsx scripts/raw-encrypt-backfill.ts",
     "corpus:measure": "tsx scripts/corpus-measure.ts",
     "orphan:sweep": "tsx scripts/orphan-sweep.ts",
     "r2-ops": "tsx scripts/r2-ops-cli.ts",
@@ -71,7 +72,7 @@
     "@simplewebauthn/browser": "^14.0.0",
     "@simplewebauthn/server": "^14.0.2",
     "@tinytars/frame": "^0.1.5",
-    "@tinytars/vault": "^0.1.28",
+    "@tinytars/vault": "^0.1.36",
     "pdfjs-dist": "^6.2.108",
     "xlsx": "^0.18.5"
   }

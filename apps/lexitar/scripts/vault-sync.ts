@@ -205,28 +205,10 @@ export async function pullVaultTo(id: string, destPath: string, store = resolveS
   }
 }
 
-// R2 -> disk, one raw original (W15/2 --process-pending: fetch a browser-uploaded raw
-// so the CLI can parse + fold it). Downloads to a temp file, swaps on success; a miss
-// (browser PUT never landed) is a no-op the caller skips.
-export const pullRawArgs = (store: string, id: string, file: string, destFile: string): string[] =>
-  ["wrangler", "r2", "object", "get", r2RawRefFor(store, id, file), "--remote", "--file", destFile];
-
-export async function pullRaw(store: string, id: string, file: string, destPath: string): Promise<PullResult> {
-  const tmp = `${destPath}.r2tmp`;
-  try {
-    await execFileAsync("npx", pullRawArgs(store, id, file, tmp), { cwd: resolve(here, "..") });
-    await rename(tmp, destPath);
-    return "pulled";
-  } catch (e) {
-    await rm(tmp, { force: true });
-    const stderr = String((e as { stderr?: unknown }).stderr ?? (e as Error).message ?? "");
-    if (isMissing(stderr)) return "missing";
-    throw new Error(`raw pull failed for "${id}/${file}":\n${stderr}`);
-  }
-}
-
 // disk -> R2, one raw original. Used by the cutover migration and by ingest going forward
-// so /api/raw can serve it. Plaintext PHI lands under {store}/raw/{id}/ (bearer-gated GET).
+// so /api/raw can serve it. The object lands under {store}/raw/{id}/ EXACTLY AS GIVEN: a sealed
+// original stays sealed and a plaintext one stays plaintext, so a migration cutover cannot
+// accidentally publish bytes the browser had already encrypted.
 export async function pushRaw(store: string, id: string, file: string, absPath: string): Promise<void> {
   assertLiveWriteAllowed(`${store}/raw/${id.toLowerCase()}/${file}`);
   const args = ["wrangler", "r2", "object", "put", r2RawRefFor(store, id, file), "--remote", "--file", absPath];

@@ -1,6 +1,8 @@
 <script lang="ts">
   import type { Attachment } from "./attachment-types";
   import AttachmentViewer from "./AttachmentViewer.svelte";
+  import AttachmentThumb from "./AttachmentThumb.svelte";
+  import type { AttachmentUrl } from "./attachment-url.svelte";
   import { uniqueByKey } from "./attachments";
 
   // The one shared display for a leaf's attachments[]: a row of small thumbnail chips (image
@@ -9,11 +11,11 @@
   // bespoke img-strip snippets, which this replaces.
   //
   // attachmentUrl is injected rather than imported — this package doesn't know the host app's API
-  // route convention, only that one exists.
+  // route convention, only that one exists. It may resolve asynchronously; see attachment-url.svelte.ts.
   interface Props {
     attachments: Attachment[];
     clientId?: string | null;
-    attachmentUrl: (clientId: string, key: string) => string;
+    attachmentUrl: AttachmentUrl;
     productName: string;
     onRemove?: (a: Attachment) => void;
   }
@@ -36,7 +38,7 @@
       <div class="attachment-chip">
         <button type="button" class="attachment-link" onclick={() => (openIndex = i)} title={chipTitle(a)}>
           {#if a.mediaType.startsWith("image/")}
-            <img src={attachmentUrl(clientId, a.key)} alt="" loading="lazy" />
+            <AttachmentThumb {clientId} fileKey={a.key} {attachmentUrl} />
           {:else}
             <span class="attachment-glyph" aria-hidden="true">📄</span>
           {/if}
@@ -70,7 +72,6 @@
     background: var(--band); overflow: hidden; padding: 0; cursor: pointer; font: inherit;
   }
   .attachment-link:hover { border-color: var(--accent); }
-  .attachment-link img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .attachment-glyph { font-size: 1.4rem; }
   .attachment-remove {
     position: absolute; top: -6px; right: -6px; width: 18px; height: 18px; border-radius: 50%;

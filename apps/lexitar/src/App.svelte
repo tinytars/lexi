@@ -59,8 +59,11 @@
   import { importFileForChat, type ChatImportResult } from "./lib/import-flow";
   import { withClient } from "./lib/vault-clients";
   import { reclaimOrphans } from "./lib/orphan-claim";
+  import { setRawKeyring, clearRawKeyring, setRawKeySink, setRawKeyRefresh, withRawKey, withStoredRawKeys } from "./lib/vault-raw-keys";
+  import { revokeAttachmentBlobs } from "./lib/attachment-store";
   import { putRaw } from "./lib/attachment-store";
   import { healRawPageCounts } from "./lib/raw-pages-heal";
+  import { healRawSealing } from "./lib/raw-seal-heal";
   import { togglePinnedIn, renameIn, removeFrom, labelOf, type SidebarItemKind } from "./lib/vault-item-ops";
   import { pinnedQueries } from "@pablotech/akesi/pinned-queries";
   import Onboarding, { type OnboardingField } from "@tinytars/frame/Onboarding.svelte";
@@ -122,6 +125,61 @@
     void selectedClientId;
     speechRegistry.stop();
   });
+
+  // The content keys that open stored originals, published for the life of the open vault. Here
+  // rather than at each `vault = ...` assignment because there are six of them and a missed one is
+  // a record whose own attachments will not open (vault-raw-keys.ts).
+  $effect(() => {
+    if (vault) {
+      setRawKeyring(vault);
+      // Re-registered on every reassignment so the closure writes against the CURRENT vault; the
+      // ring's own serialisation is what keeps two uploads from each saving over the other's key.
+      setRawKeySink(recordRawKey);
+      setRawKeyRefresh(adoptStoredRawKeys);
+      return;
+    }
+    // Closing the vault takes the keys AND the decrypted copies already handed to the page.
+    // clearRawKeyring drops the sink and the refresh with them.
+    clearRawKeyring();
+    revokeAttachmentBlobs();
+  });
+
+  // The awaited half of an upload: the key is in R2 before the ciphertext it opens ever is.
+  //
+  // It THROWS rather than returning quietly, because the caller's next act is to seal bytes under
+  // this key and upload them. A key that was not saved would make that upload unreadable forever;
+  // a failed upload is recoverable.
+  //
+  // Applied optimistically and queued on the same chain as every other edit, for the reason stated on
+  // saveEdits: a concurrent edit computes its whole-vault snapshot from `vault` on its own tick, so a
+  // key applied only after the await would be absent from that snapshot and overwritten by it.
+  async function recordRawKey(id: string, file: string, key: string): Promise<void> {
+    if (!vault || !session.dek || !session.r2Id) throw new Error("the vault is not open to record a content key");
+    const next = withRawKey(vault, id, file, key);
+    const r2id = session.r2Id;
+    const key64 = session.dek;
+    vault = next;
+    if (!(await vaultSave.push(() => saveVaultV2(next, r2id, key64, vaultSink)))) throw new Error("the content key could not be saved");
+  }
+
+  // Content keys recorded OUT OF BAND, adopted without a reload.
+  //
+  // The operator sweep (scripts/raw-encrypt-backfill.ts) seals stored originals and writes their keys
+  // straight into the vault blob, so a page opened before it ran holds a ring missing every one of
+  // them — and refuses to open files this vault can in fact open. vault-raw-keys.ts calls this when
+  // it meets one.
+  //
+  // It reads the blob WITHOUT fetchVaultBlob, deliberately: that remembers the ETag, and re-arming
+  // If-Match on a version this page never worked from would turn the next save into a silent
+  // overwrite of whatever else moved. Merging keys into the in-memory vault is what keeps the next
+  // save from dropping them, whichever way a conflict is then resolved.
+  async function adoptStoredRawKeys(): Promise<void> {
+    if (!vault || !session.dek || !session.r2Id) return;
+    const res = await fetch(`/api/vault/${encodeURIComponent(session.r2Id)}`, { cache: "no-store" });
+    if (!res.ok) return;
+    const stored = await decryptVaultV2<Vault>(new Uint8Array(await res.arrayBuffer()), session.dek);
+    vault = withStoredRawKeys(vault, stored.rawKeys);
+  }
 
   // Reads the open record's reports into the prompt cache before the patient asks anything, so the
   // first question is answered against a warm entry rather than waiting out a cache write
@@ -594,9 +652,17 @@
   // W77 — a PDF stored before page counts were kept leaves the report corpus refusing to assemble
   // (CORPUS.md), and only a browser can count its pages. Once per selected client, unawaited: it is
   // a repair of stored data, not part of rendering anything.
+  //
+  // Sealing any plaintext original left in the store is the same kind of repair, and runs ahead of the
+  // counting only so the two do not download the same file at once — neither needs the other, since a
+  // page count is taken on plaintext whichever format the store holds.
   $effect(() => {
     const id = selectedClientId;
-    if (id) void healRawPageCounts(id);
+    if (id) {
+      void healRawSealing(id)
+        .catch(() => undefined)
+        .then(() => healRawPageCounts(id));
+    }
   });
 
   $effect(() => {
@@ -785,7 +851,7 @@
     const r2id = session.r2Id;
     const key = session.dek;
     vault = next; // updates currentClient → children see the new baseline on this same tick
-    vaultSave.push(() => saveVaultV2(next, r2id, key, vaultSink));
+    void vaultSave.push(() => saveVaultV2(next, r2id, key, vaultSink));
   }
 
   // W30 — watchlist membership is a per-chart toggle now (not the Profile editor). Clone the
@@ -857,10 +923,13 @@
   // cookie auth (translateMarker's providerToken precondition was dropped for this). Fire-and-forget
   // from the caller; failures here are silent — MarkerChart's per-marker Translate button already
   // covers a marker that didn't get filled.
+  // On the shared corpus lane (W86): every one of these calls carries the report corpus, and the
+  // isolate serving them refuses a second one while the first is still in flight — a refusal this
+  // function swallows, leaving the marker with no range at all.
   function fillRanges(client: Client): Promise<void> {
     return fillMissingRanges(client, async (marker) => {
       try {
-        await translateMarker(client, marker);
+        await corpusLane.run(() => translateMarker(client, marker));
       } catch {
         // best-effort fill — see comment above.
       }

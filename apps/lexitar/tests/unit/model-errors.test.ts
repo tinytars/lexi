@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { classifyModelError, inferenceErrorReply, modelErrorReply, ModelHttpError, ModelUnsupportedError } from "../../functions/_lib/model-errors";
-import { CorpusBusyError } from "../../functions/_lib/inference/corpus-errors";
+import { CorpusBusyError, CorpusKeyError } from "../../functions/_lib/inference/corpus-errors";
 
 // Pins every route's failure → (status, errorCode) contract. The browser branches on errorCode to
 // show the billing link, so a misclassification here silently hides the recovery path.
@@ -71,5 +71,22 @@ describe("inferenceErrorReply", () => {
     expect(reply.status).toBe(503);
     expect(reply.errorCode).toBe("corpus_busy");
     expect(reply.error).toMatch(/try again/i);
+  });
+
+  // 400, not 422 and not an unclassified 500: nothing is wrong with the record — the request left
+  // out a key the caller holds, and the browser's self-heal is what supplies it.
+  it("answers a document it could not open as a classified 400", () => {
+    const reply = inferenceErrorReply(new CorpusKeyError(["labs.pdf", "scan.pdf"]), "chat backend error");
+
+    expect(reply.status).toBe(400);
+    expect(reply.errorCode).toBe("corpus_key_missing");
+  });
+
+  // A file name is PHI and this body is read by a browser, so the count travels and the names do not.
+  it("sends the count of unopenable documents, never their names", () => {
+    const reply = inferenceErrorReply(new CorpusKeyError(["labs.pdf", "scan.pdf"]), "chat backend error");
+
+    expect(reply.unopenable).toBe(2);
+    expect(JSON.stringify(reply)).not.toContain("labs.pdf");
   });
 });

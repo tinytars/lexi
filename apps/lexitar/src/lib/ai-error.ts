@@ -26,6 +26,7 @@ export const AI_ERROR_MESSAGES: Record<string, string> = {
   corpus_busy: BUSY,
   model_error: "The AI service returned an error — try again in a moment.",
   model_unsupported: "The AI model this app is configured with can't read this kind of input.",
+  corpus_key_missing: "Some of this record's documents couldn't be opened — reopen the record and try again.",
   no_tool_use: "The AI did not return a usable answer — try again.",
   invalid_leaf_regen: "The AI's answer did not fit the expected shape — try again.",
   truncated: "The AI's answer was cut off before it finished — try translating fewer rows at once.",
