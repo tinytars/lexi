@@ -19,7 +19,7 @@ import { join } from "node:path";
 import { describe, it, expect } from "vitest";
 import { createAccount } from "../../functions/_lib/identity-accounts";
 import { recordRawObject } from "../../functions/_lib/identity-audit";
-import { reportCorpus, type CorpusEnv } from "../../functions/_lib/inference/corpus";
+import { openReportCorpus, type CorpusEnv } from "../../functions/_lib/inference/corpus";
 import { modelFor } from "../../functions/_lib/inference/resolve";
 import { chatSystemPrompt } from "../../src/lib/chat-prompt";
 import { useWorkerd } from "../support/miniflare";
@@ -75,7 +75,8 @@ describe("a model answering from the attached reports", () => {
     async () => {
       const { accountId } = await vaultWithReports();
       const env = { DB: w.db, VAULT: w.bucket, STORE_PREFIX: STORE } as unknown as CorpusEnv;
-      const corpus = await reportCorpus(env, accountId, SLUG, { citations: true });
+      const { corpus, release } = await openReportCorpus(env, accountId, SLUG, { citations: true });
+      release();
       expect(corpus.docCount, "the fixtures were not attached — the rest of this test would be vacuous").toBe(2);
 
       const { client, model } = modelFor(process.env, "chat");

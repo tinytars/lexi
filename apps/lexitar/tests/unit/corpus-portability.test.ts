@@ -10,7 +10,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type Anthropic from "@anthropic-ai/sdk";
 import { createAccount } from "../../functions/_lib/identity-accounts";
 import { recordRawObject } from "../../functions/_lib/identity-audit";
-import { reportCorpus, CORPUS_ACK, CORPUS_PREAMBLE, type CorpusEnv } from "../../functions/_lib/inference/corpus";
+import { openReportCorpus, CORPUS_ACK, CORPUS_PREAMBLE, type CorpusEnv } from "../../functions/_lib/inference/corpus";
 import { openAIClient } from "../../functions/_lib/inference/openai";
 import { classifyModelError, ModelUnsupportedError } from "../../functions/_lib/model-errors";
 import type { OpenAIProvider } from "../../src/lib/model-config";
@@ -44,8 +44,9 @@ async function twoReports(): Promise<Anthropic.MessageParam[]> {
     await recordRawObject(w.db, key, who, { pages: 1, bytes: bytes.length });
   }
   const env = { DB: w.db, VAULT: w.bucket, STORE_PREFIX: STORE } as unknown as CorpusEnv;
-  const { turns } = await reportCorpus(env, who, "alex", { citations: true });
-  return turns;
+  const { corpus, release } = await openReportCorpus(env, who, "alex", { citations: true });
+  release();
+  return corpus.turns;
 }
 
 const send = (turns: Anthropic.MessageParam[], pdf: boolean) =>

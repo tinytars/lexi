@@ -58,6 +58,13 @@ export const MAX_CORPUS_DOCS = 100;
  * Assembling n source bytes peaks near 2.4n — the raw document, the accumulated base64, and the
  * body the SDK serialises from it. Set above MAX_CORPUS_BYTES so one maxed record always admits on
  * its own, and below half of what the ceiling affords, so a second one never joins it.
+ *
+ * HELD FOR THE WHOLE REQUEST, not for the assembly. Assembly ending is not the peak: the base64 is
+ * still live for the length of the upstream call and the SDK serialises a second copy of it into the
+ * body. A reservation released when `readDocuments` returned read 0 during the seconds the isolate
+ * held the most, so two requests whose assemblies merely did not overlap both sat in one isolate
+ * holding ~27 MB — which is the isolate being killed for memory, taking every unrelated request in
+ * flight with it, in place of one classified 503.
  */
 const MAX_IN_FLIGHT_CORPUS_BYTES = 24 * 1024 * 1024;
 let inFlightBytes = 0;
@@ -98,7 +105,7 @@ const BASE64_CHUNK_BYTES = 0xc000;
 // W86 — btoa per chunk, rather than building the whole latin1 string and encoding it once. Both
 // forms return the same string; this one never holds the input twice. A 15 MB record used to sit in
 // the isolate as bytes AND as a 15 MB intermediate AND as 20 MB of base64 at the same moment, and
-// the 128 MB ceiling is per ISOLATE, not per request — see the concurrency note in corpus-lane.ts.
+// the 128 MB ceiling is per ISOLATE, not per request — see the concurrency note in src/lib/corpus-lane.ts.
 function bytesToBase64(bytes: Uint8Array): string {
   let out = "";
   for (let i = 0; i < bytes.length; i += BASE64_CHUNK_BYTES) {
@@ -107,30 +114,44 @@ function bytesToBase64(bytes: Uint8Array): string {
   return out;
 }
 
+export interface OpenCorpus {
+  corpus: Corpus;
+  /** Gives this corpus's share of MAX_IN_FLIGHT_CORPUS_BYTES back. Idempotent it is not, and does not
+   *  need to be: attach.ts calls it exactly once, in a `finally`, and nothing else can reach it. */
+  release: () => void;
+}
+
+const unreserved = (): OpenCorpus => ({ corpus: emptyCorpus(), release: () => {} });
+
 /**
- * Assembles one client's reports into the leading turns of a request.
+ * Assembles one client's reports into the leading turns of a request, and RESERVES the isolate
+ * memory they occupy until the caller releases it.
+ *
+ * Exported for attach.ts alone, which is the only module allowed to hold a `release` — a route gets
+ * one of the two scopes there, so a route that forgets to release cannot exist, exactly as a route
+ * that forgets to authorise cannot (see the note at the top of this file).
  *
  * `citations` is off for a feature that asks for a JSON schema — `output_config.format` and
  * `citations` are mutually exclusive — and on everywhere else, where a `page_location` cite is what
  * lets an answer point at the page it came from.
  */
-export async function reportCorpus(
+export async function openReportCorpus(
   env: CorpusEnv,
   accountId: string,
   clientId: string,
   opts: { citations: boolean; maxPages?: number; rawKeys?: RawKeyMap },
-): Promise<Corpus> {
+): Promise<OpenCorpus> {
   const slug = normalizeClientId(clientId);
   const access = await rawAccessFor(env.DB, env, accountId, slug);
   // `unclaimed` means R2 holds nothing at all under this client — a new patient, mid-first-import.
   // That is an empty corpus, not a refusal: they must still be able to ask a question. Every other
   // non-readable kind, orphans included, is a refusal.
-  if (access.kind === "unclaimed") return emptyCorpus();
+  if (access.kind === "unclaimed") return unreserved();
   if (!mayRead(access)) throw new CorpusDeniedError(slug);
 
   const prefix = storeKey(env, "raw", slug, "");
   const rows = await listRawPdfsUnder(env.DB, prefix);
-  if (rows.length === 0) return emptyCorpus();
+  if (rows.length === 0) return unreserved();
 
   const unmeasured = rows.filter((r) => r.pages === null).map((r) => r.r2_key.slice(prefix.length));
   if (unmeasured.length > 0) throw new CorpusUnmeasuredError(unmeasured);
@@ -157,13 +178,18 @@ export async function reportCorpus(
   if (inFlightBytes + reserved > MAX_IN_FLIGHT_CORPUS_BYTES) throw new CorpusBusyError();
   // No await between the test and the increment, which is what makes this safe on one thread.
   inFlightBytes += reserved;
+  const release = () => {
+    inFlightBytes -= reserved;
+  };
 
   let docs: Anthropic.DocumentBlockParam[];
   let byteCount: number;
   try {
     ({ docs, byteCount } = await readDocuments(env, keys, prefix, opts.citations === true, opts.rawKeys ?? {}));
-  } finally {
-    inFlightBytes -= reserved;
+  } catch (err) {
+    // An assembly that throws holds nothing, and nobody is left to release it.
+    release();
+    throw err;
   }
 
   // The breakpoint sits on the LAST DOCUMENT, not on the preamble that follows it, so the preamble's
@@ -171,16 +197,19 @@ export async function reportCorpus(
   docs[docs.length - 1] = { ...docs[docs.length - 1], cache_control: { type: "ephemeral" } };
 
   return {
-    // The assistant ack is not decoration: it closes the prefix on a message boundary, which is what
-    // stops openai.ts's `userParts` from concatenating corpus text and question text into one
-    // OpenAI message — and gives the model a turn that says what the documents are for.
-    turns: [
-      { role: "user", content: [...docs, { type: "text", text: CORPUS_PREAMBLE }] },
-      { role: "assistant", content: CORPUS_ACK },
-    ],
-    docCount: docs.length,
-    pageCount,
-    byteCount,
+    corpus: {
+      // The assistant ack is not decoration: it closes the prefix on a message boundary, which is
+      // what stops openai.ts's `userParts` from concatenating corpus text and question text into one
+      // OpenAI message — and gives the model a turn that says what the documents are for.
+      turns: [
+        { role: "user", content: [...docs, { type: "text", text: CORPUS_PREAMBLE }] },
+        { role: "assistant", content: CORPUS_ACK },
+      ],
+      docCount: docs.length,
+      pageCount,
+      byteCount,
+    },
+    release,
   };
 }
 
