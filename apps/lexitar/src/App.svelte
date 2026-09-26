@@ -923,10 +923,13 @@
   // cookie auth (translateMarker's providerToken precondition was dropped for this). Fire-and-forget
   // from the caller; failures here are silent — MarkerChart's per-marker Translate button already
   // covers a marker that didn't get filled.
+  // On the shared corpus lane (W86): every one of these calls carries the report corpus, and the
+  // isolate serving them refuses a second one while the first is still in flight — a refusal this
+  // function swallows, leaving the marker with no range at all.
   function fillRanges(client: Client): Promise<void> {
     return fillMissingRanges(client, async (marker) => {
       try {
-        await translateMarker(client, marker);
+        await corpusLane.run(() => translateMarker(client, marker));
       } catch {
         // best-effort fill — see comment above.
       }

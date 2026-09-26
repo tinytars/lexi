@@ -5,7 +5,9 @@ import type Anthropic from "@anthropic-ai/sdk";
 import raw from "../../inference.config.json";
 import { capsFor, parseInferenceConfig, FEATURES, type Feature } from "../../src/lib/model-config";
 import { ModelUnsupportedError } from "../../functions/_lib/model-errors";
-import { attachedModelFor, unattachedModelFor, UNATTACHED_FEATURES, type AttachedEnv, type AttachedFeature } from "../../functions/_lib/inference/attach";
+import { withAttachedModel, unattachedModelFor, UNATTACHED_FEATURES, type AttachedEnv, type AttachedFeature, type AttachedModel } from "../../functions/_lib/inference/attach";
+import type { InferenceConfig } from "../../src/lib/model-config";
+import type { Subject } from "../../functions/_lib/inference/subject";
 import { createAccount } from "../../functions/_lib/identity-accounts";
 import { recordRawObject } from "../../functions/_lib/identity-audit";
 import { useWorkerd } from "../support/miniflare";
@@ -32,6 +34,11 @@ async function clientWithOneReport(slug: string): Promise<string> {
   await recordRawObject(w.db, key, id, { pages: 3, bytes: 12 });
   return id;
 }
+
+/** What the door hands a route, lifted out of its scope: these tests pin WHAT comes back, where
+ *  attach-scope.test.ts pins how long the isolate budget it reserved is held for. */
+const attachedModelFor = (env: AttachedEnv, feature: AttachedFeature, who: Subject, config?: InferenceConfig): Promise<AttachedModel> =>
+  withAttachedModel(env, feature, who, async (attached) => attached, config);
 
 const firstDoc = (turns: Anthropic.MessageParam[]): Anthropic.DocumentBlockParam =>
   (turns[0].content as Anthropic.ContentBlockParam[])[0] as Anthropic.DocumentBlockParam;

@@ -4,7 +4,7 @@ import { logRequest } from "../_lib/log";
 import { auditor } from "../_lib/audit";
 import { inferenceErrorReply } from "../_lib/model-errors";
 import { buildUserMessage, SYSTEM_PROMPT, correctionSuffix } from "@pablotech/akesi/finding-generate";
-import { attachedModelFor, type AttachedEnv } from "../_lib/inference/attach";
+import { streamWithAttachedModel, type AttachedEnv } from "../_lib/inference/attach";
 import { subjectOf } from "../_lib/inference/subject";
 import { findingRequestParams } from "@pablotech/akesi/finding-generate";
 import type { ObjectBucket } from "../_lib/object-bucket";
@@ -85,27 +85,23 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
   // is the in-band sentinel, which the browser reads as `generation_failed` and RETRIES — three
   // full Opus generations against a record that cannot be assembled either time. A record too large
   // to send is an HTTP status carrying the page numbers that say what to remove.
-  let resolved: Awaited<ReturnType<typeof attachedModelFor>>;
-  try {
-    resolved = await attachedModelFor(env, "finding", who);
-  } catch (e) {
-    const { status, error, errorCode, ...rest } = inferenceErrorReply(e, "finding backend error");
-    return jsonErr(status, errorCode, error, rest);
-  }
-  const { client: anthropic, model, corpus } = resolved;
-  // W64 — one definition, in finding-generate.ts. Both the adaptive-thinking heuristic and the
-  // token budget were restated here verbatim; a change to either had to be made twice or the web
-  // Finding stopped matching the CLI Finding, which is the invariant inference.config.json keeps by giving both one entry.
-  const requestParams = findingRequestParams(model);
-
-  // Committing to a 200 stream. Audit the accepted request now (PHI-free, persisted to R2); once
-  // headers are sent an Anthropic/credit failure can only be signalled IN-BAND (the [[REFRESH_ERROR]]
-  // sentinel below). The auditor is bound to this request (seq per event → one R2 object per event).
+  //
+  // The auditor is bound to this request (seq per event → one R2 object per event).
   const audit = auditor(env.VAULT, env, ROUTE, requestId);
-  await audit({ event: "accepted", status: 200, latencyMs: Date.now() - start, attempt });
-  const encoder = new TextEncoder();
-  const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
+  try {
+    return await streamWithAttachedModel(env, "finding", who, async ({ client: anthropic, model, corpus }, write) => {
+      // W64 — one definition, in finding-generate.ts. Both the adaptive-thinking heuristic and the
+      // token budget were restated here verbatim; a change to either had to be made twice or the web
+      // Finding stopped matching the CLI Finding, which is the invariant inference.config.json keeps by giving both one entry.
+      const requestParams = findingRequestParams(model);
+
+      // Committing to a 200 stream. Audit the accepted request now (PHI-free, persisted to R2); once
+      // headers are sent an Anthropic/credit failure can only be signalled IN-BAND (the
+      // [[REFRESH_ERROR]] sentinel below). Inside the pump rather than before it, so the route owns
+      // nothing between a resolved corpus and the stream that releases it — `ReadableStream` runs
+      // this at construction, which is the same instant the route used to audit at.
+      await audit({ event: "accepted", status: 200, latencyMs: Date.now() - start, attempt });
+
       let chars = 0;
       try {
         const s = anthropic.messages.stream(
@@ -122,7 +118,7 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
         for await (const event of s) {
           if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
             chars += event.delta.text.length;
-            controller.enqueue(encoder.encode(event.delta.text));
+            write(event.delta.text);
           }
         }
         const final = await s.finalMessage(); // surfaces a terminal stream error (e.g. overloaded) into the catch
@@ -140,7 +136,7 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
         // (the generation stopped spending), distinct from a genuine post-header stream failure.
         const aborted = request.signal.aborted;
         if (!aborted) {
-          controller.enqueue(encoder.encode(`\n[[REFRESH_ERROR]] ${(e as Error).message ?? "generation failed"}`));
+          write(`\n[[REFRESH_ERROR]] ${(e as Error).message ?? "generation failed"}`);
         }
         await audit({
           event: aborted ? "aborted" : "error",
@@ -150,14 +146,10 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
           chars,
           errorCode: aborted ? "aborted" : "generation_failed",
         });
-      } finally {
-        controller.close();
       }
-    },
-  });
-
-  return new Response(stream, {
-    status: 200,
-    headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store", "x-accel-buffering": "no" },
-  });
+    });
+  } catch (e) {
+    const { status, error, errorCode, ...rest } = inferenceErrorReply(e, "finding backend error");
+    return jsonErr(status, errorCode, error, rest);
+  }
 }
