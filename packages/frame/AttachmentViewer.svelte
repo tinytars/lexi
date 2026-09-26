@@ -44,7 +44,12 @@
     pdfPage = 1;
     pdfError = null;
     const src = url.current;
-    if (!isPdf || !src) return;
+    if (!isPdf) return;
+    if (url.error) {
+      pdfError = url.error;
+      return;
+    }
+    if (!src) return;
     openPdf(src)
       .then((doc) => { pdfDoc = doc; })
       .catch((e) => { pdfError = e instanceof Error ? e.message : "Couldn't open this PDF."; });
@@ -61,13 +66,20 @@
   <div class="viewer">
     <div class="viewer-head">
       <span class="viewer-name">{current?.name}</span>
-      <a class="viewer-download" href={url.current ?? "#"} download={current?.name} target="_blank" rel="noopener">⤓ Download</a>
+      {#if url.current}
+        <a class="viewer-download" href={url.current} download={current?.name} target="_blank" rel="noopener">⤓ Download</a>
+      {:else}
+        <!-- Not an <a href="#">: a link that cannot download must not answer a click as if it did. -->
+        <span class="viewer-download is-disabled" aria-disabled="true">⤓ Download</span>
+      {/if}
     </div>
     <div class="viewer-body">
       {#if attachments.length > 1}
         <button type="button" class="viewer-nav prev" disabled={index === 0} onclick={() => go(-1)} aria-label="Previous attachment">‹</button>
       {/if}
-      {#if isImage && current && url.current}
+      {#if url.error && !isPdf}
+        <p class="viewer-error">{url.error}</p>
+      {:else if isImage && current && url.current}
         <img class="viewer-image" src={url.current} alt={current.name} />
       {:else if isPdf}
         {#if pdfError}
@@ -102,6 +114,7 @@
   .viewer-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding-right: 1.5rem; }
   .viewer-name { font-weight: 600; font-size: 0.92rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .viewer-download { font-size: 0.85rem; color: var(--accent); white-space: nowrap; }
+  .viewer-download.is-disabled { color: var(--muted); cursor: not-allowed; text-decoration: line-through; }
   .viewer-body { position: relative; display: flex; align-items: center; justify-content: center; min-height: 300px; }
   .viewer-image { max-width: 100%; max-height: 70vh; object-fit: contain; border-radius: 6px; }
   .viewer-body canvas { max-width: 100%; max-height: 70vh; border: 1px solid var(--border); border-radius: 4px; }

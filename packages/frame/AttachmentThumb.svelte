@@ -14,6 +14,10 @@
 
 {#if src.current}
   <img src={src.current} alt="" loading="lazy" />
+{:else if src.error}
+  <!-- The symbol, not the reason: a chip is too small for a message and the strip may be showing
+       several. The viewer this chip opens is where the failure is named. -->
+  <span class="failed" title={src.error} aria-label="This attachment could not be opened">⚠</span>
 {/if}
 
 <style>
@@ -24,5 +28,14 @@
     height: 100%;
     object-fit: cover;
     display: block;
+  }
+  .failed {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted);
+    font-size: 0.9rem;
   }
 </style>

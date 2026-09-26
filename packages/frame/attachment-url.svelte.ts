@@ -8,20 +8,32 @@ export type AttachmentUrl = (clientId: string, key: string) => string | Promise<
 /**
  * One `src`/`href` binding whose URL may arrive a tick after the element does.
  *
- * `undefined` until it does, which every consumer renders as "nothing yet" rather than as a broken
- * image. Revocation belongs to the host: it minted the URL and is the only side that knows whether
+ * `current` is `undefined` until it does — and stays `undefined` if it never does, which is why
+ * `error` exists: producing the URL can fail (a decrypt with no key, an expired session), the
+ * effect re-runs only when `source()` changes, so nothing would retry and a consumer reading
+ * `current` alone cannot tell a pending URL from a dead one. A binding that renders "nothing yet"
+ * forever is how a broken download link looked like a slow one.
+ *
+ * Revocation belongs to the host: it minted the URL and is the only side that knows whether
  * anything else still holds it.
  */
 export function resolveAttachmentUrl(source: () => { url: AttachmentUrl; clientId: string | null; key: string | null }) {
   let resolved = $state<string | undefined>();
+  let failure = $state<string | undefined>();
   $effect(() => {
     const { url, clientId, key } = source();
     resolved = undefined;
+    failure = undefined;
     if (!clientId || !key) return;
     let live = true;
-    void Promise.resolve(url(clientId, key)).then((u) => {
-      if (live) resolved = u;
-    });
+    void Promise.resolve(url(clientId, key)).then(
+      (u) => {
+        if (live) resolved = u;
+      },
+      (e) => {
+        if (live) failure = e instanceof Error ? e.message : "Couldn't open this attachment.";
+      },
+    );
     return () => {
       live = false;
     };
@@ -29,6 +41,9 @@ export function resolveAttachmentUrl(source: () => { url: AttachmentUrl; clientI
   return {
     get current() {
       return resolved;
+    },
+    get error() {
+      return failure;
     },
   };
 }

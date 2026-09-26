@@ -59,7 +59,7 @@
   import { importFileForChat, type ChatImportResult } from "./lib/import-flow";
   import { withClient } from "./lib/vault-clients";
   import { reclaimOrphans } from "./lib/orphan-claim";
-  import { setRawKeyring, clearRawKeyring, setRawKeySink, withRawKey } from "./lib/vault-raw-keys";
+  import { setRawKeyring, clearRawKeyring, setRawKeySink, setRawKeyRefresh, withRawKey, withStoredRawKeys } from "./lib/vault-raw-keys";
   import { revokeAttachmentBlobs } from "./lib/attachment-store";
   import { putRaw } from "./lib/attachment-store";
   import { healRawPageCounts } from "./lib/raw-pages-heal";
@@ -135,9 +135,11 @@
       // Re-registered on every reassignment so the closure writes against the CURRENT vault; the
       // ring's own serialisation is what keeps two uploads from each saving over the other's key.
       setRawKeySink(recordRawKey);
+      setRawKeyRefresh(adoptStoredRawKeys);
       return;
     }
     // Closing the vault takes the keys AND the decrypted copies already handed to the page.
+    // clearRawKeyring drops the sink and the refresh with them.
     clearRawKeyring();
     revokeAttachmentBlobs();
   });
@@ -158,6 +160,25 @@
     const key64 = session.dek;
     vault = next;
     if (!(await vaultSave.push(() => saveVaultV2(next, r2id, key64, vaultSink)))) throw new Error("the content key could not be saved");
+  }
+
+  // Content keys recorded OUT OF BAND, adopted without a reload.
+  //
+  // The operator sweep (scripts/raw-encrypt-backfill.ts) seals stored originals and writes their keys
+  // straight into the vault blob, so a page opened before it ran holds a ring missing every one of
+  // them — and refuses to open files this vault can in fact open. vault-raw-keys.ts calls this when
+  // it meets one.
+  //
+  // It reads the blob WITHOUT fetchVaultBlob, deliberately: that remembers the ETag, and re-arming
+  // If-Match on a version this page never worked from would turn the next save into a silent
+  // overwrite of whatever else moved. Merging keys into the in-memory vault is what keeps the next
+  // save from dropping them, whichever way a conflict is then resolved.
+  async function adoptStoredRawKeys(): Promise<void> {
+    if (!vault || !session.dek || !session.r2Id) return;
+    const res = await fetch(`/api/vault/${encodeURIComponent(session.r2Id)}`, { cache: "no-store" });
+    if (!res.ok) return;
+    const stored = await decryptVaultV2<Vault>(new Uint8Array(await res.arrayBuffer()), session.dek);
+    vault = withStoredRawKeys(vault, stored.rawKeys);
   }
 
   // Reads the open record's reports into the prompt cache before the patient asks anything, so the

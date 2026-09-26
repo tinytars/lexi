@@ -5,7 +5,8 @@
 // decrypted with the key from this vault's key ring, and handed back as a `blob:` URL. Call sites
 // keep the shape they had — one function from (clientId, key) to a URL — now asynchronous.
 import { normalizeClientId } from "./client-id";
-import { openStored } from "./vault-raw-keys";
+import { openStored, refreshRawKeyring } from "./vault-raw-keys";
+import { RawKeyError } from "./raw-cipher";
 
 const rawUrl = (clientId: string, key: string): string => `/api/raw/${normalizeClientId(clientId)}/${encodeURIComponent(key)}`;
 
@@ -16,9 +17,23 @@ export async function fetchStoredBytes(clientId: string, key: string): Promise<U
   return new Uint8Array(await res.arrayBuffer());
 }
 
-/** The PLAINTEXT bytes of one stored original, whichever format the store currently holds it in. */
+/**
+ * The PLAINTEXT bytes of one stored original, whichever format the store currently holds it in.
+ *
+ * A key this page does not hold is retried ONCE against a re-read vault, because the usual reason is
+ * that the operator sweep recorded it after this page opened (vault-raw-keys.ts). Without the retry
+ * an already-rendered attachment stays broken until the tab is reloaded, even though the vault holds
+ * what opens it. A key still missing after the re-read is a genuine refusal and propagates.
+ */
 export async function fetchAttachmentBytes(clientId: string, key: string): Promise<Uint8Array> {
-  return openStored(await fetchStoredBytes(clientId, key), clientId, key);
+  const stored = await fetchStoredBytes(clientId, key);
+  try {
+    return await openStored(stored, clientId, key);
+  } catch (e) {
+    if (!(e instanceof RawKeyError) || e.reason !== "missing") throw e;
+    await refreshRawKeyring();
+    return openStored(stored, clientId, key);
+  }
 }
 
 // Keyed by client and file, holding the PROMISE rather than the URL so two surfaces opening the
