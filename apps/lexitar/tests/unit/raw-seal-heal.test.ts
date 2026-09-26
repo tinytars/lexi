@@ -2,7 +2,7 @@
 // What is under test is the diff and the ordering around putRaw, neither of which a stub decides.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { healRawSealing } from "../../src/lib/raw-seal-heal";
-import { clearRawKeyring, rawKeyFor, setRawKeyring, setRawKeySink, withRawKey } from "../../src/lib/vault-raw-keys";
+import { clearRawKeyring, rawKeyFor, setRawKeyRefresh, setRawKeyring, setRawKeySink, withRawKey } from "../../src/lib/vault-raw-keys";
 import { isSealed, openRaw, sealRaw } from "../../src/lib/raw-cipher";
 import type { Vault } from "../../src/lib/types";
 
@@ -45,7 +45,7 @@ describe("healRawSealing", () => {
     openVault();
     const puts = server(["one.pdf", "two.pdf"]);
 
-    expect(await healRawSealing("Alex")).toEqual({ sealed: 2, unopenable: 0 });
+    expect(await healRawSealing("Alex")).toEqual({ sealed: 2, refreshed: 0, unopenable: 0 });
     expect(puts.map((p) => p.file)).toEqual(["one.pdf", "two.pdf"]);
     expect(await openRaw(puts[0].body, "one.pdf", rawKeyFor("alex", "one.pdf"))).toEqual(plain("one.pdf"));
   });
@@ -55,7 +55,7 @@ describe("healRawSealing", () => {
     setRawKeyring({ rawKeys: { alex: { "one.pdf": KEY } } });
     const puts = server(["one.pdf"]);
 
-    expect(await healRawSealing("alex")).toEqual({ sealed: 0, unopenable: 0 });
+    expect(await healRawSealing("alex")).toEqual({ sealed: 0, refreshed: 0, unopenable: 0 });
     expect(puts).toEqual([]);
   });
 
@@ -65,7 +65,7 @@ describe("healRawSealing", () => {
     openVault();
     const puts = server(["gone.pdf"], { "gone.pdf": await sealRaw(plain("gone.pdf"), KEY) });
 
-    expect(await healRawSealing("alex")).toEqual({ sealed: 0, unopenable: 1 });
+    expect(await healRawSealing("alex")).toEqual({ sealed: 0, refreshed: 0, unopenable: 1 });
     expect(puts).toEqual([]);
   });
 
@@ -82,7 +82,7 @@ describe("healRawSealing", () => {
       }),
     );
 
-    expect(await healRawSealing("alex")).toEqual({ sealed: 1, unopenable: 0 });
+    expect(await healRawSealing("alex")).toEqual({ sealed: 1, refreshed: 0, unopenable: 0 });
   });
 
   // No vault means no place to record a key, and putRaw then uploads plaintext. Counting that as
@@ -95,9 +95,37 @@ describe("healRawSealing", () => {
     expect(isSealed(puts[0].body)).toBe(false);
   });
 
+  // The operator sweep records keys straight into the vault blob, so a page opened before it ran has
+  // a ring missing all of them. Re-reading the vault is what stops this lane downloading every
+  // sealed file only to conclude it was sealed.
+  it("catches the ring up from the stored vault instead of downloading what the sweep already sealed", async () => {
+    let reads = 0;
+    setRawKeyRefresh(async () => {
+      reads += 1;
+      setRawKeyring({ rawKeys: { alex: { "one.pdf": KEY, "two.pdf": KEY } } });
+    });
+    const puts = server(["one.pdf", "two.pdf"]);
+
+    expect(await healRawSealing("alex")).toEqual({ sealed: 0, refreshed: 2, unopenable: 0 });
+    expect(puts).toEqual([]);
+    // One read for the whole namespace, not one per file.
+    expect(reads).toBe(1);
+  });
+
+  // The refresh must not swallow the genuine case: a key the STORED vault does not hold either is
+  // still lost, and re-sealing it would need plaintext this lane cannot produce.
+  it("still reports a key the stored vault does not hold either", async () => {
+    openVault();
+    setRawKeyRefresh(async () => setRawKeyring({ rawKeys: { alex: {} } }));
+    const puts = server(["gone.pdf"], { "gone.pdf": await sealRaw(plain("gone.pdf"), KEY) });
+
+    expect(await healRawSealing("alex")).toEqual({ sealed: 0, refreshed: 0, unopenable: 1 });
+    expect(puts).toEqual([]);
+  });
+
   it("does nothing when the namespace is not readable, rather than throwing behind the UI", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 404 })));
 
-    await expect(healRawSealing("alex")).resolves.toEqual({ sealed: 0, unopenable: 0 });
+    await expect(healRawSealing("alex")).resolves.toEqual({ sealed: 0, refreshed: 0, unopenable: 0 });
   });
 });

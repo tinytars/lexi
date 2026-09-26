@@ -12,13 +12,15 @@ import { normalizeClientId } from "./client-id";
 import { putRaw } from "./attachment-store";
 import { fetchStoredBytes } from "./attachment-blob";
 import { isSealed } from "./raw-cipher";
-import { rawKeysFor } from "./vault-raw-keys";
+import { rawKeysFor, refreshRawKeyring } from "./vault-raw-keys";
 
 /** Small: each file is a full download and re-upload of up to 24 MB, behind whatever the user is doing. */
 const BATCH = 4;
 
 export interface SealCounts {
   sealed: number;
+  /** Already sealed under a key the STORED vault held and this page had not read yet. Nothing to do. */
+  refreshed: number;
   /** Sealed under a key this vault no longer holds — the sweep cannot help, and re-sealing would need plaintext. */
   unopenable: number;
 }
@@ -42,12 +44,21 @@ async function seal(clientId: string, file: string): Promise<keyof SealCounts | 
  */
 export async function healRawSealing(clientId: string): Promise<SealCounts> {
   const id = normalizeClientId(clientId);
-  const counts: SealCounts = { sealed: 0, unopenable: 0 };
+  const counts: SealCounts = { sealed: 0, refreshed: 0, unopenable: 0 };
   const listed = await fetch(`/api/raw/${id}?files=1`).catch(() => null);
   if (!listed?.ok) return counts;
   const { files } = (await listed.json()) as { files: string[] };
 
-  const keys = rawKeysFor(id);
+  // A file absent from the ring is not evidence it is plaintext — the operator sweep records keys
+  // straight into the vault blob, so a page opened before it ran is missing them all. Catch the ring
+  // up FIRST: one vault read, against a download of every sealed file only to conclude it was sealed.
+  let keys = rawKeysFor(id);
+  if (files.some((f) => !keys[f])) {
+    await refreshRawKeyring();
+    const refreshed = rawKeysFor(id);
+    counts.refreshed = files.filter((f) => !keys[f] && refreshed[f]).length;
+    keys = refreshed;
+  }
   const plaintext = files.filter((f) => !keys[f]);
   for (let i = 0; i < plaintext.length; i += BATCH) {
     const done = await Promise.all(plaintext.slice(i, i + BATCH).map((f) => seal(id, f).catch(() => null)));

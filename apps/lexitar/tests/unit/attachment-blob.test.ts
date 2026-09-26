@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { resolveObjectURL } from "node:buffer";
 import { attachmentBlobUrl, fetchAttachmentBytes, revokeAttachmentBlobs } from "../../src/lib/attachment-blob";
-import { clearRawKeyring, setRawKeyring } from "../../src/lib/vault-raw-keys";
+import { clearRawKeyring, setRawKeyRefresh, setRawKeyring } from "../../src/lib/vault-raw-keys";
 import { sealRaw } from "../../src/lib/raw-cipher";
 import { bytesToBase64 } from "../../src/lib/base64";
 
@@ -43,7 +43,45 @@ describe("fetchAttachmentBytes", () => {
     expect(await fetchAttachmentBytes("alex", "ab12cd34-report.pdf")).toEqual(PDF);
   });
 
-  it("refuses rather than returning an error page as document bytes", async () => {
+  // The operator sweep seals an object and records its key in the vault blob after this page opened,
+  // so the ring is behind the store. Without the retry the file stays broken until a reload.
+  it("opens a sealed original whose key only arrives with a vault re-read", async () => {
+    const key = newKey();
+    let reads = 0;
+    setRawKeyRefresh(async () => {
+      reads += 1;
+      setRawKeyring({ rawKeys: { alex: { "ab12cd34-report.pdf": key } } });
+    });
+    vi.stubGlobal("fetch", served(await sealRaw(PDF, key)));
+
+    expect(await fetchAttachmentBytes("alex", "ab12cd34-report.pdf")).toEqual(PDF);
+    expect(reads).toBe(1);
+  });
+
+  // The retry must not turn a genuine refusal into a silent loop: one re-read, then it propagates so
+  // the UI can say so (packages/frame/attachment-url.svelte.ts).
+  it("refuses a key the re-read vault does not hold either, after one read", async () => {
+    let reads = 0;
+    setRawKeyRefresh(async () => void (reads += 1));
+    vi.stubGlobal("fetch", served(await sealRaw(PDF, newKey())));
+
+    await expect(fetchAttachmentBytes("alex", "ab12cd34-report.pdf")).rejects.toThrow(/no content key/);
+    expect(reads).toBe(1);
+  });
+
+  // A WRONG key is not a stale ring — the vault holds a key and it does not open the file. Re-reading
+  // would cost a vault fetch per attachment and change nothing.
+  it("does not re-read the vault for a key that is present but wrong", async () => {
+    let reads = 0;
+    setRawKeyRefresh(async () => void (reads += 1));
+    setRawKeyring({ rawKeys: { alex: { "ab12cd34-report.pdf": newKey() } } });
+    vi.stubGlobal("fetch", served(await sealRaw(PDF, newKey())));
+
+    await expect(fetchAttachmentBytes("alex", "ab12cd34-report.pdf")).rejects.toThrow(/does not open it/);
+    expect(reads).toBe(0);
+  });
+
+  it("refuses rather than returning an error page as document bytes", async () =>{
     vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 404 })));
 
     await expect(fetchAttachmentBytes("alex", "gone.pdf")).rejects.toThrow(/\(404\)/);

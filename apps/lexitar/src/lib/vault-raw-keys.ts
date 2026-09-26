@@ -29,6 +29,11 @@ type KeySink = (clientId: string, file: string, key: string) => Promise<void>;
 
 let sink: KeySink | null = null;
 
+type KeyRefresh = () => Promise<void>;
+
+let refresh: KeyRefresh | null = null;
+let refreshing: Promise<void> | null = null;
+
 /** Publishes the open vault's keys. Called wherever the decrypted vault becomes the app's state. */
 export function setRawKeyring(vault: Pick<Vault, "rawKeys">): void {
   keyring = Object.fromEntries(Object.entries(vault.rawKeys ?? {}).map(([id, keys]) => [normalizeClientId(id), keys]));
@@ -38,6 +43,38 @@ export function setRawKeyring(vault: Pick<Vault, "rawKeys">): void {
 export function clearRawKeyring(): void {
   keyring = {};
   sink = null;
+  refresh = null;
+  refreshing = null;
+}
+
+/** Registered once where the vault is held, beside the sink. `null` while it is closed. */
+export function setRawKeyRefresh(fn: KeyRefresh | null): void {
+  refresh = fn;
+}
+
+/**
+ * Re-reads the stored vault so the ring catches up with keys recorded OUT OF BAND.
+ *
+ * The operator sweep (scripts/raw-encrypt-backfill.ts) seals objects and writes their keys straight
+ * into the stored blob, so a page whose vault was opened before it ran holds a ring missing every
+ * one of them — and `openRaw` then refuses files the vault can in fact open. This is the only way
+ * back without a reload.
+ *
+ * Serialised on one in-flight read: a record with a dozen unopenable attachments must cost one
+ * vault fetch, not a dozen. A no-op with no open vault.
+ *
+ * It never rejects. A catch-up that fails leaves the ring as it was, and the caller's own refusal —
+ * `no content key for "x"` — is a truer thing to show than whatever went wrong fetching the vault.
+ */
+export function refreshRawKeyring(): Promise<void> {
+  const read = refresh;
+  if (!read) return Promise.resolve();
+  refreshing ??= read()
+    .catch(() => undefined)
+    .finally(() => {
+      refreshing = null;
+    });
+  return refreshing;
 }
 
 /** One client's keys, as the `rawKeys` field of a request body. Empty until anything is sealed. */
@@ -76,6 +113,30 @@ export function withRawKey(vault: Vault, clientId: string, file: string, key: st
   const keys = { ...vault.rawKeys?.[id], [file]: key };
   keyring = { ...keyring, [id]: keys };
   return { ...vault, rawKeys: { ...vault.rawKeys, [id]: keys } };
+}
+
+/**
+ * The vault with every key the STORED blob holds that this copy does not, and the ring to match.
+ *
+ * The ring only: the rest of the in-memory vault may hold edits this page has not saved, so adopting
+ * a whole stored vault to catch up on keys would discard them. A merge cannot lose a key either way
+ * — content keys are append-only per file (attachment-store.ts reuses one rather than replacing it)
+ * — so this copy wins for a file it just minted and the stored blob wins for one it has never seen.
+ */
+export function withStoredRawKeys(vault: Vault, stored: Vault["rawKeys"]): Vault {
+  // Normalized, like withRawKey writes and setRawKeyring reads: an id spelled two ways would
+  // otherwise merge into two entries and the ring would keep whichever came last.
+  const merged: NonNullable<Vault["rawKeys"]> = {};
+  const add = (from: Vault["rawKeys"]) => {
+    for (const [id, keys] of Object.entries(from ?? {})) {
+      const norm = normalizeClientId(id);
+      merged[norm] = { ...merged[norm], ...keys };
+    }
+  };
+  add(stored);
+  add(vault.rawKeys);
+  keyring = merged;
+  return { ...vault, rawKeys: merged };
 }
 
 /** Registered once where the vault is held. `null` while it is closed — nothing can record a key. */
