@@ -13,6 +13,7 @@ import { documentTextsFor, needTranscription } from "./document-extract-client";
 import { MAX_LEAF_DOCUMENTS } from "./leaf-regen-config";
 import type { DocumentText } from "@pablotech/akesi/document-read";
 import { AiError, withDeadline } from "./ai-error";
+import { corpusSubject } from "./vault-raw-keys";
 import { LEAF_REGEN_DEADLINE_MS } from "./leaf-regen-config";
 
 // A leaf-regen result that has been fetched + validated but not yet merged into a client — the
@@ -109,7 +110,7 @@ export async function fetchLeafRegen(
 
   const payload = JSON.stringify({
     node,
-    clientId,
+    ...corpusSubject(clientId),
     inputs: context,
     ...(sendTargetLabels ? { targetLabels } : {}),
     ...(images ? { images } : {}),

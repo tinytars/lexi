@@ -1,7 +1,8 @@
 import { requireSession } from "../_lib/session";
 import { logRequest } from "../_lib/log";
 import { inferenceErrorReply } from "../_lib/model-errors";
-import { attachedModelFor, type AttachedEnv } from "../_lib/inference/attach";
+import { withAttachedModel, type AttachedEnv } from "../_lib/inference/attach";
+import { parseRawKeys } from "../../src/lib/raw-cipher";
 import { GET_MARKER_READINGS_TOOL } from "../../src/lib/chat-tools";
 import { chatSystemPrompt } from "../../src/lib/chat-prompt";
 import { reportsAttached } from "../_lib/inference/corpus";
@@ -51,7 +52,7 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
   const session = await requireSession(request, env);
   if (session instanceof Response) return finish(401, { error: "unauthorized" }, { errorCode: "unauthorized" });
 
-  let body: { clientId?: unknown; unitSystem?: unknown };
+  let body: { clientId?: unknown; unitSystem?: unknown; rawKeys?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -72,22 +73,23 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
   if (providerFor(FEATURE).api !== "anthropic") return finish(200, { warmed: false, reason: "unsupported" });
 
   try {
-    const { client, model, corpus } = await attachedModelFor(env, FEATURE, { accountId: session.accountId, clientId });
-    // Nothing to warm: this record holds no PDFs yet. A cache entry over a bare system prompt is
-    // not worth a round trip.
-    if (corpus.turns.length === 0) return finish(200, { warmed: false, reason: "no_corpus" });
+    return await withAttachedModel(env, FEATURE, { accountId: session.accountId, clientId, rawKeys: parseRawKeys(body) }, async ({ client, model, corpus }) => {
+      // Nothing to warm: this record holds no PDFs yet. A cache entry over a bare system prompt is
+      // not worth a round trip.
+      if (corpus.turns.length === 0) return finish(200, { warmed: false, reason: "no_corpus" });
 
-    const message = await client.messages.create({
-      model,
-      max_tokens: 0,
-      // Byte-identical to what /api/chat sends, or this writes an entry chat never reads.
-      system: chatSystemPrompt(body.unitSystem === "metric" ? "metric" : "imperial"),
-      tools: [GET_MARKER_READINGS_TOOL],
-      messages: [...corpus.turns, { role: "user", content: PLACEHOLDER }],
+      const message = await client.messages.create({
+        model,
+        max_tokens: 0,
+        // Byte-identical to what /api/chat sends, or this writes an entry chat never reads.
+        system: chatSystemPrompt(body.unitSystem === "metric" ? "metric" : "imperial"),
+        tools: [GET_MARKER_READINGS_TOOL],
+        messages: [...corpus.turns, { role: "user", content: PLACEHOLDER }],
+      });
+      const u = message.usage as { cache_creation_input_tokens?: number; cache_read_input_tokens?: number };
+      return finish(200, { warmed: true, written: u.cache_creation_input_tokens ?? 0, read: u.cache_read_input_tokens ?? 0 },
+        { usage: { input: message.usage.input_tokens, output: message.usage.output_tokens } });
     });
-    const u = message.usage as { cache_creation_input_tokens?: number; cache_read_input_tokens?: number };
-    return finish(200, { warmed: true, written: u.cache_creation_input_tokens ?? 0, read: u.cache_read_input_tokens ?? 0 },
-      { usage: { input: message.usage.input_tokens, output: message.usage.output_tokens } });
   } catch (err) {
     const { status, ...payload } = inferenceErrorReply(err, "corpus warm failed");
     // A 5xx here answers 200, like the three `warmed: false` refusals above it. A pre-warm is

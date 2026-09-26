@@ -5,7 +5,8 @@ import { auditor } from "../_lib/audit";
 import { distinctMarkerNames, markerGroupsHashOf, runMarkerGroupingPasses } from "@pablotech/akesi/marker-groups-prompt";
 import { runGroupingPass } from "../../src/lib/marker-groups-anthropic";
 import { inferenceErrorReply } from "../_lib/model-errors";
-import { attachedModelFor, type AttachedEnv } from "../_lib/inference/attach";
+import { streamWithAttachedModel, type AttachedEnv } from "../_lib/inference/attach";
+import { textStream } from "../_lib/text-stream";
 import { subjectOf } from "../_lib/inference/subject";
 import { systemOrder } from "@pablotech/akesi/system-groups";
 import type { Client, MarkerGrouping } from "../../src/lib/types";
@@ -53,7 +54,7 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
 
   const rawBody = await request.text();
   if (rawBody.length > MAX_BODY_BYTES) return jsonErr(413, "too_large", "client too large");
-  let body: { client?: unknown; clientId?: unknown; accountId?: unknown };
+  let body: { client?: unknown; clientId?: unknown; accountId?: unknown; rawKeys?: unknown };
   try {
     body = JSON.parse(rawBody);
   } catch {
@@ -74,40 +75,29 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
   const who = subjectOf(session instanceof Response ? null : session, body);
   if ("error" in who) return jsonErr(who.status, who.errorCode, who.error);
 
-  // Hash short-circuit, hoisted out of the stream: a grouping that already matches costs no model
-  // call, and must therefore cost no report read either.
-  const cached = typedClient.markerGroups?.markerGroupsHash === hash;
+  // Committing to a 200 stream (same convention as refresh-finding.ts) — once headers are sent, a
+  // downstream failure can only be signalled in-band via the SENTINEL below.
+  const audit = auditor(env.VAULT, env, ROUTE, requestId);
+
+  // Hash short-circuit, answered before the corpus is reached: a grouping that already matches costs
+  // no model call, and must therefore cost no report read and none of the isolate's byte budget.
+  if (typedClient.markerGroups?.markerGroupsHash === hash) {
+    return textStream(async (write) => {
+      await audit({ event: "accepted", status: 200, latencyMs: Date.now() - start });
+      await audit({ event: "success", status: 200, latencyMs: Date.now() - start, reasonCategory: "cached" });
+      write(JSON.stringify(typedClient.markerGroups));
+    });
+  }
 
   // The model and the corpus are resolved BEFORE the 200 is committed to, which is the only moment
   // a refusal can still be an HTTP status rather than an in-band sentinel. A record too large to
   // send is not a generation failure, and the browser renders the two very differently.
-  let resolved: Awaited<ReturnType<typeof attachedModelFor>> | undefined;
-  if (!cached) {
-    try {
-      resolved = await attachedModelFor(env, "markerGroups", who);
-    } catch (e) {
-      const { status, errorCode, error, ...extra } = inferenceErrorReply(e, "marker grouping failed");
-      return jsonErr(status, errorCode, error, extra);
-    }
-  }
-
-  // Committing to a 200 stream (same convention as refresh-finding.ts) — once headers are sent,
-  // a downstream failure can only be signalled in-band via the SENTINEL below.
-  const audit = auditor(env.VAULT, env, ROUTE, requestId);
-  await audit({ event: "accepted", status: 200, latencyMs: Date.now() - start });
-  const encoder = new TextEncoder();
-  const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
+  try {
+    return await streamWithAttachedModel(env, "markerGroups", who, async ({ client: anthropic, model, corpus }, write) => {
+      // Inside the pump, like refresh-finding.ts: the route owns nothing between a resolved corpus
+      // and the stream that releases its reservation.
+      await audit({ event: "accepted", status: 200, latencyMs: Date.now() - start });
       try {
-        // Hash short-circuit: the current marker/system set already matches the client's stored
-        // grouping — zero Anthropic calls, even for a duplicate/accidental trigger.
-        if (cached) {
-          await audit({ event: "success", status: 200, latencyMs: Date.now() - start, reasonCategory: "cached" });
-          controller.enqueue(encoder.encode(JSON.stringify(typedClient.markerGroups)));
-          return;
-        }
-
-        const { client: anthropic, model, corpus } = resolved!;
         let passes = 0;
         let inputTokens = 0;
         let outputTokens = 0;
@@ -127,7 +117,7 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
               inputTokens += u.input_tokens ?? 0;
               outputTokens += u.output_tokens ?? 0;
               passes++;
-              controller.enqueue(encoder.encode(`[[PASS]] ${passes}\n`));
+              write(`[[PASS]] ${passes}\n`);
             },
           });
 
@@ -146,12 +136,12 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
           latencyMs: Date.now() - start,
           usage: { input: inputTokens, output: outputTokens },
         });
-        controller.enqueue(encoder.encode(JSON.stringify(grouping)));
+        write(JSON.stringify(grouping));
       } catch (e) {
         // A browser cancel/disconnect aborts request.signal — record it as an abort, not an error.
         const aborted = request.signal.aborted;
         if (!aborted) {
-          controller.enqueue(encoder.encode(`\n${SENTINEL} ${(e as Error).message ?? "generation failed"}`));
+          write(`\n${SENTINEL} ${(e as Error).message ?? "generation failed"}`);
         }
         await audit({
           event: aborted ? "aborted" : "error",
@@ -159,14 +149,10 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
           latencyMs: Date.now() - start,
           errorCode: aborted ? "aborted" : "generation_failed",
         });
-      } finally {
-        controller.close();
       }
-    },
-  });
-
-  return new Response(stream, {
-    status: 200,
-    headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store", "x-accel-buffering": "no" },
-  });
+    });
+  } catch (e) {
+    const { status, errorCode, error, ...extra } = inferenceErrorReply(e, "marker grouping failed");
+    return jsonErr(status, errorCode, error, extra);
+  }
 }

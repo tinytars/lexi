@@ -12,12 +12,17 @@
 //
 // Like every script here it targets THIS WORKTREE's environment (scripts/target.ts). It reads the
 // same rows the assembler reads and skips a namespace holding an unmeasured PDF, because that is a
-// namespace the corpus itself refuses (functions/_lib/inference/corpus.ts).
+// namespace the corpus itself refuses (functions/_lib/inference/corpus.ts). It skips one whose files
+// it cannot open for the same reason, and needs ORG_KEY_PASSPHRASE once any of them is sealed —
+// tokenizing an envelope would measure a request that is never sent.
 
 import "./load-creds";
 import Anthropic from "@anthropic-ai/sdk";
 import { d1, q, D1 } from "./d1-remote";
-import { LIVE_BUCKET, getObject, resolveStore } from "./vault-sync";
+import { LIVE_BUCKET, resolveStore } from "./vault-sync";
+import { getStored } from "./raw-cipher-cli";
+import { flushOrgKeyUses } from "./access-log";
+import { RawKeyError } from "../src/lib/raw-cipher";
 import { isMain } from "./is-main";
 import { CORPUS_PREAMBLE, CORPUS_ACK } from "../src/lib/corpus-prompt";
 import { chatSystemPrompt } from "../src/lib/chat-prompt";
@@ -78,8 +83,16 @@ async function main(): Promise<void> {
     }
 
     const blocks: Anthropic.DocumentBlockParam[] = [];
+    let sealedShut: string | null = null;
     for (const { r2_key } of docs) {
-      const bytes = await getObject(LIVE_BUCKET, r2_key);
+      let bytes: Uint8Array | null;
+      try {
+        bytes = await getStored(r2_key, STORE);
+      } catch (e) {
+        if (!(e instanceof RawKeyError)) throw e;
+        sealedShut = r2_key;
+        break;
+      }
       if (!bytes) throw new Error(`${r2_key} is in raw_objects but not in R2`);
       blocks.push({
         type: "document",
@@ -87,6 +100,10 @@ async function main(): Promise<void> {
         title: r2_key.slice(`${STORE}/raw/${client}/`.length),
         citations: { enabled: true },
       });
+    }
+    if (sealedShut) {
+      process.stdout.write(`${client}: skipped — ${sealedShut} is sealed and no key here opens it\n`);
+      continue;
     }
 
     // The whole chat prefix, not the documents alone: tools and system sit AHEAD of the corpus in
@@ -115,8 +132,11 @@ async function main(): Promise<void> {
 }
 
 if (isMain(import.meta.url)) {
-  main().catch((e) => {
-    process.stderr.write(`\n${(e as Error).message}\n`);
-    process.exit(1);
-  });
+  main()
+    .then(() => flushOrgKeyUses())
+    .catch(async (e) => {
+      await flushOrgKeyUses().catch(() => undefined);
+      process.stderr.write(`\n${(e as Error).message}\n`);
+      process.exit(1);
+    });
 }

@@ -2,7 +2,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { requireSession } from "../_lib/session";
 import { logRequest } from "../_lib/log";
 import { inferenceErrorReply } from "../_lib/model-errors";
-import { attachedModelFor, type AttachedEnv } from "../_lib/inference/attach";
+import { withAttachedModel, type AttachedEnv } from "../_lib/inference/attach";
+import { parseRawKeys } from "../../src/lib/raw-cipher";
 // W76 — the declaration and its executor are ONE object. This route used to hand-copy the schema,
 // under a comment claiming a Pages Function cannot import the CLI's tsconfig; chat-tools.ts is in
 // src/lib, which twenty Functions already import from, and the copy had silently dropped the
@@ -78,7 +79,7 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
   if (rawBody.length > MAX_BODY_BYTES) {
     return finish(413, { error: "conversation too large" }, { errorCode: "too_large" });
   }
-  let body: { messages?: unknown; unitSystem?: unknown; final?: unknown; clientId?: unknown };
+  let body: { messages?: unknown; unitSystem?: unknown; final?: unknown; clientId?: unknown; rawKeys?: unknown };
   try {
     body = JSON.parse(rawBody);
   } catch {
@@ -109,42 +110,43 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
   const withTools = body.final !== true;
 
   try {
-    const { client, model, corpus } = await attachedModelFor(env, "chat", { accountId: session.accountId, clientId });
-    const message = await client.messages.create({
-      model,
-      max_tokens: 4096,
-      system: chatSystemPrompt(unitSystem),
-      ...(withTools ? { tools: [GET_MARKER_READINGS_TOOL] } : {}),
-      // The corpus leads, identically on every tool round — that sameness is what the prompt cache
-      // is keyed on, and what stops round 2 from re-reading 20 MB at full price.
-      messages: [...corpus.turns, ...messages],
+    return await withAttachedModel(env, "chat", { accountId: session.accountId, clientId, rawKeys: parseRawKeys(body) }, async ({ client, model, corpus }) => {
+      const message = await client.messages.create({
+        model,
+        max_tokens: 4096,
+        system: chatSystemPrompt(unitSystem),
+        ...(withTools ? { tools: [GET_MARKER_READINGS_TOOL] } : {}),
+        // The corpus leads, identically on every tool round — that sameness is what the prompt cache
+        // is keyed on, and what stops round 2 from re-reading 20 MB at full price.
+        messages: [...corpus.turns, ...messages],
+      });
+      const usage = { usage: { input: message.usage.input_tokens, output: message.usage.output_tokens } };
+
+      if (message.stop_reason === "tool_use") {
+        const toolUses = message.content
+          .filter((b): b is Anthropic.ToolUseBlock => b.type === "tool_use")
+          .map((b) => ({ id: b.id, name: b.name, input: b.input }));
+        return finish(200, { kind: "tool_use", assistant: message.content, toolUses }, usage);
+      }
+
+      const answer = message.content
+        .filter((b): b is Anthropic.TextBlock => b.type === "text")
+        .map((b) => b.text)
+        .join("");
+      // W76 — a truncated or empty completion is an ERROR, not a short answer. `max_tokens` stops the
+      // model mid-clause and `stop_reason` is the only thing that says so; a content set with no text
+      // block at all renders as a blank reply. Both used to be returned as `kind: "answer"`, which is
+      // the app telling a patient "here is your answer" about a sentence that stops halfway through a
+      // number. Every other AI path here already refuses (marker-groups-anthropic.ts:45,
+      // document-model.ts:81); this one is the one a patient reads directly.
+      if (message.stop_reason === "max_tokens") {
+        return finish(502, { error: "The answer was cut off before it finished — try a narrower question.", errorCode: "truncated" }, { ...usage, errorCode: "truncated" });
+      }
+      if (answer.trim() === "") {
+        return finish(502, { error: "The assistant returned an empty answer.", errorCode: "empty_answer" }, { ...usage, errorCode: "empty_answer" });
+      }
+      return finish(200, { kind: "answer", answer }, usage);
     });
-    const usage = { usage: { input: message.usage.input_tokens, output: message.usage.output_tokens } };
-
-    if (message.stop_reason === "tool_use") {
-      const toolUses = message.content
-        .filter((b): b is Anthropic.ToolUseBlock => b.type === "tool_use")
-        .map((b) => ({ id: b.id, name: b.name, input: b.input }));
-      return finish(200, { kind: "tool_use", assistant: message.content, toolUses }, usage);
-    }
-
-    const answer = message.content
-      .filter((b): b is Anthropic.TextBlock => b.type === "text")
-      .map((b) => b.text)
-      .join("");
-    // W76 — a truncated or empty completion is an ERROR, not a short answer. `max_tokens` stops the
-    // model mid-clause and `stop_reason` is the only thing that says so; a content set with no text
-    // block at all renders as a blank reply. Both used to be returned as `kind: "answer"`, which is
-    // the app telling a patient "here is your answer" about a sentence that stops halfway through a
-    // number. Every other AI path here already refuses (marker-groups-anthropic.ts:45,
-    // document-model.ts:81); this one is the one a patient reads directly.
-    if (message.stop_reason === "max_tokens") {
-      return finish(502, { error: "The answer was cut off before it finished — try a narrower question.", errorCode: "truncated" }, { ...usage, errorCode: "truncated" });
-    }
-    if (answer.trim() === "") {
-      return finish(502, { error: "The assistant returned an empty answer.", errorCode: "empty_answer" }, { ...usage, errorCode: "empty_answer" });
-    }
-    return finish(200, { kind: "answer", answer }, usage);
   } catch (err) {
     // Distinguish credits-exhausted / rate-limit / overload from a generic failure
     // so the browser can show a recovery path (e.g. a billing link) — W7f.

@@ -1,5 +1,5 @@
 import type { D1Database } from "../../_lib/identity-types";
-import { recordRawObject, listRawPdfsUnder } from "../../_lib/identity-audit";
+import { recordRawObject, listRawPdfsUnder, listRawObjectsUnder } from "../../_lib/identity-audit";
 import { requireSession } from "../../_lib/session";
 import { logRequest } from "../../_lib/log";
 import { normalizeClientId } from "../../../src/lib/client-id";
@@ -8,12 +8,18 @@ import { rawAccessFor, mayRead, mayWrite, mayDestroy, type RawAccess } from "../
 import { json } from "../../_lib/http";
 import type { ObjectBucket } from "../../_lib/object-bucket";
 import { MAX_PAGE_COUNT, isPageCount, isPdfFile } from "../../_lib/raw-files";
+import { isSealed } from "../../../src/lib/raw-cipher";
 
 // W13d — GET /api/raw/{id}/{file}: stream an original raw source (PDF/XLSX) from R2.
-// Raw originals are PLAINTEXT PHI, so unlike the open /api/vault .enc GET this is
-// SESSION-GATED, then authorised per record: requireSession establishes who is asking and
-// rawAccessFor decides whether they may have THIS id (W73). The Function never decrypts —
-// raw is stored unencrypted under {store}/raw/{id}/, gated only by that pair.
+//
+// Raw originals are AES-GCM ciphertext under a per-file content key minted in the browser and kept
+// in the encrypted vault, so the deployment holds no standing key that opens them (VAULT.md). This
+// route still never decrypts: it hands back whatever is stored and the browser opens it, which is
+// why the content-type below describes the DOCUMENT rather than the envelope — a caller that can
+// read the bytes is a caller that holds the key.
+//
+// Encryption is not authorisation, so the gate is unchanged: requireSession establishes who is
+// asking and rawAccessFor decides whether they may have THIS id (W73).
 
 interface Env {
   VAULT: Pick<ObjectBucket, "get" | "put" | "delete" | "list">;
@@ -65,10 +71,12 @@ export async function onRequestGet(context: Ctx): Promise<Response> {
   }
 
   // {id}/{file} required; reject path traversal / empties (segments can't contain "/").
-  // `?unmeasured=1` is the one shape with no file segment: it asks which PDFs in this namespace
-  // have no page count yet, so the browser can measure them (see below).
-  const unmeasured = new URL(request.url).searchParams.get("unmeasured") === "1";
-  if (!id || segs.some((s) => s === "" || s === "." || s === "..") || (!file && !unmeasured)) {
+  // Two shapes have no file segment: `?unmeasured=1` asks which PDFs here have no page count yet, and
+  // `?files=1` asks for the whole namespace. Both answer with KEYS ONLY (see below).
+  const query = new URL(request.url).searchParams;
+  const unmeasured = query.get("unmeasured") === "1";
+  const listing = query.get("files") === "1";
+  if (!id || segs.some((s) => s === "" || s === "." || s === "..") || (!file && !unmeasured && !listing)) {
     log(400, { errorCode: "bad_path" });
     return json(400, { error: "expected /api/raw/{id}/{file}" });
   }
@@ -88,12 +96,15 @@ export async function onRequestGet(context: Ctx): Promise<Response> {
   // object uploaded before page counts existed. Rather than guess a count from byte size (a 12 MB
   // scan can be 2 pages), the browser re-opens each named PDF with pdf.js and PUTs `?pages=`. This
   // returns KEYS only — no bytes, no PHI beyond the filenames the caller already owns.
-  if (unmeasured) {
+  if (unmeasured || listing) {
     const prefix = storeKey(env, "raw", normalizeClientId(id), "");
-    const rows = await listRawPdfsUnder(env.DB, prefix);
-    const files = rows.filter((r) => r.pages === null).map((r) => r.r2_key.slice(prefix.length));
+    // `?files=1` is what the browser's sealing sweep diffs against its key ring, so it must be the
+    // set the corpus reads — every recorded object, not only the ones the record still references.
+    const keys = listing
+      ? await listRawObjectsUnder(env.DB, prefix)
+      : (await listRawPdfsUnder(env.DB, prefix)).filter((r) => r.pages === null).map((r) => r.r2_key);
     log(200, { access: access.kind });
-    return json(200, { files });
+    return json(200, { files: keys.map((k) => k.slice(prefix.length)) });
   }
 
   const obj = await env.VAULT.get(storeKey(env, "raw", normalizeClientId(id), file));
@@ -112,9 +123,12 @@ export async function onRequestGet(context: Ctx): Promise<Response> {
 // W15/1 — PUT /api/raw/{id}/{file}: store an uploaded original (PDF/XLSX) in R2
 // (session-gated + per-record authorised, same as GET). The browser web-ingest flow uploads the raw
 // bytes here after hashing; the stored copy backs the download button and, via the
-// reconciler (W15/2b), the git plaintext survival copy. Raw is plaintext PHI by
-// design — no HD1 check. Path/guard logic mirrors onRequestGet; idempotent (a re-PUT
-// of the same content-addressed file is a harmless overwrite).
+// reconciler (W15/2b), the git plaintext survival copy. Path/guard logic mirrors onRequestGet;
+// idempotent (a re-PUT of the same content-addressed file is a harmless overwrite).
+//
+// BOTH FORMATS ARE ACCEPTED while the store migrates, and a plaintext body is logged as such so the
+// sweep's remaining work is visible without listing the bucket. Rejecting plaintext is the flip, a
+// later PR, and it may not land until a sweep reports zero plaintext on both stores.
 const MAX_RAW_BYTES = 24 * 1024 * 1024;
 
 /** `?pages=N` from the browser's pdf.js. Returns undefined when absent, null when present but unusable. */
@@ -131,7 +145,7 @@ export async function onRequestPut(context: Ctx): Promise<Response> {
   const segs = params.path ?? [];
   const id = segs[0];
   const file = segs.slice(1).join("/");
-  const log = (status: number, extra: { errorCode?: string; bytes?: number; access?: RawAccess["kind"] } = {}) =>
+  const log = (status: number, extra: { errorCode?: string; bytes?: number; access?: RawAccess["kind"]; sealed?: boolean } = {}) =>
     logRequest({ route: ROUTE, status, latencyMs: Date.now() - start, id, ...extra });
 
   const session = await requireSession(request, env);
@@ -178,7 +192,9 @@ export async function onRequestPut(context: Ctx): Promise<Response> {
   // W77 — `pages` rides along because pdf.js does not run on Workers, so this request is the only
   // moment the page count is known server-side without a second round trip for the bytes.
   await recordRawObject(env.DB, key, session.accountId, { ...(pages !== undefined && { pages }), bytes: bytes.length });
-  log(204, { bytes: bytes.length, access: access.kind }); // W8d: audit the write — id + size, never the bytes
+  // W8d: audit the write — id + size, never the bytes. `sealed` is how the migration's remaining
+  // work is read off the logs rather than by listing a bucket full of patient files.
+  log(204, { bytes: bytes.length, access: access.kind, sealed: isSealed(bytes) });
   return new Response(null, { status: 204 });
 }
 

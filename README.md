@@ -29,8 +29,11 @@ personal or health data, ever.
 
 That principle is enforced structurally, not just promised in copy. Every record is encrypted
 client-side under a key the patient controls before it ever reaches storage — the operator holds
-ciphertext, never plaintext, in the ordinary course of operating the app. The one exception is a
-disclosed, revocable, fully audited organizational-recovery path, not a hidden backdoor: see
+ciphertext, never plaintext, in the ordinary course of operating the app — uploaded documents
+included, each sealed under its own key held inside that record. Two exceptions, both disclosed:
+a revocable, fully audited organizational-recovery path, not a hidden backdoor; and the moment a
+patient asks a question about one of their own documents, when the app decrypts it in memory to
+send it to the model that answers. See
 [`ARCHITECTURE.md`](ARCHITECTURE.md#the-vault-boundary-precisely-stated) for exactly what that
 does and doesn't allow, and [`SECURITY.md`](SECURITY.md) for how to report a concern.
 

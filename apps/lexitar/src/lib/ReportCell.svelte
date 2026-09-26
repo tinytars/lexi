@@ -21,6 +21,7 @@
   import LeafCard from "@tinytars/frame/LeafCard.svelte";
   import HeadingAnchor from "./HeadingAnchor.svelte";
   import PdfThumbnail from "@tinytars/frame/PdfThumbnail.svelte";
+  import type { LazyUrl } from "@tinytars/frame/attachment-url.svelte";
   import type { LeafMenuItem } from "@tinytars/frame/menu-items";
   import { reportAnchor, diagnosisAnchor } from "./anchor";
   import { reportTitleOf, reportDateOf as dateOf, REPORT_KIND_LABEL } from "@pablotech/akesi/report-title";
@@ -55,7 +56,7 @@
     onlyIndex?: number;
     /** Set only where the raw file is reachable — the section, not the preview. */
     clientId?: string | null;
-    thumbnailUrl?: string;
+    thumbnailUrl?: LazyUrl;
     onOpenAttachment?: () => void;
   }
   let {
