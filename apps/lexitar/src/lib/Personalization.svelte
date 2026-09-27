@@ -3,6 +3,7 @@
   import { PREGNANCY_VALUES, ATHLETIC_VALUES, SMOKING_VALUES } from "@pablotech/akesi/factors-edit";
   import { foldLegacyTreatments, dropLegacyTreatmentFields } from "./treatment-legacy-fold";
   import { createDraftSync, createPersistNow } from "./draft-sync.svelte";
+  import { ageRefusal } from "./age-limit";
   import DictateButton from "@tinytars/frame/DictateButton.svelte";
   import Field from "@tinytars/frame/Field.svelte";
   import FormGrid from "@tinytars/frame/FormGrid.svelte";
@@ -46,6 +47,15 @@
   const draft = $derived(ds.draft);
 
   const persistNow = createPersistNow(ds, () => client, onSave, undefined);
+
+  // 9C.3 — the other edit path for a birth date. Onboarding's gate would be walked around in one
+  // blur without this, so the same refusal applies here and the edit is not persisted.
+  let dobError = $state<string | null>(null);
+  function persistDob() {
+    dobError = ageRefusal(draft.dob);
+    if (dobError) return;
+    persistNow((p) => (p.dob = draft.dob));
+  }
 </script>
 
 <div class="personalization leaf-section">
@@ -68,7 +78,8 @@
         </div>
       </Field>
       <Field label="Date of birth">
-        <input type="text" placeholder="YYYY-MM-DD" bind:value={draft.dob} onblur={() => persistNow((p) => (p.dob = draft.dob))} />
+        <input type="text" placeholder="YYYY-MM-DD" bind:value={draft.dob} onblur={persistDob} />
+        {#if dobError}<p class="dob-err">{dobError}</p>{/if}
       </Field>
       <Field label="Gender">
         <select bind:value={draft.gender} onchange={() => persistNow((p) => (p.gender = draft.gender))}>
@@ -133,6 +144,8 @@
   }
   input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--band); }
   textarea { resize: vertical; line-height: 1.5; min-height: 3.2rem; }
+
+  .dob-err { color: var(--alert); font-size: 0.8rem; margin: 0.25rem 0 0; }
 
   @media print { .personalization { display: none !important; } }
 </style>

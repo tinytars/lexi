@@ -7,6 +7,7 @@
   import { loadPersona, savePersona, personaTake } from "./lib/persona-client";
   import { configureRetell } from "@tinytars/frame/retell-registry.svelte";
   import { saveVaultV2, vaultSink, rememberVaultEtag, VaultConflictError, setVaultConflictHandler } from "@tinytars/vault/vault-sink";
+  import { ageRefusal, attestAge } from "./lib/age-limit";
   import { getMyAccount, loginPassword, loginPasskey, signupPassword, signupPasskey, bootstrapGoogleSession } from "@tinytars/vault/auth-client";
   import { updateProfile, getVaultPrincipals, getAccessEvents, type AccessEventRow } from "@tinytars/vault/auth-recovery";
   import { putAccountKey, getAccountKey, clearAccountKey } from "@tinytars/vault/key-store";
@@ -973,9 +974,15 @@
     const { id } = await getMyAccount();
     const clientId = normalizeClientId(id);
     // W47 — no name asked; use a neutral label (editable later in Personalization). Birth year → a
-    // Jan-1 dob string, which every dob consumer (ageYears via new Date) reads at year precision; a
-    // skipped year is an empty dob (age renders as null, no clinical default).
+    // Jan-1 dob string, which every dob consumer (ageYears via new Date) reads at year precision.
     const dob = birthYear ? `${birthYear}-01-01` : "";
+    // 9C.3 — the 16+ limit, enforced here because this is the last place the birth year exists in
+    // the clear. Onboarding's Skip omits the year entirely, which is why an empty dob is refused
+    // too: no year means nothing to check, and that is the first thing an assessor tries. The throw
+    // lands in Onboarding.svelte's own error paragraph.
+    const refusal = ageRefusal(dob);
+    if (refusal) throw new Error(refusal);
+    await attestAge();
     const client: Client = { displayName: "My records", dob, gender, watchlist: [], results: [] };
     if (!(await persistClient(clientId, client))) return;
     selectedClientId = clientId;
@@ -1303,6 +1310,7 @@
 {:else if vault && !roster.isProvider && Object.keys(vault.clients).length === 0}
   <Onboarding
     productName={PRODUCT_NAME}
+    subheading="Welcome. Your birth year is required — this service is for people aged 16 and over — and your sex helps tailor your results."
     fields={[
       { key: "birthYear", kind: "number", label: "Birth year", placeholder: "e.g. 1980", min: 1900, max: new Date().getFullYear(), invalidMessage: "Enter a valid birth year." },
       { key: "gender", kind: "select", label: "Sex", options: [{ value: "male", label: "Male" }, { value: "female", label: "Female" }] },
