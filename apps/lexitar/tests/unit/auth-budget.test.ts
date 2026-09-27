@@ -167,7 +167,7 @@ describe("spendAuthBudget", () => {
   it("does not fail a sign-in when the forgiveness cannot reach the table", async () => {
     const broken = new SqliteD1Database(":memory:");
     await expect(
-      forgiveAuthAttempt(broken, env, { ip: "198.51.100.12", email: "j@x.test", cost: COST_LOGIN, now: at(15) }),
+      forgiveAuthAttempt(broken, env, { ip: "198.51.100.12", email: "j@x.test", now: at(15) }),
     ).resolves.toBeUndefined();
     broken.close();
   });
