@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { PRODUCT_NAME, PRODUCT_TITLE, PRODUCT_DESCRIPTION, SAFETY_OWNER, SAFETY_RESPONSE } from "../../src/lib/brand";
+import { PRODUCT_NAME, PRODUCT_TITLE, PRODUCT_DESCRIPTION, MODEL_DISCLOSURE, SAFETY_OWNER, SAFETY_RESPONSE } from "../../src/lib/brand";
 
 // W40 Phase 1 — the LexiTar identity is adopted and the old "health dashboard" name is gone.
 describe("brand / product naming (W40)", () => {
@@ -39,5 +39,45 @@ describe("brand / safety channel (DPG 9B.4, 9B.5)", () => {
     const md = readFileSync(resolve("MODERATION.md"), "utf8").replace(/\n> /g, " ");
     expect(md).toContain(SAFETY_OWNER);
     expect(md).toContain(SAFETY_RESPONSE);
+  });
+});
+
+// DPG 9A.6 — the disclosure is the control, so its substance is pinned here rather than left to
+// whoever next edits a component: each clause below is a fact an assessor checks for, and losing one
+// silently is the failure this suite exists to catch.
+describe("brand / model disclosure (DPG 9A.6)", () => {
+  it("states the recipient, the trigger, the residency and the absent agreement", () => {
+    expect(MODEL_DISCLOSURE).toContain("the company that runs the language model");
+    expect(MODEL_DISCLOSURE).toContain("whole documents, not");
+    expect(MODEL_DISCLOSURE).toContain("when you open a record, not only when you ask a question");
+    expect(MODEL_DISCLOSURE).toContain("about an hour");
+    expect(MODEL_DISCLOSURE).toContain("no negotiated zero-retention arrangement");
+  });
+
+  it("does not offer the user a switch only the operator has", () => {
+    expect(MODEL_DISCLOSURE).toContain("Whoever operates this deployment");
+    expect(MODEL_DISCLOSURE).not.toMatch(/in Settings|you can turn/i);
+  });
+
+  // The provider is a deployment choice (`providerFor` in src/lib/model-config.ts), so naming one in
+  // audited copy would make the string false wherever the operator picked another. Who it is today
+  // belongs in the published policy, which is republished when it changes.
+  it("names no vendor, and says where the current one is named instead", () => {
+    expect(MODEL_DISCLOSURE).not.toMatch(/Anthropic|Azure|OpenAI|Google/);
+    expect(MODEL_DISCLOSURE).toContain("privacy policy names the companies in use today");
+  });
+
+  it("is rendered both at the point of use and on demand", () => {
+    expect(readFileSync(resolve("src/lib/Disclaimer.svelte"), "utf8")).toContain("MODEL_DISCLOSURE");
+    expect(readFileSync(resolve("src/App.svelte"), "utf8")).toContain("MODEL_DISCLOSURE");
+  });
+
+  // Same fact in two documents drifts; this is the one that says which way it drifted.
+  it("agrees with SECURITY.md about the model provider's terms", () => {
+    const security = readFileSync(resolve("../../SECURITY.md"), "utf8");
+    expect(security).toContain("zero-retention");
+    expect(security).toContain("Azure AI Speech");
+    expect(security).toMatch(/Anthropic/);
+    expect(MODEL_DISCLOSURE).toContain("no negotiated zero-retention arrangement");
   });
 });
