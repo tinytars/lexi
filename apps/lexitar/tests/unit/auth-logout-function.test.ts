@@ -32,7 +32,7 @@ describe("POST /api/auth/logout", () => {
     vi.setSystemTime(Date.now());
     const token = await signSession(env, "acc-1");
     const carry = new Request("http://x/api/account", { headers: { cookie: `hd_session=${token}` } });
-    expect(await requireSession(carry, env)).toEqual({ accountId: "acc-1" });
+    expect(await requireSession(carry, env)).toEqual({ accountId: "acc-1", iat: expect.any(Number) });
 
     vi.setSystemTime(Date.now() + 1100); // the revocation stamp has one-second resolution
     expect((await post(`hd_session=${token}`)).status).toBe(204);
@@ -44,7 +44,7 @@ describe("POST /api/auth/logout", () => {
   it("logs out only the account that asked", async () => {
     const other = await signSession(env, "acc-2");
     const req = new Request("http://x/api/account", { headers: { cookie: `hd_session=${other}` } });
-    expect(await requireSession(req, env)).toEqual({ accountId: "acc-2" });
+    expect(await requireSession(req, env)).toEqual({ accountId: "acc-2", iat: expect.any(Number) });
   });
 
   it("still 204s and clears the cookie when called without a session", async () => {

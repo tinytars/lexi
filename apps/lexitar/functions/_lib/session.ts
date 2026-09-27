@@ -118,7 +118,11 @@ function unauthorized(): Response {
   });
 }
 
-export async function requireSession(request: Request, env: SessionEnv): Promise<{ accountId: string } | Response> {
+/**
+ * `iat` is returned, not discarded: it is the only thing that distinguishes a cookie minted moments ago
+ * from a 30-day-old one, and `requireFreshSession` (step-up.ts) is the gate that needs to know.
+ */
+export async function requireSession(request: Request, env: SessionEnv): Promise<{ accountId: string; iat: number } | Response> {
   const token = parseCookie(request.headers.get("cookie"), COOKIE_NAME);
   const session = await verifySession(env, token);
   if (!session) return unauthorized();
@@ -128,7 +132,7 @@ export async function requireSession(request: Request, env: SessionEnv): Promise
   const validFrom = await sessionsValidFrom(env.DB, session.accountId);
   if (validFrom !== null && session.iat < validFrom) return unauthorized();
 
-  return { accountId: session.accountId };
+  return { accountId: session.accountId, iat: session.iat };
 }
 
 export function sessionSetCookie(token: string, ttlSeconds: number = DEFAULT_TTL_SECONDS): string {

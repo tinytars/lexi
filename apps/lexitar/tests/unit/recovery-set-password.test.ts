@@ -136,7 +136,7 @@ describe("redeeming a code replaces the password", () => {
 
     const { requireSession } = await import("../../functions/_lib/session");
     const asRequest = new Request("http://x/api/account", { headers: { cookie } });
-    expect(await requireSession(asRequest, env())).toEqual({ accountId: a.id });
+    expect(await requireSession(asRequest, env())).toEqual({ accountId: a.id, iat: expect.any(Number) });
   });
 
   it("does NOT keep a cookie minted before the recovery", async () => {
