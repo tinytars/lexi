@@ -55,9 +55,9 @@ export const MODEL_DISCLOSURE =
   "leaves. With it on, the documents go when you open a record, not only when you ask a question, and a " +
   "copy stays in the provider's prompt cache for up to about an hour after you stop using it — expiring on " +
   "the provider's schedule, which we can neither shorten nor recall. Read-aloud text goes to a separate " +
-  "speech provider, covered by a HIPAA business associate agreement; the model calls run on standard " +
-  "commercial terms, with no such agreement and no negotiated zero-retention arrangement. The privacy " +
-  "policy names the companies in use today. Nothing goes to an advertiser, ever.";
+  "speech provider, on that provider's own terms. The model calls run on standard commercial terms, with " +
+  "no negotiated zero-retention arrangement. The privacy policy names the companies in use today and what " +
+  "each one's terms actually cover. Nothing goes to an advertiser, ever.";
 
 // DPG 9B.4/9B.5 — who answers a safety report and how fast. Audited copy, and here rather than in the
 // dialog because MODERATION.md, the report control and the Foundation's published policy all state it:
