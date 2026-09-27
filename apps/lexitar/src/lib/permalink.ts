@@ -69,7 +69,9 @@ const LEGACY_TAB_DEFAULT: Record<string, string> = {
 // that is not a valid escape. decodeURIComponent throws URIError on those, which in a paste
 // listener is an uncaught error. An undecodable segment is simply not percent-encoded — keep it
 // verbatim and let the section-key lookup decide whether the text addresses anything.
-function decodeSegment(seg: string): string {
+// Exported for scripts/resolve-owner.ts, which reads the same grammar from a pasted string and must
+// tolerate the same malformed escapes rather than carry a second copy of this.
+export function decodeSegment(seg: string): string {
   try {
     return decodeURIComponent(seg);
   } catch {

@@ -1,8 +1,8 @@
 // `npm run record:export` — a complete local copy of one health record: the structured data and every
 // stored document, decrypted, under the credential of a principal entitled to read it. Two are: the
 // record's own owner (no flags, the original behaviour), and the export principal reading a record a
-// patient has approved it for (`--patient`, `--all`, `--list`, `--request`), which is a disclosure and
-// is written to that patient's own access screen on every open.
+// patient has approved it for (`--patient`, `--url`, `--all`, `--list`, `--request`), which is a
+// disclosure and is written to that patient's own access screen on every open.
 //
 // Small, because a record IS one encrypted object plus the files it references: one decryption and N
 // downloads, no report to assemble. The design work is in two places instead.
@@ -30,11 +30,13 @@ import {
   requestAccess,
   supportCredentials,
   withPassword,
+  type GrantedOwner,
   type OpenVault,
   type Session,
 } from "./api-session";
 import { exportRoot, purge, runDir } from "./export-dir";
 import { isMain } from "./is-main";
+import { clientKeyFromUrl, findClientKey, resolveOwner } from "./resolve-owner";
 import { resolveClientKey } from "./vault-ops";
 import { normalizeClientId } from "../src/lib/client-id";
 import { isSealed, openRaw, RawKeyError } from "../src/lib/raw-cipher";
@@ -217,8 +219,10 @@ function parseArgs(argv: string[]) {
     // `--patient` takes an ACCOUNT ID, not an address: the only endpoint that hands this principal an
     // email is the one listing its not-yet-approved requests, so an address would resolve for a patient
     // who has not approved anything and stop resolving the moment they do. `--list` prints the ids, and
-    // Phase 6's `--url` takes the URL the operator actually has in hand.
+    // `--url` takes what the operator actually has in hand — see scripts/resolve-owner.ts.
     patient: value("patient"),
+    url: value("url"),
+    probe: flag("probe"),
     all: flag("all"),
     list: flag("list"),
     request: value("request"),
@@ -237,7 +241,7 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
     out(removed.length ? `removed ${removed.length} export(s) from ${exportRoot()}` : `nothing to remove in ${exportRoot()}`);
     return;
   }
-  if (args.list || args.request || args.all || args.patient) return supportMain(args, out);
+  if (args.list || args.request || args.all || args.patient || args.url) return supportMain(args, out);
 
   const session = await login(await withPassword(cliCredentials()));
   await exportOne(session, await openVault(session), args, out);
@@ -351,6 +355,7 @@ async function exportOne(session: Session, open: OpenVault, args: Args, out: (s:
  */
 async function supportMain(args: Args, out: (s: string) => void): Promise<void> {
   const say = (s: string) => process.stderr.write(`${s}\n`);
+  if (args.url && args.patient) throw new Error("--url and --patient name the same thing two ways — pass one");
   const session = await login(supportCredentials());
 
   if (args.request) {
@@ -377,6 +382,8 @@ async function supportMain(args: Args, out: (s: string) => void): Promise<void> 
     for (const o of owners) out(`  ${o.ownerAccountId} · until ${o.expiresAt ?? "no expiry"}`);
     return;
   }
+
+  if (args.url) return exportByUrl(session, args, owners, out, say);
 
   if (!args.all) {
     // Refused here rather than by the server, because asking the server is itself the harm: opening a
@@ -407,6 +414,55 @@ async function supportMain(args: Args, out: (s: string) => void): Promise<void> 
     }
   }
   if (failed) throw new Error(`${failed} of ${owners.length} record(s) could not be exported`);
+}
+
+/**
+ * `--url`: what the operator is looking at names a client key inside one record, not an account, so the
+ * ladder in scripts/resolve-owner.ts turns it into an owner without opening anything. Only `--probe`
+ * opens a record to find out whose a key is, because every open it does not want is a disclosure
+ * against a patient who is not the subject of this export.
+ */
+async function exportByUrl(
+  session: Session,
+  args: Args,
+  owners: GrantedOwner[],
+  out: (s: string) => void,
+  say: (s: string) => void,
+): Promise<void> {
+  const clientKey = clientKeyFromUrl(args.url!);
+  const resolved = resolveOwner(clientKey, owners);
+  const exportFrom = (open: OpenVault, key: string | undefined) =>
+    exportOne(session, open, { ...args, client: args.client ?? key }, out);
+
+  if (resolved.kind === "none") {
+    throw new Error(`no record is approved for export, so "${clientKey}" names nobody — run --request <their email>`);
+  }
+  if (resolved.kind === "owner") {
+    say(`${clientKey} → ${resolved.ownerAccountId} (${resolved.why})`);
+    const open = await openGrantedVault(session, resolved.ownerAccountId);
+    return exportFrom(open, findClientKey(open.vault.clients, clientKey));
+  }
+  if (!args.probe) {
+    throw new Error(
+      `"${clientKey}" is not the id of any approved account and ${resolved.candidates.length} are approved, so ` +
+        `whose key it is can only be learned by opening each of them: ${resolved.candidates.join(", ")} — pass ` +
+        "--patient <account-id> for the one you mean, or --probe to look",
+    );
+  }
+  say(
+    `--probe: opening up to ${resolved.candidates.length} record(s) to find "${clientKey}" — each open writes a ` +
+      "row on that person's own access screen, including the records that turn out not to be the one",
+  );
+  for (const ownerAccountId of resolved.candidates) {
+    const open = await openGrantedVault(session, ownerAccountId);
+    const key = findClientKey(open.vault.clients, clientKey);
+    if (!key) {
+      say(`  ${ownerAccountId}: no "${clientKey}"`);
+      continue;
+    }
+    return exportFrom(open, key);
+  }
+  throw new Error(`none of the ${resolved.candidates.length} approved records holds a client "${clientKey}"`);
 }
 
 if (isMain(import.meta.url)) {
