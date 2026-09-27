@@ -826,10 +826,13 @@
     eraseBusy = true;
     eraseError = null;
     try {
-      eraseResult = erasureSummary(await eraseMyAccount(eraseEmail));
+      const summary = erasureSummary(await eraseMyAccount(eraseEmail));
       // The session is already revoked server-side; drop the local record so nothing decrypted
       // outlives the account on this screen. The summary stays visible on the lock screen.
+      // Reported only after signOut has torn the panel down: set before it, the banner and the
+      // still-mounted confirm field overlapped, and the lock screen then held two email inputs.
       await signOut();
+      eraseResult = summary;
     } catch (err) {
       eraseError = (err as Error).message;
     } finally {
@@ -855,6 +858,11 @@
     signupMode = false;
     email = "";
     password = "";
+    // Component-local, so nothing else clears it: left armed, the next sign-in on this page load
+    // reopened Account already primed to delete, with the previous account's address in the field.
+    eraseArmed = false;
+    eraseEmail = "";
+    eraseError = null;
     refreshing = false;
     refreshError = null;
     error = null;

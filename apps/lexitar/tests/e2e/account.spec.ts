@@ -1,5 +1,5 @@
 import { test, expect } from "./_fixtures";
-import { loginAs, signUp, openOwnerAccount } from "./_login";
+import { loginAs, signUp, openOwnerAccount, ownerSignOut } from "./_login";
 import { E2E_CLINICIAN } from "./_synthetic";
 
 // W44 P8 — the owner Account modal. Uses a FRESH signed-up account (unique email) so editing the
@@ -82,4 +82,32 @@ test("owner deletes their own account and is told what was removed", async ({ pa
   await signIn.locator('input[type="password"]').fill("e2e-pass-123");
   await signIn.locator('button[type="submit"]').click();
   await expect(signIn.locator('input[type="email"]')).toBeVisible();
+});
+
+// The arm step is component-local state that signOut() did not clear, so it survived a sign-out:
+// the next sign-in on the same page load reopened Account already primed to delete, with the
+// previous account's address still in the field. Signs back in through the lock screen rather than
+// loginAs(), which navigates — a reload would clear the state whether or not signOut does.
+test("the delete-account step does not stay armed across a sign out", async ({ page }) => {
+  const email = `e2e-erase-arm-${Date.now()}@local.invalid`;
+  await signUp(page, email);
+  await openOwnerAccount(page);
+
+  const modal = page.locator(".access-panel");
+  const confirm = modal.locator('input[aria-label="Confirm your email address"]');
+  await modal.locator('button:has-text("Delete this account")').click();
+  await expect(confirm).toBeVisible();
+
+  await page.click('.modal-close[aria-label="Close"]');
+  await ownerSignOut(page);
+
+  const signIn = page.locator("main.lock");
+  await signIn.locator('input[type="email"]').fill(email);
+  await signIn.locator('input[type="password"]').fill("e2e-pass-123");
+  await signIn.locator('button[type="submit"]').click();
+  await expect(page.locator(".account-trigger")).toBeVisible();
+
+  await openOwnerAccount(page);
+  await expect(confirm).toHaveCount(0);
+  await expect(modal.locator('button:has-text("Delete this account")')).toBeVisible();
 });
