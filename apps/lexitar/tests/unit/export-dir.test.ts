@@ -22,8 +22,12 @@ afterEach(() => {
 });
 
 describe("assertOutsideRepos", () => {
+  // The tree it names is whichever one this suite is running in — a worktree here, the checkout on a
+  // CI runner. Asserting a directory NAME pinned the developer's worktree slug and failed on the
+  // runner, which was the guard working and the test being wrong about what it had proved.
   it("refuses a path inside this git work tree, naming the tree", () => {
-    expect(() => assertOutsideRepos(resolve(REPO_FILE, "../../../exports"))).toThrow(/git work tree at .*whole-record/);
+    const tree = resolve(REPO_FILE, "../../../../..");
+    expect(() => assertOutsideRepos(resolve(REPO_FILE, "../../../exports"))).toThrow(`git work tree at ${tree}`);
   });
 
   it("refuses records/, which .gitignore deliberately re-includes", () => {
