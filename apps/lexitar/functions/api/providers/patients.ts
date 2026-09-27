@@ -5,6 +5,7 @@ import { listPatientsForProvider } from "../../_lib/identity-providers";
 import { requireSession } from "../../_lib/session";
 import { logRequest } from "../../_lib/log";
 import { json } from "../../_lib/http";
+import { auditPrivilegedRead, AUDIT_UNAVAILABLE } from "../../_lib/phi-audit";
 
 // W44 cutover — the provider's patient list, replacing the old fam4 `data.enc` roster. Returns
 // each active patient the session provider can actually open: their display name, vault id/r2 key,
@@ -51,6 +52,21 @@ export async function onRequestGet(context: Ctx): Promise<Response> {
     if (!vault) continue;
     const envelope = await getEnvelope(env.DB, vault.vaultId, session.accountId);
     if (!envelope) continue;
+    // ONE ROW PER PATIENT, not one per request: the response below carries each patient's display name
+    // and email address in the clear, so the disclosure is per patient and each row's subject differs.
+    // A single row for the listing could not name a subject without picking one patient arbitrarily,
+    // and `phi_access_events.subject_account_id` is NOT NULL for exactly that reason.
+    const refused = await auditPrivilegedRead(env.DB, {
+      actor: session.accountId,
+      subject: link.ownerAccountId,
+      vaultId: vault.vaultId,
+      action: "provider_roster_viewed",
+      consentRef: link.consentRef,
+    });
+    if (refused) {
+      log(503, AUDIT_UNAVAILABLE);
+      return refused;
+    }
     patients.push({
       ownerAccountId: acct.id,
       displayName: acct.displayName,

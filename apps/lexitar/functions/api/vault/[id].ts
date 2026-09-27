@@ -7,6 +7,8 @@ import { getEnvelope, getVaultByR2Key, getVaultByStagingR2Key } from "../../_lib
 import type { BlobConditional } from "@tinytars/vault/blob-store";
 import { R2BlobStore, type R2Bucket } from "@tinytars/vault/adapters/r2";
 import { json } from "../../_lib/http";
+import { auditPrivilegedRead, AUDIT_UNAVAILABLE } from "../../_lib/phi-audit";
+import { ORG_ACCOUNT_ID } from "../../_lib/org";
 
 interface Env {
   VAULT: R2Bucket;
@@ -68,6 +70,18 @@ export async function onRequestPut(context: Ctx): Promise<Response> {
     if (!(await getEnvelope(env.DB, vault.vaultId, session.accountId))) {
       log(403, { errorCode: "forbidden" });
       return json(403, { error: "no access to this vault" });
+    }
+    // A write by anyone other than the owner is a disclosure event too — it is how a third party could
+    // alter a record, and a patient asking "who changed this" has the same claim as "who read this".
+    const refused = await auditPrivilegedRead(env.DB, {
+      actor: session.accountId,
+      subject: vault.ownerAccountId,
+      vaultId: vault.vaultId,
+      action: "vault_blob_written",
+    });
+    if (refused) {
+      log(503, { errorCode: AUDIT_UNAVAILABLE });
+      return refused;
     }
   }
 
@@ -149,6 +163,36 @@ export async function onRequestGet(context: Ctx): Promise<Response> {
     if (!(await getEnvelope(env.DB, vault.vaultId, session.accountId))) {
       log(403, { errorCode: "forbidden" });
       return json(403, { error: "no access to this vault" });
+    }
+    const refused = await auditPrivilegedRead(env.DB, {
+      actor: session.accountId,
+      subject: vault.ownerAccountId,
+      vaultId: vault.vaultId,
+      action: "vault_blob_read",
+    });
+    if (refused) {
+      log(503, { errorCode: AUDIT_UNAVAILABLE });
+      return refused;
+    }
+  } else {
+    // The ops bearer establishes no principal at all — it is a deploy-held secret, not an account — so
+    // the org principal stands in as the actor. It is a real seeded row
+    // (migrations/0002_seed_migrated_accounts.sql), which `subject_account_id`'s foreign key requires.
+    // The added vault lookup is the price of not having an unaudited read path, which is the hole this
+    // whole change exists to close; the branch carries ops and CI traffic, not user traffic.
+    const vault = await getVaultByR2Key(env.DB, assetName(id));
+    if (vault) {
+      const refused = await auditPrivilegedRead(env.DB, {
+        actor: ORG_ACCOUNT_ID,
+        subject: vault.ownerAccountId,
+        vaultId: vault.vaultId,
+        action: "vault_blob_read_ops",
+        meta: { via: "vault_token" },
+      });
+      if (refused) {
+        log(503, { errorCode: AUDIT_UNAVAILABLE });
+        return refused;
+      }
     }
   }
 

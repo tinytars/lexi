@@ -77,7 +77,9 @@ export async function onRequestPost(context: Ctx): Promise<Response> {
   const acct = await getAccountByEmail(env.DB, body.email);
   // An unknown address still costs the caller a round trip and tells them nothing. There is no grant to
   // count attempts against, which is a real (accepted) asymmetry: address enumeration through THIS route
-  // is bounded by the general rate limiting that SECURITY.md gap 3 still tracks, not by anything here.
+  // is bounded only by whatever general rate limiting the deployment has, not by anything here. (The
+  // pointer this comment used to carry, "SECURITY.md gap 3", named a numbered gap list that document no
+  // longer has — so the invariant is stated here instead of at an address that stopped resolving.)
   if (!acct || acct.deletedAt) { log(401, "no_account"); return json(401, REJECT); }
 
   const check = await checkRedemption(env.DB, acct.id, body.codeAuthHash);
