@@ -4,6 +4,7 @@ import { storeKey } from "../../_lib/store";
 import { requireSession } from "../../_lib/session";
 import type { D1Database } from "../../_lib/identity-types";
 import { getEnvelope, getVaultByR2Key, getVaultByStagingR2Key } from "../../_lib/identity-vault";
+import { getActiveProviderLink } from "../../_lib/identity-providers";
 import type { BlobConditional } from "@tinytars/vault/blob-store";
 import { R2BlobStore, type R2Bucket } from "@tinytars/vault/adapters/r2";
 import { json } from "../../_lib/http";
@@ -70,6 +71,18 @@ export async function onRequestPut(context: Ctx): Promise<Response> {
     if (!(await getEnvelope(env.DB, vault.vaultId, session.accountId))) {
       log(403, { errorCode: "forbidden" });
       return json(403, { error: "no access to this vault" });
+    }
+    // Holding an envelope is permission to READ. Writing needs more: a `support` principal exists to be
+    // handed a time-boxed key so it can read a record, and a read-only principal that can overwrite the
+    // record is the one capability a credential sitting on a disk must not have. So a non-owner writer
+    // must additionally hold a live `primary` link — a clinician the patient has taken on, not a
+    // temporary helper. The owner is exempt by definition: it is their record.
+    if (session.accountId !== vault.ownerAccountId) {
+      const link = await getActiveProviderLink(env.DB, vault.ownerAccountId, session.accountId);
+      if (link?.role !== "primary") {
+        log(403, { errorCode: "read_only_principal" });
+        return json(403, { error: "this access is read-only", errorCode: "read_only_principal" });
+      }
     }
     // A write by anyone other than the owner is a disclosure event too — it is how a third party could
     // alter a record, and a patient asking "who changed this" has the same claim as "who read this".

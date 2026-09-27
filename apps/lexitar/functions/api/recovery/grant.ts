@@ -10,6 +10,13 @@
 // can replace the account's keypair. That is a real escalation and the reason for the capability check,
 // the live-link check, and the audit row.
 //
+// A STORED CREDENTIAL IS NOT ENOUGH ON ITS OWN. This route now demands a session minted in
+// the last few minutes (`requireFreshSession`). A clinician's cookie lasts 30 days and their browser can
+// produce a valid wrapped DEK from a key it cached at unlock, so until now everything this route needs
+// could sit in one captured cookie. Freshness is what a captured cookie cannot be: minting a new one
+// needs the password, the passkey or the Google identity. The session's age goes in the audit row, so
+// "how fresh was fresh" stays answerable after the constant changes.
+//
 // THE IDENTITY CHECK IS THE PHONE CALL, and it is structural rather than policy: the code reaches the
 // patient only by the clinician reading it to them, so there is no "approve" button that works without
 // that conversation happening.
@@ -25,6 +32,7 @@ import { listPatientsForProvider } from "../../_lib/identity-providers";
 import { insertAccessEvent } from "../../_lib/identity-audit";
 import { requireSession } from "../../_lib/session";
 import { can, roleOf } from "../../_lib/capabilities";
+import { requireFreshSession, FRESH_SESSION_SECONDS } from "../../_lib/step-up";
 import { issueGrant } from "../../_lib/recovery";
 import type { EmailEnv } from "../../_lib/email";
 import { logRequest } from "../../_lib/log";
@@ -54,6 +62,17 @@ export async function onRequestPost(context: Ctx): Promise<Response> {
 
   const session = await requireSession(request, env);
   if (session instanceof Response) { log(401, "unauthorized"); return session; }
+
+  // Before the capability check, because this is about the cookie rather than about who holds it, and a
+  // stale cookie should read as stale whoever presents it.
+  const fresh = requireFreshSession(session.iat);
+  if (!fresh.ok) {
+    log(401, "stale_session");
+    return json(401, {
+      error: `sign in again, then issue the code within ${FRESH_SESSION_SECONDS / 60} minutes`,
+      errorCode: "stale_session",
+    });
+  }
 
   const me = await getAccount(env.DB, session.accountId);
   if (!can(roleOf(me), "recovery:issue")) {
@@ -100,6 +119,9 @@ export async function onRequestPost(context: Ctx): Promise<Response> {
     subjectAccountId: ownerAccountId,
     action: "recovery.grant_issued",
     consentRef: grant.id,
+    // How fresh the re-authentication actually was. A row saying only that the gate passed cannot
+    // answer whether it passed by a second or by four minutes, and that is the whole margin.
+    meta: { sessionAgeSeconds: fresh.ageSeconds },
   });
 
   log(200);
