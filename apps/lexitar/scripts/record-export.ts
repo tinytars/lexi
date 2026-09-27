@@ -1,5 +1,8 @@
 // `npm run record:export` — a complete local copy of one health record: the structured data and every
-// stored document, decrypted, under the credential of the principal the record belongs to.
+// stored document, decrypted, under the credential of a principal entitled to read it. Two are: the
+// record's own owner (no flags, the original behaviour), and the export principal reading a record a
+// patient has approved it for (`--patient`, `--all`, `--list`, `--request`), which is a disclosure and
+// is written to that patient's own access screen on every open.
 //
 // Small, because a record IS one encrypted object plus the files it references: one decryption and N
 // downloads, no report to assemble. The design work is in two places instead.
@@ -17,7 +20,19 @@
 // still belongs to the patient and is still exported, marked `referenced: false`.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { authedFetch, cliCredentials, login, openVault, withPassword, type Session } from "./api-session";
+import {
+  authedFetch,
+  cliCredentials,
+  listGrantedOwners,
+  login,
+  openGrantedVault,
+  openVault,
+  requestAccess,
+  supportCredentials,
+  withPassword,
+  type OpenVault,
+  type Session,
+} from "./api-session";
 import { exportRoot, purge, runDir } from "./export-dir";
 import { isMain } from "./is-main";
 import { resolveClientKey } from "./vault-ops";
@@ -199,10 +214,21 @@ function parseArgs(argv: string[]) {
     dryRun: flag("dry-run"),
     stdout: flag("stdout"),
     purge: flag("purge"),
+    // `--patient` takes an ACCOUNT ID, not an address: the only endpoint that hands this principal an
+    // email is the one listing its not-yet-approved requests, so an address would resolve for a patient
+    // who has not approved anything and stop resolving the moment they do. `--list` prints the ids, and
+    // Phase 6's `--url` takes the URL the operator actually has in hand.
+    patient: value("patient"),
+    all: flag("all"),
+    list: flag("list"),
+    request: value("request"),
   };
 }
 
-async function main(argv = process.argv.slice(2)): Promise<void> {
+type Args = ReturnType<typeof parseArgs>;
+
+/** Exported for the tests: the flag handling and the two principals' paths are the behaviour under test. */
+export async function main(argv = process.argv.slice(2)): Promise<void> {
   const args = parseArgs(argv);
   const out = (s: string) => process.stdout.write(`${s}\n`);
 
@@ -211,10 +237,18 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
     out(removed.length ? `removed ${removed.length} export(s) from ${exportRoot()}` : `nothing to remove in ${exportRoot()}`);
     return;
   }
+  if (args.list || args.request || args.all || args.patient) return supportMain(args, out);
 
-  const creds = await withPassword(cliCredentials());
-  const session = await login(creds);
-  const { vault, accountId, vaultId, blobId, rotationPending } = await openVault(session);
+  const session = await login(await withPassword(cliCredentials()));
+  await exportOne(session, await openVault(session), args, out);
+}
+
+/**
+ * Everything from an open vault to the files on disk, identical whoever opened it — the owner path and
+ * the granted path differ only in which principal signed in and whose envelope unwrapped the key.
+ */
+async function exportOne(session: Session, open: OpenVault, args: Args, out: (s: string) => void): Promise<void> {
+  const { vault, accountId, vaultId, blobId, rotationPending } = open;
   const clientKey = args.client ?? resolveClientKey(vault, blobId);
   const client = vault.clients[clientKey];
   if (!client) throw new Error(`no client "${clientKey}" in this vault`);
@@ -227,7 +261,7 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
   const names = outputNames(entries);
 
   if (args.dryRun) {
-    out(`${entries.length} documents would be fetched for ${clientId} from ${creds.baseUrl}; nothing written`);
+    out(`${entries.length} documents would be fetched for ${clientId} from ${session.baseUrl}; nothing written`);
     for (const e of entries) out(`  ${e.sha8 ?? "--------"} · ${e.kind}${e.referenced ? "" : " · unreferenced"}`);
     return;
   }
@@ -292,7 +326,7 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
 
   const manifest: Manifest = {
     exportedAt: new Date().toISOString(),
-    baseUrl: creds.baseUrl,
+    baseUrl: session.baseUrl,
     accountId,
     vaultId,
     blobId,
@@ -308,6 +342,71 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
   if (args.stdout) out(JSON.stringify(client, null, 2));
   out(`exported to ${dir}`);
   out(`remove it with: rm -rf ${dir}`);
+}
+
+/**
+ * The export principal's paths. Nothing here reaches a record that a patient has not approved: every
+ * target comes from `listGrantedOwners`, which the server has already filtered to live grants — see
+ * `openGrantedVault`'s header for what opening a lapsed one would cost that patient.
+ */
+async function supportMain(args: Args, out: (s: string) => void): Promise<void> {
+  const say = (s: string) => process.stderr.write(`${s}\n`);
+  const session = await login(supportCredentials());
+
+  if (args.request) {
+    const { linkId, status } = await requestAccess(session, args.request);
+    if (status === "invited") {
+      say(`asked ${args.request} for access (link ${linkId}) — nothing is readable until they approve it`);
+      say("they open the app, find this tool under Access, and approve it with 7 days in the dropdown");
+      return;
+    }
+    // `status` is whatever a pre-existing link already said, and an approval whose window has elapsed
+    // is still `active` — so this cannot be reported as success. The order matters: revoking first
+    // deletes the stale envelope without setting `rotation_pending`, and re-requesting first does not.
+    say(`${args.request} already has a link to this tool (${linkId}, ${status}), which is not proof that it is live`);
+    say("run --list: if their account id is not in it, that approval has lapsed, and the order is");
+    say("  1. they press Revoke on this tool's entry in their Access panel");
+    say("  2. re-run --request, and they approve the fresh one with 7 days");
+    say("re-approving without revoking first re-keys their whole record at their next sign-in, for nothing");
+    return;
+  }
+
+  const owners = await listGrantedOwners(session);
+  if (args.list) {
+    out(owners.length ? `${owners.length} record(s) approved for export` : "no records are approved for export");
+    for (const o of owners) out(`  ${o.ownerAccountId} · until ${o.expiresAt ?? "no expiry"}`);
+    return;
+  }
+
+  if (!args.all) {
+    // Refused here rather than by the server, because asking the server is itself the harm: opening a
+    // lapsed grant is what re-keys that patient's record.
+    if (!owners.some((o) => o.ownerAccountId === args.patient)) {
+      throw new Error(
+        `${args.patient} has not approved this tool, or the approval has lapsed — run ` +
+          "--request <their email>, or --list to see what is live",
+      );
+    }
+    await exportOne(session, await openGrantedVault(session, args.patient!), args, out);
+    return;
+  }
+
+  if (!owners.length) {
+    say("no records are approved for export — run --request <their email> for each person");
+    return;
+  }
+  let failed = 0;
+  for (const { ownerAccountId } of owners) {
+    try {
+      await exportOne(session, await openGrantedVault(session, ownerAccountId), args, out);
+    } catch (e) {
+      // One unreadable record must not cost the rest of the sweep — but it is still a failure, so the
+      // exit status says so rather than an operator having to read every line of an unattended run.
+      failed += 1;
+      say(`skipped ${ownerAccountId}: ${(e as Error).message}`);
+    }
+  }
+  if (failed) throw new Error(`${failed} of ${owners.length} record(s) could not be exported`);
 }
 
 if (isMain(import.meta.url)) {

@@ -92,10 +92,29 @@ export interface OpenVault {
 export function cliCredentials(): CliCredentials {
   const email = process.env.LEXITAR_CLI_EMAIL;
   if (!email) throw new Error("set LEXITAR_CLI_EMAIL to the address of the account whose record this is");
+  return { ...origin(), email, password: process.env.LEXITAR_CLI_PASSWORD ?? "" };
+}
+
+/**
+ * The export CLI's own principal: a support account (scripts/provision-support-account.ts) that owns no
+ * record and reads one only while a patient's approval is live. Both variables are required — unlike the
+ * owner path there is nothing to prompt for, because a human is deliberately not present.
+ */
+export function supportCredentials(): CliCredentials {
+  const email = process.env.LEXITAR_SUPPORT_EMAIL;
+  const password = process.env.LEXITAR_SUPPORT_PASSWORD;
+  if (!email || !password) {
+    throw new Error(
+      "set LEXITAR_SUPPORT_EMAIL and LEXITAR_SUPPORT_PASSWORD to the record-export principal " +
+        "(they are in plover-keys/health-dash.env, which scripts/load-creds.ts reads)",
+    );
+  }
+  return { ...origin(), email, password };
+}
+
+function origin(): Omit<CliCredentials, "email" | "password"> {
   return {
     baseUrl: (process.env.LEXITAR_BASE_URL || "http://localhost:8788").replace(/\/$/, ""),
-    email,
-    password: process.env.LEXITAR_CLI_PASSWORD ?? "",
     accessClientId: process.env.CF_ACCESS_CLIENT_ID,
     accessClientSecret: process.env.CF_ACCESS_CLIENT_SECRET,
   };
@@ -187,7 +206,9 @@ export async function login(creds: CliCredentials): Promise<Session> {
     // credential at all, so this message must cover both — the CLI cannot tell them apart.
     throw new Error(
       `${creds.email} was rejected: the password is wrong, the address is unknown, or this account ` +
-        "has no password credential (a passkey-only or Google-only account cannot be used from the CLI)",
+        "has no password credential (a passkey-only or Google-only account cannot be used from the CLI). " +
+        "For the export principal this is a credential problem and never a missing approval — an " +
+        "approval that is absent or lapsed fails later, at /api/support/access, and says so",
     );
   }
   if (!res.ok) throw new Error(`sign-in failed (${res.status} from ${loginUrl})`);
@@ -215,21 +236,36 @@ export function authedFetch(session: Session, path: string, init: RequestInit = 
   });
 }
 
-/** Unwraps the account key, then the DEK, then decrypts the vault blob the session is entitled to. */
-export async function openVault(session: Session): Promise<OpenVault> {
-  if (!session.vaultId || !session.r2Key || !session.ownerEnvelope) {
-    throw new Error(`${session.email} has no vault to export (the account exists but holds no record)`);
-  }
-  const blobId = vaultIdFromR2Key(session.r2Key);
-  if (!blobId) throw new Error(`cannot address the vault: r2Key ${session.r2Key} is not a vault blob`);
+interface Envelope {
+  wrappedDEK: string;
+  ephemeralPublicKeyJwk: JsonWebKey;
+}
+
+interface VaultTarget {
+  /** The RECORD's owner — the session's own account on the owner path, someone else's on a granted one. */
+  accountId: string;
+  vaultId: string;
+  r2Key: string;
+  envelope: Envelope;
+  rotationPending: boolean;
+}
+
+/**
+ * Unwraps this principal's account key, then the DEK out of whichever envelope it was handed, then
+ * decrypts the blob. One copy: the owner path and the granted path differ only in where the envelope and
+ * the blob id came from, and two copies of a decryption chain drift.
+ */
+async function openTarget(session: Session, target: VaultTarget): Promise<OpenVault> {
+  const blobId = vaultIdFromR2Key(target.r2Key);
+  if (!blobId) throw new Error(`cannot address the vault: r2Key ${target.r2Key} is not a vault blob`);
 
   const kek = await deriveKekFromPassword(session.password, hexToBytes(session.kdfParams.salt));
   let dek: CryptoKey;
   try {
     const privateKey = await unwrapPrivateKey(b64ToBytes(session.wrappedPrivateKey), kek);
     dek = await unwrapDEKWithPrivateKey(
-      b64ToBytes(session.ownerEnvelope.wrappedDEK),
-      session.ownerEnvelope.ephemeralPublicKeyJwk,
+      b64ToBytes(target.envelope.wrappedDEK),
+      target.envelope.ephemeralPublicKeyJwk,
       privateKey,
     );
   } catch {
@@ -243,12 +279,96 @@ export async function openVault(session: Session): Promise<OpenVault> {
   const blob = new Uint8Array(await res.arrayBuffer());
   const vault = await decryptVaultV2<Vault>(blob, dek);
 
-  return {
-    vault,
-    dek,
+  return { vault, dek, accountId: target.accountId, vaultId: target.vaultId, blobId, rotationPending: target.rotationPending };
+}
+
+/** Opens the record the signed-in account owns. */
+export async function openVault(session: Session): Promise<OpenVault> {
+  if (!session.vaultId || !session.r2Key || !session.ownerEnvelope) {
+    throw new Error(`${session.email} has no vault to export (the account exists but holds no record)`);
+  }
+  return openTarget(session, {
     accountId: session.accountId,
     vaultId: session.vaultId,
-    blobId,
+    r2Key: session.r2Key,
+    envelope: session.ownerEnvelope,
     rotationPending: session.rotationPending,
-  };
+  });
+}
+
+export interface GrantedOwner {
+  ownerAccountId: string;
+  /** ISO, or null for a grant with no expiry. */
+  expiresAt: string | null;
+}
+
+/**
+ * The patients whose approval is LIVE — /api/support/owners drops a revoked link and one whose window
+ * has elapsed, which is what makes this list safe to drive `openGrantedVault` from (see its header).
+ *
+ * `displayName` is dropped here rather than downstream: the common caller is an agent, and a name in a
+ * transcript is a second copy of the record. Deliberately unaudited on the server, and its own header
+ * says why: every grant in it already has a `support_access_granted` row on the patient's own screen.
+ */
+export async function listGrantedOwners(session: Session): Promise<GrantedOwner[]> {
+  const res = await authedFetch(session, "/api/support/owners");
+  if (!res.ok) throw new Error(`cannot list approved records (${res.status} from /api/support/owners)`);
+  const { owners } = (await res.json()) as { owners: { ownerAccountId: string; expiresAt?: string | null }[] };
+  return owners.map((o) => ({ ownerAccountId: o.ownerAccountId, expiresAt: o.expiresAt ?? null }));
+}
+
+/**
+ * Ask a patient for access. Creates a PENDING link with no envelope, so nothing is readable until that
+ * patient approves from their own unlocked session.
+ *
+ * `status: "active"` in the reply is NOT proof of a live grant: the route hands back any existing
+ * non-revoked link unchanged, and a link whose window has elapsed is still `active`. record-export.ts
+ * says what to do about that; here it is only reported.
+ */
+export async function requestAccess(session: Session, ownerEmail: string): Promise<{ linkId: string; status: string }> {
+  const res = await authedFetch(session, "/api/support/request", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ ownerEmail }),
+  });
+  if (!res.ok) throw new Error(`cannot ask ${ownerEmail} for access (${res.status} from /api/support/request)`);
+  const { linkId, status } = (await res.json()) as { linkId: string; status: string };
+  return { linkId, status };
+}
+
+/**
+ * The audited entry point. POST /api/support/access writes `support_access_opened` with the patient's
+ * consent reference before handing over the envelope, so every read this CLI performs is on the record
+ * owner's own access screen.
+ *
+ * NEVER CALL THIS FOR A GRANT THAT IS NOT LIVE. An elapsed-but-`active` link reaches `checkBreakGlass`,
+ * whose `onExpire` deletes the envelope AND sets `rotation_pending` — correct, but it forces that
+ * patient's whole vault to be re-keyed at their next sign-in for no reason. Callers therefore pass only
+ * an `ownerAccountId` that `listGrantedOwners` returned, which the route has already filtered to live
+ * grants; tests/unit/support-export.test.ts pins that nothing else is ever opened.
+ */
+export async function openGrantedVault(session: Session, ownerAccountId: string): Promise<OpenVault> {
+  const res = await authedFetch(session, "/api/support/access", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ ownerAccountId }),
+  });
+  if (res.status === 403) {
+    throw new Error(
+      `${ownerAccountId} has no live approval for ${session.email} — ask them to approve it in their ` +
+        "Access panel (see --request), and note that an entry left over from a previous window must be " +
+        "revoked there first",
+    );
+  }
+  if (!res.ok) throw new Error(`cannot open ${ownerAccountId}'s record (${res.status} from /api/support/access)`);
+  // `displayName` and `email` come back in this body and are deliberately not carried out of it.
+  const data = (await res.json()) as { ownerAccountId: string; vaultId: string; r2Key: string; envelope: Envelope };
+  return openTarget(session, {
+    accountId: data.ownerAccountId,
+    vaultId: data.vaultId,
+    r2Key: data.r2Key,
+    envelope: data.envelope,
+    // Not in this response, and it is the owner's signal anyway: their next sign-in is what re-keys.
+    rotationPending: false,
+  });
 }
