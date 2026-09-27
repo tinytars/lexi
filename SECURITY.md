@@ -66,6 +66,26 @@ someone to discover:
 The same sentences appear in the deletion result the user sees (`ERASURE_REACH` in
 `apps/lexitar/src/lib/erase-account.ts`) and in `apps/lexitar/MODERATION.md` §4.
 
+## Where readable patient data is allowed to land
+
+Everything above concerns data in transit to a processor. One flow deliberately writes readable patient
+data to a person's own computer: `npm run record:export`, which signs in as the record's own owner over
+the ordinary authenticated API and decrypts locally. `apps/lexitar/VAULT.md` §4a is the mechanism; the
+convention it establishes, which the next such tool inherits, is four rules.
+
+- **A destination outside every checkout, mode 0700**, enforced at run time by the program rather than
+  by an ignore rule — this repo is public and its `.gitignore` re-includes `records/**`, so an ignore
+  rule is not a control.
+- **Contents-free output.** A run prints ids, counts, checksums, sizes and whether each file opened,
+  never the record itself, because the common caller is an agent whose transcript must not become a
+  second copy of it.
+- **A removal command the run itself prints.** It shortens the window; it does not make the copy
+  reachable by the patient's own erase, which is why the deletion section above names it.
+- **Never a CI job.** The export is deliberately absent from `.github/workflows/ops.yml`, whose own
+  header otherwise directs every new operational flow there: a hosted runner is the wrong place for
+  plaintext patient data, and read-only inspection in this repo stays local by convention
+  (`apps/lexitar/scripts/treatment-diagnose.ts`).
+
 ## Scope
 
 In scope: `apps/lexitar` (the LexiTar web app — Svelte UI, `functions/` Pages Functions backend,
