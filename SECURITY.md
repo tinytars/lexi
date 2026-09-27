@@ -36,12 +36,30 @@ the model provider, while its owner has the record open. `apps/lexitar/VAULT.md`
 |---|---|---|
 | **Cloudflare** — Pages, R2, D1 | Ciphertext and request logs. It holds no key that opens a vault blob or a sealed original. | Standard commercial terms. |
 | **Anthropic**, or whichever provider `inference.config.json` names | **Whole documents, in plaintext**, plus answer text. The most sensitive flow in the product. | Standard commercial API terms. **No BAA and no negotiated zero-retention agreement.** A prompt-cache entry expires on the provider's own timetable, which the deployment can neither shorten nor recall. `REPORTS: "never"` turns the mechanism off per environment. |
-| **Microsoft Azure AI Speech** | Read-aloud text — answer text, so PHI. | Covered by Microsoft's HIPAA BAA as an in-scope service (`apps/lexitar/API.md` §`/api/speak`). |
+| **Microsoft Azure AI Speech** | Read-aloud text — answer text, so PHI. | An in-scope service under Microsoft's Product Terms HIPAA BAA (`apps/lexitar/API.md` §`/api/speak`). Whether this deployment's subscription has that BAA in force is unconfirmed, so nothing user-facing claims it. |
 | **Google Workspace, Gmail API** | Transactional mail: an address and a message body carrying no health content (`functions/_lib/email.ts`). | Workspace terms; sent by domain-wide delegation from a Foundation mailbox. |
 
 Stated as an honest blank rather than an implied guarantee: **retention at the model provider has not
 been negotiated.** That is an open item, not a solved one. Google sign-in is not a processor here —
 it is deferred and does not ship (`apps/lexitar/AUTH.md`).
+
+### What deletion reaches, and what it cannot
+
+A user deletes their account and everything under it from the account panel
+(`POST /api/account/erase`). Two limits are stated in the product's own words rather than left for
+someone to discover:
+
+- **Storage the server cannot prove is theirs** — objects uploaded before ownership was recorded, or
+  in a namespace another account wrote into first — is reported as a count and left in place. An
+  erasure that leaves any is reported as **incomplete**; nobody is told their data is gone when it is
+  not (`functions/_lib/erasure.ts`).
+- **The model provider's prompt cache.** Erasure revokes every session first, so the browser's
+  keepalive stops and nothing further is sent — that half is enforced and tested. An entry already
+  written expires on the provider's own timetable, which this deployment can neither shorten nor
+  recall, and there is no number to report because the deployment cannot see that cache.
+
+The same two sentences appear in the deletion result the user sees (`ERASURE_REACH` in
+`apps/lexitar/src/lib/erase-account.ts`) and in `apps/lexitar/MODERATION.md` §4.
 
 ## Scope
 

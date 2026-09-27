@@ -21,6 +21,17 @@
 // as incomplete. An operator with vault access can finish the job offline; nobody is told the data is
 // gone when it is not.
 //
+// WHAT ERASURE CANNOT REACH AT ALL, for the same reason it is stated rather than hidden: the model
+// provider's prompt cache. Since the corpus feature, whole documents leave the deployment while their
+// owner has the record open (CORPUS.md §3), so by the time an account is erased a copy may already sit
+// at the provider. Two halves, and only one is ours: revokeSessions() below kills the browser's
+// /api/corpus-warm keepalive, so nothing more is sent and no entry is refreshed — that guarantee is
+// real, is enforced here, and is pinned by erasure-completeness.test.ts. The entry already written
+// expires on the provider's own timetable, which this deployment can neither shorten nor recall. It is
+// not counted in `unattributable` because there is no truthful number to report: the deployment cannot
+// see the provider's cache. It is said in words instead, here, in `ERASURE_REACH`
+// (src/lib/erase-account.ts) and in SECURITY.md.
+//
 // ORDER MATTERS. R2 first, then D1, then the tombstone. A crash midway must never leave a live D1 row
 // pointing at a deleted blob (which reads as corruption) or, worse, an account that is gone while its
 // PHI is not. Deleting the payload before the pointer means the worst interruption leaves rows that
