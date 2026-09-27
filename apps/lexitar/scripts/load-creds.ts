@@ -11,6 +11,11 @@
 // W52: cloudflare.env joins the list because the snapshot/restore tooling talks to the R2 REST
 // API directly (scripts/vault-sync.ts §REST) and needs the same CLOUDFLARE_* pair that
 // scripts/wrangler.sh loads bash-side.
+//
+// The loader is deliberately generic — every key in those files is surfaced — so nothing here has to
+// change when one is added. health-dash.env also carries LEXITAR_CLI_EMAIL / LEXITAR_CLI_PASSWORD /
+// LEXITAR_BASE_URL, the principal scripts/api-session.ts signs in as; that account is dedicated to
+// the CLI so it can be rotated and revoked without touching a human's login.
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
