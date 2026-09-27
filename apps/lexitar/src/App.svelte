@@ -399,6 +399,15 @@
   // stays here because the vault, its key and its R2 id are App's; what left is the queueing.
   const vaultSave = createVaultSave();
 
+  // 9A / DPGA 7.5 — the self-erasure the route has always allowed and nothing called. Two steps
+  // (arm, then echo your own email) matching the "Remove recovery key" pattern beside it, because
+  // this one cannot be undone by anyone, including support.
+  let eraseArmed = $state(false);
+  let eraseEmail = $state("");
+  let eraseBusy = $state(false);
+  let eraseError = $state<string | null>(null);
+  let eraseResult = $state<string | null>(null);
+
   // W70 — the app had ZERO live regions: `aria-live`, `role="alert"`, `role="status"` and `aria-busy`
   // returned no matches across App.svelte and all 62 lib components. Every error was a silently
   // inserted <p> and every "✓ saved" passed unannounced, so a screen-reader user who mistyped their
@@ -805,15 +814,6 @@
   function cancelRefresh() {
     refreshController?.abort();
   }
-
-  // 9A / DPGA 7.5 — the self-erasure the route has always allowed and nothing called. Two steps
-  // (arm, then echo your own email) matching the "Remove recovery key" pattern beside it, because
-  // this one cannot be undone by anyone, including support.
-  let eraseArmed = $state(false);
-  let eraseEmail = $state("");
-  let eraseBusy = $state(false);
-  let eraseError = $state<string | null>(null);
-  let eraseResult = $state<string | null>(null);
 
   async function eraseAccount() {
     eraseBusy = true;
