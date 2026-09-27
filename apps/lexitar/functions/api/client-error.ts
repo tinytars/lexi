@@ -3,6 +3,7 @@ import { toReport } from "../_lib/client-error";
 import { fileClientError, type GithubIssueEnv } from "../_lib/github-issue";
 import { spendReportBudget } from "../_lib/report-budget";
 import { logRequest } from "../_lib/log";
+import { callerIp } from "../_lib/caller-ip";
 
 // Sink for src/lib/error-reporter.ts and index.html's boot guard: an uncaught browser error becomes a
 // GitHub issue (or a comment on the open one with the same fingerprint). Without
@@ -32,9 +33,6 @@ const sameOrigin = (request: Request): boolean => {
   const origin = request.headers.get("origin");
   return !!origin && origin === new URL(request.url).origin;
 };
-
-const callerIp = (request: Request): string | null =>
-  request.headers.get("cf-connecting-ip") ?? request.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? null;
 
 export async function onRequestPost(context: { request: Request; env: Env }): Promise<Response> {
   const { request, env } = context;

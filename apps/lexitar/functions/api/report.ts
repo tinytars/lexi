@@ -4,6 +4,7 @@ import { fileReport, type GithubIssueEnv } from "../_lib/github-issue";
 import { spendReportBudget } from "../_lib/report-budget";
 import { logRequest } from "../_lib/log";
 import { json } from "../_lib/http";
+import { callerIp } from "../_lib/caller-ip";
 
 // DPG 9B.3/9B.4/9B.6 and 9C.2 — the channel a user tells a human something is wrong through: an
 // answer that looks dangerous, illegal material, or a clinician abusing their access. See
@@ -38,9 +39,6 @@ const isReason = (v: unknown): v is ReportReason => typeof v === "string" && v i
 // than scrubbed — it has no business being in this field and a mask would only hide that.
 const ID = /^[\w:.-]{1,64}$/;
 const idOr = (v: unknown, fallback = ""): string => (typeof v === "string" && ID.test(v) ? v : fallback);
-
-const callerIp = (request: Request): string | null =>
-  request.headers.get("cf-connecting-ip") ?? request.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? null;
 
 interface SafetyReport {
   reason: ReportReason;
