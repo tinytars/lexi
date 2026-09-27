@@ -267,9 +267,14 @@ npm run record:export -- [--client <key>] [--dry-run] [--stdout] [--purge]
   owner envelope, and reads the ciphertext through `GET /api/vault/{id}` — so
   `resolveEnvelopeAccess` stays in the path and the CLI holds no authority the owner's browser does
   not. **Not the org key** (§2): that opens every vault and a CLI reaching R2/D1 directly bypasses
-  the one place the system makes an authorization decision. Credentials live in
-  `plover-keys/health-dash.env` (`LEXITAR_CLI_EMAIL`, `LEXITAR_CLI_PASSWORD`, `LEXITAR_BASE_URL`) as
-  a dedicated account, so they rotate without touching a human's login.
+  the one place the system makes an authorization decision.
+- **The passphrase is stored nowhere, including `plover-keys`.** `LEXITAR_CLI_EMAIL` names the account
+  and `LEXITAR_BASE_URL` the origin; the passphrase is asked for on the terminal, unechoed, and held in
+  memory for the run. It is also the KEK that opens the record (§1), which is why
+  `scripts/rotate-pilot-credentials.ts` prints a rotated one once and records it nowhere — a standing
+  `LEXITAR_CLI_PASSWORD` in a credentials file would reinstate, on one record, the same shape the org
+  key was rejected for. The env var remains for an unattended run against a synthetic patient, whose
+  password is a public literal (`scripts/provision-e2e-patient.ts`).
 - **Destination:** `$XDG_STATE_HOME/lexitar/exports/{blobId}-{stamp}/`, mode 0700, holding
   `record.json`, `documents/`, `transcripts/` and `manifest.json`. `LEXI_EXPORT_DIR` overrides it.
 - **Refusals, with no `--force`:** `scripts/export-dir.ts` rejects any destination inside a git work

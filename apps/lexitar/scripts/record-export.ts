@@ -17,7 +17,7 @@
 // still belongs to the patient and is still exported, marked `referenced: false`.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { authedFetch, cliCredentials, login, openVault, type Session } from "./api-session";
+import { authedFetch, cliCredentials, login, openVault, withPassword, type Session } from "./api-session";
 import { exportRoot, purge, runDir } from "./export-dir";
 import { isMain } from "./is-main";
 import { resolveClientKey } from "./vault-ops";
@@ -143,13 +143,38 @@ export function summaryLines(m: Manifest): string[] {
   return lines;
 }
 
-async function listRawFiles(session: Session, clientId: string): Promise<string[]> {
-  const res = await authedFetch(session, `/api/raw/${clientId}?files=1`);
-  if (!res.ok) throw new Error(`cannot list documents for ${clientId} (${res.status})`);
-  return ((await res.json()) as { files: string[] }).files;
+/**
+ * The document namespace, or nothing.
+ *
+ * A 404 is the answer for a record that has no documents yet, because `mayRead` excludes an
+ * `unclaimed` namespace and the route deliberately returns 404 rather than 403 so a refusal cannot
+ * confirm an object exists (`functions/api/raw/[[path]].ts:87`). The three readings — empty, orphaned,
+ * not yours — are one status and one body to a client, so this reports zero documents and says the
+ * ambiguity out loud rather than inventing a distinction it cannot make.
+ */
+/**
+ * How much text the extraction found, which is the sidecar's own `chars` and NOT the length of the
+ * JSON that wraps it — reporting the wrapper made a 59-character note read as 223 characters of text.
+ */
+export function extractedChars(sidecar: string): number {
+  const parsed = JSON.parse(sidecar) as { chars?: unknown; text?: unknown };
+  if (typeof parsed.chars === "number") return parsed.chars;
+  return typeof parsed.text === "string" ? parsed.text.length : 0;
 }
 
-/** The cached extraction, opened under the DOCUMENT's content key — the sidecar is sealed with it. */
+async function listRawFiles(session: Session, clientId: string): Promise<{ files: string[]; note?: string }> {
+  const res = await authedFetch(session, `/api/raw/${clientId}?files=1`);
+  if (res.status === 404) {
+    return { files: [], note: `no documents under ${clientId} — the namespace is empty, or it is not this account's` };
+  }
+  if (!res.ok) throw new Error(`cannot list documents for ${clientId} (${res.status})`);
+  return { files: ((await res.json()) as { files: string[] }).files };
+}
+
+/**
+ * The cached extraction, opened under the DOCUMENT's content key — `document-extract.ts:190` seals
+ * the sidecar with the same `rawKey` it opened the original with.
+ */
 async function fetchTranscript(
   session: Session,
   clientId: string,
@@ -187,7 +212,7 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
     return;
   }
 
-  const creds = cliCredentials();
+  const creds = await withPassword(cliCredentials());
   const session = await login(creds);
   const { vault, accountId, vaultId, blobId, rotationPending } = await openVault(session);
   const clientKey = args.client ?? resolveClientKey(vault, blobId);
@@ -196,7 +221,9 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
   const clientId = normalizeClientId(clientKey);
   const keyring = (vault as Vault).rawKeys?.[clientId] ?? {};
 
-  const entries = planDocuments(client, await listRawFiles(session, clientId));
+  const { files, note } = await listRawFiles(session, clientId);
+  if (note) out(note);
+  const entries = planDocuments(client, files);
   const names = outputNames(entries);
 
   if (args.dryRun) {
@@ -257,7 +284,7 @@ async function main(argv = process.argv.slice(2)): Promise<void> {
     };
     if (typeof text === "string" && !text.startsWith("!")) {
       entry.transcriptSavedAs = join("transcripts", `${names.get(e.file)!}.json`);
-      entry.transcriptChars = text.length;
+      entry.transcriptChars = extractedChars(text);
       writeFileSync(join(dir, entry.transcriptSavedAs), text, { mode: 0o600 });
     }
     documents.push(entry);

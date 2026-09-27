@@ -17,7 +17,7 @@ import {
 } from "@tinytars/vault/crypto";
 import { toArrayBuffer } from "@tinytars/vault/bytes";
 import { bytesToB64, hexToBytes } from "../../scripts/org-key";
-import { login, openVault, authedFetch, cliCredentials } from "../../scripts/api-session";
+import { login, openVault, authedFetch, cliCredentials, withPassword } from "../../scripts/api-session";
 import type { Vault } from "../../src/lib/types";
 
 const BASE = "https://example.test";
@@ -200,9 +200,39 @@ describe("cliCredentials", () => {
     expect(cliCredentials().baseUrl).toBe("http://localhost:8788");
   });
 
-  it("refuses to guess a missing credential", () => {
+  it("refuses to guess whose record this is", () => {
     vi.stubEnv("LEXITAR_CLI_EMAIL", "");
+    expect(() => cliCredentials()).toThrow(/LEXITAR_CLI_EMAIL/);
+  });
+
+  // A record's password is also the KEK that opens it, so it is not recorded anywhere — the CLI has
+  // to obtain it at the moment of use. An absent passphrase is therefore a normal state, not an error.
+  it("does not demand a passphrase up front", () => {
+    vi.stubEnv("LEXITAR_CLI_EMAIL", EMAIL);
     vi.stubEnv("LEXITAR_CLI_PASSWORD", "");
-    expect(() => cliCredentials()).toThrow(/plover-keys\/health-dash.env/);
+    expect(cliCredentials().password).toBe("");
+  });
+});
+
+describe("withPassword", () => {
+  const base = { baseUrl: "https://x.test", email: EMAIL, password: "" };
+
+  it("asks the terminal when no passphrase was supplied", async () => {
+    const ask = vi.fn().mockResolvedValue(`${PASSWORD}\n`);
+    expect(await withPassword(base, ask)).toEqual({ ...base, password: PASSWORD });
+    expect(ask.mock.calls[0][0]).toContain(EMAIL);
+  });
+
+  it("leaves a supplied passphrase alone, so an unattended run never blocks on a prompt", async () => {
+    const ask = vi.fn();
+    const supplied = { ...base, password: PASSWORD };
+    expect(await withPassword(supplied, ask)).toBe(supplied);
+    expect(ask).not.toHaveBeenCalled();
+  });
+
+  // vitest runs with no TTY, so the default prompt is exercised here exactly as an unattended run
+  // would hit it: it must name the env var rather than block on a terminal that will never answer.
+  it("names the env var rather than hanging when there is no terminal to ask", async () => {
+    await expect(withPassword(base)).rejects.toThrow(/LEXITAR_CLI_PASSWORD/);
   });
 });

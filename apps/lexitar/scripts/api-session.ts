@@ -15,6 +15,14 @@
 // `hd_session` has a 30-day TTL and the only revocation lever is bumping
 // `accounts.sessions_valid_from`, so a cached cookie would be a month-long bearer token in a file —
 // strictly worse than re-deriving from the passphrase each run.
+//
+// AND THE PASSPHRASE IS NOT IN THE CREDENTIALS REPO EITHER. A record's password is both its login
+// secret and the KEK that unwraps its account key, which is why rotate-pilot-credentials.ts:26-27
+// prints a new one once and stores it "nowhere — not in this repo, not in the credentials repo". A
+// standing LEXITAR_CLI_PASSWORD for a real account would reinstate on one record exactly the shape
+// the org key was rejected for: a file on a disk that opens someone's health data. So the default
+// path prompts for it on the terminal, and the env var stays for the unattended case — a synthetic
+// patient, whose password is a public literal (provision-e2e-patient.ts).
 import {
   decryptVaultV2,
   deriveAuthHash,
@@ -68,24 +76,53 @@ export interface OpenVault {
 }
 
 /**
- * The credentials this CLI signs in with, from the operator's private credential store.
+ * The account this CLI signs in as. The passphrase is deliberately allowed to be absent — see the
+ * header and `withPassword`.
  *
  * `LEXITAR_BASE_URL` defaults to the local Functions dev server rather than to a deployment: the
  * default must not be the one that reads a real person's record. Set it explicitly to reach dev.
  */
 export function cliCredentials(): CliCredentials {
   const email = process.env.LEXITAR_CLI_EMAIL;
-  const password = process.env.LEXITAR_CLI_PASSWORD;
-  if (!email || !password) {
-    throw new Error("LEXITAR_CLI_EMAIL and LEXITAR_CLI_PASSWORD are not set — they belong in plover-keys/health-dash.env");
-  }
+  if (!email) throw new Error("set LEXITAR_CLI_EMAIL to the address of the account whose record this is");
   return {
     baseUrl: (process.env.LEXITAR_BASE_URL || "http://localhost:8788").replace(/\/$/, ""),
     email,
-    password,
+    password: process.env.LEXITAR_CLI_PASSWORD ?? "",
     accessClientId: process.env.CF_ACCESS_CLIENT_ID,
     accessClientSecret: process.env.CF_ACCESS_CLIENT_SECRET,
   };
+}
+
+/** Read a line from the terminal without echoing it, so it misses the scrollback and the logs. */
+async function promptHidden(prompt: string): Promise<string> {
+  if (!process.stdin.isTTY) {
+    throw new Error("no terminal to ask for the passphrase — set LEXITAR_CLI_PASSWORD for an unattended run");
+  }
+  const { createInterface } = await import("node:readline");
+  const rl = createInterface({ input: process.stdin, output: process.stderr, terminal: true });
+  const muted = (rl as unknown as { output: { write: (s: string) => void } }).output;
+  const write = muted.write.bind(muted);
+  process.stderr.write(prompt);
+  muted.write = (s: string) => void (s.includes("\n") && write(s));
+  try {
+    return await new Promise<string>((done) => rl.question("", done));
+  } finally {
+    muted.write = write;
+    rl.close();
+  }
+}
+
+/**
+ * The passphrase, from the environment when a caller set one and from the terminal otherwise.
+ *
+ * `ask` is a parameter so the suite can exercise both branches; nothing in production passes it.
+ */
+export async function withPassword(creds: CliCredentials, ask = promptHidden): Promise<CliCredentials> {
+  if (creds.password) return creds;
+  const password = (await ask(`passphrase for ${creds.email}: `)).trim();
+  if (!password) throw new Error("no passphrase given");
+  return { ...creds, password };
 }
 
 function accessHeadersFor(creds: CliCredentials): Record<string, string> {

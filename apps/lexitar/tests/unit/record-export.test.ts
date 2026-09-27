@@ -7,6 +7,7 @@
 import { describe, it, expect } from "vitest";
 import {
   collectAttachments,
+  extractedChars,
   outputNames,
   planDocuments,
   summaryLines,
@@ -198,5 +199,19 @@ describe("summaryLines", () => {
 
   it("surfaces a pending re-key rather than reading past it", () => {
     expect(summaryLines(manifest({ rotationPending: true })).join("\n")).toContain("rotation_pending");
+  });
+});
+
+describe("extractedChars", () => {
+  // The sidecar is a StoredExtraction, so the JSON around the text is most of its length: reporting
+  // that made a 59-character note read as 223 characters of extracted text.
+  it("counts the extraction's own text, not the JSON that wraps it", () => {
+    const sidecar = JSON.stringify({ documentKind: "Text document", text: "Ferritin 18 ng/mL.", chars: 18 });
+    expect(sidecar.length).toBeGreaterThan(60);
+    expect(extractedChars(sidecar)).toBe(18);
+  });
+
+  it("falls back to the text when an older sidecar carries no count", () => {
+    expect(extractedChars(JSON.stringify({ text: "abcd" }))).toBe(4);
   });
 });

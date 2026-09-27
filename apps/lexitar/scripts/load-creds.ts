@@ -13,9 +13,10 @@
 // scripts/wrangler.sh loads bash-side.
 //
 // The loader is deliberately generic — every key in those files is surfaced — so nothing here has to
-// change when one is added. health-dash.env also carries LEXITAR_CLI_EMAIL / LEXITAR_CLI_PASSWORD /
-// LEXITAR_BASE_URL, the principal scripts/api-session.ts signs in as; that account is dedicated to
-// the CLI so it can be rotated and revoked without touching a human's login.
+// change when one is added. Which is why scripts/api-session.ts's LEXITAR_CLI_* vars are NOT among
+// them: an account's password is also the KEK that opens its record, and rotate-pilot-credentials.ts
+// stores a new one "nowhere — not in this repo, not in the credentials repo". That CLI asks for it on
+// the terminal instead.
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
