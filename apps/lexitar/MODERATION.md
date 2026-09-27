@@ -5,8 +5,10 @@ ways that matter, and the people sharing a record with each other can behave bad
 document for both: how a user says so, who reads it, how fast, and — the part most moderation
 policies skip — what the operator is and is not able to do about it afterwards.
 
-Accountable owner: **Pablo Rodriguez, Tiny Tars Foundation**. Response target, quoted verbatim from
-what the product tells the user as they file:
+Accountable for every report: **the Tiny Tars Foundation's safety contact**, reachable through the
+Foundation's contact page. The Foundation is the accountable body and the contact is a standing role
+within it, so the commitment outlives whoever holds it. Response target, quoted verbatim from what the
+product tells the user as they file:
 
 > A person reads every report. We aim to acknowledge within 3 business days and to resolve within 10;
 > reports of illegal material are looked at within 1 business day.

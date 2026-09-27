@@ -29,8 +29,8 @@ describe("brand / product naming (W40)", () => {
 // dialog, MODERATION.md and (in plover-code) the published policy — so they are one string here and
 // this suite is what stops the document drifting away from what the user was told as they filed.
 describe("brand / safety channel (DPG 9B.4, 9B.5)", () => {
-  it("names an accountable person and commits to a measurable time", () => {
-    expect(SAFETY_OWNER).toBe("Pablo Rodriguez, Tiny Tars Foundation");
+  it("names an accountable role at the Foundation and commits to a measurable time", () => {
+    expect(SAFETY_OWNER).toBe("the Tiny Tars Foundation's safety contact");
     expect(SAFETY_RESPONSE).toContain("3 business days");
     expect(SAFETY_RESPONSE).toContain("1 business day");
   });

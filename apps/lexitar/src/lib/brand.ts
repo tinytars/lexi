@@ -42,7 +42,11 @@ export const PRIVACY_STATEMENT =
 // DPG 9B.4/9B.5 — who answers a safety report and how fast. Audited copy, and here rather than in the
 // dialog because MODERATION.md, the report control and the Foundation's published policy all state it:
 // three texts that disagree about a response time are worse than none.
-export const SAFETY_OWNER = "Pablo Rodriguez, Tiny Tars Foundation";
+//
+// A role at the accountable organisation, not an individual's name: 9B.4 asks who answers for the
+// service, which is the Foundation, and a personal name in published copy would have to be reissued
+// every time the holder changes while adding nothing a reporter can act on.
+export const SAFETY_OWNER = "the Tiny Tars Foundation's safety contact";
 export const SAFETY_RESPONSE =
   "A person reads every report. We aim to acknowledge within 3 business days and to resolve within 10; " +
   "reports of illegal material are looked at within 1 business day.";
