@@ -6,12 +6,9 @@ asks for each indicator. Each indicator gets a verdict, the evidence behind it, 
 between it and "meets". The gaps are the input to a development plan. This doc is not a plan, a
 tracker, or a history: when LexiTar changes, rewrite the affected verdict to describe the new state.
 
-**Assessed against:** `dev` at `9e5e91a`, and the live `tinytars.foundation/privacy` and `/terms` pages.
-`main` — what production runs — is twenty-three commits behind it and sets `REPORTS: "never"`, so where dev and
-production differ the verdict says which, rather than averaging them. `@pablotech/neuro`'s licence
-file is in its repository and reaches the npm registry with the next release, which publishes a package
-version and is therefore the owner's merge, so where the repository and the registry differ the verdict
-says which.
+**Assessed against:** `dev` at `c7b89a5`, and the live `tinytars.foundation/privacy` and `/terms` pages.
+`main` — what production runs — is twenty-six commits behind it and sets `REPORTS: "never"`, so where dev and
+production differ the verdict says which, rather than averaging them.
 **Scope:** the software in this repo (`apps/lexitar`, `packages/frame`), the open packages it is
 built from (`@tinytars/vault`, `@pablotech/akesi`, `@pablotech/neuro`), and the finding-DAG content it
 reasons over (`tinytars/reasoning`). Users' health data is never part of the DPG.
@@ -33,13 +30,13 @@ right, but there is nothing to fix.
 | **2** | **Open licensing** | **✅** | |
 | 2.1 | Which approved open licence | ✅ | MIT for the software, CC BY-SA 4.0 for the finding-DAG content — both DPGA-approved |
 | 2.2 | Public evidence of it | ✅ | A `LICENSE` file in every public repo, and in every separately-published package |
-| **3** | **Clear ownership** | **🟡** | |
+| **3** | **Clear ownership** | **✅** | |
 | 3.1 | Who owns the solution | ✅ | Tiny Tars Foundation |
 | 3.2 | Public evidence of ownership | ✅ | `../../LICENSE`, `../../README.md` §License, Terms §Intellectual property |
 | 3.3 | Type of organisation | ✅ | 501(c)(3) non-profit |
 | 3.4 | Country of the owner | ✅ | United States |
 | 3.5 | Do you own all the code | ⚪ | No — the reasoning core is copyright an individual and MIT-licensed. Stated publicly; 3.6 is the question that scores |
-| 3.6 | If not, the right to redistribute | 🟡 | MIT throughout and a DCO gated in CI; `@pablotech/neuro`'s licence text reaches the registry on the next release |
+| 3.6 | If not, the right to redistribute | ✅ | MIT on every component, licence text in every published package, and a DCO sign-off gated in CI |
 | **4** | **Platform independence** | **✅** | |
 | 4.1 | Core technologies | ✅ | TypeScript, Svelte, Web Crypto, WebAuthn, SQLite-compatible storage, object storage |
 | 4.2 | Any closed dependency | ⚪ | Yes — hosting, models, speech, email, OAuth. With reports attached, native PDF input too |
@@ -87,9 +84,8 @@ right, but there is nothing to fix.
 
 **Verdict: one indicator short of submittable.** Section 9 is green throughout — 9A, 9B and 9C — and
 indicator 7 is now the only outright failure, on the two questions a document cannot answer: no law is
-named anywhere, and there is no consent surface for special-category health data. Indicator 3's
-ownership split (the reasoning core is copyright an individual, not the Foundation) and the missing
-end-user guide are smaller but real. Everything else passes, or passes with a note.
+named anywhere, and there is no consent surface for special-category health data. The missing end-user
+guide is smaller but real. Everything else passes, or passes with a note.
 
 Section 9 turned green on product work, not on wording. Between 2026-09-24 and 2026-09-27: uploaded
 originals are sealed under per-file content keys inside the vault and an unsealed upload is refused
@@ -99,7 +95,7 @@ became a two-step control in the product that reports what it could not attribut
 recall; the 16+ limit became a refusal in the browser rather than a sentence in the Terms; and a report
 about a wrong answer, illegal material or an abusive account now reaches a person, through a private
 tracker, against stated times. The two honest qualifications are stated where they belong rather than
-averaged away: production runs `main`, twenty-three commits behind, so the refusal and the disclosure are true
+averaged away: production runs `main`, twenty-six commits behind, so the refusal and the disclosure are true
 of the software before they are true of the deployment; and documents uploaded before the sealing are
 still being converted where they sit, which is why `MODERATION.md` is staged rather than unconditional.
 
@@ -122,18 +118,16 @@ non-communicable disease) and **SDG 10** (target 10.2, inclusion regardless of s
 **The form asks:** which OSI-approved license, with a link to it.
 
 `../../LICENSE` is MIT, copyright Tiny Tars Foundation, in a public repo, and `packages/frame` carries
-its own copy because it publishes to npm separately. `@tinytars/vault` is MIT. `@pablotech/akesi` ships an
-MIT `LICENSE` file in its published package; `@pablotech/neuro`'s is in its repository. The finding-DAG
+its own copy because it publishes to npm separately. `@tinytars/vault` is MIT. `@pablotech/akesi` and
+`@pablotech/neuro` both ship an MIT `LICENSE` file in their published packages, as of 0.1.70. The finding-DAG
 content in `tinytars/reasoning` is CC BY-SA 4.0, copyright the Foundation — also a DPGA-approved licence,
 and the right kind for content rather than software. Runtime dependencies are open too: SimpleWebAuthn
 (MIT), pdf.js (Apache-2.0), SheetJS `xlsx` 0.18.5 (Apache-2.0).
 
-**Gaps**
-- None blocking. `@pablotech/akesi` and `@pablotech/neuro` declare the `license` field in `package.json`
-  and `@pablotech/neuro` carries a `LICENSE` file, in the repository; both reach the registry with the
-  next release, until when a scanner reading the published packages reports them as UNKNOWN.
+**Gaps** — none. Every published package a scanner can reach declares its licence in `package.json`
+and carries the licence text in the tarball.
 
-## 3. Clear ownership — 🟡
+## 3. Clear ownership — ✅
 
 **The form asks:** who owns it, public evidence of ownership, the owner's country, and whether the owner
 owns all the code. If not, what gives it the right to redistribute (e.g. a Contributor License Agreement).
@@ -148,7 +142,9 @@ artifact an npm consumer installs and not only of the repository a reviewer brow
 licensed to everyone, the Foundation included, under MIT: a perpetual, irrevocable grant to use, modify
 and redistribute, with nothing running back to the author and no way to withdraw it. The form's "do you
 own all of the code" answer is therefore No, and the right to redistribute rests on the same licence any
-operator gets — anyone can fork the whole stack on exactly the terms LexiTar itself has.
+operator gets — anyone can fork the whole stack on exactly the terms LexiTar itself has. Those terms
+travel with the artifact and not only with the repository: both packages ship the MIT text in the tarball
+they publish, as of 0.1.70.
 
 Inbound contributions arrive under a [Developer Certificate of Origin](https://developercertificate.org/)
 sign-off: stated in `../../CONTRIBUTING.md`, restated as a checkbox in the pull-request template, and
@@ -168,10 +164,6 @@ is free, under the zero-monetization policy.
   continuity risk — were the author to stop maintaining the packages the Foundation would have to fork,
   which MIT permits outright and which no third party could prevent — and as a governance question,
   since the copyright sits with the Foundation's founder.
-- **`@pablotech/neuro`'s licence text is in its repository and not yet in its published package.** It
-  reaches the registry with the next release, which publishes a package version. Until then a consumer
-  installing that package receives code whose terms are stated in the repository it came from rather
-  than in the package itself, which is what holds 3.6 short of met.
 
 ## 4. Platform independence — ✅
 
@@ -371,7 +363,7 @@ What's in place:
 
 **Gaps** — none against the software in this repo.
 
-**One deployment note, which is not a gap in the software.** Production runs `main`, twenty-three
+**One deployment note, which is not a gap in the software.** Production runs `main`, twenty-six
 commits behind `dev`, so until that promotion it serves the pre-refusal build and sets `REPORTS: "never"` (no
 document leaves at all under that setting). A preview sweep on the dev store reports zero *sealable*
 plaintext. The production store's own preview sweep was run read-only on 2026-09-27 and is the honest
