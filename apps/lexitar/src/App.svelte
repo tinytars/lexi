@@ -20,6 +20,7 @@
   import { createRecoveryController } from "@tinytars/frame/recovery-controller.svelte";
   import { createSupportAccess } from "@tinytars/frame/support-access.svelte";
   import { createAccountMethods, type RemovableMethod } from "@tinytars/frame/account-methods.svelte";
+  import { eraseMyAccount, erasureSummary } from "./lib/erase-account";
   import { createRosterSession, RESUME_MARKER, type RosterPatient } from "@tinytars/frame/roster-session.svelte";
   import { ensureOrgRecoveryEnvelope } from "@tinytars/vault/org-recovery";
   import { fetchPersonalizedRange } from "./lib/ranges-client";
@@ -407,7 +408,7 @@
   // that would be the same fact written in eight places, which is how they drift apart.
 
   const announcedError = $derived(
-    vaultSave.error ?? chatSession.saveError ?? error ?? vaultAccess.error ?? account.error ?? googleError ?? refreshError ?? recovery.issueError ??
+    vaultSave.error ?? chatSession.saveError ?? error ?? vaultAccess.error ?? account.error ?? googleError ?? refreshError ?? recovery.issueError ?? eraseError ??
       (aiAvailability.outOfCredit ? AI_ERROR_MESSAGES.insufficient_credit : ""),
   );
 
@@ -805,6 +806,30 @@
     refreshController?.abort();
   }
 
+  // 9A / DPGA 7.5 — the self-erasure the route has always allowed and nothing called. Two steps
+  // (arm, then echo your own email) matching the "Remove recovery key" pattern beside it, because
+  // this one cannot be undone by anyone, including support.
+  let eraseArmed = $state(false);
+  let eraseEmail = $state("");
+  let eraseBusy = $state(false);
+  let eraseError = $state<string | null>(null);
+  let eraseResult = $state<string | null>(null);
+
+  async function eraseAccount() {
+    eraseBusy = true;
+    eraseError = null;
+    try {
+      eraseResult = erasureSummary(await eraseMyAccount(eraseEmail));
+      // The session is already revoked server-side; drop the local record so nothing decrypted
+      // outlives the account on this screen. The summary stays visible on the lock screen.
+      await signOut();
+    } catch (err) {
+      eraseError = (err as Error).message;
+    } finally {
+      eraseBusy = false;
+    }
+  }
+
   async function signOut() {
     try { await fetch("/api/auth/logout", { method: "POST" }); } catch { /* best-effort; clear locally regardless */ }
     try { await clearAccountKey(); } catch { /* W49 — best-effort; drop the persisted resume key */ }
@@ -1129,6 +1154,11 @@
 <!-- W48 — recovery is no longer forced at signup; nudge (dismissible) until the account has a recovery code. -->
 {#if SHOW_RECOVERY_NUDGE && account.info && !account.hasRecovery && !recovery.nudgeDismissed}
   <div class="verify-banner warn recovery-nudge">Set up account recovery so you can get back in if you lose your sign-in.<button class="verify-link" onclick={() => { recovery.nudgeDismissed = true; account.openPanel(); }}>Set up</button><button class="verify-x" onclick={() => (recovery.nudgeDismissed = true)} aria-label="Dismiss">✕</button></div>
+{/if}
+<!-- The erasure report, shown here because signing out unmounts the Account modal it was asked for
+     in. The account is gone by now, so this banner is the only place the count is ever stated. -->
+{#if eraseResult}
+  <div class="verify-banner erase-report">{eraseResult}<button class="verify-x" onclick={() => (eraseResult = null)} aria-label="Dismiss">✕</button></div>
 {/if}
 </div>
 {#if roster.resuming}
@@ -1659,6 +1689,23 @@
           {/each}
         </ul>
       {/if}
+      {#if !roster.isProvider}
+        <p class="access-subhead">Delete this account</p>
+        <p class="access-intro">Deletes your records, your uploaded files, your chat history and this account. Nobody can undo it — not you, not LexiTar.</p>
+        {#if eraseArmed}
+          <p class="access-kind">Type your email address ({account.info?.email ?? "your account email"}) to confirm.</p>
+          <div class="account-add">
+            <input type="email" aria-label="Confirm your email address" placeholder="you@example.com" bind:value={eraseEmail} disabled={eraseBusy} />
+            <button class="access-revoke" disabled={eraseBusy || !eraseEmail} onclick={eraseAccount}>{eraseBusy ? "Deleting…" : "Delete everything"}</button>
+            <button disabled={eraseBusy} onclick={() => { eraseArmed = false; eraseEmail = ""; eraseError = null; }}>Cancel</button>
+          </div>
+        {:else}
+          <div class="account-add">
+            <button class="access-revoke" disabled={account.busy} onclick={() => (eraseArmed = true)}>Delete this account</button>
+          </div>
+        {/if}
+        {#if eraseError}<p class="access-error">{eraseError}</p>{/if}
+      {/if}
       {#if account.error}<p class="access-error">{account.error}</p>{/if}
     </div>
   </Modal>
@@ -1726,6 +1773,7 @@
   .access-list li { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.6rem 0.9rem; border-bottom: 1px solid var(--border); }
   .access-list li:last-child { border-bottom: none; }
   .access-kind { color: var(--muted); font-size: 0.8rem; margin-left: 0.4rem; }
+  .erase-report { background: var(--band); color: var(--fg); }
   .access-revoke { padding: 0.3rem 0.7rem; border: 1px solid var(--alert); background: transparent; color: var(--alert); border-radius: 8px; cursor: pointer; font: inherit; font-size: 0.85rem; }
   .access-revoke:disabled { opacity: 0.5; cursor: default; }
   .access-subhead { font-weight: 600; margin: 0 0 0.4rem; font-size: 0.9rem; }
