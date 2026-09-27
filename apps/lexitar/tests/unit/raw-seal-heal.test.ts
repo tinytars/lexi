@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { healRawSealing } from "../../src/lib/raw-seal-heal";
 import { clearRawKeyring, rawKeyFor, setRawKeyRefresh, setRawKeyring } from "../../src/lib/vault-raw-keys";
 import { openTestVault } from "../support/raw-keys";
-import { isSealed, openRaw, sealRaw } from "../../src/lib/raw-cipher";
+import { openRaw, sealRaw } from "../../src/lib/raw-cipher";
 
 const KEY = "A".repeat(43) + "=";
 const plain = (file: string): Uint8Array => new TextEncoder().encode(`the bytes of ${file}`);
