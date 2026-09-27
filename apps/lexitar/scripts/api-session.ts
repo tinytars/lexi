@@ -77,15 +77,10 @@ export function cliCredentials(): CliCredentials {
   const email = process.env.LEXITAR_CLI_EMAIL;
   const password = process.env.LEXITAR_CLI_PASSWORD;
   if (!email || !password) {
-    throw new Error(
-      "LEXITAR_CLI_EMAIL and LEXITAR_CLI_PASSWORD are not set — they belong in plover-keys/health-dash.env",
-    );
+    throw new Error("LEXITAR_CLI_EMAIL and LEXITAR_CLI_PASSWORD are not set — they belong in plover-keys/health-dash.env");
   }
   return {
-    baseUrl: (process.env.LEXITAR_BASE_URL || "http://localhost:8788").replace(
-      /\/$/,
-      "",
-    ),
+    baseUrl: (process.env.LEXITAR_BASE_URL || "http://localhost:8788").replace(/\/$/, ""),
     email,
     password,
     accessClientId: process.env.CF_ACCESS_CLIENT_ID,
@@ -118,14 +113,9 @@ function assertNotAccessWall(res: Response, url: string): void {
 }
 
 function sessionCookie(res: Response): string {
-  const all = res.headers.getSetCookie?.() ?? [
-    res.headers.get("set-cookie") ?? "",
-  ];
-  const token = all
-    .map((c) => /(?:^|;\s*)hd_session=([^;]*)/.exec(c)?.[1])
-    .find((v) => v);
-  if (!token)
-    throw new Error("sign-in succeeded but no hd_session cookie came back");
+  const all = res.headers.getSetCookie?.() ?? [res.headers.get("set-cookie") ?? ""];
+  const token = all.map((c) => /(?:^|;\s*)hd_session=([^;]*)/.exec(c)?.[1]).find((v) => v);
+  if (!token) throw new Error("sign-in succeeded but no hd_session cookie came back");
   return `hd_session=${token}`;
 }
 
@@ -135,10 +125,7 @@ export async function login(creds: CliCredentials): Promise<Session> {
   const saltUrl = `${creds.baseUrl}/api/auth/password/salt?email=${encodeURIComponent(creds.email)}`;
   const saltRes = await fetch(saltUrl, { headers: accessHeaders });
   assertNotAccessWall(saltRes, saltUrl);
-  if (!saltRes.ok)
-    throw new Error(
-      `sign-in is unavailable (${saltRes.status} from ${saltUrl})`,
-    );
+  if (!saltRes.ok) throw new Error(`sign-in is unavailable (${saltRes.status} from ${saltUrl})`);
   // A DECOY salt comes back for an unknown address, so a wrong email fails at unwrap rather than
   // here. Whatever fails below must therefore name the address as a possible cause.
   const { salt } = (await saltRes.json()) as { salt: string };
@@ -159,8 +146,7 @@ export async function login(creds: CliCredentials): Promise<Session> {
         "has no password credential (a passkey-only or Google-only account cannot be used from the CLI)",
     );
   }
-  if (!res.ok)
-    throw new Error(`sign-in failed (${res.status} from ${loginUrl})`);
+  if (!res.ok) throw new Error(`sign-in failed (${res.status} from ${loginUrl})`);
 
   const data = (await res.json()) as LoginResponse;
   return {
@@ -174,11 +160,7 @@ export async function login(creds: CliCredentials): Promise<Session> {
 }
 
 /** A cookie-bearing fetch against the signed-in origin. `path` is absolute-from-root. */
-export function authedFetch(
-  session: Session,
-  path: string,
-  init: RequestInit = {},
-): Promise<Response> {
+export function authedFetch(session: Session, path: string, init: RequestInit = {}): Promise<Response> {
   return fetch(`${session.baseUrl}${path}`, {
     ...init,
     headers: {
@@ -192,26 +174,15 @@ export function authedFetch(
 /** Unwraps the account key, then the DEK, then decrypts the vault blob the session is entitled to. */
 export async function openVault(session: Session): Promise<OpenVault> {
   if (!session.vaultId || !session.r2Key || !session.ownerEnvelope) {
-    throw new Error(
-      `${session.email} has no vault to export (the account exists but holds no record)`,
-    );
+    throw new Error(`${session.email} has no vault to export (the account exists but holds no record)`);
   }
   const blobId = vaultIdFromR2Key(session.r2Key);
-  if (!blobId)
-    throw new Error(
-      `cannot address the vault: r2Key ${session.r2Key} is not a vault blob`,
-    );
+  if (!blobId) throw new Error(`cannot address the vault: r2Key ${session.r2Key} is not a vault blob`);
 
-  const kek = await deriveKekFromPassword(
-    session.password,
-    hexToBytes(session.kdfParams.salt),
-  );
+  const kek = await deriveKekFromPassword(session.password, hexToBytes(session.kdfParams.salt));
   let dek: CryptoKey;
   try {
-    const privateKey = await unwrapPrivateKey(
-      b64ToBytes(session.wrappedPrivateKey),
-      kek,
-    );
+    const privateKey = await unwrapPrivateKey(b64ToBytes(session.wrappedPrivateKey), kek);
     dek = await unwrapDEKWithPrivateKey(
       b64ToBytes(session.ownerEnvelope.wrappedDEK),
       session.ownerEnvelope.ephemeralPublicKeyJwk,
@@ -220,9 +191,7 @@ export async function openVault(session: Session): Promise<OpenVault> {
   } catch {
     // The server verified `authHash`, which lives in a different KDF domain from the KEK — so a
     // failure here is a credential mismatch this account's own browser would hit too, not a bug.
-    throw new Error(
-      `the passphrase for ${session.email} does not open its account key`,
-    );
+    throw new Error(`the passphrase for ${session.email} does not open its account key`);
   }
 
   const res = await authedFetch(session, `/api/vault/${blobId}`);

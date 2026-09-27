@@ -17,12 +17,7 @@ import {
 } from "@tinytars/vault/crypto";
 import { toArrayBuffer } from "@tinytars/vault/bytes";
 import { bytesToB64, hexToBytes } from "../../scripts/org-key";
-import {
-  login,
-  openVault,
-  authedFetch,
-  cliCredentials,
-} from "../../scripts/api-session";
+import { login, openVault, authedFetch, cliCredentials } from "../../scripts/api-session";
 import type { Vault } from "../../src/lib/types";
 
 const BASE = "https://example.test";
@@ -67,10 +62,7 @@ type Over = {
 };
 
 function origin(over: Over = {}) {
-  return async (
-    input: RequestInfo | URL,
-    init?: RequestInit,
-  ): Promise<Response> => {
+  return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = String(input);
     const body = init?.body ? JSON.parse(String(init.body)) : null;
     sent.push({
@@ -78,11 +70,7 @@ function origin(over: Over = {}) {
       body,
       cookie: (init?.headers as Record<string, string> | undefined)?.cookie,
     });
-    const json = (
-      status: number,
-      b: unknown,
-      headers: Record<string, string> = {},
-    ) =>
+    const json = (status: number, b: unknown, headers: Record<string, string> = {}) =>
       new Response(JSON.stringify(b), {
         status,
         headers: { "content-type": "application/json", ...headers },
@@ -97,8 +85,7 @@ function origin(over: Over = {}) {
       return json(200, { salt: SALT_HEX, iterations: 200_000 });
     }
     if (url === `${BASE}/api/auth/password/login`) {
-      if (body?.authHash !== fixture.authHash)
-        return json(401, { error: "invalid credentials" });
+      if (body?.authHash !== fixture.authHash) return json(401, { error: "invalid credentials" });
       return json(
         200,
         {
@@ -112,14 +99,12 @@ function origin(over: Over = {}) {
           ...over.loginBody,
         },
         {
-          "set-cookie":
-            "hd_session=tok-abc; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=2592000",
+          "set-cookie": "hd_session=tok-abc; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=2592000",
         },
       );
     }
     if (url === `${BASE}/api/vault/blob-1`) {
-      if (over.vaultStatus)
-        return new Response("nope", { status: over.vaultStatus });
+      if (over.vaultStatus) return new Response("nope", { status: over.vaultStatus });
       return new Response(toArrayBuffer(fixture.blob), {
         status: 200,
         headers: { "content-type": "application/octet-stream" },
@@ -157,9 +142,7 @@ describe("login", () => {
   });
 
   it("names every cause of a 401, because the server returns one status for all of them", async () => {
-    await expect(login(creds("wrong"))).rejects.toThrow(
-      /password is wrong.*address is unknown.*passkey-only/s,
-    );
+    await expect(login(creds("wrong"))).rejects.toThrow(/password is wrong.*address is unknown.*passkey-only/s);
   });
 
   it("blames Cloudflare Access when the origin answers HTML instead of JSON", async () => {
@@ -195,23 +178,17 @@ describe("openVault", () => {
     globalThis.fetch = origin({
       loginBody: { vaultId: null, r2Key: null, ownerEnvelope: null },
     }) as typeof fetch;
-    await expect(openVault(await login(creds()))).rejects.toThrow(
-      /no vault to export/,
-    );
+    await expect(openVault(await login(creds()))).rejects.toThrow(/no vault to export/);
   });
 
   it("reports a passphrase that cannot open the account key as a credential failure", async () => {
     const session = await login(creds());
-    await expect(
-      openVault({ ...session, password: "not the passphrase" }),
-    ).rejects.toThrow(/does not open its account key/);
+    await expect(openVault({ ...session, password: "not the passphrase" })).rejects.toThrow(/does not open its account key/);
   });
 
   it("reports an unreadable vault blob with its status", async () => {
     globalThis.fetch = origin({ vaultStatus: 403 }) as typeof fetch;
-    await expect(openVault(await login(creds()))).rejects.toThrow(
-      /cannot read vault blob-1 \(403\)/,
-    );
+    await expect(openVault(await login(creds()))).rejects.toThrow(/cannot read vault blob-1 \(403\)/);
   });
 });
 
