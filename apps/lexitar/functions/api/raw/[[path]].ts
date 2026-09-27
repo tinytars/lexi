@@ -5,6 +5,7 @@ import { logRequest } from "../../_lib/log";
 import { normalizeClientId } from "../../../src/lib/client-id";
 import { storeKey } from "../../_lib/store";
 import { rawAccessFor, mayRead, mayWrite, mayDestroy, type RawAccess } from "../../_lib/raw-owner";
+import { auditPrivilegedRead, sha8Of, AUDIT_UNAVAILABLE } from "../../_lib/phi-audit";
 import { json } from "../../_lib/http";
 import type { ObjectBucket } from "../../_lib/object-bucket";
 import { MAX_PAGE_COUNT, isPageCount, isPdfFile } from "../../_lib/raw-files";
@@ -91,6 +92,19 @@ export async function onRequestGet(context: Ctx): Promise<Response> {
     log(404, { errorCode: refusal(access), access: access.kind });
     return json(404, { error: "not found" });
   }
+  // An `owner` access carries no vault and no subject because it needs none — the caller IS the subject,
+  // so there is nothing to disclose. Only the `granted` shape names someone else.
+  const auditRead = (action: "raw_object_read" | "raw_namespace_listed", meta: Record<string, unknown>) =>
+    access.kind === "granted"
+      ? auditPrivilegedRead(env.DB, {
+          actor: session.accountId,
+          subject: access.subjectAccountId,
+          vaultId: access.vaultId,
+          action,
+          consentRef: access.consentRef,
+          meta,
+        })
+      : Promise.resolve(null);
 
   // W77 — the corpus refuses to assemble while any PDF is unmeasured, which would strand every
   // object uploaded before page counts existed. Rather than guess a count from byte size (a 12 MB
@@ -103,6 +117,13 @@ export async function onRequestGet(context: Ctx): Promise<Response> {
     const keys = listing
       ? await listRawObjectsUnder(env.DB, prefix)
       : (await listRawPdfsUnder(env.DB, prefix)).filter((r) => r.pages === null).map((r) => r.r2_key);
+    // The keys ARE filenames, so a listing is a disclosure of which documents exist. `meta` records how
+    // many, never which.
+    const refused = await auditRead("raw_namespace_listed", { count: keys.length });
+    if (refused) {
+      log(503, { errorCode: AUDIT_UNAVAILABLE, access: access.kind });
+      return refused;
+    }
     log(200, { access: access.kind });
     return json(200, { files: keys.map((k) => k.slice(prefix.length)) });
   }
@@ -111,6 +132,14 @@ export async function onRequestGet(context: Ctx): Promise<Response> {
   if (!obj) {
     log(404, { errorCode: "not_found", access: access.kind });
     return json(404, { error: "raw source not found" });
+  }
+
+  // Per object, never coalesced: "which documents were disclosed" is the question this log exists to
+  // answer, and one row per request could not answer it.
+  const refused = await auditRead("raw_object_read", { sha8: sha8Of(file) });
+  if (refused) {
+    log(503, { errorCode: AUDIT_UNAVAILABLE, access: access.kind });
+    return refused;
   }
 
   log(200, { access: access.kind });

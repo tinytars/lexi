@@ -6,6 +6,7 @@ import { modelErrorReply } from "../_lib/model-errors";
 import { modelFor } from "../_lib/inference/resolve";
 import { storeKey } from "../_lib/store";
 import { rawAccessFor, mayRead, type RawAccess } from "../_lib/raw-owner";
+import { auditPrivilegedRead, sha8Of, AUDIT_UNAVAILABLE } from "../_lib/phi-audit";
 import { readDocument, DOCUMENT_READ_FAILURE, type DocumentReading, type StoredExtraction } from "@pablotech/akesi/document-read";
 import { validatePageImages } from "../_lib/page-images";
 import { isSealed, openRaw, RawKeyError, sealRaw } from "../../src/lib/raw-cipher";
@@ -114,6 +115,23 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
   const access = await rawAccessFor(env.DB, env, session.accountId, id);
   if (!mayRead(access)) {
     return finish(404, { error: "not found", errorCode: "not_found" }, { errorCode: "not_found" });
+  }
+
+  // Audited above the cache for the same reason the gate is: what this route hands back is the
+  // document's full transcription, so the cached branch is as much a disclosure as a fresh extraction.
+  if (access.kind === "granted") {
+    const refused = await auditPrivilegedRead(env.DB, {
+      actor: session.accountId,
+      subject: access.subjectAccountId,
+      vaultId: access.vaultId,
+      action: "document_text_read",
+      consentRef: access.consentRef,
+      meta: { sha8: sha8Of(key) },
+    });
+    if (refused) {
+      logRequest({ route: ROUTE, status: 503, latencyMs: Date.now() - start, requestId, errorCode: AUDIT_UNAVAILABLE });
+      return refused;
+    }
   }
 
   const sidecarKey = storeKey(env, "text", id, `${key}.json`);

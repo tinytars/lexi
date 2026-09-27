@@ -21,6 +21,7 @@
 
 import type { D1Database } from "./identity-types";
 import { getEnvelope, listVaultsForOwner } from "./identity-vault";
+import { getActiveProviderLink } from "./identity-providers";
 import { recordRawObject } from "./identity-audit";
 import { listAllKeys, type ObjectBucket } from "./object-bucket";
 import { storeKey, type StoreEnv } from "./store";
@@ -35,7 +36,7 @@ import { normalizeClientId } from "../../src/lib/client-id";
 // (proof of a stored file's full hash), and `scripts/orphan-sweep.ts` for what nobody claims.
 export type RawAccess =
   | { kind: "owner" }
-  | { kind: "granted"; ownerAccountId: string }
+  | { kind: "granted"; ownerAccountId: string; vaultId: string; subjectAccountId: string; consentRef: string | null }
   | { kind: "unclaimed" }
   | { kind: "orphaned" }
   | { kind: "denied"; ownerAccountId: string };
@@ -85,7 +86,7 @@ export async function claimNamespace(db: D1Database, env: NamespaceEnv, clientId
 }
 
 /** May this access see the namespace's objects? Only its owner or someone holding a live grant. */
-export const mayRead = (access: RawAccess): access is { kind: "owner" } | { kind: "granted"; ownerAccountId: string } =>
+export const mayRead = (access: RawAccess): access is Extract<RawAccess, { kind: "owner" | "granted" }> =>
   access.kind === "owner" || access.kind === "granted";
 
 /** Destroying is held to the read rule: there is no "first deleter", and plaintext PHI has no undo (W75). */
@@ -103,6 +104,10 @@ export async function rawAccessFor(
 ): Promise<RawAccess> {
   const ownerAccountId = await ownerOfClientNamespace(db, env, clientId);
   if (!ownerAccountId) return (await namespaceIsEmpty(env, clientId)) ? { kind: "unclaimed" } : { kind: "orphaned" };
+  // No audit fields on this branch, deliberately: actor === subject, so there is no disclosure to
+  // record. It carries the known caveat that "owner" here means FIRST WRITER, so a clinician who
+  // uploaded into a patient's namespace reads it unaudited — the same first-writer gap already noted
+  // below, tracked separately rather than papered over with a row naming the wrong subject.
   if (ownerAccountId === accountId) return { kind: "owner" };
 
   // Access is a live envelope between these two accounts, checked in BOTH directions.
@@ -118,12 +123,23 @@ export async function rawAccessFor(
   // Widening to both directions grants nothing new: a live provider link already means each side can
   // open the other's relevant vault. It just stops an accident of write ORDER from deciding who is
   // locked out.
+  //
+  // `granted` names the MATCHED CANDIDATE's vault owner, and that is what the audit row's subject must
+  // be — never `ownerAccountId`, which is only the namespace's first writer. The two differ exactly on
+  // the reverse candidate: there the vault belongs to the CALLER, so a patient reading a file their own
+  // clinician uploaded first is not a disclosure at all, while `ownerAccountId` would have filed it as
+  // one against the clinician — a row on the wrong person's screen naming the wrong person as read.
+  // `vaultId` and the owner are both in hand at the `return`, so naming them costs no extra read; only
+  // `consentRef` does, one indexed lookup on this branch alone, and only after `getEnvelope` has already
+  // decided access. The order matters: `getEnvelope` stays the thing that authorises.
   const candidates = [
-    ...(await listVaultsForOwner(db, ownerAccountId)).map((v) => ({ vaultId: v.vaultId, principal: accountId })),
-    ...(await listVaultsForOwner(db, accountId)).map((v) => ({ vaultId: v.vaultId, principal: ownerAccountId })),
+    ...(await listVaultsForOwner(db, ownerAccountId)).map((v) => ({ vaultId: v.vaultId, vaultOwner: ownerAccountId, principal: accountId })),
+    ...(await listVaultsForOwner(db, accountId)).map((v) => ({ vaultId: v.vaultId, vaultOwner: accountId, principal: ownerAccountId })),
   ];
   for (const c of candidates) {
-    if (await getEnvelope(db, c.vaultId, c.principal)) return { kind: "granted", ownerAccountId };
+    if (!(await getEnvelope(db, c.vaultId, c.principal))) continue;
+    const link = await getActiveProviderLink(db, c.vaultOwner, c.principal);
+    return { kind: "granted", ownerAccountId, vaultId: c.vaultId, subjectAccountId: c.vaultOwner, consentRef: link?.consentRef ?? null };
   }
   return { kind: "denied", ownerAccountId };
 }
