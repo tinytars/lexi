@@ -21,9 +21,10 @@
 
 import "./load-creds";
 import { d1, q, D1 } from "./d1-remote";
-import { loadOrgPrivateKey } from "./org-key";
+import { envelopeFromHex, unwrapVaultDEK } from "./org-unwrap";
+import { flushOrgKeyUses } from "./access-log";
 import { listObjects, LIVE_BUCKET, getObject, resolveStore } from "./vault-sync";
-import { unwrapDEKWithPrivateKey, decryptVaultV2 } from "@tinytars/vault/crypto";
+import { decryptVaultV2 } from "@tinytars/vault/crypto";
 import { ORG_ACCOUNT_ID } from "../functions/_lib/org";
 import type { Vault } from "../src/lib/types";
 import { normalizeClientId } from "../src/lib/client-id";
@@ -62,7 +63,9 @@ async function main(): Promise<void> {
   process.stdout.write(`Target: ${D1} / ${LIVE_BUCKET} (store "${STORE}")\n`);
   process.stdout.write(`Vaults: ${vaults.length}   live raw+text+chat objects: ${live.length}   already attributed: ${owned.size}\n\n`);
 
-  const orgKey = await loadOrgPrivateKey();
+  // Checked here rather than left to the first unwrap, which sits inside a per-vault try/catch that
+  // would report one missing passphrase as every vault failing to open.
+  if (!process.env.ORG_KEY_PASSPHRASE) throw new Error("ORG_KEY_PASSPHRASE is not set");
   const clientToOwner = new Map<string, string>();
 
   for (const v of vaults) {
@@ -78,11 +81,10 @@ async function main(): Promise<void> {
     }
     let vault: Vault;
     try {
-      const dek = await unwrapDEKWithPrivateKey(
-        Uint8Array.from(Buffer.from(env.wrapped_dek, "hex")),
-        JSON.parse(env.ephemeral_public_key_jwk) as JsonWebKey,
-        orgKey,
-      );
+      const dek = await unwrapVaultDEK(envelopeFromHex(env.wrapped_dek, env.ephemeral_public_key_jwk), {
+        vaultId: v.r2_key.replace(/^data-/, "").replace(/\.enc$/, ""),
+        purpose: "raw:backfill",
+      });
       const blob = await getObject(LIVE_BUCKET, `${STORE}/${v.r2_key}`);
       if (!blob) throw new Error(`no blob at ${STORE}/${v.r2_key}`);
       vault = await decryptVaultV2<Vault>(blob, dek);
@@ -92,6 +94,9 @@ async function main(): Promise<void> {
     }
     for (const clientId of Object.keys(vault.clients)) clientToOwner.set(normalizeClientId(clientId), v.owner_account_id);
   }
+  // Every vault this run could open has been opened by here, so this is where the audit rows go out —
+  // before the report-only early return below, which would otherwise leave them to the exit handler.
+  await flushOrgKeyUses();
 
   // A newer vault keys its first client by the lowercased ACCOUNT ID (src/App.svelte's createFirstClient),
   // so those namespaces are resolvable without opening anything. That matters most for the accounts this

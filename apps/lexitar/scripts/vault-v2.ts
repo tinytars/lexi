@@ -4,15 +4,14 @@
 // to the org operational key (records/org-key.json, see scripts/org-key.ts).
 
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import { loadOrgPublicKey, loadOrgPrivateKey, b64ToBytes, bytesToB64 } from "./org-key";
-import { recordOrgKeyUse } from "./access-log";
+import { loadOrgPublicKey, bytesToB64 } from "./org-key";
+import { unwrapVaultDEK, type OrgEnvelope, type OrgKeyAudit } from "./org-unwrap";
 import {
   encryptVault,
   generateDEK,
   encryptVaultV2,
   decryptVaultV2,
   wrapDEKForPublicKey,
-  unwrapDEKWithPrivateKey,
 } from "@tinytars/vault/crypto";
 
 const MAGIC = [0x48, 0x44, 0x31]; // "HD1"
@@ -28,10 +27,8 @@ export function sidecarPathFor(encPath: string): string {
   return `${encPath.slice(0, -".enc".length)}.dek.enc`;
 }
 
-export interface OrgSidecar {
-  wrappedDEK: string; // base64
-  ephemeralPublicKeyJwk: JsonWebKey;
-}
+/** A sidecar is that envelope in a file, committed next to the blob. Same shape, different home. */
+export type OrgSidecar = OrgEnvelope;
 
 export async function buildV2<T>(
   plain: T,
@@ -47,15 +44,8 @@ export async function buildV2<T>(
   return { blob, sidecar, dek: usedDek };
 }
 
-export async function dekFromSidecar(sidecar: OrgSidecar, passphrase?: string): Promise<CryptoKey> {
-  const priv = await loadOrgPrivateKey(passphrase);
-  return unwrapDEKWithPrivateKey(b64ToBytes(sidecar.wrappedDEK), sidecar.ephemeralPublicKeyJwk, priv);
-}
-
-// W55 Phase 4 — every caller must recordOrgKeyUse() alongside this decrypt, so a future decrypt
-// site is not added silently.
-export async function openV2<T>(blob: Uint8Array, sidecar: OrgSidecar, passphrase?: string): Promise<T> {
-  return decryptVaultV2<T>(blob, await dekFromSidecar(sidecar, passphrase));
+export async function openV2<T>(blob: Uint8Array, sidecar: OrgSidecar, audit: OrgKeyAudit): Promise<T> {
+  return decryptVaultV2<T>(blob, await unwrapVaultDEK(sidecar, audit));
 }
 
 export function readSidecar(encPath: string): OrgSidecar {
@@ -73,8 +63,7 @@ export function writeSidecar(encPath: string, sidecar: OrgSidecar): void {
 // writing v1 (which would silently strip a v2 vault's owner/provider/support DEK envelopes).
 export async function writeServedVault<T>(encPath: string, id: string, vault: T): Promise<void> {
   if (existsSync(encPath) && isV2(new Uint8Array(readFileSync(encPath)))) {
-    const dek = await dekFromSidecar(readSidecar(encPath));
-    recordOrgKeyUse({ clientId: id, purpose: "vault:build:served" });
+    const dek = await unwrapVaultDEK(readSidecar(encPath), { vaultId: id, purpose: "vault:build:served" });
     writeFileSync(encPath, await encryptVaultV2(vault, dek));
     return;
   }

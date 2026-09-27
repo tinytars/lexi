@@ -10,10 +10,10 @@
 import { normalizeClientId } from "../../src/lib/client-id";
 import type { Vault } from "../../src/lib/types";
 import { decryptVaultV2, encryptVaultV2 } from "@tinytars/vault/crypto";
-import { recordOrgKeyUse } from "../access-log";
 import { orgSidecarFromD1 } from "../org-d1";
+import { unwrapVaultDEK } from "../org-unwrap";
 import { getObject, putObject, LIVE_BUCKET } from "../vault-sync";
-import { dekFromSidecar, isV2 } from "../vault-v2";
+import { isV2 } from "../vault-v2";
 
 export interface RekeyVaultResult {
   key: string;
@@ -53,8 +53,7 @@ export async function rekeyDeployedVaultClient(
   if (!isV2(blob)) throw new Error(`${key} is not an HD1 v2 blob — only v2 carries the org envelope this needs`);
 
   // Reused for the re-encrypt: a fresh DEK would strand every owner/provider/support envelope in D1.
-  const dek = await dekFromSidecar(orgSidecarFromD1(id));
-  recordOrgKeyUse({ clientId: id, purpose: "ingest:rekey-vault-client" });
+  const dek = await unwrapVaultDEK(orgSidecarFromD1(id), { vaultId: id, purpose: "ingest:rekey-vault-client" });
   const vault = await decryptVaultV2<Vault>(blob, dek);
 
   const next = renameClientKey(vault, oldKey, newKey);

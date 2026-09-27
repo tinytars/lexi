@@ -1,9 +1,9 @@
 // W73 Phase E — the last rung of the recovery ladder: an operator issues a recovery code using the ORG
 // envelope, for a patient with no recovery code and no clinician.
 //
-// Until this existed, RECOVERY.md's "an operator can help" was fiction. `scripts/org-key.ts` gave
-// `loadOrgPrivateKey()` and nothing that turned it into something a locked-out patient could use, so
-// the documented fallback was a sentence with no code behind it.
+// Until this existed, RECOVERY.md's "an operator can help" was fiction: `scripts/org-key.ts` could
+// open the org key and nothing turned that into something a locked-out patient could use, so the
+// documented fallback was a sentence with no code behind it.
 //
 // WHAT MAKES THIS SAFE TO EXIST. It is a CLI, run by a person holding `ORG_KEY_PASSPHRASE`, and
 // `tests/unit/recovery-invariants.test.ts` (I1) asserts that nothing under `functions/` can reach that
@@ -22,10 +22,11 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import { loadOrgPrivateKey } from "./org-key";
+import { envelopeFromHex, unwrapVaultDEK } from "./org-unwrap";
+import { flushOrgKeyUses } from "./access-log";
 import { wranglerTarget } from "./target";
 import {
-  unwrapDEKWithPrivateKey, wrapDEKWithKek, deriveKekFromPassword, deriveAuthHash,
+  wrapDEKWithKek, deriveKekFromPassword, deriveAuthHash,
 } from "@tinytars/vault/crypto";
 import { ORG_ACCOUNT_ID } from "../functions/_lib/org";
 import { sha256Base64Url } from "../functions/_lib/verifier";
@@ -105,8 +106,8 @@ async function main(): Promise<void> {
   if (!acct) throw new Error(`no account with email ${email}`);
   if (acct.deleted_at) throw new Error(`that account was erased on ${acct.deleted_at}`);
 
-  const [vault] = await d1<{ vault_id: string; org_recovery_revoked_at: string | null }>(
-    `SELECT vault_id, org_recovery_revoked_at FROM vaults WHERE owner_account_id = ${q(acct.id)}`,
+  const [vault] = await d1<{ vault_id: string; r2_key: string; org_recovery_revoked_at: string | null }>(
+    `SELECT vault_id, r2_key, org_recovery_revoked_at FROM vaults WHERE owner_account_id = ${q(acct.id)}`,
   );
   if (!vault) throw new Error("that account has no vault");
 
@@ -135,13 +136,10 @@ async function main(): Promise<void> {
     return;
   }
 
-  // The only place the org private key is used. It never leaves this process.
-  const orgKey = await loadOrgPrivateKey();
-  const dek = await unwrapDEKWithPrivateKey(
-    Uint8Array.from(Buffer.from(envelope.wrapped_dek, "hex")),
-    JSON.parse(envelope.ephemeral_public_key_jwk) as JsonWebKey,
-    orgKey,
-  );
+  const dek = await unwrapVaultDEK(envelopeFromHex(envelope.wrapped_dek, envelope.ephemeral_public_key_jwk), {
+    vaultId: vault.r2_key.replace(/^data-/, "").replace(/\.enc$/, ""),
+    purpose: "recovery:approve",
+  });
 
   const code = randomCode();
   const { wrappedDek, kdfParams, verifier } = await buildGrantRow(dek, code);
@@ -163,6 +161,10 @@ async function main(): Promise<void> {
     `INSERT INTO phi_access_events (id, actor_account_id, subject_account_id, vault_id, action, consent_ref, meta, created_at) ` +
     `VALUES (${q(crypto.randomUUID())}, ${q(ORG_ACCOUNT_ID)}, ${q(acct.id)}, ${q(vault.vault_id)}, 'recovery.grant_issued_by_operator', ${q(id)}, ${q(JSON.stringify({ via: "org-envelope" }))}, ${q(now.toISOString())})`,
   );
+
+  // The `org_key_decrypt` row for the unwrap above, alongside the grant row this script writes itself.
+  // Until this landed the operator's use of the key here went unrecorded (VAULT.md §2 condition 4).
+  await flushOrgKeyUses();
 
   process.stdout.write(
     `Recovery code: ${code}\n\n` +
