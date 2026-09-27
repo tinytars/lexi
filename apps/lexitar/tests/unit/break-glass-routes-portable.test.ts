@@ -35,7 +35,7 @@ describe("supportApproveHandler (portable, no Miniflare)", () => {
 
     const res = await supportApproveHandler(
       post({ linkId: link.id, wrappedDEK: btoa("dek-bytes"), ephemeralPublicKeyJwk: { kty: "EC" } }),
-      { requireSession: session("patient-1"), links, audit, envelopes, listVaultsForOwner: async () => [vault] }
+      { requireSession: session("patient-1"), links, audit, envelopes, listVaultsForOwner: async () => [vault], notify: async () => {} }
     );
 
     expect(res.status).toBe(200);
@@ -47,7 +47,7 @@ describe("supportApproveHandler (portable, no Miniflare)", () => {
     const links = new MemoryProviderLinkStore();
     const res = await supportApproveHandler(
       post({ linkId: "does-not-exist", wrappedDEK: btoa("x"), ephemeralPublicKeyJwk: {} }),
-      { requireSession: session("patient-1"), links, audit: new MemoryAuditStore(), envelopes: new MemoryEnvelopeStore(), listVaultsForOwner: async () => [] }
+      { requireSession: session("patient-1"), links, audit: new MemoryAuditStore(), envelopes: new MemoryEnvelopeStore(), listVaultsForOwner: async () => [], notify: async () => {} }
     );
     expect(res.status).toBe(403);
   });
@@ -100,6 +100,8 @@ describe("supportAccessHandler (portable, no Miniflare)", () => {
         listVaultsForOwner: async () => [vault],
         getEnvelope: async () => ({ vaultId: "vault-1", principalAccountId: "support-1", wrappedDek: new Uint8Array([1, 2, 3]), ephemeralPublicKeyJwk: {}, createdBy: "patient-1", createdAt: new Date().toISOString() }),
         insertAccessEvent: async (e) => { events.push(e); return e; },
+        countOpensInWindow: async () => 0,
+        notify: async () => {},
         links,
         audit,
         envelopes,
@@ -120,6 +122,8 @@ describe("supportAccessHandler (portable, no Miniflare)", () => {
         listVaultsForOwner: async () => [],
         getEnvelope: async () => null,
         insertAccessEvent: async (e) => e,
+        countOpensInWindow: async () => 0,
+        notify: async () => {},
         links: new MemoryProviderLinkStore(),
         audit: new MemoryAuditStore(),
         envelopes: new MemoryEnvelopeStore(),

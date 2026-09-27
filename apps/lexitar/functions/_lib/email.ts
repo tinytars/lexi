@@ -225,3 +225,34 @@ export async function sendMethodAddedNotice(
     ),
   });
 }
+
+/**
+ * Sent when a patient approves a support principal's access to their record, and again the first time
+ * that principal opens it inside the window.
+ *
+ * Two moments, one message, because the patient needs the same three facts either way: that an account
+ * other than theirs can read the record, until when, and where to stop it. It names no document, no
+ * marker and no value — a notice about a disclosure must not itself be one.
+ */
+export async function sendSupportAccessNotice(
+  env: EmailEnv,
+  opts: { to: string; event: "approved" | "opened"; expiresAt: string | null },
+): Promise<{ sent: boolean }> {
+  // A support grant always carries an expiry; a link without one is not time-boxed, and saying so is more
+  // use to the reader than rendering an invalid date as though it were a deadline.
+  const until = opts.expiresAt ? `until ${new Date(opts.expiresAt).toUTCString()}` : "until you revoke it";
+  const opened = opts.event === "opened";
+  const heading = opened ? "Your record was opened by the access you approved" : "You approved access to your health record";
+  const what = opened
+    ? `A support account you approved has opened your health record for the first time, and can open it again ${until}.`
+    : `A support account can now read your health record ${until}. It cannot change it, and it cannot recover or take over your account.`;
+  const stop =
+    "Every time it opens your record, that is listed under Access in your account, where Revoke ends the access immediately. " +
+    "If you did not approve this, revoke it there now.";
+  return sendEmail(env, {
+    to: opts.to,
+    subject: opened ? "Your health record was opened" : "You approved access to your health record",
+    text: `${what}\r\n\r\n${stop}`,
+    html: noticeHtml(heading, what, stop),
+  });
+}

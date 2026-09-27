@@ -99,4 +99,6 @@ via `wrangler pages secret put`, never committed.
 - [`INGEST.md`](INGEST.md), [`BLOOD.md`](BLOOD.md), [`DEXA.md`](DEXA.md), [`NARRATIVE.md`](NARRATIVE.md) —
   per-source ingest detail.
 - [`BACKUP.md`](BACKUP.md) — snapshot/restore.
+- [`docs/RECORD-EXPORT.md`](docs/RECORD-EXPORT.md) — exporting a whole record to a computer, including
+  reading a record someone else has approved you for, and what they see when you do.
 - [`CUTOVER.md`](CUTOVER.md), [`DPGA.md`](DPGA.md) — operational and governance detail.

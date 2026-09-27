@@ -6,8 +6,8 @@ asks for each indicator. Each indicator gets a verdict, the evidence behind it, 
 between it and "meets". The gaps are the input to a development plan. This doc is not a plan, a
 tracker, or a history: when LexiTar changes, rewrite the affected verdict to describe the new state.
 
-**Assessed against:** `dev` at `2e00984`, and the live `tinytars.foundation/privacy` and `/terms` pages.
-`main` — what production runs — is twenty-eight commits behind it and sets `REPORTS: "never"`, so where dev and
+**Assessed against:** `dev` at `1d6d314`, and the live `tinytars.foundation/privacy` and `/terms` pages.
+`main` — what production runs — is thirty-five commits behind it and sets `REPORTS: "never"`, so where dev and
 production differ the verdict says which, rather than averaging them.
 **Scope:** the software in this repo (`apps/lexitar`, `packages/frame`), the open packages it is
 built from (`@tinytars/vault`, `@pablotech/akesi`, `@pablotech/neuro`), and the finding-DAG content it
@@ -56,7 +56,7 @@ right, but there is nothing to fix.
 | 7.1 | Which laws it complies with | ❌ | No law named anywhere; GDPR, FTC HBNR, CCPA, MHMDA all plausibly apply |
 | 7.2 | Evidence of adherence | ✅ | Policy and terms published and now true: what leaves this device, the recovery envelope, the enforced age limit, the reporting channel |
 | 7.3 | Processors disclosed | ✅ | Named in the policy, each with what it receives and what its terms actually cover — including where nothing has been negotiated |
-| 7.4 | Consent for special-category data | ❌ | No consent surface anywhere, and the corpus raised the stake from extracted values to whole documents. The operator CLI does not raise it again — a subject reading their own record under their own credential is not third-party processing — and `VAULT.md` §4b is where it returns |
+| 7.4 | Consent for special-category data | ❌ | No consent surface for the processing that needs one: the corpus sends whole documents to a model provider on nothing but the owner opening the record. Third-party access, which arrived on 2026-09-27, is the one flow that *does* carry a record of consent — per person, per window, revocable, with every read on the subject's own screen (`VAULT.md` §4b). That is the artefact this indicator asks for, built for one flow and absent from the one that matters most, so the verdict does not move |
 | 7.5 | Deletion available to the user | ✅ | Two-step self-service erase in the account panel, reporting honestly what it could not attribute |
 | **8** | **Standards and best practices** | **✅** | |
 | 8.1 | Open standards, with evidence | ✅ | WebAuthn, Web Crypto, OAuth2/OIDC, WCAG 2.1 AA via axe in e2e |
@@ -64,11 +64,11 @@ right, but there is nothing to fix.
 | **9A** | **Data privacy and security** | **✅** | |
 | 9A.1 | Is PII collected / stored / distributed | ⚪ | All three — and what a linked clinician now receives includes the original documents, through the model |
 | 9A.2 | Which types | ✅ | Identity, lab results, symptoms, treatments, notes, photos, chat |
-| 9A.3 | Vault confidentiality | ✅ | Client-side encryption, per-principal envelopes — and the operator CLI reads a record *through* one of those principals (the owner's own), not around them, so it holds no reach the owner's browser lacks |
-| 9A.4 | Access control and audit | ✅ | One capability table, per-namespace ownership, logged privileged reads. The org key's audit became a mechanism on 2026-09-27: one module turns that key into a decryption key and writes the row before it returns one, pinned by a build-failing sweep. The read routes log nothing for *any* principal, which `VAULT.md` §4b names as the prerequisite to third-party CLI access |
+| 9A.3 | Vault confidentiality | ✅ | Client-side encryption, per-principal envelopes — and both command-line principals read *through* one of them, not around them. The third-party one (2026-09-27) gains no reach a browser lacks and less than one has: it cannot write the record it reads, and a stored credential no longer converts into account control, because recovery issuance now requires fresh re-authentication |
+| 9A.4 | Access control and audit | ✅ | One capability table, per-namespace ownership, and — since 2026-09-27 — every privileged read logged rather than only the discovery hop. The org key's audit became a mechanism the same day: one module turns that key into a decryption key and writes the row before it returns one, pinned by a build-failing sweep. The gap this row used to name is closed; a person's own reads are deliberately excluded, and §9A says why |
 | 9A.5 | Uploaded originals | ✅ | Sealed under per-file content keys held inside the vault, and a plaintext `PUT` is now refused outright (`415 plaintext_refused`). Deployment note: the dev store sweeps to zero sealable objects; production runs the pre-refusal build until `main` is promoted, and its read-only sweep on 2026-09-27 counted 35 objects still to seal |
 | 9A.6 | Transfer to third-party models | ✅ | Disclosed at the point of use, on demand and in the published policy: whole documents, on record open, about an hour of provider-side cache, no negotiated zero-retention arrangement |
-| 9A.7 | Erasure integrity | ✅ | The report states what deletion cannot reach, and the half that is enforceable — revocation killing the corpus keepalive — is pinned by a test rather than assumed. A record exported to a computer is named there too, as a class of copy erasure cannot reach at all |
+| 9A.7 | Erasure integrity | ✅ | The report states what deletion cannot reach, and the half that is enforceable — revocation killing the corpus keepalive — is pinned by a test rather than assumed. A record exported to a computer is named there too, and since 2026-09-27 names all three holders: the person, a tool holding their credential, and an account they approved — whose copy outlives the approval, which is the part a reader would otherwise assume away |
 | **9B** | **Inappropriate, misleading, illegal content** | **✅** | |
 | 9B.1 | Is content collected / stored / distributed | ⚪ | All three — uploads, notes, generated explanations |
 | 9B.2 | Which types | ✅ | PDFs, photos, free text, AI-generated health explanations |
@@ -78,7 +78,7 @@ right, but there is nothing to fix.
 | 9B.6 | Misleading content | ✅ | Disclaimer, no-diagnosis prompts, staleness tracking, per-page citations, a corpus that refuses rather than shrinks — and now a per-message Report control that reaches a person |
 | **9C** | **Protection from harassment** | **✅** | |
 | 9C.1 | Does it enable interaction between users | ⚪ | Yes, narrowly — patient↔clinician sharing; no messaging or social surface |
-| 9C.2 | How users protect themselves | ✅ | Links are patient-approved, time-boxed, revocable and logged, and each one now carries a Report control — reporting is the thing revoking is not |
+| 9C.2 | How users protect themselves | ✅ | Links are patient-approved, time-boxed, revocable and logged, and each one carries a Report control — reporting is the thing revoking is not. Since 2026-09-27 revoking a clinician is itself audited, and approval and first use are emailed, so the controls no longer depend on the patient thinking to visit a screen |
 | 9C.3 | Safety of underage users | ✅ | 16+ refused in the browser at signup, on Skip and on later edit; `accounts.age_attested_at` records that the check passed, never a date of birth. Year-granular self-declaration, and the docs say so rather than implying verified age |
 | **—** | **Scale** (form section, unscored) | **⚪** | Live at `literacy.tinytars.foundation`; **English only**, against an audience defined partly by limited English |
 
@@ -95,7 +95,7 @@ became a two-step control in the product that reports what it could not attribut
 recall; the 16+ limit became a refusal in the browser rather than a sentence in the Terms; and a report
 about a wrong answer, illegal material or an abusive account now reaches a person, through a private
 tracker, against stated times. The two honest qualifications are stated where they belong rather than
-averaged away: production runs `main`, twenty-eight commits behind, so the refusal and the disclosure are true
+averaged away: production runs `main`, thirty-five commits behind, so the refusal and the disclosure are true
 of the software before they are true of the deployment; and documents uploaded before the sealing are
 still being converted where they sit, which is why `MODERATION.md` is staged rather than unconditional.
 
@@ -269,12 +269,25 @@ two questions that rewrite does not answer.
   Rule, CCPA/CPRA, Washington's My Health My Data Act, and ADA/WCAG for accessibility. None is cited
   anywhere, in the policy or in this repo.
 - **No consent capture for special-category data (7.4).** GDPR Article 9 wants explicit consent for
-  processing health data, and there is no consent surface — disclosure at the point of use is not
-  consent, and the `REPORTS` switch is the operator's, not the patient's. The corpus raised what such
-  consent would have to cover from extracted marker values to whole documents. The operator CLI added on
-  2026-09-27 does not raise it a third time: it authenticates as the record's own owner, and a subject
-  reading their own data under their own credential is not processing that Article 9 consent governs.
-  `VAULT.md` §4b is where the question returns, which is part of why that case is written and not built.
+  processing health data, and the flow that most needs one has none: the corpus sends whole documents to
+  a model provider when a record is *opened*, and disclosure at the point of use is not consent — the
+  `REPORTS` switch is the operator's, not the patient's.
+
+  What changed on 2026-09-27 is that the estate now contains a working example of the artefact this
+  indicator asks for, in a different flow. Third-party command-line access is consented per person and
+  per window: the patient approves a named principal from their own unlocked session, choosing the
+  duration; the approval is stamped with a consent reference and an expiry, is revocable by them at any
+  time, is emailed to them on approval and on first use, and every read it performs appears on their own
+  access screen with them as the subject (`VAULT.md` §4b). Read-only is enforced rather than assumed, and
+  the credential cannot convert into account control.
+
+  **That does not move this verdict, and must not be written as though it does.** Consent for one
+  disclosure path is not consent for the processing the product does on every record open, and an
+  assessor asking "where is Article 9 consent for sending documents to a model provider" gets the same
+  answer as before: nowhere. What it changes is the cost of closing the gap — the mechanism for a
+  per-person, time-boxed, revocable, audited consent record now exists in this codebase and has a test
+  suite, so the remaining work is a consent surface for the corpus rather than a consent mechanism from
+  scratch.
 
 Neither is in this milestone's scope, and neither has been narrowed by it: what changed is that the
 published claims are now true, not that a law has been named.
@@ -325,8 +338,33 @@ What's in place:
   refusal that names files sends the count only (`CorpusKeyError`, `CorpusUnmeasuredError`).
 - Every route serving patient files authorises per client namespace (`functions/_lib/raw-owner.ts`,
   `tests/unit/raw-authorization.test.ts`). Unowned namespaces are refused, and ownership never flips.
-- Access policy lives in one table (`functions/_lib/capabilities.ts`). Privileged reads are logged to
-  `phi_access_events`, and support access is consent-gated and time-boxed.
+- Access policy lives in one table (`functions/_lib/capabilities.ts`), and support access is
+  consent-gated and time-boxed.
+- **Every privileged read is logged, and a person's own reads deliberately are not** (2026-09-27). Until
+  then `phi_access_events` held the discovery hop and nothing else: the routes that actually serve a
+  record — the clinician roster, the vault blob, the stored documents and their extracted text — wrote no
+  row for any principal, so a patient's access screen could not answer the question it exists to answer.
+  One helper now stands in front of all of them (`functions/_lib/phi-audit.ts`), which is what stops the
+  exclusion below being implemented differently in seven places, and it is **awaited before the response
+  body is produced** rather than deferred: a read that could not be audited is refused (`503
+  audit_unavailable`), following the same rule as the org key's chokepoint.
+  - **The exclusion:** it returns without writing when the actor is the subject. A single record view is
+    tens of reads — the blob at unlock, every keyring refresh, two listing calls per person selected, one
+    fetch per attachment rendered — so logging them would make the patient's own clicks the bulk of their
+    own disclosure log and bury the third-party reads under them. A disclosure log that reads as a
+    traffic log answers nothing. It is also what makes the fail-closed choice safe: an owner read never
+    reaches the insert, so a database fault cannot lock a patient out of their own record, only stop
+    third-party reads.
+  - **The subject is the record's owner, never the first writer.** For stored documents, namespace
+    ownership is first-writer-wins and that writer is very often the clinician, so the obvious field
+    would have recorded the clinician as the person whose record was read. The real subject was already
+    being computed and discarded; it is now carried out and asserted
+    (`tests/unit/raw-owner-subject.test.ts`).
+  - **Revoking a clinician is audited too**, which it was not — ending a standing disclosure is exactly
+    what a patient later needs to be able to prove.
+  - The action vocabulary is frozen and pinned by a static sweep, because erasure deliberately keeps
+    these rows: a renamed action would leave two names for one event in a record that is shown to
+    patients forever.
 - **The operator key's audit is a mechanism, not a convention** (2026-09-27). The key that opens every
   vault lives only in the CLI, and internal policy has always permitted it on condition that every use
   is logged — a condition previously honoured by a comment asking the next programmer to remember, which
@@ -340,9 +378,36 @@ What's in place:
   record's own owner over the ordinary authenticated API, so `resolveEnvelopeAccess` stays in the path
   and the tool's reach is one record — the one the credential owns. It introduces no new trust boundary,
   no new endpoint and no new standing key. The one honest cost is the copy it writes, covered under
-  erasure below; the third-party case, which would need more authority than this, is written and
-  deliberately not built (`VAULT.md` §4b), with the unaudited privileged read routes named as its
-  prerequisite.
+  erasure below.
+- **And a third-party command line that holds strictly less than a browser** (2026-09-27,
+  `VAULT.md` §4b, operator guide `docs/RECORD-EXPORT.md`). Reading someone else's record from a command
+  line is the case §4b previously described and declined to build, on the stated ground that the
+  privileged read routes were unaudited. That ground is gone (above), and the feature was built against
+  the two constraints that made it declinable in the first place:
+  - **It cannot become account control.** The principal is a `support` account, not a clinician one,
+    because a clinician principal carries the capability to issue account recovery — a password in a
+    file would have been an account-takeover credential for every patient linked to it. Support is
+    refused that route twice over, and the route itself now requires fresh re-authentication, so a
+    stored credential is insufficient there for *any* principal. Whether the challenge could be made at
+    all is recorded in the audit row rather than hidden behind one success.
+  - **It cannot write.** Holding an envelope for a vault was enough to `PUT` it, so the read credential
+    could have overwritten the record it was approved to read. The write now refuses anyone who is
+    neither the owner nor a `primary` link holder, pinned by `tests/unit/vault-put-principal.test.ts`.
+  - **It cannot read anything unapproved, or after approval ends.** Every target comes from the server's
+    own list of live grants; expiry is enforced on the read path; revocation bites on the next run
+    because nothing durable is cached — no session token and no account key is written to disk, so each
+    run signs in fresh.
+  - **It cannot read quietly.** Each open is a row on the subject's own access screen, and the subject is
+    emailed on approval and on the first use within the window — once per window, not once per run, so
+    an unattended weekly export does not train the recipient to ignore the message that matters.
+  - **It writes no index of who exists.** A pasted address names a person by a label meaningful only
+    inside their own record; resolving it to an owner happens in process, for the run only, and a
+    resolution that would require opening an unrelated person's record refuses and names the candidates
+    instead of looking. `--probe` is the announced opt-in, and it states how many rows it is about to
+    write and on whose screens.
+
+  What it does **not** remove is the copy on the disk, which is the same honest cost as §4a's and is
+  stated under erasure below.
 - **What leaves the device is disclosed where the work happens**, in one audited string reused
   everywhere (`MODEL_DISCLOSURE`, `src/lib/brand.ts`): whole reports rather than summaries, sent when a
   record is opened and not only when a question is asked, resident in the provider's prompt cache for
@@ -357,11 +422,17 @@ What's in place:
   `src/lib/erase-account.ts`), and the result is rendered from the route's own report rather than a
   claim: storage it could not attribute is reported as a count, and `ERASURE_REACH` says in the same
   words as `../../SECURITY.md` and `MODERATION.md` what deletion cannot recall — the copies already
-  written at the model and speech providers, which expire on their schedules, and a record exported to
-  somebody's computer, which erasure cannot reach at all. That last class arrived with the operator
-  export on 2026-09-27 and was added to the disclosure in the same change, because shipping it silently
-  would have made a passing verdict here false: the product would still have been telling patients it
-  had named everything deletion cannot reach.
+  written at the model and speech providers, which expire on their schedules, and a record exported to a
+  computer, which erasure cannot reach at all. That last class arrived with the operator export on
+  2026-09-27 and was added to the disclosure in the same change, because shipping it silently would have
+  made a passing verdict here false: the product would still have been telling patients it had named
+  everything deletion cannot reach. It was widened the same day for the third-party principal, and the
+  widening is the substantive half: the sentence now names **three** holders — the person, a tool signed
+  in as them, and an account they approved — and says that the third copy **outlives the approval that
+  produced it**. Naming the holder without naming the persistence would have left the reader's natural
+  assumption in place, that revoking access or letting seven days elapse takes the file with it. It does
+  not, and someone approving a window is told so in the sentence they are shown
+  (`tests/unit/erase-account.test.ts`).
 - **The half of erasure that is enforceable is pinned by a test, not asserted.** `erasure.ts` revokes
   sessions before it writes the tombstone, so an erased account's browser cannot send anything further;
   `tests/unit/erasure-function.test.ts` holds a `corpus-warm` refresh on a pre-erasure cookie to a 401,
@@ -369,7 +440,7 @@ What's in place:
 
 **Gaps** — none against the software in this repo.
 
-**One deployment note, which is not a gap in the software.** Production runs `main`, twenty-eight
+**One deployment note, which is not a gap in the software.** Production runs `main`, thirty-five
 commits behind `dev`, so until that promotion it serves the pre-refusal build and sets `REPORTS: "never"` (no
 document leaves at all under that setting). A preview sweep on the dev store reports zero *sealable*
 plaintext. The production store's own preview sweep was run read-only on 2026-09-27 and is the honest
@@ -458,6 +529,15 @@ What's in place: provider links are patient-approved, time-boxed and revocable; 
 and re-keys on exit; privileged access is logged and shown to the patient. The contributor side has
 `../../CODE_OF_CONDUCT.md`.
 
+- **The controls no longer depend on the patient thinking to look** (2026-09-27). Two halves of "users
+  can see what is happening" were missing. Revoking a clinician wrote no audit row at all, so a patient
+  could end a standing disclosure and have no evidence they had — half of a control they can see and
+  revoke is not the control. It is audited now (`provider_access_revoked`). And every signal was a
+  screen someone had to choose to visit, so the patient is now emailed when they approve third-party
+  access and again the first time it is used inside the window, each message naming the expiry and where
+  to revoke and naming no document — a notice about a disclosure must not itself be one. **Once per
+  window, not once per read:** an unattended export runs daily against an approval given once, and a
+  message per run is how a recipient learns to ignore the one that matters.
 - **The 16+ limit is enforced, and where it cannot be verified it says so.** `src/lib/age-limit.ts`
   holds the threshold and the refusals over the one age computation the app already has; onboarding
   refuses an underage birth year *and* refuses to skip the field, which is the hole an assessor probes

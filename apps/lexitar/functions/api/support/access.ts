@@ -2,7 +2,8 @@ import type { D1Database } from "../../_lib/identity-types";
 import { getAccount } from "../../_lib/identity-accounts";
 import { getEnvelope, listVaultsForOwner } from "../../_lib/identity-vault";
 import { listPatientsForProvider } from "../../_lib/identity-providers";
-import { insertAccessEvent } from "../../_lib/identity-audit";
+import { countAccessEventsInWindow, insertAccessEvent } from "../../_lib/identity-audit";
+import { accountEmailLookup, supportAccessNotifier } from "../../_lib/notify-support";
 import { requireSession } from "../../_lib/session";
 import { pagesHandler } from "@tinytars/vault/adapters/pages-http";
 import { D1AuditStore, D1EnvelopeStore, D1ProviderLinkStore } from "@tinytars/vault/adapters/d1";
@@ -11,15 +12,25 @@ import { supportAccessHandler, type SupportAccessDeps } from "../../_lib/routes/
 interface Env {
   DB: D1Database;
   SESSION_SECRET: string;
+  GMAIL_SA_CLIENT_EMAIL?: string;
+  GMAIL_SA_PRIVATE_KEY?: string;
+  GMAIL_SENDER?: string;
+  EMAIL_FROM?: string;
 }
 
-export const onRequestPost = pagesHandler<SupportAccessDeps, Env>(supportAccessHandler, ({ request, env }) => ({
+// Pages passes the whole context to buildDeps, waitUntil included; the adapter's type stops at
+// {request, env, params}, so the one member this route needs is named here rather than reached for
+// through a cast — the notice must not sit between the patient and their response.
+export const onRequestPost = pagesHandler<SupportAccessDeps, Env>(supportAccessHandler, ({ request, env, waitUntil }: { request: Request; env: Env; waitUntil?: (p: Promise<unknown>) => void }) => ({
   requireSession: () => requireSession(request, env),
   getAccount: (id) => getAccount(env.DB, id),
   listPatientsForProvider: (providerAccountId) => listPatientsForProvider(env.DB, providerAccountId),
   listVaultsForOwner: (ownerAccountId) => listVaultsForOwner(env.DB, ownerAccountId),
   getEnvelope: (vaultId, principalAccountId) => getEnvelope(env.DB, vaultId, principalAccountId),
   insertAccessEvent: (e) => insertAccessEvent(env.DB, e),
+  countOpensInWindow: (subjectAccountId, consentRef) =>
+    countAccessEventsInWindow(env.DB, subjectAccountId, consentRef, "support_access_opened"),
+  notify: supportAccessNotifier({ waitUntil }, env, accountEmailLookup(env.DB)),
   links: new D1ProviderLinkStore(env.DB),
   audit: new D1AuditStore(env.DB),
   envelopes: new D1EnvelopeStore(env.DB),
