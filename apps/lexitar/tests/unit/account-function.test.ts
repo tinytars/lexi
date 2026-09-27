@@ -48,3 +48,39 @@ describe("account unit-system preference", () => {
     expect((await (await getAcct(providerCookie)).json() as { unitSystem: unknown }).unitSystem).toBe("imperial");
   });
 });
+
+// 9C.3 — the server side of the age gate. The browser checks the birth year (src/lib/age-limit.ts)
+// and the only thing that reaches us is that it passed.
+describe("age attestation", () => {
+  const attestedAt = (id: string) =>
+    w.db.prepare("SELECT age_attested_at FROM accounts WHERE id = ?").bind(id).first<{ age_attested_at: string | null }>();
+
+  it("is unset until the browser attests", async () => {
+    const id = await mkAccount("Unattested");
+    expect((await attestedAt(id))?.age_attested_at).toBeNull();
+  });
+
+  it("is stamped by a PATCH carrying ageAttested", async () => {
+    const id = await mkAccount("Attesting");
+    const res = await patchAcct(await cookieFor(id), { ageAttested: true });
+    expect(res.status).toBe(200);
+    expect((await attestedAt(id))?.age_attested_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it("keeps the first stamp — a later attestation does not move it", async () => {
+    const id = await mkAccount("Reattesting");
+    const cookie = await cookieFor(id);
+    await patchAcct(cookie, { ageAttested: true });
+    const first = (await attestedAt(id))?.age_attested_at;
+    await new Promise((r) => setTimeout(r, 5));
+    await patchAcct(cookie, { ageAttested: true });
+    expect((await attestedAt(id))?.age_attested_at).toBe(first);
+  });
+
+  it("records no birth date — the column is the whole of what the server learns", async () => {
+    const id = await mkAccount("No dob");
+    await patchAcct(await cookieFor(id), { ageAttested: true });
+    const row = await w.db.prepare("SELECT * FROM accounts WHERE id = ?").bind(id).first<Record<string, unknown>>();
+    expect(Object.keys(row!).filter((k) => /dob|birth/i.test(k))).toEqual([]);
+  });
+});
