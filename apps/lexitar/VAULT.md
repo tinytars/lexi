@@ -292,6 +292,12 @@ npm run record:export -- [--client <key>] [--dry-run] [--stdout] [--purge]
   `LEXITAR_CLI_PASSWORD` in a credentials file would reinstate, on one record, the same shape the org
   key was rejected for. The env var remains for an unattended run against a synthetic patient, whose
   password is a public literal (`scripts/provision-e2e-patient.ts`).
+- **A support principal's password *may* sit in `plover-keys`, and that is not a softening of the rule
+  above.** `LEXITAR_SUPPORT_EMAIL` and `LEXITAR_SUPPORT_PASSWORD` (`npm run support:provision`,
+  `scripts/provision-support-account.ts`) name an account that owns no record, so its password is a KEK
+  for nothing: it lets the CLI present itself, and it reaches a record only while a patient's grant is
+  live, expiring by itself. The names are deliberately distinct from `LEXITAR_CLI_*` so the rule above
+  stays true as written instead of being edited into something weaker.
 - **Destination:** `$XDG_STATE_HOME/lexitar/exports/{blobId}-{stamp}/`, mode 0700, holding
   `record.json`, `documents/`, `transcripts/` and `manifest.json`. `LEXI_EXPORT_DIR` overrides it.
 - **Refusals, with no `--force`:** `scripts/export-dir.ts` rejects any destination inside a git work
@@ -304,10 +310,10 @@ npm run record:export -- [--client <key>] [--dry-run] [--stdout] [--purge]
 - **Removal:** `npm run record:export -- --purge`, or the `rm -rf` line every run prints last. A local
   copy is a class of copy self-service erasure cannot reach, which is why `ERASURE_REACH`
   (`src/lib/erase-account.ts`) names it.
-- **No audit row**, deliberately: the read routes log nothing for any principal (§2, "The boundary
-  of that claim"), so logging a subject's read of their own record — and nothing else — would make
-  the least-privileged reader the only recorded one. Closing that gap on the *privileged* paths is
-  §4b's prerequisite, not this one's.
+- **No audit row for an owner reading their own record**, deliberately: `auditPrivilegedRead`
+  (`functions/_lib/phi-audit.ts`) returns without writing when actor === subject, so a person's own
+  clicks cannot bury the third-party reads their access screen exists to surface. Every read that is
+  *not* the owner's own is recorded — which was §4b's stated prerequisite, and is done.
 - **Deliberately absent from `ops.yml`.** A CI runner is the wrong place for plaintext PHI, and this
   follows the read-only-inspection convention (`scripts/treatment-diagnose.ts`) of staying local.
 

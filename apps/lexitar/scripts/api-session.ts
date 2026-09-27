@@ -23,6 +23,13 @@
 // the org key was rejected for: a file on a disk that opens someone's health data. So the default
 // path prompts for it on the terminal, and the env var stays for the unattended case — a synthetic
 // patient, whose password is a public literal (provision-e2e-patient.ts).
+//
+// THE ONE PASSWORD THAT MAY SIT IN THE CREDENTIALS REPO IS A SUPPORT PRINCIPAL'S — LEXITAR_SUPPORT_*,
+// minted by provision-support-account.ts. The rule above is about an account that OWNS a record: there
+// the password IS the key. A support account owns nothing, so its password opens nothing on its own. It
+// lets the tool present itself, and it reaches a record only while a patient's approval is live, which
+// expires by itself. The variable names are deliberately different so the rule above stays true rather
+// than being softened into something weaker.
 import {
   decryptVaultV2,
   deriveAuthHash,
