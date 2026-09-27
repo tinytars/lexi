@@ -38,3 +38,11 @@ export const PRIVACY_STATEMENT =
   "we maintain a zero-commercial-advertising environment. We do not use tracking cookies for personalized " +
   "medical remarketing. As a donor-supported public asset, we never sell, rent, or monetize your personal " +
   "or health data to third-party advertisers, pharmaceutical companies, or data brokers.";
+
+// DPG 9B.4/9B.5 — who answers a safety report and how fast. Audited copy, and here rather than in the
+// dialog because MODERATION.md, the report control and the Foundation's published policy all state it:
+// three texts that disagree about a response time are worse than none.
+export const SAFETY_OWNER = "Pablo Rodriguez, Tiny Tars Foundation";
+export const SAFETY_RESPONSE =
+  "A person reads every report. We aim to acknowledge within 3 business days and to resolve within 10; " +
+  "reports of illegal material are looked at within 1 business day.";
