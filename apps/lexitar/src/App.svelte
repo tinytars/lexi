@@ -1494,7 +1494,7 @@
                 <span class="access-approve-actions">
                   <!-- 9C.2 — reporting is the thing revoking is not: revoke ends their access to THIS
                        record, and says nothing to anyone about why. -->
-                  <button class="access-revoke" onclick={() => (reportTarget = { reason: "abusive-account", subject: p.linkId, feature: "provider-access" })}>Report</button>
+                  <button class="access-report" onclick={() => (reportTarget = { reason: "abusive-account", subject: p.linkId, feature: "provider-access" })}>Report</button>
                   <button class="access-revoke" disabled={vaultAccess.busy} onclick={() => vaultAccess.revoke(p)}>Revoke</button>
                 </span>
               </li>
@@ -1801,6 +1801,9 @@
   .erase-report { background: var(--band); color: var(--fg); }
   .access-revoke { padding: 0.3rem 0.7rem; border: 1px solid var(--alert); background: transparent; color: var(--alert); border-radius: 8px; cursor: pointer; font: inherit; font-size: 0.85rem; }
   .access-revoke:disabled { opacity: 0.5; cursor: default; }
+  /* Its own class, not a second .access-revoke: reporting is not revoking, and the e2e suites select
+     the revoke button by class within the access list. */
+  .access-report { padding: 0.3rem 0.7rem; border: 1px solid var(--alert); background: transparent; color: var(--alert); border-radius: 8px; cursor: pointer; font: inherit; font-size: 0.85rem; }
   .access-subhead { font-weight: 600; margin: 0 0 0.4rem; font-size: 0.9rem; }
   .access-pending { border-bottom: 1px solid var(--border); padding-bottom: 0.75rem; }
   .access-approve-actions { display: flex; align-items: center; gap: 0.4rem; }
