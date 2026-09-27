@@ -6,8 +6,8 @@ asks for each indicator. Each indicator gets a verdict, the evidence behind it, 
 between it and "meets". The gaps are the input to a development plan. This doc is not a plan, a
 tracker, or a history: when LexiTar changes, rewrite the affected verdict to describe the new state.
 
-**Assessed against:** `dev` at `c7b89a5`, and the live `tinytars.foundation/privacy` and `/terms` pages.
-`main` — what production runs — is twenty-six commits behind it and sets `REPORTS: "never"`, so where dev and
+**Assessed against:** `dev` at `2e00984`, and the live `tinytars.foundation/privacy` and `/terms` pages.
+`main` — what production runs — is twenty-eight commits behind it and sets `REPORTS: "never"`, so where dev and
 production differ the verdict says which, rather than averaging them.
 **Scope:** the software in this repo (`apps/lexitar`, `packages/frame`), the open packages it is
 built from (`@tinytars/vault`, `@pablotech/akesi`, `@pablotech/neuro`), and the finding-DAG content it
@@ -26,7 +26,7 @@ right, but there is nothing to fix.
 |---|---|---|---|
 | **1** | **SDG relevance** | **✅** | |
 | 1.1 | Which SDGs | ✅ | SDG 3 (health), SDG 10 (inequality) |
-| 1.2 | Relation to each SDG's targets | 🟡 | True of the product, written nowhere public |
+| 1.2 | Relation to each SDG's targets | ✅ | Target by target in `../../SDG.md`, against 3.8, 3.4 and 10.2, with the official indicators explicitly not claimed |
 | **2** | **Open licensing** | **✅** | |
 | 2.1 | Which approved open licence | ✅ | MIT for the software, CC BY-SA 4.0 for the finding-DAG content — both DPGA-approved |
 | 2.2 | Public evidence of it | ✅ | A `LICENSE` file in every public repo, and in every separately-published package |
@@ -95,7 +95,7 @@ became a two-step control in the product that reports what it could not attribut
 recall; the 16+ limit became a refusal in the browser rather than a sentence in the Terms; and a report
 about a wrong answer, illegal material or an abusive account now reaches a person, through a private
 tracker, against stated times. The two honest qualifications are stated where they belong rather than
-averaged away: production runs `main`, twenty-six commits behind, so the refusal and the disclosure are true
+averaged away: production runs `main`, twenty-eight commits behind, so the refusal and the disclosure are true
 of the software before they are true of the deployment; and documents uploaded before the sealing are
 still being converted where they sit, which is why `MODERATION.md` is staged rather than unconditional.
 
@@ -109,9 +109,15 @@ LexiTar explains a person's own lab results in plain language to adults with low
 limited English. That speaks to **SDG 3** (target 3.8, access to quality essential health care; 3.4,
 non-communicable disease) and **SDG 10** (target 10.2, inclusion regardless of status).
 
-**Gaps**
-- No public doc (`../../README.md`, `../../START-HERE.md`) mentions the SDGs. The mapping has to be written
-  out target by target for the form. It should also be stated somewhere public that a reviewer can link to.
+That mapping is stated publicly, target by target, in `../../SDG.md`: each target quoted in the UN's own
+wording, the mechanism in LexiTar that bears on it, and a file in this repo a reviewer can open to check the
+mechanism is real. `../../README.md` and `../../START-HERE.md` each point at it in one sentence rather than
+restating it. It also names the five official indicators under those targets — 3.8.1, 3.8.2, 3.4.1, 3.4.2,
+10.2.1 — and says LexiTar moves none of them, which is the honest shape of the claim: it sits upstream of
+the indicator, on the step between a result a person holds and a result they can read.
+
+**Gaps** — none. The mapping is written out against named targets, in a public file a reviewer can link to,
+with the indicators it does not claim stated rather than left to be inferred.
 
 ## 2. Use of approved open licenses — ✅
 
@@ -363,7 +369,7 @@ What's in place:
 
 **Gaps** — none against the software in this repo.
 
-**One deployment note, which is not a gap in the software.** Production runs `main`, twenty-six
+**One deployment note, which is not a gap in the software.** Production runs `main`, twenty-eight
 commits behind `dev`, so until that promotion it serves the pre-refusal build and sets `REPORTS: "never"` (no
 document leaves at all under that setting). A preview sweep on the dev store reports zero *sealable*
 plaintext. The production store's own preview sweep was run read-only on 2026-09-27 and is the honest
