@@ -6,7 +6,9 @@ asks for each indicator. Each indicator gets a verdict, the evidence behind it, 
 between it and "meets". The gaps are the input to a development plan. This doc is not a plan, a
 tracker, or a history: when LexiTar changes, rewrite the affected verdict to describe the new state.
 
-**Assessed against:** `dev` at `6e2d811`, and the live `tinytars.foundation/privacy` and `/terms` pages.
+**Assessed against:** `dev` at `7d7b950`, and the live `tinytars.foundation/privacy` and `/terms` pages.
+`main` — what production runs — is five commits behind it and sets `REPORTS: "never"`, so where dev and
+production differ the verdict says which, rather than averaging them.
 **Scope:** the software in this repo (`apps/lexitar`, `packages/frame`) plus the open packages it is
 built from (`@tinytars/vault`, `@pablotech/akesi`, `@pablotech/neuro`). Users' health data is never
 part of the DPG.
@@ -37,14 +39,14 @@ right, but there is nothing to fix.
 | 3.6 | If not, the right to redistribute | 🟡 | MIT covers it, but no CLA or DCO governs inbound contributions |
 | **4** | **Platform independence** | **✅** | |
 | 4.1 | Core technologies | ✅ | TypeScript, Svelte, Web Crypto, WebAuthn, SQLite-compatible storage, object storage |
-| 4.2 | Any closed dependency | ⚪ | Yes — hosting, models, speech, email, OAuth |
+| 4.2 | Any closed dependency | ⚪ | Yes — hosting, models, speech, email, OAuth. With reports attached, native PDF input too |
 | 4.3 | Open alternative: hosting | ✅ | Node/Docker self-host, e2e-tested in CI on both hosts |
-| 4.4 | Open alternative: inference | ✅ | Any OpenAI-compatible server, incl. local open weights, by config alone |
+| 4.4 | Open alternative: inference | ✅ | Any OpenAI-compatible server by config alone; two alternative stacks ship as files, one with no vendor account at all, both measured |
 | 4.5 | Open alternative: read-aloud | ✅ | Browser `speechSynthesis` fallback |
 | 4.6 | Open alternative: email | 🟡 | Gmail or nothing; no SMTP path, and silence drops a security notification |
 | 4.7 | Open alternative: sign-in | ✅ | Passkeys and passwords; Google OAuth is optional |
 | **5** | **Documentation** | **✅** | |
-| 5.1 | Developer and architecture docs | ✅ | `../../ARCHITECTURE.md`, `API.md`, `AUTH.md`, `VAULT.md`, `INFERENCE.md` |
+| 5.1 | Developer and architecture docs | ✅ | `../../ARCHITECTURE.md`, `API.md`, `AUTH.md`, `VAULT.md`, `INFERENCE.md`, `CORPUS.md`, `MODELS.md`, `MEASUREMENT.md` |
 | 5.2 | Enough for a stranger to launch and run it | ✅ | `../../START-HERE.md` §B, clone to running in ten minutes |
 | 5.3 | User guide | ❌ | Nothing tells a patient how to use the product |
 | **6** | **Extracting data and content** | **✅** | |
@@ -52,28 +54,28 @@ right, but there is nothing to fix.
 | 6.2 | Export/import in a non-proprietary format | ✅ | CSV and JSON export; PDF/XLSX import |
 | **7** | **Privacy and applicable laws** | **❌** | |
 | 7.1 | Which laws it complies with | ❌ | No law named anywhere; GDPR, FTC HBNR, CCPA, MHMDA all plausibly apply |
-| 7.2 | Evidence of adherence | ❌ | Policy and Terms are published, but their encryption claims contradict the code |
+| 7.2 | Evidence of adherence | ❌ | Published, and the at-rest claim is now true; neither document says whole documents go to a model provider |
 | 7.3 | Processors disclosed | ❌ | Anthropic, Azure and Google are unnamed in the policy |
-| 7.4 | Consent for special-category data | ❌ | None captured at signup or at the point a model call sends data out |
+| 7.4 | Consent for special-category data | ❌ | No consent surface anywhere, and the corpus raised the stake from extracted values to whole documents |
 | 7.5 | Deletion available to the user | ❌ | `POST /api/account/erase` works; no UI reaches it |
 | **8** | **Standards and best practices** | **✅** | |
 | 8.1 | Open standards, with evidence | ✅ | WebAuthn, Web Crypto, OAuth2/OIDC, WCAG 2.1 AA via axe in e2e |
 | 8.2 | Best practices, with evidence | ✅ | CI on every PR, coverage thresholds, CodeQL, Dependabot, disclosure policy |
 | **9A** | **Data privacy and security** | **🟡** | |
-| 9A.1 | Is PII collected / stored / distributed | ⚪ | All three — distributed to clinicians the patient links |
+| 9A.1 | Is PII collected / stored / distributed | ⚪ | All three — and what a linked clinician now receives includes the original documents, through the model |
 | 9A.2 | Which types | ✅ | Identity, lab results, symptoms, treatments, notes, photos, chat |
 | 9A.3 | Vault confidentiality | ✅ | Client-side encryption, per-principal envelopes |
 | 9A.4 | Access control and audit | ✅ | One capability table, per-namespace ownership, logged privileged reads |
-| 9A.5 | Uploaded originals | ❌ | Stored unencrypted — the most sensitive files are the least protected |
-| 9A.6 | Transfer to third-party models | 🟡 | Avoidable by config, but the live deployment sends plaintext health data out |
-| 9A.7 | Erasure integrity | ✅ | Reports itself incomplete rather than claiming a clean erase |
+| 9A.5 | Uploaded originals | 🟡 | Sealed under per-file content keys held inside the vault; the store is mid-migration and plaintext is still accepted |
+| 9A.6 | Transfer to third-party models | 🟡 | Avoidable by config and by one env var; where it is on, whole originals leave when a record is opened, before any question |
+| 9A.7 | Erasure integrity | 🟡 | Honest about the storage it controls; silent about the copies already sent to the model provider |
 | **9B** | **Inappropriate, misleading, illegal content** | **❌** | |
 | 9B.1 | Is content collected / stored / distributed | ⚪ | All three — uploads, notes, generated explanations |
 | 9B.2 | Which types | ✅ | PDFs, photos, free text, AI-generated health explanations |
-| 9B.3 | Identifying illegal content | ❌ | An acceptable-use clause, and nothing that acts on it |
+| 9B.3 | Identifying illegal content | ❌ | An acceptable-use clause, and nothing that acts on it. Sealing makes "the operator cannot read it" true, but it is unwritten |
 | 9B.4 | Detect / moderate / report / remove | ❌ | No process, no channel, no owner |
 | 9B.5 | Average response time | ❌ | Undefined, because there is no process to time |
-| 9B.6 | Misleading content | 🟡 | Disclaimer, no-diagnosis prompts and staleness tracking; no way to flag a wrong answer |
+| 9B.6 | Misleading content | 🟡 | Disclaimer, no-diagnosis prompts, staleness tracking, per-page citations, and a corpus that refuses rather than shrinks; no way to flag a wrong answer |
 | **9C** | **Protection from harassment** | **🟡** | |
 | 9C.1 | Does it enable interaction between users | ⚪ | Yes, narrowly — patient↔clinician sharing; no messaging or social surface |
 | 9C.2 | How users protect themselves | 🟡 | Links are patient-approved, time-boxed, revocable and logged; no abuse-report path |
@@ -84,6 +86,13 @@ right, but there is nothing to fix.
 writing: consent and deletion in the product, a content-reporting process behind it. Indicator 3's
 ownership split and 9C's age gate are smaller but real. Everything else either passes or passes with a
 note.
+
+Sealing the uploaded originals and attaching them to every inference (`VAULT.md` §2a, `CORPUS.md`) moved
+no indicator's light, and that is the finding. Inside 9A it traded one sub-question for another: 9A.5
+rose off ❌ because the files are encrypted at rest, and 9A.7 fell off ✅ because erasure now has
+something outside its reach to account for and does not. Indicator 7 fails for a new reason on top of
+its old ones: the documents a patient uploads are sent whole to a model provider — on record open, not
+on a question — and nothing the patient is shown says so.
 
 ---
 
@@ -142,7 +151,7 @@ object storage.
 | Closed component | What depends on it | Open alternative today |
 |---|---|---|
 | **Cloudflare Pages / D1 / R2** (hosting) | Everything, in the live deployment | ✅ The same `functions/` tree runs on Node (`node:sqlite` + filesystem blobs) via `npm run serve:node` or the `Dockerfile` (`server/`). CI runs e2e on both hosts, and `tests/unit/platform-imports.test.ts` blocks Cloudflare imports from routes and UI |
-| **Anthropic API** (Claude Opus / Sonnet / Haiku) | Every AI feature, by default | ✅ Any OpenAI-compatible server, set per feature in `inference.config.json` — no code change. That includes open weights served locally by Ollama, vLLM or LM Studio (`INFERENCE.md`). Both web routes and the CLI resolve their client through `functions/_lib/inference/resolve.ts`; `tests/unit/openai-adapter.test.ts` exercises the adapter against a real Chat Completions server |
+| **Anthropic API** (Claude Opus / Sonnet / Haiku) | Every AI feature, by default | ✅ Any OpenAI-compatible server, set per feature in `inference.config.json` — no code change. That includes open weights served locally by Ollama, vLLM or LM Studio (`INFERENCE.md`). Both web routes and the CLI resolve their client through `functions/_lib/inference/resolve.ts`; `tests/unit/openai-adapter.test.ts` exercises the adapter against a real Chat Completions server. Two whole alternative stacks ship as copyable files (`inference.examples/mixed.json`, `open-local.json` — the second needs no vendor account at all), described in `MODELS.md` and measured in `MEASUREMENT.md` |
 | **Azure AI Speech** (read-aloud) | `functions/api/speak.ts` | ✅ Falls back to the browser's own `speechSynthesis` on any failure |
 | **Gmail API** (outbound email) | `functions/_lib/email.ts` | 🟡 No-ops without credentials, but that drops notification emails, which `step-up.ts` relies on as a security control. There's no SMTP path |
 | **Google OAuth** (sign-in) | `functions/_lib/google.ts` | ✅ Optional; passkeys and passwords work without it |
@@ -152,16 +161,31 @@ for the host, a local open-weights model for inference, the browser voice for re
 sign-in. `INFERENCE.md` also lists what needs no model at all — vault, sign-in, manual entry, markers
 and charts, reference material, export.
 
+**Source documents stayed portable.** Every inference about a person is now made in sight of that
+person's own PDFs, attached server-side by the route as ordinary `document` blocks (`CORPUS.md`) — not
+through a vendor file-upload or context API, which is what keeps the mechanism expressible on an
+OpenAI-compatible endpoint (`tests/unit/corpus-portability.test.ts`). The cheaper vendor-only shape was
+available and was rejected for that reason: one shared cache entry needs mid-conversation `system`
+messages and `tool_addition` blocks, which `openai.ts` cannot express, so the app pays a cache write per
+attached feature instead. `REPORTS` in `wrangler.jsonc` turns the whole mechanism off per environment —
+unset means off, and any other value throws rather than defaulting.
+
 **Gaps**
-- **Document ingestion still needs a capable model.** An `openai` provider declares `caps`, and a
-  request needing something it lacks is refused with `422 model_unsupported` rather than being sent.
-  With a typical local model (no vision, no PDF), chat without photos, persona, pasted treatment text,
-  ranges and marker groups work, while report and document extraction and the photo paths don't. So the
-  open-model configuration is functional but not feature-complete, and the form answer should say so
-  rather than claim parity.
-- **Quality is unmeasured off Claude.** `INFERENCE.md` is candid that the prompts were written against
-  Claude and that a smaller model may fail Finding validation more often. `scripts/brain-benchmark.ts`
-  exists; no published run compares an open model against it.
+- **Attaching reports narrows the open stacks.** A provider declares `caps`, and a request needing
+  something it lacks is refused with `422 model_unsupported` rather than sent — refuse, never degrade.
+  Since every feature that answers about a person now carries that person's PDFs, an attached
+  environment needs native PDF input on all five of them (`chat`, `finding`, `ranges`, `markerGroups`,
+  `leafRegen`), which no open candidate offers. Both shipped alternative stacks therefore say in their
+  own `$doc` that they require `REPORTS: "never"`. That is a real configuration, tested and documented,
+  but a deployer choosing open weights gives up the corpus, and the form answer should say that rather
+  than claim parity.
+- **Quality off the vendor is measured, and one half of it failed.** `MEASUREMENT.md` carries the runs
+  and `MODELS.md` the verdict: a 4B open model held the shipped contract on `ranges` — the
+  highest-volume call, with a ten-check validator — on every case at first attempt. The document
+  features did not survive the 4 GiB card they were measured on: the accurate vision model would not
+  load, and the one that fit passed the validator on an extraction while reporting a patient name that
+  is not on the page. A larger GPU was not tested and `MODELS.md` declines to guess, so the honest
+  claim is "measured on the structured features, unproven on the document features".
 - **Email needs an open transport** (SMTP) so a self-host doesn't lose security notifications.
 - **Self-hosting is documented as a dev path, not an operator's.** `README.md` and the `Dockerfile`
   cover launch; env-var inventory, storage layout and backups for a production self-host aren't written
@@ -174,11 +198,17 @@ run" it: developer docs, architecture, user guides.
 
 Developer and architecture docs are strong: `../../START-HERE.md` (a ten-minute clone-to-running path),
 `../../README.md`, `../../ARCHITECTURE.md`, `../../CONTRIBUTING.md`, `../../SECURITY.md`, `API.md`,
-`AUTH.md`, `VAULT.md`, `INFERENCE.md`, `docs/BUILDING.md`.
+`AUTH.md`, `VAULT.md`, `INGEST.md`, `INFERENCE.md`, `CORPUS.md`, `MODELS.md`, `MEASUREMENT.md`,
+`docs/BUILDING.md`. The last three are unusually strong evidence for this indicator: they state what was
+measured, on what hardware, and which claims are not proven.
 
 **Gaps**
 - **No end-user guide.** Nothing explains, for a patient, how to import a report, read a translation,
   or share with a clinician. `START-HERE.md` §A explains what LexiTar is, not how to use it.
+- **`CORPUS.md` contradicts itself on the one fact this assessment leans on hardest.** §2 still calls
+  the stored original "plaintext, deliberately outside the vault's encryption boundary" while §3
+  describes the per-request key map that decrypts it; the sealing landed two days before that file was
+  last touched. An assessor reading §2 alone concludes 9A.5 fails.
 - The self-hosting guide from Indicator 4.
 
 ## 6. Mechanism for extracting data and content — ✅
@@ -202,17 +232,28 @@ A privacy policy (`tinytars.foundation/privacy`) and terms (`/terms`) are publis
 that the Foundation is not a HIPAA covered entity.
 
 **Gaps**
-- **The policy's central claims are false as the code stands.** It says data is "readable only inside
-  your own browser", that "we do not hold plain-text access to your health records", and that a lost key
-  means "we cannot recover the encrypted contents". In fact:
-  - uploaded originals (PDFs, images) are stored **unencrypted** under `raw/` (`VAULT.md`, `functions/api/raw/`);
-  - every vault carries an **org-recovery envelope by default** that the Foundation's key can open
-    (`VAULT.md` §org recovery; the patient can revoke it);
-  - AI features send health data in plain text through the server to whichever provider
-    `inference.config.json` names — Anthropic in the live deployment — and read-aloud sends it to Azure.
+- **The policy is closer to the code than it was, and still contradicts it.** The at-rest half became
+  true on 2026-09-24: uploaded originals are sealed under per-file content keys that exist only inside
+  the patient's encrypted vault (`VAULT.md` §2a), so "we do not hold plain-text access to your health
+  records" now holds at rest. Two claims still fail:
+  - every vault carries an **org-recovery envelope by default** that the Foundation's key can open, so
+    "we cannot recover the encrypted contents" is false unless the patient revoked it. This one is
+    disclosed at signup on the lock screen and repeated on the public site — here the policy is what
+    lags, not the product.
+  - **whole documents, not extracted values, go to a model provider** when their owner asks a question
+    about them (`CORPUS.md`), and read-aloud sends text to Azure. The policy mentions neither, and
+    "readable only inside your own browser" reads as a denial of the first.
 
-  An assessor comparing the policy with `VAULT.md` finds the contradiction directly. The fix is either
-  the code or the policy, but they have to agree.
+  The corpus also fixes the limit of the sealing, stated in the same terms in `../../SECURITY.md`,
+  `VAULT.md` §2a and `CORPUS.md` §3: the deployment decrypts a document in memory while answering its
+  owner's question about it. **That wording is narrower than the code.** `functions/api/corpus-warm.ts`
+  sends the whole corpus at `max_tokens: 0` when a record is *selected*, and the browser refreshes it
+  every 4.5 minutes for up to twelve idle cycles (`src/lib/corpus-warm.ts`), so opening a record — and
+  then asking nothing — still transmits every original. The trigger is the owner's presence, not the
+  owner's question, and all three documents should say so.
+  `REPORTS: "never"` turns that path off entirely and is what `main` ships, while `dev` runs
+  `"always"` — so an assessor reads one policy against two configurations, and the policy describes
+  neither.
 - **Processors aren't named.** The policy mentions only "infrastructure providers (such as our cloud
   host)". Anthropic, Microsoft Azure and Google receive or handle user data and aren't listed, nor are
   their retention terms.
@@ -248,20 +289,51 @@ family history, photos, chat history.
 What's in place:
 - The vault is client-side encrypted (`@tinytars/vault`), with per-principal envelopes for owner, org
   recovery and provider links.
+- Uploaded originals are sealed the same way (`VAULT.md` §2a): each carries its own AES-GCM-256 content
+  key, minted in the browser and held in `Vault.rawKeys` *inside* the vault blob, so who can decrypt a
+  file, how access is revoked and how a rotation works stay the vault's answers rather than three new
+  mechanisms. A document and its transcription sidecar share one key, and the key is written to the
+  vault before the ciphertext is uploaded, so a crash cannot orphan a file.
+- The deployment therefore holds no standing key for those files: the browser of the person using the
+  record hands the route a key map per request, and authorisation runs inside the assembler that opens
+  them (`openReportCorpus` calls `rawAccessFor` before it lists anything —
+  `functions/_lib/inference/corpus.ts:145`), so a route cannot be written that forgets the check. An
+  unauthorised client is a 404, never a 403, because a 403 would confirm the namespace exists, and a
+  refusal that names files sends the count only (`CorpusKeyError`, `CorpusUnmeasuredError`).
 - Every route serving patient files authorises per client namespace (`functions/_lib/raw-owner.ts`,
   `tests/unit/raw-authorization.test.ts`). Unowned namespaces are refused, and ownership never flips.
 - Access policy lives in one table (`functions/_lib/capabilities.ts`). Privileged reads are logged to
   `phi_access_events`, and support access is consent-gated and time-boxed.
-- Erasure (`functions/_lib/erasure.ts`) deletes everything attributable, and reports itself
-  incomplete rather than claiming a clean erase.
+- Erasure (`functions/_lib/erasure.ts`) deletes everything attributable in the operator's own storage,
+  and reports itself incomplete rather than claiming a clean erase.
 
 **Gaps**
-- **Uploaded originals are plaintext at rest.** The most sensitive files a user gives LexiTar are the
-  ones not covered by its encryption. They should be encrypted client-side like the vault.
-- **Health data goes to third-party models in plain text** with no user-facing disclosure or consent at
-  the point of use, and no documented retention or zero-retention terms with Anthropic or Azure. An
-  operator *can* now keep inference in-house (`inference.config.json` → a local model, Indicator 4), but
-  the deployment users actually meet does not, and nothing in the UI says where their data goes.
+- **The store is only half-sealed.** New uploads are sealed, and two lanes seal what was already
+  there — a browser heal on record open (`src/lib/raw-seal-heal.ts`), which is the only lane that
+  reaches an account that revoked org recovery, and a store-wide operator sweep (`npm run raw:encrypt`).
+  Until a sweep reports zero plaintext on both stores the read and write paths still accept a plaintext
+  body, logging it so the remaining work is visible without listing the bucket
+  (`functions/api/raw/[[path]].ts`); refusing plaintext is a later change. The sealing is also on `dev`
+  only — production is five commits behind it, so the claim is true of the software and not yet of the
+  deployment.
+- **Whole documents go to third-party models**, not just the values extracted from them, wherever
+  `REPORTS: "always"` is set — `dev` today, production not. There is still no disclosure or consent at
+  the point of use, and no documented retention or zero-retention terms with Anthropic or Azure. Sealing
+  defeats a leaked storage token, a snapshot and a backup copy, and it removes the operator's standing
+  ability to read any patient's files; it does not hide a document from the running deployment while its
+  owner is using the record.
+- **The transfer is triggered by presence, not by a question, and it is designed to persist.**
+  `corpus-warm.ts` sends every original before the patient types anything, so that the first answer is
+  not paid for at the cursor, and the browser re-sends the same prefix every 4.5 minutes for up to
+  twelve idle cycles — by construction, roughly 54 minutes of residency in a third party's prompt cache
+  after the patient stops interacting. Both numbers are derived from the cache's economics
+  (`src/lib/corpus-warm.ts`), which is a good reason for them and not a privacy analysis. Nothing weighs
+  that residency against the patient's interest, and no document mentions it.
+- **Erasure cannot reach what has already been sent, and does not say so.** `erasure.ts` is careful
+  about storage it cannot prove is the account's, and silent about the copies at the model provider —
+  which are now whole documents rather than extracted values, and which the warmer deliberately keeps
+  resident. This is why 9A.7 is no longer a pass: the mechanism is sound, its stated scope is not the
+  whole of what "erased" has to mean once originals leave the deployment.
 - **No self-service deletion.** A user can't erase their own account from the UI.
 
 ## 9B. Inappropriate, misleading and illegal content — ❌
@@ -278,12 +350,29 @@ What's in place:
 - For *misleading* content: the audited `MEDICAL_DISCLAIMER` (`src/lib/brand.ts`) is shown in-app;
   prompts carry education-not-medicine rules ("do not diagnose"); and the finding DAG marks derived
   content stale when its inputs change (`../../ARCHITECTURE.md`).
+- Also for misleading content, and newer: an answer about a person is generated in sight of that
+  person's own documents rather than only the structured extraction taken from them at import
+  (`CORPUS.md`). The failure that addresses is specific — a model reading an extraction cannot tell what
+  the extraction dropped, so it answers confidently from a partial record — and the claim is tested
+  against a real model, on three questions whose answers exist only inside a document's own pages
+  (`tests/live/corpus-answers-the-document.test.ts`, opt-in, never in CI because it spends money).
+- Two properties of that mechanism are the strongest misleading-content evidence LexiTar has, and both
+  are enforced in code rather than asserted in a prompt. Every attached feature that is not returning a
+  JSON schema sets `citations: { enabled: true }` (`functions/_lib/inference/attach.ts:66` — the two
+  are mutually exclusive in the API), so an answer carries `page_location` cites a reader can check
+  against the page. And a corpus that cannot be assembled whole **throws** — an unmeasured
+  page count, a missing object, an unopenable key, a ceiling — instead of quietly attaching fewer
+  documents, because a partial corpus produces an answer that reads exactly like a complete one
+  (`functions/_lib/inference/corpus.ts:14-16`). Refusal is the safe failure and the code picks it every
+  time.
 
 **Gaps**
 - **No illegal-content process.** Nothing detects, reports or removes illegal uploads, and there's no
-  documented response time. LexiTar accepts image uploads and stores them in plain text, so "we can't see
-  it" isn't available as an answer either. A written policy and a reporting channel are needed, plus
-  either scanning or a reasoned position on why it doesn't apply.
+  documented response time. What changed is which answer is available: uploads are sealed under keys the
+  operator does not hold (`VAULT.md` §2a), so server-side scanning is no longer possible and "we cannot
+  read it" is now true rather than a claim the code refutes. That is the principled half of an answer the
+  DPGA accepts. It is nowhere written down, and it does not supply the other half — a reporting channel,
+  a named owner, and a removal path that works on a file nobody but its owner can open.
 - **No way to flag a misleading answer.** A user or clinician who sees a wrong explanation has no
   in-app way to report it, and nothing routes such reports to a reviewer.
 
