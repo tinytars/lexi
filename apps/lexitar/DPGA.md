@@ -6,8 +6,8 @@ asks for each indicator. Each indicator gets a verdict, the evidence behind it, 
 between it and "meets". The gaps are the input to a development plan. This doc is not a plan, a
 tracker, or a history: when LexiTar changes, rewrite the affected verdict to describe the new state.
 
-**Assessed against:** `dev` at `8d9f471`, and the live `tinytars.foundation/privacy` and `/terms` pages.
-`main` — what production runs — is nineteen commits behind it and sets `REPORTS: "never"`, so where dev and
+**Assessed against:** `dev` at `9e5e91a`, and the live `tinytars.foundation/privacy` and `/terms` pages.
+`main` — what production runs — is twenty-three commits behind it and sets `REPORTS: "never"`, so where dev and
 production differ the verdict says which, rather than averaging them. `@pablotech/neuro`'s licence
 file is in its repository and reaches the npm registry with the next release, which publishes a package
 version and is therefore the owner's merge, so where the repository and the registry differ the verdict
@@ -59,19 +59,19 @@ right, but there is nothing to fix.
 | 7.1 | Which laws it complies with | ❌ | No law named anywhere; GDPR, FTC HBNR, CCPA, MHMDA all plausibly apply |
 | 7.2 | Evidence of adherence | ✅ | Policy and terms published and now true: what leaves this device, the recovery envelope, the enforced age limit, the reporting channel |
 | 7.3 | Processors disclosed | ✅ | Named in the policy, each with what it receives and what its terms actually cover — including where nothing has been negotiated |
-| 7.4 | Consent for special-category data | ❌ | No consent surface anywhere, and the corpus raised the stake from extracted values to whole documents |
+| 7.4 | Consent for special-category data | ❌ | No consent surface anywhere, and the corpus raised the stake from extracted values to whole documents. The operator CLI does not raise it again — a subject reading their own record under their own credential is not third-party processing — and `VAULT.md` §4b is where it returns |
 | 7.5 | Deletion available to the user | ✅ | Two-step self-service erase in the account panel, reporting honestly what it could not attribute |
 | **8** | **Standards and best practices** | **✅** | |
 | 8.1 | Open standards, with evidence | ✅ | WebAuthn, Web Crypto, OAuth2/OIDC, WCAG 2.1 AA via axe in e2e |
-| 8.2 | Best practices, with evidence | ✅ | CI on every PR, coverage thresholds, CodeQL, Dependabot, disclosure policy |
+| 8.2 | Best practices, with evidence | ✅ | CI on every PR, coverage thresholds, CodeQL, Dependabot, disclosure policy — and a static sweep that fails the build when a privileged-key bypass is reintroduced |
 | **9A** | **Data privacy and security** | **✅** | |
 | 9A.1 | Is PII collected / stored / distributed | ⚪ | All three — and what a linked clinician now receives includes the original documents, through the model |
 | 9A.2 | Which types | ✅ | Identity, lab results, symptoms, treatments, notes, photos, chat |
-| 9A.3 | Vault confidentiality | ✅ | Client-side encryption, per-principal envelopes |
-| 9A.4 | Access control and audit | ✅ | One capability table, per-namespace ownership, logged privileged reads |
+| 9A.3 | Vault confidentiality | ✅ | Client-side encryption, per-principal envelopes — and the operator CLI reads a record *through* one of those principals (the owner's own), not around them, so it holds no reach the owner's browser lacks |
+| 9A.4 | Access control and audit | ✅ | One capability table, per-namespace ownership, logged privileged reads. The org key's audit became a mechanism on 2026-09-27: one module turns that key into a decryption key and writes the row before it returns one, pinned by a build-failing sweep. The read routes log nothing for *any* principal, which `VAULT.md` §4b names as the prerequisite to third-party CLI access |
 | 9A.5 | Uploaded originals | ✅ | Sealed under per-file content keys held inside the vault, and a plaintext `PUT` is now refused outright (`415 plaintext_refused`). Deployment note: the dev store sweeps to zero sealable objects; production runs the pre-refusal build until `main` is promoted, and its read-only sweep on 2026-09-27 counted 35 objects still to seal |
 | 9A.6 | Transfer to third-party models | ✅ | Disclosed at the point of use, on demand and in the published policy: whole documents, on record open, about an hour of provider-side cache, no negotiated zero-retention arrangement |
-| 9A.7 | Erasure integrity | ✅ | The report states what deletion cannot reach, and the half that is enforceable — revocation killing the corpus keepalive — is pinned by a test rather than assumed |
+| 9A.7 | Erasure integrity | ✅ | The report states what deletion cannot reach, and the half that is enforceable — revocation killing the corpus keepalive — is pinned by a test rather than assumed. A record exported to a computer is named there too, as a class of copy erasure cannot reach at all |
 | **9B** | **Inappropriate, misleading, illegal content** | **✅** | |
 | 9B.1 | Is content collected / stored / distributed | ⚪ | All three — uploads, notes, generated explanations |
 | 9B.2 | Which types | ✅ | PDFs, photos, free text, AI-generated health explanations |
@@ -99,7 +99,7 @@ became a two-step control in the product that reports what it could not attribut
 recall; the 16+ limit became a refusal in the browser rather than a sentence in the Terms; and a report
 about a wrong answer, illegal material or an abusive account now reaches a person, through a private
 tracker, against stated times. The two honest qualifications are stated where they belong rather than
-averaged away: production runs `main`, nineteen commits behind, so the refusal and the disclosure are true
+averaged away: production runs `main`, twenty-three commits behind, so the refusal and the disclosure are true
 of the software before they are true of the deployment; and documents uploaded before the sealing are
 still being converted where they sit, which is why `MODERATION.md` is staged rather than unconditional.
 
@@ -273,7 +273,10 @@ two questions that rewrite does not answer.
 - **No consent capture for special-category data (7.4).** GDPR Article 9 wants explicit consent for
   processing health data, and there is no consent surface — disclosure at the point of use is not
   consent, and the `REPORTS` switch is the operator's, not the patient's. The corpus raised what such
-  consent would have to cover from extracted marker values to whole documents.
+  consent would have to cover from extracted marker values to whole documents. The operator CLI added on
+  2026-09-27 does not raise it a third time: it authenticates as the record's own owner, and a subject
+  reading their own data under their own credential is not processing that Article 9 consent governs.
+  `VAULT.md` §4b is where the question returns, which is part of why that case is written and not built.
 
 Neither is in this milestone's scope, and neither has been narrowed by it: what changed is that the
 published claims are now true, not that a law has been named.
@@ -285,9 +288,12 @@ published claims are now true, not that a law has been named.
 - **Open standards:** WebAuthn/FIDO2 passkeys; W3C Web Crypto (AES-GCM-256, PBKDF2-SHA256, ECDH-ES
   P-256, HMAC-SHA256); OAuth 2.0 / OpenID Connect (Google sign-in); WCAG 2.1 AA, asserted by axe in
   `tests/e2e/a11y.spec.ts`; CSV and JSON for export.
-- **Best practices:** CI on every PR (`.github/workflows/ci.yml`) with ~270 unit and ~70 e2e files
+- **Best practices:** CI on every PR (`.github/workflows/ci.yml`) with ~315 unit and ~70 e2e files
   and enforced coverage (`coverage-thresholds.json`); CodeQL; Dependabot for npm and Actions; private
-  vulnerability reporting (`../../SECURITY.md`); a code of conduct.
+  vulnerability reporting (`../../SECURITY.md`); a code of conduct. One of those suites is evidence of a
+  different kind: `tests/unit/org-key-chokepoint.test.ts` sweeps `scripts/` and fails the build when any
+  file other than the single audited module opens the operator's org key — an assessor can run that
+  rather than read a claim about it.
 
 **Gaps** — none blocking. Health-data interoperability (FHIR, LOINC codes for markers) isn't used. That
 isn't required, but an assessor in the health domain may look for it.
@@ -323,6 +329,22 @@ What's in place:
   `tests/unit/raw-authorization.test.ts`). Unowned namespaces are refused, and ownership never flips.
 - Access policy lives in one table (`functions/_lib/capabilities.ts`). Privileged reads are logged to
   `phi_access_events`, and support access is consent-gated and time-boxed.
+- **The operator key's audit is a mechanism, not a convention** (2026-09-27). The key that opens every
+  vault lives only in the CLI, and internal policy has always permitted it on condition that every use
+  is logged — a condition previously honoured by a comment asking the next programmer to remember, which
+  two scripts did not. `scripts/org-unwrap.ts` is now the only code that turns that key into a
+  decryption key; it writes the `org_key_decrypt` row before it returns one, refuses an id it could not
+  log before any crypto runs, and spools the row to a local file rather than losing it if the database is
+  unreachable or the script dies. `tests/unit/org-key-chokepoint.test.ts` fails the build when another
+  file reintroduces the shortcut. `VAULT.md` §2 states the boundary of that claim rather than a stronger
+  one: it is a property of this repository, not of the machine.
+- **A command line that adds no privilege** (`VAULT.md` §4a). The operator export authenticates as the
+  record's own owner over the ordinary authenticated API, so `resolveEnvelopeAccess` stays in the path
+  and the tool's reach is one record — the one the credential owns. It introduces no new trust boundary,
+  no new endpoint and no new standing key. The one honest cost is the copy it writes, covered under
+  erasure below; the third-party case, which would need more authority than this, is written and
+  deliberately not built (`VAULT.md` §4b), with the unaudited privileged read routes named as its
+  prerequisite.
 - **What leaves the device is disclosed where the work happens**, in one audited string reused
   everywhere (`MODEL_DISCLOSURE`, `src/lib/brand.ts`): whole reports rather than summaries, sent when a
   record is opened and not only when a question is asked, resident in the provider's prompt cache for
@@ -337,7 +359,11 @@ What's in place:
   `src/lib/erase-account.ts`), and the result is rendered from the route's own report rather than a
   claim: storage it could not attribute is reported as a count, and `ERASURE_REACH` says in the same
   words as `../../SECURITY.md` and `MODERATION.md` what deletion cannot recall — the copies already
-  written at the model and speech providers, which expire on their schedules.
+  written at the model and speech providers, which expire on their schedules, and a record exported to
+  somebody's computer, which erasure cannot reach at all. That last class arrived with the operator
+  export on 2026-09-27 and was added to the disclosure in the same change, because shipping it silently
+  would have made a passing verdict here false: the product would still have been telling patients it
+  had named everything deletion cannot reach.
 - **The half of erasure that is enforceable is pinned by a test, not asserted.** `erasure.ts` revokes
   sessions before it writes the tombstone, so an erased account's browser cannot send anything further;
   `tests/unit/erasure-function.test.ts` holds a `corpus-warm` refresh on a pre-erasure cookie to a 401,
@@ -345,8 +371,8 @@ What's in place:
 
 **Gaps** — none against the software in this repo.
 
-**One deployment note, which is not a gap in the software.** Production runs `main`, nineteen commits
-behind `dev`, so until that promotion it serves the pre-refusal build and sets `REPORTS: "never"` (no
+**One deployment note, which is not a gap in the software.** Production runs `main`, twenty-three
+commits behind `dev`, so until that promotion it serves the pre-refusal build and sets `REPORTS: "never"` (no
 document leaves at all under that setting). A preview sweep on the dev store reports zero *sealable*
 plaintext. The production store's own preview sweep was run read-only on 2026-09-27 and is the honest
 number here: **35 objects would be sealed, none are sealed yet, 6 are missing, and no namespace is
