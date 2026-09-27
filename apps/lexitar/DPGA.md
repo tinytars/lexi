@@ -66,7 +66,7 @@ right, but there is nothing to fix.
 | 9A.2 | Which types | ✅ | Identity, lab results, symptoms, treatments, notes, photos, chat |
 | 9A.3 | Vault confidentiality | ✅ | Client-side encryption, per-principal envelopes |
 | 9A.4 | Access control and audit | ✅ | One capability table, per-namespace ownership, logged privileged reads |
-| 9A.5 | Uploaded originals | ✅ | Sealed under per-file content keys held inside the vault, and a plaintext `PUT` is now refused outright (`415 plaintext_refused`). Deployment note: the dev store sweeps to zero sealable objects; production runs the pre-refusal build until `main` is promoted, and its own sweep has not been run |
+| 9A.5 | Uploaded originals | ✅ | Sealed under per-file content keys held inside the vault, and a plaintext `PUT` is now refused outright (`415 plaintext_refused`). Deployment note: the dev store sweeps to zero sealable objects; production runs the pre-refusal build until `main` is promoted, and its read-only sweep on 2026-09-27 counted 35 objects still to seal |
 | 9A.6 | Transfer to third-party models | ✅ | Disclosed at the point of use, on demand and in the published policy: whole documents, on record open, about an hour of provider-side cache, no negotiated zero-retention arrangement |
 | 9A.7 | Erasure integrity | ✅ | The report states what deletion cannot reach, and the half that is enforceable — revocation killing the corpus keepalive — is pinned by a test rather than assumed |
 | **9B** | **Inappropriate, misleading, illegal content** | **✅** | |
@@ -320,8 +320,12 @@ What's in place:
 **One deployment note, which is not a gap in the software.** Production runs `main`, seven commits
 behind `dev`, so until that promotion it serves the pre-refusal build and sets `REPORTS: "never"` (no
 document leaves at all under that setting). A preview sweep on the dev store reports zero *sealable*
-plaintext; the production store's own preview sweep has not been run, and the residual classes the
-sweep deliberately leaves — orphaned namespaces, which `POST /api/raw/claim` must still be able to
+plaintext. The production store's own preview sweep was run read-only on 2026-09-27 and is the honest
+number here: **35 objects would be sealed, none are sealed yet, 6 are missing, and no namespace is
+orphaned or unreachable.** Those 35 are readable where they sit until the sealing run is executed
+against production, which writes and is therefore the operator's; what the refusal already guarantees
+is that the count cannot grow once production runs this build. The residual classes the sweep
+deliberately leaves — orphaned namespaces, which `POST /api/raw/claim` must still be able to
 claim, and unreachable ones, which only their owner's browser can seal via `src/lib/raw-seal-heal.ts`
 — are drained by claim and by use rather than by an operator. Those objects are readable where they
 sit; none of them can be added to.

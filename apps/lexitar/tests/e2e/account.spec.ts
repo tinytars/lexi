@@ -72,11 +72,14 @@ test("owner deletes their own account and is told what was removed", async ({ pa
   // Signed out, with the report — the only place the count is ever stated, since the modal it was
   // asked for in is gone with the account.
   await expect(page.locator(".verify-banner.erase-report")).toContainText(/Deleted/);
-  await expect(page.locator('input[type="email"]')).toBeVisible();
+  // Scoped to the sign-in screen: the panel's own disabled confirm field can still be in the DOM for
+  // a frame after sign-out, and an unscoped input[type="email"] then matches two elements.
+  const signIn = page.locator("main.lock");
+  await expect(signIn.locator('input[type="email"]')).toBeVisible();
 
   // And the account really is gone: the same password no longer signs in.
-  await page.fill('input[type="email"]', email);
-  await page.fill('input[type="password"]', "e2e-pass-123");
-  await page.click('button[type="submit"]');
-  await expect(page.locator('input[type="email"]')).toBeVisible();
+  await signIn.locator('input[type="email"]').fill(email);
+  await signIn.locator('input[type="password"]').fill("e2e-pass-123");
+  await signIn.locator('button[type="submit"]').click();
+  await expect(signIn.locator('input[type="email"]')).toBeVisible();
 });

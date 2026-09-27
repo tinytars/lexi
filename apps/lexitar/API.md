@@ -244,7 +244,9 @@ call as an inline error.
   new exposure is the public endpoint, closed (PoC-grade) by the bearer allowlist and the
   Cloudflare Access perimeter.
 - No secret appears in the deployed bundle; model keys live only in the Function env.
-- W84 — read-aloud text goes to Azure AI Speech (`/api/speak`), under Microsoft's HIPAA BAA.
+- W84 — read-aloud text goes to Azure AI Speech (`/api/speak`), under Azure's standard commercial
+  terms; HIPAA does not reach this service, so Microsoft's business associate agreement is not what
+  governs the transfer.
 
 ## Logging
 
@@ -427,8 +429,9 @@ that id is still accepted here, on `/api/speak` and on `/api/account/persona`, a
 Session-gated. Body `{ voice?: "lexi" | "cody", text }` (≤ 2000 chars; the client sends one chunk at a
 time). Relays SSML to **Azure AI Speech** (`AZURE_SPEECH_REGION`, the persona's fixed neural voice) and
 streams back `audio/mpeg`, `Cache-Control: no-store`. Nothing is stored or logged beyond shape and
-status. The text is answer text, i.e. PHI, so Azure AI Speech is a processor: it is covered by
-Microsoft's HIPAA BAA (Product Terms, in-scope service). When the relay fails the browser falls back
+status. The text is answer text, so Azure AI Speech is a processor. What covers it is Azure's standard
+commercial terms: the Foundation is not a HIPAA covered entity, so Microsoft's HIPAA business
+associate agreement does not apply to LexiTar and is not the protection to cite. When the relay fails the browser falls back
 to its own OS voice, which never leaves the device.
 
 ```bash
