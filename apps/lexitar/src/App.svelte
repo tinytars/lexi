@@ -21,7 +21,7 @@
   import { createRecoveryController } from "@tinytars/frame/recovery-controller.svelte";
   import { createSupportAccess } from "@tinytars/frame/support-access.svelte";
   import { createAccountMethods, type RemovableMethod } from "@tinytars/frame/account-methods.svelte";
-  import { eraseMyAccount, erasureSummary } from "./lib/erase-account";
+  import { eraseMyAccount, erasureSummary, ERASURE_REACH } from "./lib/erase-account";
   import { createRosterSession, RESUME_MARKER, type RosterPatient } from "@tinytars/frame/roster-session.svelte";
   import { ensureOrgRecoveryEnvelope } from "@tinytars/vault/org-recovery";
   import { fetchPersonalizedRange } from "./lib/ranges-client";
@@ -1717,6 +1717,7 @@
       {#if !roster.isProvider}
         <p class="access-subhead">Delete this account</p>
         <p class="access-intro">Deletes your records, your uploaded files, your chat history and this account. Nobody can undo it — not you, not LexiTar.</p>
+        <p class="access-intro">{ERASURE_REACH}</p>
         {#if eraseArmed}
           <p class="access-kind">Type your email address ({account.info?.email ?? "your account email"}) to confirm.</p>
           <div class="account-add">

@@ -1,7 +1,7 @@
 // Account erasure end to end against a real D1 and R2. Each test seeds a SECOND account, because with
 // one account in the database a correct WHERE clause is indistinguishable from a missing one.
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { createAccount, getAccount, sessionsValidFrom } from "../../functions/_lib/identity-accounts";
 import { getPublicKey, listCredentials, putPublicKey } from "../../functions/_lib/identity-credentials";
 import { createVault, listEnvelopesForPrincipal, listEnvelopesForVault, listVaultsForOwner, putEnvelope } from "../../functions/_lib/identity-vault";
@@ -9,6 +9,7 @@ import { createProviderLink, listProvidersForPatient } from "../../functions/_li
 import { insertAccessEvent, listAccessEventsForSubject, listRawObjectsForAccount, recordRawObject } from "../../functions/_lib/identity-audit";
 import { eraseAccount, chatKeyForVault, r2KeysForAccount } from "../../functions/_lib/erasure";
 import { onRequestPost as erase } from "../../functions/api/account/erase";
+import { onRequestPost as corpusWarm } from "../../functions/api/corpus-warm";
 import { generateAccountKeypair, generateDEK, wrapDEKForPublicKey } from "@tinytars/vault/crypto";
 import { useWorkerd } from "../support/miniflare";
 import { SESSION_SECRET, cookieFor } from "../support/session";
@@ -290,5 +291,42 @@ describe("r2KeysForAccount", () => {
     const id = crypto.randomUUID();
     await createAccount(w.db, { id, displayName: "Empty" });
     expect((await r2KeysForAccount(env(), id)).keys).toEqual([]);
+  });
+});
+
+// DPG 9A.7 — erasure's one enforceable claim about the model provider: nothing further is sent. The
+// browser keeps a record's documents warm at the provider on a timer, so an erasure that revoked no
+// session would go on shipping documents from a tombstoned account. `revokeSessions` before the
+// tombstone is what prevents it, and nothing pinned that until now.
+describe("erasure ends the corpus keepalive", () => {
+  const warm = async (cookie: string, clientId: string) =>
+    corpusWarm({
+      request: new Request("http://x/api/corpus-warm", {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ clientId, unitSystem: "metric" }),
+      }),
+      env: env(),
+    } as any);
+
+  it("refuses a warm refresh on a cookie issued before the erasure", async () => {
+    const p = await seedPatient("a@example.com", "alex");
+    const cookie = await cookieFor(p.id);
+    expect((await warm(cookie, "alex")).status).not.toBe(401);
+
+    // `sessions_valid_from` is second-granular and compared strictly, so a cookie minted in the same
+    // second as the revocation survives — which is the live browser's own cookie, never an attacker's.
+    // Moving the clock is what makes this test about the revocation rather than about that tie.
+    const afterwards = Date.now() + 5_000;
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(afterwards);
+    try {
+      await eraseAccount(env(), p.id);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(await sessionsValidFrom(w.db, p.id)).not.toBeNull();
+    expect((await warm(cookie, "alex")).status).toBe(401);
   });
 });
