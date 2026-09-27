@@ -253,6 +253,42 @@ browser unlock(pass)
   (the roster is CLI-only — records/roster.enc, served in neither)
 ```
 
+### 4a. Operator record export (`npm run record:export`, 2026-09-27)
+
+One command gives a complete local copy of **one** record — the structured data, every stored
+document, and the cached text of each — by taking the same read path a browser takes.
+
+```
+npm run record:export -- [--client <key>] [--dry-run] [--stdout] [--purge]
+```
+
+- **Principal: the record's own owner.** `scripts/api-session.ts` signs in with
+  `POST /api/auth/password/login`, unwraps the account key from the passphrase and the DEK from the
+  owner envelope, and reads the ciphertext through `GET /api/vault/{id}` — so
+  `resolveEnvelopeAccess` stays in the path and the CLI holds no authority the owner's browser does
+  not. **Not the org key** (§2): that opens every vault and a CLI reaching R2/D1 directly bypasses
+  the one place the system makes an authorization decision. Credentials live in
+  `plover-keys/health-dash.env` (`LEXITAR_CLI_EMAIL`, `LEXITAR_CLI_PASSWORD`, `LEXITAR_BASE_URL`) as
+  a dedicated account, so they rotate without touching a human's login.
+- **Destination:** `$XDG_STATE_HOME/lexitar/exports/{blobId}-{stamp}/`, mode 0700, holding
+  `record.json`, `documents/`, `transcripts/` and `manifest.json`. `LEXI_EXPORT_DIR` overrides it.
+- **Refusals, with no `--force`:** `scripts/export-dir.ts` rejects any destination inside a git work
+  tree or under `records/`, at run time — an ignore rule is not the control, because this repo is
+  public and its `.gitignore` re-includes `records/**`. A sealed object with no content key is
+  reported `unreadable(missing content key)`, never silently skipped.
+- **Stdout is contents-free** — ids, counts, sha8, kind, bytes, sealed-or-not, opened-or-not — because
+  the common caller is an agent whose transcript must not become a second copy of the record. `--stdout`
+  is the explicit opt-in to print `record.json` as well.
+- **Removal:** `npm run record:export -- --purge`, or the `rm -rf` line every run prints last. A local
+  copy is a class of copy self-service erasure cannot reach, which is why `ERASURE_REACH`
+  (`src/lib/erase-account.ts`) names it.
+- **No audit row**, deliberately: `GET /api/vault/{id}` and `GET /api/raw/…` write no
+  `phi_access_events` for *any* principal, so logging a subject's read of their own record — and
+  nothing else — would make the least-privileged reader the only recorded one. Closing that gap on the
+  *privileged* paths is a prerequisite to any third-party CLI access, not to this.
+- **Deliberately absent from `ops.yml`.** A CI runner is the wrong place for plaintext PHI, and this
+  follows the read-only-inspection convention (`scripts/treatment-diagnose.ts`) of staying local.
+
 ## 5. Write path — the `VaultSink` abstraction
 
 Editing re-encrypts in the browser and hands the blob to a `VaultSink` (`src/lib/vault-sink.ts`).

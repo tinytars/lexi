@@ -57,8 +57,13 @@ someone to discover:
   keepalive stops and nothing further is sent — that half is enforced and tested. An entry already
   written expires on the provider's own timetable, which this deployment can neither shorten nor
   recall, and there is no number to report because the deployment cannot see that cache.
+- **A record exported to a computer.** `npm run record:export` signs in as the record's own owner and
+  writes it readable to that person's machine (`apps/lexitar/scripts/record-export.ts`). Erasure
+  cannot reach a file on a disk it has never seen. The export refuses any destination inside a git
+  work tree, lands 0700 outside every checkout, and `--purge` removes it — but that is the operator's
+  lever, not the patient's, and the wording says so rather than implying deletion reaches it.
 
-The same two sentences appear in the deletion result the user sees (`ERASURE_REACH` in
+The same sentences appear in the deletion result the user sees (`ERASURE_REACH` in
 `apps/lexitar/src/lib/erase-account.ts`) and in `apps/lexitar/MODERATION.md` §4.
 
 ## Scope
