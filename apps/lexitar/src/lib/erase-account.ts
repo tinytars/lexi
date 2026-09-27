@@ -42,15 +42,19 @@ export async function eraseMyAccount(confirmEmail: string): Promise<ErasureOutco
 // Stated in both branches because it is true of a complete erasure too — it is a limit of the world,
 // not of the sweep.
 //
-// The second sentence arrived with `npm run record:export` (scripts/record-export.ts), which signs in
-// as the record's own owner and writes a readable copy to that person's computer. Deletion here cannot
-// reach a file on a disk it has never seen, and a copy this product cannot reach is exactly what this
-// string exists to name — so the feature does not ship without saying so.
+// The second sentence arrived with `npm run record:export` (scripts/record-export.ts), which writes a
+// readable copy to a computer. Deletion here cannot reach a file on a disk it has never seen, and a copy
+// this product cannot reach is exactly what this string exists to name — so the feature does not ship
+// without saying so. It names THREE holders, not one, because the export principal made the third real:
+// the person themselves, a tool holding their own credential, and an account they approved access for,
+// whose copy outlives the approval that produced it. The person granting seven days is agreeing to a
+// file that does not expire with the grant, and this is where they are told so.
 export const ERASURE_REACH =
   "Copies of any reports already sent to the model provider expire on the provider's own schedule, " +
   "usually within about an hour; deleting your account stops anything further being sent but cannot " +
-  "recall what it already holds. A copy exported to a computer — by you, or by a tool signed in as " +
-  "you — is a file on that computer, and deleting your account cannot recall that either.";
+  "recall what it already holds. A copy exported to a computer — by you, by a tool signed in as you, " +
+  "or by an account you approved access for — is a file on that computer, and it outlives the access " +
+  "you approved: deleting your account cannot recall that either.";
 
 /** What the user is shown afterwards. Incompleteness is stated, never rounded up to "done". */
 export function erasureSummary(outcome: ErasureOutcome): string {

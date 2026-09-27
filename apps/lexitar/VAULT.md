@@ -176,10 +176,13 @@ client at signup. Four properties, all four load-bearing, and all four now shipp
 of the machine: anyone holding `ORG_KEY_PASSPHRASE` and `records/org-key.json` can write their own
 twenty lines. What the chokepoint delivers is that no code path in this tree yields a key without
 recording a use — the same distinction `ARCHITECTURE.md` draws between the server *enforcing* access
-and the server being *able* to read. And the audit it enforces covers the org key only: the read
-routes `GET /api/vault/{id}` and `GET /api/raw/...` write no `phi_access_events` row for **any**
-principal — not the owner, not a clinician, not a support agent — so the CLI's own owner-credential
-read (§4a) is unlogged too, and the least-privileged reader is not the only recorded one.
+and the server being *able* to read. The audit it enforces covers the org key only, but it is no longer
+the only audit: since 2026-09-27 the read routes `GET /api/vault/{id}`, `GET /api/raw/...` and
+`POST /api/document-extract` write a `phi_access_events` row for every read that is **not the owner's
+own**, through the one helper `functions/_lib/phi-audit.ts`. A person reading their own record still
+writes nothing, deliberately — a single view is tens of reads, and burying the third-party reads under
+the owner's own clicks turns a disclosure log into a traffic log — so §4a's owner-credential export is
+unlogged by design rather than by omission, and §4b's third-party one is recorded object by object.
 
 **Why not the stricter line.** An earlier draft made escrow opt-in, on the reasoning that an
 operator who can decrypt is a backdoor. That over-read the requirement — the objection was to access
@@ -279,6 +282,9 @@ document, and the cached text of each — by taking the same read path a browser
 npm run record:export -- [--client <key>] [--dry-run] [--stdout] [--purge]
 ```
 
+The flags that read *someone else's* record are §4b's, and the operator's guide to the whole feature —
+provisioning, how a patient grants and revokes, the weekly renewal — is `docs/RECORD-EXPORT.md`.
+
 - **Principal: the record's own owner.** `scripts/api-session.ts` signs in with
   `POST /api/auth/password/login`, unwraps the account key from the passphrase and the DEK from the
   owner envelope, and reads the ciphertext through `GET /api/vault/{id}` — so
@@ -317,55 +323,57 @@ npm run record:export -- [--client <key>] [--dry-run] [--stdout] [--purge]
 - **Deliberately absent from `ops.yml`.** A CI runner is the wrong place for plaintext PHI, and this
   follows the read-only-inspection convention (`scripts/treatment-diagnose.ts`) of staying local.
 
-### 4b. A third party at the CLI (designed, not built, 2026-09-27)
+### 4b. A third party at the CLI (built, 2026-09-27)
 
-§4a gives the **record's own owner** a command line. A clinical expert is the case that comes next,
-and this section exists so the answer is written before there is a user for it. Nothing here is
-built; the last paragraph is why.
+§4a gives the **record's own owner** a command line. This is the other principal: one operator
+exporting the records of a family who are not them, driven by
+`npm run record:export -- --request / --list / --patient / --url / --all` and documented for the
+operator in `docs/RECORD-EXPORT.md`. It exists because the operator who asked for §4a signs in with
+Google and a passkey and therefore has no password to type — the one credential §4a needs is the one
+credential that account does not have.
 
-The CLI needs no change — `scripts/api-session.ts` signs in as whatever account holds a password
-credential, so only the account differs. What differs is that account's **standing**, and there are
-exactly two shapes for it.
+**The principal is a `support` account, not a clinician one.** Both could read; only one could be left
+in a file. A `primary` provider link carries `recovery:issue`
+(`functions/_lib/capabilities.ts`), which `functions/api/recovery/grant.ts`'s own header calls "the
+ability to turn read access into ACCOUNT CONTROL" — so a standing clinician password is an
+account-takeover credential for every patient linked to that clinician, and no scoping argument
+recovers it. A `support` link is refused that route twice over (the capability is `primary`-only and
+the route re-checks `role === "primary"`), and it arrives with the three things a disclosure needs
+already built: a `consent_ref` stamped per grant window, a time box the patient chooses, and an audit
+row per open (`functions/_lib/routes/support-access.ts`). It also cost no new token type and no user
+interface change: the TTL dropdown the patient approves from already offers 24h, 3 days and **7 days**
+(`src/App.svelte`), and the server clamps at `maxTtlHours: 720`.
 
-- **A `primary` provider link.** `POST /api/providers/grant` runs on the *patient's* session: they
-  wrap their live DEK to the provider's public key, because `grantProvider` takes an unwrapped DEK as
-  a `CryptoKey` (`@tinytars/vault/auth-grants.ts`, `packages/frame/vault-principals.svelte.ts`). So
-  the patient must be present **once**. The link sets no `expires_at`
-  (`@tinytars/vault/adapters/d1/providers.ts` — "set on time-boxed support grants and null for
-  primary links"), writes no audit row at grant, and revocation is silent too
-  (`functions/_lib/routes/providers-link-revoke.ts`). The patient *can* revoke it, which is a lever
-  they do not have against the org key.
-- **A time-boxed support grant.** The break-glass path, whose
-  `POLICY = { defaultTtlHours: 72, maxTtlHours: 720 }` (`functions/_lib/routes/support-approve.ts`)
-  stamps a `consent_ref` and audits `support_access_requested` / `_granted` / `_opened`. Expiry is
-  enforced lazily on the next access: `checkBreakGlass` deletes the envelope and sets
-  `rotation_pending` because it "can't re-key here (patient offline, zero-knowledge)"
-  (`functions/_lib/routes/support-access.ts`). Needs the patient present for **every** window.
+**Read-only is now enforced, not assumed.** `PUT /api/vault/{id}` gated on holding an envelope for the
+vault, which a support principal does — so the read credential could overwrite the record it was
+approved to read. The PUT now refuses a caller who is neither the owner nor a `primary` link holder,
+and `tests/unit/vault-put-principal.test.ts` pins it. `POST /api/recovery/grant` additionally requires
+fresh re-authentication, so a stored credential is no longer sufficient there either, and whether the
+challenge could be made at all is recorded in the audit row's `meta` rather than hidden behind one 200.
 
-Either way the roster comes free: `GET /api/providers/patients` returns, per patient,
-`{ ownerAccountId, displayName, email, linkId, vaultId, r2Key, envelope }`
-(`functions/api/providers/patients.ts`, whose header states "the envelope, not the row, is the access
-boundary"). Note what that response carries in the clear — name and email — so a roster call is
-itself a PHI-adjacent read, and a CLI that caches one has written PHI outside §4a's guarded
-directory.
+**Nothing durable is cached.** The password sits in `plover-keys` (§4a's fourth bullet says why that is
+not a softening of the rule above); no session token and no account key is ever written to disk, so
+each run signs in fresh and revocation bites on the next run rather than whenever a cached key expires.
+The pasted-address resolver (`scripts/resolve-owner.ts`) is in-process only: a client-key → owner map on
+disk would be a record of which family members exist, which is the fact the record exists to protect,
+and the resolution ladder makes it unnecessary.
 
-**Why a standing clinician passphrase is not a read credential.** A `primary` principal also holds
-`recovery:issue` (`functions/_lib/capabilities.ts`), and `functions/api/recovery/grant.ts`'s own
-header calls that "the ability to turn read access into ACCOUNT CONTROL". A clinician password in a
-file is therefore an account-takeover credential for every patient linked to that clinician. That,
-not the scoping argument, is why §4a chose the record's own owner and why this section stays written.
+**The roster is still a PHI-adjacent read**, and that has not changed: `GET /api/providers/patients`
+returns `displayName` and `email` in the clear per patient (`functions/api/providers/patients.ts`), so
+it now writes one `provider_roster_viewed` row **per patient** rather than one per listing. The CLI's
+own listing endpoint is the envelope-free `GET /api/support/owners`, which is why it is the cheap one to
+poll and why it discards the name and address at the call site instead of printing them.
 
-**The prerequisite.** The unaudited read routes of §2's boundary paragraph are exactly the ones a
-`primary` principal reads through: `functions/api/providers/patients.ts`,
-`functions/api/vault/[id].ts` and `functions/api/raw/[[path]].ts` contain no `insertAccessEvent`
-call, and `functions/_lib/routes/support-access.ts` names the "(unaudited) clinician
-`/api/providers/patients` path" in as many words. Support is no better off:
-`functions/_lib/identity-vault.ts` moved expiry enforcement into `getEnvelope` (W71) because an agent
-who kept a `vaultId` "could read full PHI indefinitely … and nothing was logged" — the expiry half of
-that is fixed, the logging half is not, so support's trail still covers only the discovery hop. For
-the owner the gap is a wash (§4a). For a third party it inverts the whole trade: standing CLI access
-would move PHI reads off the audited org-key path and onto an unaudited one. **Closing it is a
-prerequisite to building this, not a follow-up.**
+**The prerequisite this section used to state is met.** §2's boundary paragraph used to name three
+unaudited privileged read routes — `functions/api/providers/patients.ts`, `functions/api/vault/[id].ts` and
+`functions/api/raw/[[path]].ts` — and called closing them "a prerequisite to building this, not a
+follow-up". They now route through `auditPrivilegedRead` (`functions/_lib/phi-audit.ts`), which writes
+one row per privileged read and returns without writing when actor === subject, so a person's own
+clicks cannot bury the third-party reads their access screen exists to surface. Revoking a clinician
+link is audited too (`provider_access_revoked`), which it was not: an invisible revocation undercuts
+half of what a patient needs to be able to prove. The `/api/raw` subject is the **vault's owner**, never
+the namespace's first writer, which is very often the clinician — filing the latter would have recorded
+the wrong person as the one whose record was read (`tests/unit/raw-owner-subject.test.ts`).
 
 ## 5. Write path — the `VaultSink` abstraction
 

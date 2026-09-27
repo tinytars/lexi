@@ -86,8 +86,9 @@ Neither removal reaches the model provider's prompt cache. A report that documen
 answered with what is true: deleting the account stops anything further being sent — erasure revokes
 every session before it tombstones the account, so the browser's keepalive dies — while an entry
 already written expires on the provider's own schedule, which this deployment can neither shorten nor
-recall. Nor does either reach a record already exported to someone's own computer with
-`npm run record:export` — a file on a disk this deployment has never seen. `SECURITY.md`
+recall. Nor does either reach a record already exported to a computer with `npm run record:export` — a file on
+a disk this deployment has never seen, written by the patient, by a tool holding their credential, or by
+an account they approved access for, and outliving that approval in the last case. `SECURITY.md`
 §*What deletion reaches* states both limits in the same words the user is shown.
 
 Access between accounts is separate again: revoking a provider ends their access to that record

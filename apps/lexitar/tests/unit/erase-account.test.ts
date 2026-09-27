@@ -66,4 +66,13 @@ describe("erasureSummary", () => {
   it("names a local export among the copies deletion cannot reach", () => {
     expect(ERASURE_REACH).toMatch(/exported to a computer/);
   });
+
+  // The export principal (VAULT.md §4b) made a third holder real: not the patient and not a tool holding
+  // the patient's own credential, but an account the patient APPROVED. That copy is the one a reader will
+  // assume the approval's expiry takes away, so the string has to say it does not — naming the holder
+  // without naming the persistence would leave the misreading intact.
+  it("names an approved account's copy, and that it outlives the approval", () => {
+    expect(ERASURE_REACH).toMatch(/approved access for/);
+    expect(ERASURE_REACH).toMatch(/outlives the access you approved/);
+  });
 });

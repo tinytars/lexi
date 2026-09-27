@@ -30,6 +30,27 @@ ability to read any patient's files — it does not hide a document from the run
 the model provider, while its owner has the record open. `apps/lexitar/VAULT.md` §2a and
 `apps/lexitar/DPGA.md` describe that path in full.
 
+Two further limits belong here rather than in a gap list, because a numbered list is what
+`grant-redeem.ts` used to point at and that list no longer exists.
+
+**One path reads a vault blob with no session at all.** `GET /api/vault/{id}` accepts an operations
+bearer token (`VAULT_TOKEN`) for continuous-integration and operational traffic. It returns ciphertext
+and no key, so it is not a way to read a record — but it *is* a read of a patient's object, and until
+2026-09-27 it established no identity and left no trace. It now records one access row per read,
+attributed to the organization account as actor with the vault's owner as subject
+(`vault_blob_read_ops`), which is the only honest attribution available: the token names no person. An
+unaudited privileged read path is the thing this repo stopped having, and the branch that had no
+principal is not an exemption from that.
+
+**Credential guessing is throttled on the password pair only.** `POST /api/auth/password/login` and
+`/salt` count attempts per address and per network in the database (`functions/_lib/auth-budget.ts`) and
+refuse a burst, deliberately failing *open* if the counter is unavailable — locking a family out of
+their own health record is worse than the attack it would prevent, and the guesser still pays a
+200,000-iteration derivation per attempt and still cannot pass the stored verifier.
+`POST /api/auth/recovery/grant-redeem` is **not** throttled: an unknown address has no grant to count
+against, so enumeration through that route is bounded only by whatever general rate limiting the
+deployment has. That asymmetry is accepted and stated, not solved.
+
 ## The processors that see patient data
 
 | Processor | What reaches it | Terms |
@@ -57,11 +78,17 @@ someone to discover:
   keepalive stops and nothing further is sent — that half is enforced and tested. An entry already
   written expires on the provider's own timetable, which this deployment can neither shorten nor
   recall, and there is no number to report because the deployment cannot see that cache.
-- **A record exported to a computer.** `npm run record:export` signs in as the record's own owner and
-  writes it readable to that person's machine (`apps/lexitar/scripts/record-export.ts`). Erasure
-  cannot reach a file on a disk it has never seen. The export refuses any destination inside a git
-  work tree, lands 0700 outside every checkout, and `--purge` removes it — but that is the operator's
-  lever, not the patient's, and the wording says so rather than implying deletion reaches it.
+- **A record exported to a computer.** `npm run record:export` writes a record readable to a machine
+  (`apps/lexitar/scripts/record-export.ts`). Erasure cannot reach a file on a disk it has never seen.
+  The export refuses any destination inside a git work tree, lands 0700 outside every checkout, and
+  `--purge` removes it — but that is the operator's lever, not the patient's, and the wording says so
+  rather than implying deletion reaches it. **Three holders, not one:** the person themselves, a tool
+  signed in as them, and — since the export principal shipped (`apps/lexitar/VAULT.md` §4b) — an
+  account they approved access for. That third copy is the one the wording had to grow for, because it
+  **outlives the approval that produced it**: revoking the access, and the seven-day window expiring,
+  both stop further reads and neither removes a file already written. Someone approving seven days is
+  agreeing to a file that does not expire with the grant, which is why the sentence they are shown says
+  so and why `docs/RECORD-EXPORT.md` says it again to the operator.
 
 The same sentences appear in the deletion result the user sees (`ERASURE_REACH` in
 `apps/lexitar/src/lib/erase-account.ts`) and in `apps/lexitar/MODERATION.md` §4.
@@ -69,9 +96,10 @@ The same sentences appear in the deletion result the user sees (`ERASURE_REACH` 
 ## Where readable patient data is allowed to land
 
 Everything above concerns data in transit to a processor. One flow deliberately writes readable patient
-data to a person's own computer: `npm run record:export`, which signs in as the record's own owner over
-the ordinary authenticated API and decrypts locally. `apps/lexitar/VAULT.md` §4a is the mechanism; the
-convention it establishes, which the next such tool inherits, is four rules.
+data to a person's own computer: `npm run record:export`, which reads over the ordinary authenticated
+API and decrypts locally. `apps/lexitar/VAULT.md` §4a is the mechanism; the convention it establishes,
+which the next such tool inherits, is four rules — and a fifth that applies whenever the record is not
+the runner's own.
 
 - **A destination outside every checkout, mode 0700**, enforced at run time by the program rather than
   by an ignore rule — this repo is public and its `.gitignore` re-includes `records/**`, so an ignore
@@ -85,6 +113,26 @@ convention it establishes, which the next such tool inherits, is four rules.
   header otherwise directs every new operational flow there: a hosted runner is the wrong place for
   plaintext patient data, and read-only inspection in this repo stays local by convention
   (`apps/lexitar/scripts/treatment-diagnose.ts`).
+
+The fifth rule covers **someone else's record on the runner's disk**, which is what the export
+principal made possible (`apps/lexitar/VAULT.md` §4b, operator guide `apps/lexitar/docs/RECORD-EXPORT.md`).
+Egress to a computer that is not the subject's is permitted only where all four of these hold, and a
+tool that drops any one of them is not the same category of thing:
+
+- **the subject approved it, for a window they chose**, from their own unlocked session — no
+  server-side path can grant it, because the key is wrapped in their browser;
+- **every read is on their own access screen**, with them as the subject, permanently — those rows
+  survive account erasure by design;
+- **the credential that sits between runs opens nothing by itself** — it holds no record's key, no
+  session token and no account key, and expires into uselessness when the window does;
+- **no index of who exists is written to disk.** A map from the labels in a pasted address to the
+  people they name is itself the fact the record protects, so it is resolved in process, for the run
+  only, and a resolution that would require opening an unrelated person's record refuses rather than
+  looking (`--probe` is the explicit, announced opt-in).
+
+What none of that changes is the file: a copy already written outlives both the window and the
+revocation, which is why the deletion section above names it and why the subject is told so in the
+sentence they are shown.
 
 ## Scope
 
