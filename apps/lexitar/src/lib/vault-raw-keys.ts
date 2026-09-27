@@ -153,7 +153,8 @@ export function setRawKeySink(fn: KeySink | null): void {
  * risks only an unused key, and an unused key costs nothing: `openRaw` passes plaintext through
  * whether or not the ring holds one for it.
  *
- * Returns null when there is no open vault to record it in, which is the signal to store plaintext.
+ * Returns null when there is no open vault to record it in, which is the signal to refuse the upload:
+ * /api/raw takes nothing but sealed bytes (DPG 9A.5), so there is no plaintext lane left to fall back on.
  */
 export async function mintRawKey(clientId: string, file: string): Promise<string | null> {
   const write = sink;

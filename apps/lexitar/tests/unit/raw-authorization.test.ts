@@ -69,8 +69,11 @@ async function stranger() {
 
 const getRaw = async (who: string, slug: string, file = "report.pdf") =>
   rawGet({ request: new Request(`http://x/api/raw/${slug}/${file}`, { headers: await cookie(who) }), env: env(), params: { path: [slug, file] } } as any);
-const putRaw = async (who: string, slug: string, file = "new.pdf") =>
-  rawPut({ request: new Request(`http://x/api/raw/${slug}/${file}`, { method: "PUT", headers: await cookie(who), body: "BYTES" }), env: env(), params: { path: [slug, file] } } as any);
+const putBytes = async (who: string, slug: string, file: string, body: BodyInit) =>
+  rawPut({ request: new Request(`http://x/api/raw/${slug}/${file}`, { method: "PUT", headers: await cookie(who), body }), env: env(), params: { path: [slug, file] } } as any);
+// Sealed, because every real upload is: the route refuses plaintext (DPG 9A.5), so an unsealed body
+// here would fail every authorization case on the wrong grounds.
+const putRaw = async (who: string, slug: string, file = "new.pdf") => putBytes(who, slug, file, hd1Blob());
 const deleteRaw = async (who: string, slug: string) =>
   rawDelete({ request: new Request(`http://x/api/raw/${slug}/report.pdf`, { method: "DELETE", headers: await cookie(who) }), env: env(), params: { path: [slug, "report.pdf"] } } as any);
 const getText = async (who: string, slug: string) =>
@@ -351,5 +354,40 @@ describe("deleting an original releases its ownership row", () => {
     expect((await deleteRaw(p.id, p.slug)).status).toBe(200);
     const rows = await listRawObjectsForAccount(w.db, p.id);
     expect(rows).not.toContain(`${STORE}/raw/${p.slug}/report.pdf`);
+  });
+});
+
+// DPG 9A.5 — the route stopped taking plaintext. The authorization checks above run FIRST, so a
+// stranger is still refused as absent (404) rather than told their bytes were unsealed.
+describe("plaintext is refused on the way in", () => {
+  it("refuses an unsealed upload from the namespace's own owner, and stores nothing", async () => {
+    const p = await patient("alex");
+
+    const res = await putBytes(p.id, p.slug, "unsealed.pdf", "%PDF-1.7 readable");
+
+    expect(res.status).toBe(415);
+    expect(await res.json()).toMatchObject({ errorCode: "plaintext_refused" });
+    expect(await w.bucket.get(`${STORE}/raw/${p.slug}/unsealed.pdf`)).toBeNull();
+  });
+
+  // The lane the refusal must not break: `mayWrite` admits an UNCLAIMED namespace because that is
+  // every patient's first upload, so the refusal has to hold there without locking them out.
+  it("holds for a first upload into an empty namespace, which still succeeds sealed", async () => {
+    const owner = await stranger();
+
+    expect((await putBytes(owner.id, "fresh", "first.pdf", "%PDF-1.7 readable")).status).toBe(415);
+    expect(await rawAccessFor(w.db, env(), owner.id, "fresh")).toEqual({ kind: "unclaimed" });
+    expect((await putRaw(owner.id, "fresh", "first.pdf")).status).toBe(204);
+  });
+
+  // Reads are untouched: the store still holds objects written before the sealing, and refusing to
+  // serve them would take a patient's own documents away to make a point about how they were stored.
+  it("leaves GET serving an object that was stored plaintext", async () => {
+    const p = await patient("alex");
+
+    const res = await getRaw(p.id, p.slug);
+
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("PDF BYTES");
   });
 });

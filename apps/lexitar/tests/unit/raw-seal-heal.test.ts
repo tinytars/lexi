@@ -2,9 +2,9 @@
 // What is under test is the diff and the ordering around putRaw, neither of which a stub decides.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { healRawSealing } from "../../src/lib/raw-seal-heal";
-import { clearRawKeyring, rawKeyFor, setRawKeyRefresh, setRawKeyring, setRawKeySink, withRawKey } from "../../src/lib/vault-raw-keys";
+import { clearRawKeyring, rawKeyFor, setRawKeyRefresh, setRawKeyring } from "../../src/lib/vault-raw-keys";
+import { openTestVault } from "../support/raw-keys";
 import { isSealed, openRaw, sealRaw } from "../../src/lib/raw-cipher";
-import type { Vault } from "../../src/lib/types";
 
 const KEY = "A".repeat(43) + "=";
 const plain = (file: string): Uint8Array => new TextEncoder().encode(`the bytes of ${file}`);
@@ -32,17 +32,11 @@ function server(files: string[], stored: Record<string, Uint8Array> = {}): Put[]
   return puts;
 }
 
-/** An open vault that records every key the lane mints, the way App.svelte's sink does. */
-function openVault(): void {
-  let vault = { clients: {} } as Vault;
-  setRawKeySink(async (id, file, key) => void (vault = withRawKey(vault, id, file, key)));
-}
-
 afterEach(clearRawKeyring);
 
 describe("healRawSealing", () => {
   it("seals every plaintext original the namespace still holds", async () => {
-    openVault();
+    openTestVault();
     const puts = server(["one.pdf", "two.pdf"]);
 
     expect(await healRawSealing("Alex")).toEqual({ sealed: 2, refreshed: 0, unopenable: 0 });
@@ -62,7 +56,7 @@ describe("healRawSealing", () => {
   // Sealed with no key on the ring: re-sealing would need plaintext this lane cannot produce, so it
   // is counted rather than retried on every record open.
   it("counts a sealed object whose key this vault has lost, without re-uploading it", async () => {
-    openVault();
+    openTestVault();
     const puts = server(["gone.pdf"], { "gone.pdf": await sealRaw(plain("gone.pdf"), KEY) });
 
     expect(await healRawSealing("alex")).toEqual({ sealed: 0, refreshed: 0, unopenable: 1 });
@@ -72,7 +66,7 @@ describe("healRawSealing", () => {
   // Best effort, behind the open record: a file that fails stays plaintext and readable, and the
   // next record open retries it.
   it("keeps going past a file it cannot fetch", async () => {
-    openVault();
+    openTestVault();
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string, init?: RequestInit) => {
@@ -85,14 +79,14 @@ describe("healRawSealing", () => {
     expect(await healRawSealing("alex")).toEqual({ sealed: 1, refreshed: 0, unopenable: 0 });
   });
 
-  // No vault means no place to record a key, and putRaw then uploads plaintext. Counting that as
-  // sealed would hide the file from the next open, which is the one chance it has.
-  it("does not count an upload that stayed plaintext because no vault was open", async () => {
+  // No vault is no place to record a key, so putRaw refuses rather than uploading plaintext /api/raw
+  // would now reject anyway. The file keeps its one chance: it stays plaintext and the next open with
+  // a vault behind it seals it.
+  it("uploads nothing, and counts nothing, when no vault is open", async () => {
     const puts = server(["one.pdf"]);
 
-    await healRawSealing("alex");
-
-    expect(isSealed(puts[0].body)).toBe(false);
+    expect(await healRawSealing("alex")).toEqual({ sealed: 0, refreshed: 0, unopenable: 0 });
+    expect(puts).toEqual([]);
   });
 
   // The operator sweep records keys straight into the vault blob, so a page opened before it ran has
@@ -115,7 +109,7 @@ describe("healRawSealing", () => {
   // The refresh must not swallow the genuine case: a key the STORED vault does not hold either is
   // still lost, and re-sealing it would need plaintext this lane cannot produce.
   it("still reports a key the stored vault does not hold either", async () => {
-    openVault();
+    openTestVault();
     setRawKeyRefresh(async () => setRawKeyring({ rawKeys: { alex: {} } }));
     const puts = server(["gone.pdf"], { "gone.pdf": await sealRaw(plain("gone.pdf"), KEY) });
 
