@@ -17,6 +17,10 @@
 // them: an account's password is also the KEK that opens its record, and rotate-pilot-credentials.ts
 // stores a new one "nowhere — not in this repo, not in the credentials repo". That CLI asks for it on
 // the terminal instead.
+//
+// LEXITAR_SUPPORT_* is loaded, and that is not a softening of the same rule: a support principal owns no
+// record, so its password is a KEK for nothing — it lets the CLI present itself and reaches a record
+// only while a patient's grant is live (VAULT.md §4a).
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";

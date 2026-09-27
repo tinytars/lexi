@@ -42,6 +42,7 @@
     "raw:encrypt": "tsx scripts/raw-encrypt-backfill.ts",
     "corpus:measure": "tsx scripts/corpus-measure.ts",
     "record:export": "tsx scripts/record-export.ts",
+    "support:provision": "tsx scripts/provision-support-account.ts",
     "orphan:sweep": "tsx scripts/orphan-sweep.ts",
     "r2-ops": "tsx scripts/r2-ops-cli.ts",
     "serve:node": "node --env-file-if-exists=.dev.vars --import tsx server/node.ts",
