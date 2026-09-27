@@ -6,12 +6,15 @@ asks for each indicator. Each indicator gets a verdict, the evidence behind it, 
 between it and "meets". The gaps are the input to a development plan. This doc is not a plan, a
 tracker, or a history: when LexiTar changes, rewrite the affected verdict to describe the new state.
 
-**Assessed against:** `dev` at `c8c1ea6`, and the live `tinytars.foundation/privacy` and `/terms` pages.
-`main` — what production runs — is seven commits behind it and sets `REPORTS: "never"`, so where dev and
-production differ the verdict says which, rather than averaging them.
-**Scope:** the software in this repo (`apps/lexitar`, `packages/frame`) plus the open packages it is
-built from (`@tinytars/vault`, `@pablotech/akesi`, `@pablotech/neuro`). Users' health data is never
-part of the DPG.
+**Assessed against:** `dev` at `8d9f471`, and the live `tinytars.foundation/privacy` and `/terms` pages.
+`main` — what production runs — is nineteen commits behind it and sets `REPORTS: "never"`, so where dev and
+production differ the verdict says which, rather than averaging them. `@pablotech/neuro`'s licence
+file is in its repository and reaches the npm registry with the next release, which publishes a package
+version and is therefore the owner's merge, so where the repository and the registry differ the verdict
+says which.
+**Scope:** the software in this repo (`apps/lexitar`, `packages/frame`), the open packages it is
+built from (`@tinytars/vault`, `@pablotech/akesi`, `@pablotech/neuro`), and the finding-DAG content it
+reasons over (`tinytars/reasoning`). Users' health data is never part of the DPG.
 **Wording:** until an application is submitted, LexiTar is "developed as a Digital Public Good", never "certified".
 
 **Verdicts:** ✅ meets · 🟡 partly meets (an assessor would ask for more) · ❌ does not meet
@@ -28,15 +31,15 @@ right, but there is nothing to fix.
 | 1.1 | Which SDGs | ✅ | SDG 3 (health), SDG 10 (inequality) |
 | 1.2 | Relation to each SDG's targets | 🟡 | True of the product, written nowhere public |
 | **2** | **Open licensing** | **✅** | |
-| 2.1 | Which approved open licence | ✅ | MIT, for the app and every first-party package |
-| 2.2 | Public evidence of it | ✅ | `../../LICENSE` in a public repo |
+| 2.1 | Which approved open licence | ✅ | MIT for the software, CC BY-SA 4.0 for the finding-DAG content — both DPGA-approved |
+| 2.2 | Public evidence of it | ✅ | A `LICENSE` file in every public repo, and in every separately-published package |
 | **3** | **Clear ownership** | **🟡** | |
 | 3.1 | Who owns the solution | ✅ | Tiny Tars Foundation |
-| 3.2 | Public evidence of ownership | ✅ | LICENSE, `../../README.md`, Terms §Intellectual property |
+| 3.2 | Public evidence of ownership | ✅ | `../../LICENSE`, `../../README.md` §License, Terms §Intellectual property |
 | 3.3 | Type of organisation | ✅ | 501(c)(3) non-profit |
 | 3.4 | Country of the owner | ✅ | United States |
-| 3.5 | Do you own all the code | ❌ | `@pablotech/akesi` and `@pablotech/neuro` — the reasoning core — are copyright an individual |
-| 3.6 | If not, the right to redistribute | 🟡 | MIT covers it, but no CLA or DCO governs inbound contributions |
+| 3.5 | Do you own all the code | ⚪ | No — the reasoning core is copyright an individual and MIT-licensed. Stated publicly; 3.6 is the question that scores |
+| 3.6 | If not, the right to redistribute | 🟡 | MIT throughout and a DCO gated in CI; `@pablotech/neuro`'s licence text reaches the registry on the next release |
 | **4** | **Platform independence** | **✅** | |
 | 4.1 | Core technologies | ✅ | TypeScript, Svelte, Web Crypto, WebAuthn, SQLite-compatible storage, object storage |
 | 4.2 | Any closed dependency | ⚪ | Yes — hosting, models, speech, email, OAuth. With reports attached, native PDF input too |
@@ -118,33 +121,57 @@ non-communicable disease) and **SDG 10** (target 10.2, inclusion regardless of s
 
 **The form asks:** which OSI-approved license, with a link to it.
 
-`../../LICENSE` is MIT, copyright Tiny Tars Foundation, in a public repo. `@tinytars/vault` is MIT.
-`@pablotech/akesi` and `@pablotech/neuro` ship an MIT `LICENSE` file. Runtime dependencies are open too:
-SimpleWebAuthn (MIT), pdf.js (Apache-2.0), SheetJS `xlsx` 0.18.5 (Apache-2.0).
+`../../LICENSE` is MIT, copyright Tiny Tars Foundation, in a public repo, and `packages/frame` carries
+its own copy because it publishes to npm separately. `@tinytars/vault` is MIT. `@pablotech/akesi` ships an
+MIT `LICENSE` file in its published package; `@pablotech/neuro`'s is in its repository. The finding-DAG
+content in `tinytars/reasoning` is CC BY-SA 4.0, copyright the Foundation — also a DPGA-approved licence,
+and the right kind for content rather than software. Runtime dependencies are open too: SimpleWebAuthn
+(MIT), pdf.js (Apache-2.0), SheetJS `xlsx` 0.18.5 (Apache-2.0).
 
 **Gaps**
-- None blocking. `@pablotech/akesi` and `@pablotech/neuro` omit the `license` field in `package.json`, so
-  automated licence scanners report them as UNKNOWN even though the file is present.
+- None blocking. `@pablotech/akesi` and `@pablotech/neuro` declare the `license` field in `package.json`
+  and `@pablotech/neuro` carries a `LICENSE` file, in the repository; both reach the registry with the
+  next release, until when a scanner reading the published packages reports them as UNKNOWN.
 
 ## 3. Clear ownership — 🟡
 
 **The form asks:** who owns it, public evidence of ownership, the owner's country, and whether the owner
 owns all the code. If not, what gives it the right to redistribute (e.g. a Contributor License Agreement).
 
-The Tiny Tars Foundation (a US 501(c)(3)) is named as owner in the LICENSE, in `../../README.md`, and in
-the Terms' "Intellectual property" section ("name, logos, software, and brand … remain the property of
-the Foundation").
+The Tiny Tars Foundation (a US 501(c)(3)) is named as owner in three places a reviewer can link to:
+`../../LICENSE`, the `## License` section of `../../README.md`, and the Terms' "Intellectual property"
+section. `packages/frame` carries its own copy of the licence, so the ownership claim is true of the
+artifact an npm consumer installs and not only of the repository a reviewer browses.
+
+**The Foundation does not own every line LexiTar runs on, and does not need to.** The reasoning core —
+`@pablotech/akesi` and `@pablotech/neuro`, repo `pablo-tech/pilos` — is copyright an individual and
+licensed to everyone, the Foundation included, under MIT: a perpetual, irrevocable grant to use, modify
+and redistribute, with nothing running back to the author and no way to withdraw it. The form's "do you
+own all of the code" answer is therefore No, and the right to redistribute rests on the same licence any
+operator gets — anyone can fork the whole stack on exactly the terms LexiTar itself has.
+
+Inbound contributions arrive under a [Developer Certificate of Origin](https://developercertificate.org/)
+sign-off: stated in `../../CONTRIBUTING.md`, restated as a checkbox in the pull-request template, and
+enforced by a CI job that fails any pull request whose commits lack the line. That is deliberately not a
+Contributor Licence Agreement. Nothing here aggregates copyright, so a contributor keeps theirs, the
+software stays MIT, and a downstream user's rights come from the licence rather than from a private
+contract a signing service would have to administer.
+
+Nobody is charged for the software, and nobody is stopped from charging for a service around it. MIT
+permits commercial use by anyone, including paid deployment or support; the Foundation's own deployment
+is free, under the zero-monetization policy.
 
 **Gaps**
-- **The Foundation doesn't own all the code.** The clinical reasoning core, `@pablotech/akesi` and
-  `@pablotech/neuro` (repo `pablo-tech/pilos`), is copyright an individual. The form's "do you own all
-  of the code" answer is therefore No. The MIT licence gives the Foundation the right to redistribute,
-  but an assessor will see a core dependency outside the owner's control. The options are to transfer
-  those packages to the Foundation or to state the arrangement publicly.
-- **No contributor terms.** `../../CONTRIBUTING.md` sets no inbound licence (no CLA or DCO), so
-  ownership of outside contributions is implied by MIT, not documented.
-- **Commercial use of the code is unstated.** Nothing public says how any commercial offering relates to the open
-  utility. A reviewer asking "who can profit from this" finds no answer.
+- **The reasoning core is a dependency the Foundation licenses, not one it owns.** The form's "do you
+  own all of the code" answer is No, marked ⚪ in the dashboard for the same reason 4.2 is: it describes
+  the solution rather than scoring it, and what scores is 3.6. An assessor may still read the split as a
+  continuity risk — were the author to stop maintaining the packages the Foundation would have to fork,
+  which MIT permits outright and which no third party could prevent — and as a governance question,
+  since the copyright sits with the Foundation's founder.
+- **`@pablotech/neuro`'s licence text is in its repository and not yet in its published package.** It
+  reaches the registry with the next release, which publishes a package version. Until then a consumer
+  installing that package receives code whose terms are stated in the repository it came from rather
+  than in the package itself, which is what holds 3.6 short of met.
 
 ## 4. Platform independence — ✅
 
@@ -220,7 +247,8 @@ a non-proprietary format.
 
 A user's own record exports as CSV and structured JSON (`src/lib/export.ts`: `exportCsv`, `exportJson`),
 through `@tinytars/frame`'s `ExportTab.svelte`. Lab data imports from PDF and XLSX. LexiTar's
-non-PII content (its reasoning prompts and the finding DAG) is plain source in public repos.
+non-PII content (its reasoning prompts and the finding DAG) is plain source in public repos — the
+finding DAG in `tinytars/reasoning`, under CC BY-SA 4.0.
 
 **Gaps** — none.
 
