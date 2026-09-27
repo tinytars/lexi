@@ -219,9 +219,11 @@ against this vault's ring — **the only lane that reaches an account which revo
 `ops.yml`) does the same store-wide through the org recovery envelope, and refuses an orphaned
 namespace so its bytes stay claimable.
 
-**The deployment still sees plaintext while it answers a question.** It must: it is the thing that
-base64s the document into the model request, and the browser hands it the ~12 KB key map per request
-(`CORPUS.md`). What this buys is everything at rest — bucket exposure, a leaked storage token, a
+**The deployment still sees plaintext while its owner is using the record.** It must: it is the thing
+that base64s the document into the model request, and the browser hands it the ~12 KB key map per
+request (`CORPUS.md`). *Using* is wider than *asking* — the corpus is sent when a record is **opened**
+(`functions/api/corpus-warm.ts`) and kept warm for up to twelve idle refreshes, so the window is the
+owner's session rather than their question (`CORPUS.md` §4). What this buys is everything at rest — bucket exposure, a leaked storage token, a
 snapshot, the backup bucket — and the end of any standing operator ability to read a patient's files.
 
 ## 3. Bearer auth (no secret in the bundle)

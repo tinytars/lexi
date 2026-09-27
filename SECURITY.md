@@ -19,12 +19,29 @@ reachable exclusively through the deployed app over its authenticated API, never
 repository or its git history. If you believe you have found real patient data committed here,
 treat it as the most urgent class of report this policy covers.
 
-One limit, stated plainly: answering a question about a patient's own documents means decrypting
-them in memory, in the deployment, to send them to the model provider. Encryption at rest defeats
-bucket exposure, a leaked storage token, a snapshot and a backup copy, and it removes the
-operator's standing ability to read any patient's files — it does not hide a document from the
-running deployment at the moment its owner asks about it. `apps/lexitar/VAULT.md` and
+One limit, stated plainly: answering questions about a patient's own documents means decrypting them
+in memory, in the deployment, to send them to the model provider — and the trigger is the owner
+**using** the record, not asking a question. `functions/api/corpus-warm.ts` sends the whole set when a
+record is opened, before any question exists, and the browser keeps that prompt-cache entry warm for
+up to twelve idle refreshes (`apps/lexitar/CORPUS.md` §4: `MAX_IDLE_KEEPALIVES = 12`, about 54 minutes
+of designed residency after the patient stops interacting). Encryption at rest defeats bucket
+exposure, a leaked storage token, a snapshot and a backup copy, and it removes the operator's standing
+ability to read any patient's files — it does not hide a document from the running deployment, or from
+the model provider, while its owner has the record open. `apps/lexitar/VAULT.md` §2a and
 `apps/lexitar/DPGA.md` describe that path in full.
+
+## The processors that see patient data
+
+| Processor | What reaches it | Terms |
+|---|---|---|
+| **Cloudflare** — Pages, R2, D1 | Ciphertext and request logs. It holds no key that opens a vault blob or a sealed original. | Standard commercial terms. |
+| **Anthropic**, or whichever provider `inference.config.json` names | **Whole documents, in plaintext**, plus answer text. The most sensitive flow in the product. | Standard commercial API terms. **No BAA and no negotiated zero-retention agreement.** A prompt-cache entry expires on the provider's own timetable, which the deployment can neither shorten nor recall. `REPORTS: "never"` turns the mechanism off per environment. |
+| **Microsoft Azure AI Speech** | Read-aloud text — answer text, so PHI. | Covered by Microsoft's HIPAA BAA as an in-scope service (`apps/lexitar/API.md` §`/api/speak`). |
+| **Google Workspace, Gmail API** | Transactional mail: an address and a message body carrying no health content (`functions/_lib/email.ts`). | Workspace terms; sent by domain-wide delegation from a Foundation mailbox. |
+
+Stated as an honest blank rather than an implied guarantee: **retention at the model provider has not
+been negotiated.** That is an open item, not a solved one. Google sign-in is not a processor here —
+it is deferred and does not ship (`apps/lexitar/AUTH.md`).
 
 ## Scope
 
