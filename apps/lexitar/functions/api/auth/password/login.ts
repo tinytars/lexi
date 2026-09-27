@@ -6,6 +6,8 @@ import { logRequest } from "../../../_lib/log";
 import { signSession, sessionSetCookie } from "../../../_lib/session";
 import { sha256Base64Url, timingSafeEqualStr } from "../../../_lib/verifier";
 import { json } from "../../../_lib/http";
+import { callerIp } from "../../../_lib/caller-ip";
+import { spendAuthBudget, forgiveAuthAttempt, tooManyAttempts, TOO_MANY_ATTEMPTS, COST_LOGIN } from "../../../_lib/auth-budget";
 
 // W44 P2 — password login. Verifies the client-derived authHash against the stored
 // SHA-256(authHash) and hands back the wrapped private key + owner envelope; the client
@@ -42,6 +44,17 @@ export async function onRequestPost(context: Ctx): Promise<Response> {
       return json(400, { error: "missing required fields" });
     }
 
+    // Charged and judged BEFORE the account lookup, so the refusal cannot depend on whether the address
+    // is registered — the same reason every failure below answers a uniform 401.
+    const ip = callerIp(request);
+    const budget = await spendAuthBudget(env.DB, env, { ip, email: body.email, cost: COST_LOGIN });
+    if (!budget.allowed) {
+      // Which cap fired goes to the log only. `tooManyAttempts` names none, so the 429 is no more of an
+      // oracle than the 401 is.
+      log(429, `${TOO_MANY_ATTEMPTS}:${budget.reason}`);
+      return tooManyAttempts(budget.retryAfterSeconds);
+    }
+
     const acct = await getAccountByEmail(env.DB, body.email);
     if (!acct) {
       log(401, "invalid_credentials");
@@ -63,6 +76,10 @@ export async function onRequestPost(context: Ctx): Promise<Response> {
     const vault = (await listVaultsForOwner(env.DB, acct.id))[0] ?? null;
     const envelope = vault ? await getEnvelope(env.DB, vault.vaultId, acct.id) : null;
     const { authHashSha256: _authHashSha256, ...publicKdfParams } = kdfParams;
+
+    // The password was right, so this attempt was not a guess: forget the email's window and refund this
+    // one attempt to the address. Failures from that address stay counted — see the module header.
+    await forgiveAuthAttempt(env.DB, env, { ip, email: body.email, cost: COST_LOGIN });
 
     const token = await signSession(env, acct.id);
     log(200);
