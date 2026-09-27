@@ -304,12 +304,62 @@ npm run record:export -- [--client <key>] [--dry-run] [--stdout] [--purge]
 - **Removal:** `npm run record:export -- --purge`, or the `rm -rf` line every run prints last. A local
   copy is a class of copy self-service erasure cannot reach, which is why `ERASURE_REACH`
   (`src/lib/erase-account.ts`) names it.
-- **No audit row**, deliberately: `GET /api/vault/{id}` and `GET /api/raw/…` write no
-  `phi_access_events` for *any* principal, so logging a subject's read of their own record — and
-  nothing else — would make the least-privileged reader the only recorded one. Closing that gap on the
-  *privileged* paths is a prerequisite to any third-party CLI access, not to this.
+- **No audit row**, deliberately: the read routes log nothing for any principal (§2, "The boundary
+  of that claim"), so logging a subject's read of their own record — and nothing else — would make
+  the least-privileged reader the only recorded one. Closing that gap on the *privileged* paths is
+  §4b's prerequisite, not this one's.
 - **Deliberately absent from `ops.yml`.** A CI runner is the wrong place for plaintext PHI, and this
   follows the read-only-inspection convention (`scripts/treatment-diagnose.ts`) of staying local.
+
+### 4b. A third party at the CLI (designed, not built, 2026-09-27)
+
+§4a gives the **record's own owner** a command line. A clinical expert is the case that comes next,
+and this section exists so the answer is written before there is a user for it. Nothing here is
+built; the last paragraph is why.
+
+The CLI needs no change — `scripts/api-session.ts` signs in as whatever account holds a password
+credential, so only the account differs. What differs is that account's **standing**, and there are
+exactly two shapes for it.
+
+- **A `primary` provider link.** `POST /api/providers/grant` runs on the *patient's* session: they
+  wrap their live DEK to the provider's public key, because `grantProvider` takes an unwrapped DEK as
+  a `CryptoKey` (`@tinytars/vault/auth-grants.ts`, `packages/frame/vault-principals.svelte.ts`). So
+  the patient must be present **once**. The link sets no `expires_at`
+  (`@tinytars/vault/adapters/d1/providers.ts` — "set on time-boxed support grants and null for
+  primary links"), writes no audit row at grant, and revocation is silent too
+  (`functions/_lib/routes/providers-link-revoke.ts`). The patient *can* revoke it, which is a lever
+  they do not have against the org key.
+- **A time-boxed support grant.** The break-glass path, whose
+  `POLICY = { defaultTtlHours: 72, maxTtlHours: 720 }` (`functions/_lib/routes/support-approve.ts`)
+  stamps a `consent_ref` and audits `support_access_requested` / `_granted` / `_opened`. Expiry is
+  enforced lazily on the next access: `checkBreakGlass` deletes the envelope and sets
+  `rotation_pending` because it "can't re-key here (patient offline, zero-knowledge)"
+  (`functions/_lib/routes/support-access.ts`). Needs the patient present for **every** window.
+
+Either way the roster comes free: `GET /api/providers/patients` returns, per patient,
+`{ ownerAccountId, displayName, email, linkId, vaultId, r2Key, envelope }`
+(`functions/api/providers/patients.ts`, whose header states "the envelope, not the row, is the access
+boundary"). Note what that response carries in the clear — name and email — so a roster call is
+itself a PHI-adjacent read, and a CLI that caches one has written PHI outside §4a's guarded
+directory.
+
+**Why a standing clinician passphrase is not a read credential.** A `primary` principal also holds
+`recovery:issue` (`functions/_lib/capabilities.ts`), and `functions/api/recovery/grant.ts`'s own
+header calls that "the ability to turn read access into ACCOUNT CONTROL". A clinician password in a
+file is therefore an account-takeover credential for every patient linked to that clinician. That,
+not the scoping argument, is why §4a chose the record's own owner and why this section stays written.
+
+**The prerequisite.** The unaudited read routes of §2's boundary paragraph are exactly the ones a
+`primary` principal reads through: `functions/api/providers/patients.ts`,
+`functions/api/vault/[id].ts` and `functions/api/raw/[[path]].ts` contain no `insertAccessEvent`
+call, and `functions/_lib/routes/support-access.ts` names the "(unaudited) clinician
+`/api/providers/patients` path" in as many words. Support is no better off:
+`functions/_lib/identity-vault.ts` moved expiry enforcement into `getEnvelope` (W71) because an agent
+who kept a `vaultId` "could read full PHI indefinitely … and nothing was logged" — the expiry half of
+that is fixed, the logging half is not, so support's trail still covers only the discovery hop. For
+the owner the gap is a wash (§4a). For a third party it inverts the whole trade: standing CLI access
+would move PHI reads off the audited org-key path and onto an unaudited one. **Closing it is a
+prerequisite to building this, not a follow-up.**
 
 ## 5. Write path — the `VaultSink` abstraction
 
