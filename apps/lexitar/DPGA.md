@@ -99,7 +99,7 @@ became a two-step control in the product that reports what it could not attribut
 recall; the 16+ limit became a refusal in the browser rather than a sentence in the Terms; and a report
 about a wrong answer, illegal material or an abusive account now reaches a person, through a private
 tracker, against stated times. The two honest qualifications are stated where they belong rather than
-averaged away: production runs `main`, seven commits behind, so the refusal and the disclosure are true
+averaged away: production runs `main`, nineteen commits behind, so the refusal and the disclosure are true
 of the software before they are true of the deployment; and documents uploaded before the sealing are
 still being converted where they sit, which is why `MODERATION.md` is staged rather than unconditional.
 
@@ -345,7 +345,7 @@ What's in place:
 
 **Gaps** — none against the software in this repo.
 
-**One deployment note, which is not a gap in the software.** Production runs `main`, seven commits
+**One deployment note, which is not a gap in the software.** Production runs `main`, nineteen commits
 behind `dev`, so until that promotion it serves the pre-refusal build and sets `REPORTS: "never"` (no
 document leaves at all under that setting). A preview sweep on the dev store reports zero *sealable*
 plaintext. The production store's own preview sweep was run read-only on 2026-09-27 and is the honest
