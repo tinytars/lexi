@@ -1,4 +1,7 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 // scripts/access-log.ts talks to prod/dev D1 only through node:child_process execFileSync →
 // wrangler.sh — there is no exported runD1 or injectable runner (it's a private function baked
@@ -9,7 +12,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 const execFileSyncMock = vi.fn<(...args: unknown[]) => string>();
 vi.mock("node:child_process", () => ({ execFileSync: (...args: unknown[]) => execFileSyncMock(...args) }));
 
-const { recordOrgKeyUse, flushOrgKeyUses } = await import("../../scripts/access-log");
+const { recordOrgKeyUse, flushOrgKeyUses, spoolUnflushedSync } = await import("../../scripts/access-log");
 
 const ORG_ACCOUNT_ID = "00000000-0000-4000-8000-000000000001";
 
@@ -26,13 +29,29 @@ function mockLookup(rows: Record<string, string>[]) {
   });
 }
 
+// The spool is a real file, so each test gets its own XDG_STATE_HOME rather than sharing the one
+// vitest.config.ts points at — which is the safety net that keeps any suite off the operator's own
+// backlog, not an isolation mechanism between tests.
+let stateHome: string;
+const spoolFile = () => join(stateHome, "lexitar", "access-spool.ndjson");
+const spooled = () =>
+  existsSync(spoolFile())
+    ? readFileSync(spoolFile(), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l) as Record<string, string>)
+    : [];
+
 beforeEach(async () => {
-  delete process.env.ORG_ACCESS_LOG;
+  stateHome = mkdtempSync(join(tmpdir(), "lexitar-access-log-"));
+  vi.stubEnv("XDG_STATE_HOME", stateHome);
+  vi.stubEnv("ORG_ACCESS_LOG", "");
   // Drain whatever the previous test left buffered (module state is a singleton for the file)
   // before each test starts, so tests don't see each other's uses.
   mockLookup([]);
   await flushOrgKeyUses().catch(() => {});
   execFileSyncMock.mockClear();
+});
+
+afterEach(() => {
+  rmSync(stateHome, { recursive: true, force: true });
 });
 
 describe("recordOrgKeyUse / flushOrgKeyUses", () => {
@@ -53,19 +72,46 @@ describe("recordOrgKeyUse / flushOrgKeyUses", () => {
     expect(insertSql).toContain('"purpose":"ingest"');
   });
 
-  it("ORG_ACCESS_LOG=off skips the flush without touching wrangler", async () => {
-    process.env.ORG_ACCESS_LOG = "off";
+  // `off` is for working offline, not for working unaudited: it moves the use to a file on disk and
+  // the next online flush sends it. It used to clear the buffer and return, losing the use outright.
+  it("ORG_ACCESS_LOG=off spools the use instead of reaching wrangler, and the next flush drains it", async () => {
+    vi.stubEnv("ORG_ACCESS_LOG", "off");
     recordOrgKeyUse({ clientId: "alex", purpose: "manual-decrypt" });
-
     await flushOrgKeyUses();
 
     expect(execFileSyncMock).not.toHaveBeenCalled();
+    expect(spooled()).toEqual([expect.objectContaining({ clientId: "alex", purpose: "manual-decrypt" })]);
 
-    // Clean up: the buffered use survives the "off" flush (it's deferred, not dropped), so drain
-    // it now with logging back on to avoid leaking into the next test.
-    delete process.env.ORG_ACCESS_LOG;
-    mockLookup([]);
+    vi.stubEnv("ORG_ACCESS_LOG", "");
+    mockLookup([{ vault_id: "vault-alex", owner_account_id: "owner-alex", r2_key: "data-alex.enc" }]);
     await flushOrgKeyUses();
+
+    const insertSql = sqlArg(execFileSyncMock.mock.calls.find((c) => sqlArg(c).startsWith("INSERT"))!);
+    expect(insertSql).toContain('"purpose":"manual-decrypt"');
+    // Drained, not copied: a spooled use that flushed must not be sent again on the next run.
+    expect(existsSync(spoolFile())).toBe(false);
+  });
+
+  // The whole point of the spool: a script that decrypts and then dies still leaves the row behind.
+  it("spools from the exit handler when a script never flushes at all", () => {
+    recordOrgKeyUse({ clientId: "blair", purpose: "crashed-midway" });
+    expect(process.listeners("exit")).toContain(spoolUnflushedSync);
+
+    spoolUnflushedSync();
+
+    expect(execFileSyncMock).not.toHaveBeenCalled();
+    expect(spooled()).toEqual([expect.objectContaining({ clientId: "blair", purpose: "crashed-midway" })]);
+  });
+
+  // A flush that cannot reach D1 used to lose everything it had taken out of the buffer.
+  it("returns a failed flush's uses to the spool and still throws", async () => {
+    execFileSyncMock.mockImplementation(() => {
+      throw new Error("wrangler: network unreachable");
+    });
+    recordOrgKeyUse({ clientId: "alex", purpose: "offline-attempt" });
+
+    await expect(flushOrgKeyUses()).rejects.toThrow(/network unreachable/);
+    expect(spooled()).toEqual([expect.objectContaining({ clientId: "alex", purpose: "offline-attempt" })]);
   });
 
   it("rejects a non-slug clientId before ever calling wrangler", async () => {

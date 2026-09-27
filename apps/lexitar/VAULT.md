@@ -157,12 +157,29 @@ client at signup. Four properties, all four load-bearing, and all four now shipp
 4. **Every use logged** — to `phi_access_events`, and surfaced to the patient. Server-side mint/revoke
    write `insertAccessEvent` inline (`functions/api/vault/recovery-envelope.ts:70,95`, actions
    `org_recovery_minted` / `org_recovery_revoked`). The org key itself lives only in the CLI, so its
-   decrypts are logged from there: `scripts/access-log.ts` (`recordOrgKeyUse` / `flushOrgKeyUses`,
-   action `org_key_decrypt`), called from every decrypt site — `scripts/vault-v2.ts:75`,
-   `scripts/vault-build.ts:41`, `scripts/vault-verify.ts:49`, `scripts/vault-restore.ts:233`,
-   `scripts/ingest.ts:779` — with each script's `main` flushing on exit. Patient-visible read:
+   decrypts are logged from there — and since 2026-09-27 that is a mechanism rather than a request.
+   **One module turns the org key into a decryption key:** `scripts/org-unwrap.ts`, the only importer
+   of `loadOrgPrivateKey`. It writes the `org_key_decrypt` entry (`scripts/access-log.ts`) *before* it
+   returns a key, and refuses an id it could not audit before any crypto runs, so a use that cannot be
+   logged fails before the key exists. `tests/unit/org-key-chokepoint.test.ts` sweeps `scripts/` and
+   fails the build when another file reintroduces the shortcut. Until then each decrypt site loaded the
+   key itself and was asked, by a comment, to log alongside it — and two never did
+   (`scripts/raw-backfill.ts`, `scripts/recovery-approve.ts`, both audited from that date).
+   **A recorded use can also no longer be lost.** `ORG_ACCESS_LOG=off` used to clear the buffer and
+   return; now it, an unreachable D1, and a script that exits without flushing all spool to
+   `${XDG_STATE_HOME:-~/.local/state}/lexitar/access-spool.ndjson` (0600; ids, script and purpose — no
+   PHI, no key material), which the next online flush drains. Patient-visible read:
    `GET /api/account/access-events` (`functions/api/account/access-events.ts`), the first caller of
    `listAccessEventsForSubject`, rendered in the same Account modal block.
+
+**The boundary of that claim.** "No DEK without an audit row" is a property of *this repository*, not
+of the machine: anyone holding `ORG_KEY_PASSPHRASE` and `records/org-key.json` can write their own
+twenty lines. What the chokepoint delivers is that no code path in this tree yields a key without
+recording a use — the same distinction `ARCHITECTURE.md` draws between the server *enforcing* access
+and the server being *able* to read. And the audit it enforces covers the org key only: the read
+routes `GET /api/vault/{id}` and `GET /api/raw/...` write no `phi_access_events` row for **any**
+principal — not the owner, not a clinician, not a support agent — so the CLI's own owner-credential
+read (§4a) is unlogged too, and the least-privileged reader is not the only recorded one.
 
 **Why not the stricter line.** An earlier draft made escrow opt-in, on the reasoning that an
 operator who can decrypt is a backdoor. That over-read the requirement — the objection was to access

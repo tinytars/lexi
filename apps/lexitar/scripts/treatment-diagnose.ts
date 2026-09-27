@@ -37,7 +37,7 @@ async function main(): Promise<void> {
   }
 
   const store = resolveStore();
-  const { client } = await pullDeployedVault(id, store);
+  const { client } = await pullDeployedVault(id, store, "ingest:treatment-diagnose");
   if (!client?.finding) throw new Error(`${id}: no Finding yet — run --refresh-finding first.`);
 
   if (dryRun) {

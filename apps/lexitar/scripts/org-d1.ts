@@ -6,7 +6,7 @@
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import type { OrgSidecar } from "./vault-v2";
+import { envelopeFromHex, type OrgEnvelope } from "./org-unwrap";
 import { wranglerTarget } from "./target";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -16,8 +16,8 @@ const ORG_ACCOUNT_ID = "00000000-0000-4000-8000-000000000001";
 const DB = wranglerTarget().database;
 
 // Fetch the org-recovery envelope for the vault whose r2_key is `data-{id}.enc`. Uses the committed
-// wrangler wrapper (CA + token from .cloudflare.env). Returns an OrgSidecar (same shape the file used).
-export function orgSidecarFromD1(id: string): OrgSidecar {
+// wrangler wrapper (CA + token from .cloudflare.env). Same envelope shape the committed sidecar file has.
+export function orgSidecarFromD1(id: string): OrgEnvelope {
   const r2Key = `data-${id}.enc`;
   const sql =
     `SELECT hex(e.wrapped_dek) AS wrapped_hex, e.ephemeral_public_key_jwk AS eph ` +
@@ -30,6 +30,5 @@ export function orgSidecarFromD1(id: string): OrgSidecar {
   const parsed = JSON.parse(out) as { results: { wrapped_hex: string; eph: string }[] }[];
   const row = parsed[0]?.results?.[0];
   if (!row) throw new Error(`no org-recovery envelope in D1 for ${r2Key} (vault not migrated/seeded?)`);
-  const wrappedDEK = Buffer.from(row.wrapped_hex, "hex").toString("base64");
-  return { wrappedDEK, ephemeralPublicKeyJwk: JSON.parse(row.eph) as JsonWebKey };
+  return envelopeFromHex(row.wrapped_hex, row.eph);
 }
