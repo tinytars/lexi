@@ -75,6 +75,8 @@
   import { neuralSpeech } from "./lib/speech-engine";
   import LoginScreen from "@tinytars/frame/LoginScreen.svelte";
   import RecoveryCodeDialog from "./lib/RecoveryCodeDialog.svelte";
+  import ReportDialog from "./lib/ReportDialog.svelte";
+  import type { ReportTarget } from "./lib/safety-report";
   import AttachPicker from "@tinytars/frame/AttachPicker.svelte";
   import FindingDag from "./lib/FindingDag.svelte";
   import VisibilitySettings from "@tinytars/frame/VisibilitySettings.svelte";
@@ -399,6 +401,10 @@
   // W67 — the chain, the flash timer and the two flags live in vault-save.svelte.ts. The write itself
   // stays here because the vault, its key and its R2 id are App's; what left is the queueing.
   const vaultSave = createVaultSave();
+
+  // 9B.3/9B.4/9B.6 and 9C.2 — which report the dialog is open for, or null. The dialog owns its own
+  // busy/error state; App only says what is being reported.
+  let reportTarget = $state<ReportTarget | null>(null);
 
   // 9A / DPGA 7.5 — the self-erasure the route has always allowed and nothing called. Two steps
   // (arm, then echo your own email) matching the "Remove recovery key" pattern beside it, because
@@ -1485,7 +1491,12 @@
             {#each vaultAccess.activeAccess as p (p.linkId)}
               <li>
                 <span class="access-who"><strong>{p.displayName}</strong> <span class="access-kind">{p.kind}{#if p.kind === "support" && p.expiresAt} · until {new Date(p.expiresAt).toLocaleString()}{/if}</span></span>
-                <button class="access-revoke" disabled={vaultAccess.busy} onclick={() => vaultAccess.revoke(p)}>Revoke</button>
+                <span class="access-approve-actions">
+                  <!-- 9C.2 — reporting is the thing revoking is not: revoke ends their access to THIS
+                       record, and says nothing to anyone about why. -->
+                  <button class="access-report" onclick={() => (reportTarget = { reason: "abusive-account", subject: p.linkId, feature: "provider-access" })}>Report</button>
+                  <button class="access-revoke" disabled={vaultAccess.busy} onclick={() => vaultAccess.revoke(p)}>Revoke</button>
+                </span>
               </li>
             {/each}
           </ul>
@@ -1615,7 +1626,7 @@
         onClose={() => (searchOpen = false)}
       />
     {:else if activeTab === "chat" && currentClient}
-      <ChatTab client={currentClient} dek={session.dek} clientId={selectedClientId} {unitSystem} {persona} activeId={section} bind:threads={chatSession.threads} hydrated={chatSession.hydrated} saveError={chatSession.saveError} {vault} onNavigate={navigate} onPersist={chatSession.persistChatThreads} onImportFile={importChatFile} onCreateNote={createNoteFromAttachment} />
+      <ChatTab client={currentClient} dek={session.dek} clientId={selectedClientId} {unitSystem} {persona} activeId={section} bind:threads={chatSession.threads} hydrated={chatSession.hydrated} saveError={chatSession.saveError} {vault} onNavigate={navigate} onPersist={chatSession.persistChatThreads} onImportFile={importChatFile} onCreateNote={createNoteFromAttachment} onReport={(t) => (reportTarget = t)} />
     {:else if currentClient}
       <ReportSections client={currentClient} sections={ALL_SECTIONS} bind:active={section} clientId={selectedClientId} providerSession={roster.isProvider} canTranslate={roster.isProvider && !!providerToken} onTranslate={translateMarker} onCategorizeMarkers={handleCategorizeMarkers} {vault} {unitSystem} bind:windowYears onToggleWatchlist={toggleWatchlist} onTogglePinnedRatio={togglePinnedRatio} onSave={saveEdits} onSaved={(anchor) => navigate({ anchor })} onTriggerRegen={triggerLeafRegen} saved={vaultSave.saved} saveError={vaultSave.error} onStartChat={startChatFromLeaf} onCreateNote={createNoteFromAttachment} pendingSidebarAction={pendingSidebarAction} onConsumeSidebarAction={() => (pendingSidebarAction = null)} bind:activeGroup {activeLeaf} {pendingAnchor} onConsumeAnchor={() => (pendingAnchor = null)} pendingNoteAttachment={pendingNoteAttachment} onPendingNoteAttachmentConsumed={() => (pendingNoteAttachment = null)} onNavigate={navigate} />
     {/if}
@@ -1724,6 +1735,12 @@
      (login, roster, patient view, print). -->
 <AttachPicker />
 
+<!-- 9B/9C — mounted out here for the same reason as AttachPicker: a chat answer and a provider's row
+     are in different view branches, and one report control beats two. -->
+{#if reportTarget}
+  <ReportDialog target={reportTarget} onClose={() => (reportTarget = null)} />
+{/if}
+
 <style>
   /* W70 — the conflict surface. Deliberately not the shared Modal: that one dismisses on backdrop
      click and Escape, which is exactly what must not happen here. */
@@ -1784,6 +1801,9 @@
   .erase-report { background: var(--band); color: var(--fg); }
   .access-revoke { padding: 0.3rem 0.7rem; border: 1px solid var(--alert); background: transparent; color: var(--alert); border-radius: 8px; cursor: pointer; font: inherit; font-size: 0.85rem; }
   .access-revoke:disabled { opacity: 0.5; cursor: default; }
+  /* Its own class, not a second .access-revoke: reporting is not revoking, and the e2e suites select
+     the revoke button by class within the access list. */
+  .access-report { padding: 0.3rem 0.7rem; border: 1px solid var(--alert); background: transparent; color: var(--alert); border-radius: 8px; cursor: pointer; font: inherit; font-size: 0.85rem; }
   .access-subhead { font-weight: 600; margin: 0 0 0.4rem; font-size: 0.9rem; }
   .access-pending { border-bottom: 1px solid var(--border); padding-bottom: 0.75rem; }
   .access-approve-actions { display: flex; align-items: center; gap: 0.4rem; }
