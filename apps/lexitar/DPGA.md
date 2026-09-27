@@ -6,8 +6,8 @@ asks for each indicator. Each indicator gets a verdict, the evidence behind it, 
 between it and "meets". The gaps are the input to a development plan. This doc is not a plan, a
 tracker, or a history: when LexiTar changes, rewrite the affected verdict to describe the new state.
 
-**Assessed against:** `dev` at `7d7b950`, and the live `tinytars.foundation/privacy` and `/terms` pages.
-`main` — what production runs — is five commits behind it and sets `REPORTS: "never"`, so where dev and
+**Assessed against:** `dev` at `c8c1ea6`, and the live `tinytars.foundation/privacy` and `/terms` pages.
+`main` — what production runs — is seven commits behind it and sets `REPORTS: "never"`, so where dev and
 production differ the verdict says which, rather than averaging them.
 **Scope:** the software in this repo (`apps/lexitar`, `packages/frame`) plus the open packages it is
 built from (`@tinytars/vault`, `@pablotech/akesi`, `@pablotech/neuro`). Users' health data is never
@@ -54,45 +54,51 @@ right, but there is nothing to fix.
 | 6.2 | Export/import in a non-proprietary format | ✅ | CSV and JSON export; PDF/XLSX import |
 | **7** | **Privacy and applicable laws** | **❌** | |
 | 7.1 | Which laws it complies with | ❌ | No law named anywhere; GDPR, FTC HBNR, CCPA, MHMDA all plausibly apply |
-| 7.2 | Evidence of adherence | ❌ | Published, and the at-rest claim is now true; neither document says whole documents go to a model provider |
-| 7.3 | Processors disclosed | ❌ | Anthropic, Azure and Google are unnamed in the policy |
+| 7.2 | Evidence of adherence | ✅ | Policy and terms published and now true: what leaves this device, the recovery envelope, the enforced age limit, the reporting channel |
+| 7.3 | Processors disclosed | ✅ | Named in the policy, each with what it receives and what its terms actually cover — including where nothing has been negotiated |
 | 7.4 | Consent for special-category data | ❌ | No consent surface anywhere, and the corpus raised the stake from extracted values to whole documents |
-| 7.5 | Deletion available to the user | ❌ | `POST /api/account/erase` works; no UI reaches it |
+| 7.5 | Deletion available to the user | ✅ | Two-step self-service erase in the account panel, reporting honestly what it could not attribute |
 | **8** | **Standards and best practices** | **✅** | |
 | 8.1 | Open standards, with evidence | ✅ | WebAuthn, Web Crypto, OAuth2/OIDC, WCAG 2.1 AA via axe in e2e |
 | 8.2 | Best practices, with evidence | ✅ | CI on every PR, coverage thresholds, CodeQL, Dependabot, disclosure policy |
-| **9A** | **Data privacy and security** | **🟡** | |
+| **9A** | **Data privacy and security** | **✅** | |
 | 9A.1 | Is PII collected / stored / distributed | ⚪ | All three — and what a linked clinician now receives includes the original documents, through the model |
 | 9A.2 | Which types | ✅ | Identity, lab results, symptoms, treatments, notes, photos, chat |
 | 9A.3 | Vault confidentiality | ✅ | Client-side encryption, per-principal envelopes |
 | 9A.4 | Access control and audit | ✅ | One capability table, per-namespace ownership, logged privileged reads |
-| 9A.5 | Uploaded originals | 🟡 | Sealed under per-file content keys held inside the vault; the store is mid-migration and plaintext is still accepted |
-| 9A.6 | Transfer to third-party models | 🟡 | Avoidable by config and by one env var; where it is on, whole originals leave when a record is opened, before any question |
-| 9A.7 | Erasure integrity | 🟡 | Honest about the storage it controls; silent about the copies already sent to the model provider |
-| **9B** | **Inappropriate, misleading, illegal content** | **❌** | |
+| 9A.5 | Uploaded originals | ✅ | Sealed under per-file content keys held inside the vault, and a plaintext `PUT` is now refused outright (`415 plaintext_refused`). Deployment note: the dev store sweeps to zero sealable objects; production runs the pre-refusal build until `main` is promoted, and its own sweep has not been run |
+| 9A.6 | Transfer to third-party models | ✅ | Disclosed at the point of use, on demand and in the published policy: whole documents, on record open, about an hour of provider-side cache, no negotiated zero-retention arrangement |
+| 9A.7 | Erasure integrity | ✅ | The report states what deletion cannot reach, and the half that is enforceable — revocation killing the corpus keepalive — is pinned by a test rather than assumed |
+| **9B** | **Inappropriate, misleading, illegal content** | **✅** | |
 | 9B.1 | Is content collected / stored / distributed | ⚪ | All three — uploads, notes, generated explanations |
 | 9B.2 | Which types | ✅ | PDFs, photos, free text, AI-generated health explanations |
-| 9B.3 | Identifying illegal content | ❌ | An acceptable-use clause, and nothing that acts on it. Sealing makes "the operator cannot read it" true, but it is unwritten |
-| 9B.4 | Detect / moderate / report / remove | ❌ | No process, no channel, no owner |
-| 9B.5 | Average response time | ❌ | Undefined, because there is no process to time |
-| 9B.6 | Misleading content | 🟡 | Disclaimer, no-diagnosis prompts, staleness tracking, per-page citations, and a corpus that refuses rather than shrinks; no way to flag a wrong answer |
-| **9C** | **Protection from harassment** | **🟡** | |
+| 9B.3 | Identifying illegal content | ✅ | `MODERATION.md` §2–3: uploads are sealed under keys the operator does not hold, so identification is by report rather than by scanning, and the `illegal-content` reason carries a 1-business-day target |
+| 9B.4 | Detect / moderate / report / remove | ✅ | Three in-app controls → `POST /api/report` → a labelled issue in a private tracker a named role answers, with both removal paths documented |
+| 9B.5 | Average response time | ✅ | Acknowledge within 3 business days, resolve within 10, illegal material within 1 — one string shown as the user files, quoted in `MODERATION.md` and in the published policy, measurable off the issues' own timestamps |
+| 9B.6 | Misleading content | ✅ | Disclaimer, no-diagnosis prompts, staleness tracking, per-page citations, a corpus that refuses rather than shrinks — and now a per-message Report control that reaches a person |
+| **9C** | **Protection from harassment** | **✅** | |
 | 9C.1 | Does it enable interaction between users | ⚪ | Yes, narrowly — patient↔clinician sharing; no messaging or social surface |
-| 9C.2 | How users protect themselves | 🟡 | Links are patient-approved, time-boxed, revocable and logged; no abuse-report path |
-| 9C.3 | Safety of underage users | ❌ | 16+ in the Terms, unenforced at signup |
+| 9C.2 | How users protect themselves | ✅ | Links are patient-approved, time-boxed, revocable and logged, and each one now carries a Report control — reporting is the thing revoking is not |
+| 9C.3 | Safety of underage users | ✅ | 16+ refused in the browser at signup, on Skip and on later edit; `accounts.age_attested_at` records that the check passed, never a date of birth. Year-granular self-declaration, and the docs say so rather than implying verified age |
 | **—** | **Scale** (form section, unscored) | **⚪** | Live at `literacy.tinytars.foundation`; **English only**, against an audience defined partly by limited English |
 
-**Verdict: not ready to submit.** Indicators 7 and 9B fail outright, and both need work that isn't
-writing: consent and deletion in the product, a content-reporting process behind it. Indicator 3's
-ownership split and 9C's age gate are smaller but real. Everything else either passes or passes with a
-note.
+**Verdict: one indicator short of submittable.** Section 9 is green throughout — 9A, 9B and 9C — and
+indicator 7 is now the only outright failure, on the two questions a document cannot answer: no law is
+named anywhere, and there is no consent surface for special-category health data. Indicator 3's
+ownership split (the reasoning core is copyright an individual, not the Foundation) and the missing
+end-user guide are smaller but real. Everything else passes, or passes with a note.
 
-Sealing the uploaded originals and attaching them to every inference (`VAULT.md` §2a, `CORPUS.md`) moved
-no indicator's light, and that is the finding. Inside 9A it traded one sub-question for another: 9A.5
-rose off ❌ because the files are encrypted at rest, and 9A.7 fell off ✅ because erasure now has
-something outside its reach to account for and does not. Indicator 7 fails for a new reason on top of
-its old ones: the documents a patient uploads are sent whole to a model provider — on record open, not
-on a question — and nothing the patient is shown says so.
+Section 9 turned green on product work, not on wording. Between 2026-09-24 and 2026-09-27: uploaded
+originals are sealed under per-file content keys inside the vault and an unsealed upload is refused
+outright, so the store cannot acquire new readable objects; what leaves the device is disclosed in one
+audited string at the point of use, on demand, and in a published policy rewritten to match it; deletion
+became a two-step control in the product that reports what it could not attribute and what it cannot
+recall; the 16+ limit became a refusal in the browser rather than a sentence in the Terms; and a report
+about a wrong answer, illegal material or an abusive account now reaches a person, through a private
+tracker, against stated times. The two honest qualifications are stated where they belong rather than
+averaged away: production runs `main`, seven commits behind, so the refusal and the disclosure are true
+of the software before they are true of the deployment; and documents uploaded before the sealing are
+still being converted where they sit, which is why `MODERATION.md` is staged rather than unconditional.
 
 ---
 
@@ -205,10 +211,6 @@ measured, on what hardware, and which claims are not proven.
 **Gaps**
 - **No end-user guide.** Nothing explains, for a patient, how to import a report, read a translation,
   or share with a clinician. `START-HERE.md` §A explains what LexiTar is, not how to use it.
-- **`CORPUS.md` contradicts itself on the one fact this assessment leans on hardest.** §2 still calls
-  the stored original "plaintext, deliberately outside the vault's encryption boundary" while §3
-  describes the per-request key map that decrypts it; the sealing landed two days before that file was
-  last touched. An assessor reading §2 alone concludes 9A.5 fails.
 - The self-hosting guide from Indicator 4.
 
 ## 6. Mechanism for extracting data and content — ✅
@@ -228,40 +230,25 @@ non-PII content (its reasoning prompts and the finding DAG) is plain source in p
 demonstrate it.
 
 A privacy policy (`tinytars.foundation/privacy`) and terms (`/terms`) are published and linked in-app
-(`src/lib/Disclaimer.svelte`). They cover retention, deletion on request, a 16+ age limit, and the fact
-that the Foundation is not a HIPAA covered entity.
+(`src/lib/Disclaimer.svelte`), and both were rewritten on 2026-09-27 to describe the product that
+ships: what leaves the browser and to whom, the Foundation-openable recovery envelope that is there
+until the patient removes it, each processor by name with what its terms actually cover — including
+where nothing has been negotiated — the enforced age limit, self-service deletion and the reach it
+does not have, and a reporting channel with stated response times. The indicator still fails, on the
+two questions that rewrite does not answer.
 
 **Gaps**
-- **The policy is closer to the code than it was, and still contradicts it.** The at-rest half became
-  true on 2026-09-24: uploaded originals are sealed under per-file content keys that exist only inside
-  the patient's encrypted vault (`VAULT.md` §2a), so "we do not hold plain-text access to your health
-  records" now holds at rest. Two claims still fail:
-  - every vault carries an **org-recovery envelope by default** that the Foundation's key can open, so
-    "we cannot recover the encrypted contents" is false unless the patient revoked it. This one is
-    disclosed at signup on the lock screen and repeated on the public site — here the policy is what
-    lags, not the product.
-  - **whole documents, not extracted values, go to a model provider** when their owner asks a question
-    about them (`CORPUS.md`), and read-aloud sends text to Azure. The policy mentions neither, and
-    "readable only inside your own browser" reads as a denial of the first.
+- **No laws are identified (7.1).** The form asks for a list. The candidates LexiTar would have to show
+  adherence to: GDPR (EU users; health data is special-category), the FTC Health Breach Notification
+  Rule, CCPA/CPRA, Washington's My Health My Data Act, and ADA/WCAG for accessibility. None is cited
+  anywhere, in the policy or in this repo.
+- **No consent capture for special-category data (7.4).** GDPR Article 9 wants explicit consent for
+  processing health data, and there is no consent surface — disclosure at the point of use is not
+  consent, and the `REPORTS` switch is the operator's, not the patient's. The corpus raised what such
+  consent would have to cover from extracted marker values to whole documents.
 
-  The corpus also fixes the limit of the sealing, stated in the same terms in `../../SECURITY.md`,
-  `VAULT.md` §2a and `CORPUS.md` §3: the deployment decrypts a document in memory while answering its
-  owner's question about it. **That wording is narrower than the code.** `functions/api/corpus-warm.ts`
-  sends the whole corpus at `max_tokens: 0` when a record is *selected*, and the browser refreshes it
-  every 4.5 minutes for up to twelve idle cycles (`src/lib/corpus-warm.ts`), so opening a record — and
-  then asking nothing — still transmits every original. The trigger is the owner's presence, not the
-  owner's question, and all three documents should say so.
-  `REPORTS: "never"` turns that path off entirely and is what `main` ships, while `dev` runs
-  `"always"` — so an assessor reads one policy against two configurations, and the policy describes
-  neither.
-- **Processors aren't named.** The policy mentions only "infrastructure providers (such as our cloud
-  host)". Anthropic, Microsoft Azure and Google receive or handle user data and aren't listed, nor are
-  their retention terms.
-- **No laws are identified.** The form asks for a list. Candidates LexiTar would have to show
-  adherence to: GDPR (EU users; health data is special-category, needing explicit consent), the FTC
-  Health Breach Notification Rule, CCPA/CPRA, Washington's My Health My Data Act, and ADA/WCAG for
-  accessibility. None is cited, and there is no consent capture for processing health data.
-- **Deletion is by request only.** `POST /api/account/erase` exists but no UI calls it (see 9A).
+Neither is in this milestone's scope, and neither has been narrowed by it: what changed is that the
+published claims are now true, not that a law has been named.
 
 ## 8. Adherence to standards and best practices — ✅
 
@@ -277,7 +264,7 @@ that the Foundation is not a HIPAA covered entity.
 **Gaps** — none blocking. Health-data interoperability (FHIR, LOINC codes for markers) isn't used. That
 isn't required, but an assessor in the health domain may look for it.
 
-## 9A. Data privacy and security — 🟡
+## 9A. Data privacy and security — ✅
 
 **The form asks:** whether PII is collected, stored and distributed; what types; and how privacy,
 security and integrity are ensured.
@@ -294,6 +281,10 @@ What's in place:
   file, how access is revoked and how a rotation works stay the vault's answers rather than three new
   mechanisms. A document and its transcription sidecar share one key, and the key is written to the
   vault before the ciphertext is uploaded, so a crash cannot orphan a file.
+- **A plaintext upload is now refused rather than logged.** `PUT /api/raw/…` answers an unsealed body
+  with `415 plaintext_refused` (`functions/api/raw/[[path]].ts:188-189`), unconditionally — including on
+  a namespace's first upload, which is the case a narrower rule would have broken — so the store cannot
+  acquire new readable objects. `GET` is untouched; it streams what is stored and never decrypts.
 - The deployment therefore holds no standing key for those files: the browser of the person using the
   record hands the route a key map per request, and authorisation runs inside the assembler that opens
   them (`openReportCorpus` calls `rawAccessFor` before it lists anything —
@@ -304,39 +295,38 @@ What's in place:
   `tests/unit/raw-authorization.test.ts`). Unowned namespaces are refused, and ownership never flips.
 - Access policy lives in one table (`functions/_lib/capabilities.ts`). Privileged reads are logged to
   `phi_access_events`, and support access is consent-gated and time-boxed.
-- Erasure (`functions/_lib/erasure.ts`) deletes everything attributable in the operator's own storage,
-  and reports itself incomplete rather than claiming a clean erase.
+- **What leaves the device is disclosed where the work happens**, in one audited string reused
+  everywhere (`MODEL_DISCLOSURE`, `src/lib/brand.ts`): whole reports rather than summaries, sent when a
+  record is opened and not only when a question is asked, resident in the provider's prompt cache for
+  about an hour of idleness on the provider's own expiry schedule, on standard commercial terms with no
+  negotiated zero-retention arrangement. It names no vendor — the model provider is a deployment choice
+  (`providerFor` in `src/lib/model-config.ts`), so a vendor name in audited copy would be false wherever
+  an operator picked another — and points at the published policy, which names the companies in use
+  today and is reissued when any of them changes. A unit test pins both halves
+  (`tests/unit/brand.test.ts`).
+- **Deletion is self-service and states its own reach.** A two-step armed control in the Account panel
+  echoes the account's own email to `POST /api/account/erase` (`src/App.svelte:1720`,
+  `src/lib/erase-account.ts`), and the result is rendered from the route's own report rather than a
+  claim: storage it could not attribute is reported as a count, and `ERASURE_REACH` says in the same
+  words as `../../SECURITY.md` and `MODERATION.md` what deletion cannot recall — the copies already
+  written at the model and speech providers, which expire on their schedules.
+- **The half of erasure that is enforceable is pinned by a test, not asserted.** `erasure.ts` revokes
+  sessions before it writes the tombstone, so an erased account's browser cannot send anything further;
+  `tests/unit/erasure-function.test.ts` holds a `corpus-warm` refresh on a pre-erasure cookie to a 401,
+  which is the property that stops the keepalive re-warming a deleted record.
 
-**Gaps**
-- **The store is only half-sealed.** New uploads are sealed, and two lanes seal what was already
-  there — a browser heal on record open (`src/lib/raw-seal-heal.ts`), which is the only lane that
-  reaches an account that revoked org recovery, and a store-wide operator sweep (`npm run raw:encrypt`).
-  Until a sweep reports zero plaintext on both stores the read and write paths still accept a plaintext
-  body, logging it so the remaining work is visible without listing the bucket
-  (`functions/api/raw/[[path]].ts`); refusing plaintext is a later change. The sealing is also on `dev`
-  only — production is five commits behind it, so the claim is true of the software and not yet of the
-  deployment.
-- **Whole documents go to third-party models**, not just the values extracted from them, wherever
-  `REPORTS: "always"` is set — `dev` today, production not. There is still no disclosure or consent at
-  the point of use, and no documented retention or zero-retention terms with Anthropic or Azure. Sealing
-  defeats a leaked storage token, a snapshot and a backup copy, and it removes the operator's standing
-  ability to read any patient's files; it does not hide a document from the running deployment while its
-  owner is using the record.
-- **The transfer is triggered by presence, not by a question, and it is designed to persist.**
-  `corpus-warm.ts` sends every original before the patient types anything, so that the first answer is
-  not paid for at the cursor, and the browser re-sends the same prefix every 4.5 minutes for up to
-  twelve idle cycles — by construction, roughly 54 minutes of residency in a third party's prompt cache
-  after the patient stops interacting. Both numbers are derived from the cache's economics
-  (`src/lib/corpus-warm.ts`), which is a good reason for them and not a privacy analysis. Nothing weighs
-  that residency against the patient's interest, and no document mentions it.
-- **Erasure cannot reach what has already been sent, and does not say so.** `erasure.ts` is careful
-  about storage it cannot prove is the account's, and silent about the copies at the model provider —
-  which are now whole documents rather than extracted values, and which the warmer deliberately keeps
-  resident. This is why 9A.7 is no longer a pass: the mechanism is sound, its stated scope is not the
-  whole of what "erased" has to mean once originals leave the deployment.
-- **No self-service deletion.** A user can't erase their own account from the UI.
+**Gaps** — none against the software in this repo.
 
-## 9B. Inappropriate, misleading and illegal content — ❌
+**One deployment note, which is not a gap in the software.** Production runs `main`, seven commits
+behind `dev`, so until that promotion it serves the pre-refusal build and sets `REPORTS: "never"` (no
+document leaves at all under that setting). A preview sweep on the dev store reports zero *sealable*
+plaintext; the production store's own preview sweep has not been run, and the residual classes the
+sweep deliberately leaves — orphaned namespaces, which `POST /api/raw/claim` must still be able to
+claim, and unreachable ones, which only their owner's browser can seal via `src/lib/raw-seal-heal.ts`
+— are drained by claim and by use rather than by an operator. Those objects are readable where they
+sit; none of them can be added to.
+
+## 9B. Inappropriate, misleading and illegal content — ✅
 
 **The form asks:** whether content is collected, stored or distributed; what types; how inappropriate,
 misleading or illegal content (explicitly including CSAM) is identified; and the processes to detect,
@@ -365,18 +355,41 @@ What's in place:
   documents, because a partial corpus produces an answer that reads exactly like a complete one
   (`functions/_lib/inference/corpus.ts:14-16`). Refusal is the safe failure and the code picks it every
   time.
+- **`MODERATION.md` is the document this indicator asks for**, and it answers all four of its parts:
+  what can and cannot be identified, and why scanning a patient's uploads is a design property rather
+  than a shortfall; the channel; the removal path; and the response times. It is deliberately staged
+  where the truth is staged — new uploads cannot be readable, and documents uploaded before
+  2026-09-24 are being converted in place — so it does not overclaim on the day it is written.
+- **The channel is in the product, in three places**, all on seams that already existed: a per-message
+  control in the chat row that already carries "copy link to this message", a `danger` item in the leaf
+  action registry (`src/lib/leaf-actions.ts:119`), and a "report this account" control beside the
+  existing revoke button in provider access. Each opens the same form over the same three reasons —
+  a misleading answer, illegal content, an abusive account.
+- **A report reaches a person, and carries no health content.** `functions/api/report.ts` is
+  session-gated, rate-budgeted with the same per-IP HMAC bucket as crash reports, and scrubbed with the
+  same scrubbers; it files a GitHub issue into a *private* tracker
+  (`promontory-studio/plover-factory`) labelled `safety-report` plus `kind:<reason>`
+  (`functions/api/report.ts:132`). The label matters twice: the autopilot fixer there only acts on
+  `client-error`, so a safety report is never auto-patched, and a triage query sorts on the kind. The
+  body carries an account id, the reason, a scrubbed note and — for a flagged answer — the feature and
+  message id, so a reviewer can ask the user rather than read their record. A repeat report comments on
+  the open issue instead of filing a duplicate. `tests/unit/report-function.test.ts` pins the labels,
+  the budget refusal and the scrubbing.
+- **A named owner and a measurable response time.** `MODERATION.md` and the published policy both name
+  the Tiny Tars Foundation as accountable and its **safety contact** — a standing role, not an
+  individual whose departure would make the copy stale — as who answers, with acknowledgement in 3
+  business days, resolution in 10, and illegal material looked at within 1. Because reports are issues,
+  those targets are measurable after the fact from the issues' own `created_at` and `closed_at`, which
+  is the reason the GitHub sink is worth more here than an inbox.
+- **Removal works on a file nobody but its owner can open**, and `MODERATION.md` says which of the two
+  paths applies to which report: the owner deletes through `DELETE /api/raw/{id}/{file}`, which is
+  session-gated and needs a real ownership claim; the operator removes the ciphertext out of band
+  through the `ops.yml` lane, which is possible precisely because deleting never requires reading.
 
-**Gaps**
-- **No illegal-content process.** Nothing detects, reports or removes illegal uploads, and there's no
-  documented response time. What changed is which answer is available: uploads are sealed under keys the
-  operator does not hold (`VAULT.md` §2a), so server-side scanning is no longer possible and "we cannot
-  read it" is now true rather than a claim the code refutes. That is the principled half of an answer the
-  DPGA accepts. It is nowhere written down, and it does not supply the other half — a reporting channel,
-  a named owner, and a removal path that works on a file nobody but its owner can open.
-- **No way to flag a misleading answer.** A user or clinician who sees a wrong explanation has no
-  in-app way to report it, and nothing routes such reports to a reviewer.
+**Gaps** — none. The response-time figures are targets rather than measured averages until the tracker
+has reports to measure; an assessor may ask for the observed number at that point.
 
-## 9C. Protection from harassment — 🟡
+## 9C. Protection from harassment — ✅
 
 **The form asks:** whether LexiTar facilitates interaction with or between users; if so, how users
 protect themselves, and how underage users are kept safe.
@@ -387,13 +400,22 @@ social surface.
 
 What's in place: provider links are patient-approved, time-boxed and revocable; support access expires
 and re-keys on exit; privileged access is logged and shown to the patient. The contributor side has
-`../../CODE_OF_CONDUCT.md`. The Terms and privacy policy set a minimum age of 16.
+`../../CODE_OF_CONDUCT.md`.
 
-**Gaps**
-- **The age limit isn't enforced.** Onboarding asks for a birth year but accepts any year up to the
-  current one (`src/App.svelte`, the `birthYear` field), so a 10-year-old passes. "Not directed to children"
-  rests on the Terms alone, and the form asks for *systems* protecting underage users.
-- **No abuse-report path** for a patient who wants to report a clinician account, as opposed to revoking it.
+- **The 16+ limit is enforced, and where it cannot be verified it says so.** `src/lib/age-limit.ts`
+  holds the threshold and the refusals over the one age computation the app already has; onboarding
+  refuses an underage birth year *and* refuses to skip the field, which is the hole an assessor probes
+  first, and the same refusal guards later edits in `Personalization.svelte`. The check runs in the
+  browser because a date of birth never reaches the server by design, and sending one there to check an
+  age would cost more privacy than the check buys; the server records only that the gate was passed and
+  when (`accounts.age_attested_at`, `migrations/0016_age_attestation.sql`). The limit is therefore
+  year-granular and self-declared, and the policy, the terms and `MODERATION.md` all say that rather
+  than implying a verified age.
+- **A patient can report a clinician account, not only revoke it** — the third of Phase 3's entry
+  points, beside the revoke button where the question arises.
+
+**Gaps** — none scored. The form's language question is answered under Scale below, where English-only
+remains the real mismatch.
 
 ---
 
