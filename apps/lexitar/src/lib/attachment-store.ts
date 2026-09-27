@@ -60,11 +60,13 @@ export async function putRaw(clientId: string, key: string, bytes: Uint8Array, p
   const query = pages === undefined ? "" : `?pages=${pages}`;
   // A key already on the ring is REUSED, never replaced: attachment keys are content-addressed, so a
   // re-PUT is the same bytes, and minting a second key would strand the copy already in R2 if the
-  // upload then failed. No open vault means no way to record a key at all, so the upload stays
-  // plaintext rather than becoming a file nobody can ever open — the self-heal seals it on the next
-  // open (vault-raw-keys.ts).
+  // upload then failed.
   const contentKey = rawKeyFor(clientId, key) ?? (await mintRawKey(clientId, key));
-  const body = contentKey ? await sealRaw(bytes, contentKey) : bytes;
+  // No open vault is no place to record a key (vault-raw-keys.ts), and /api/raw now refuses plaintext
+  // (DPG 9A.5) — so the alternative to this throw is a 24 MB round trip that ends in a 415. Refusing
+  // here is the same refusal, stated before the upload.
+  if (!contentKey) throw new Error("the record has to be open before a file can be stored");
+  const body = await sealRaw(bytes, contentKey);
   return fetch(`/api/raw/${normalizeClientId(clientId)}/${key}${query}`, {
     method: "PUT",
     // /api/raw is gated by the hd_session cookie (W44) — same-origin fetch sends it automatically.

@@ -1,6 +1,8 @@
-import { describe, it, expect, vi } from "vitest";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { standardLeafActions, buildNoteAttachment } from "../../src/lib/leaf-actions";
 import { registerAttachPicker } from "@tinytars/frame/attach-controller";
+import { openTestVault } from "../support/raw-keys";
+import { clearRawKeyring } from "../../src/lib/vault-raw-keys";
 
 const attachTarget = { clientId: "alex", onAttached: vi.fn() };
 
@@ -81,6 +83,10 @@ describe("standardLeafActions — attach on a coarse pointer", () => {
 // W50 — Chat merges "Add file" into Attach by routing a picked PDF/XLSX through report-ingest
 // instead of the generic attachFiles() upload every other Attach use makes.
 describe("standardLeafActions — attach routeFile", () => {
+  // The generic upload seals, and putRaw refuses what it cannot seal.
+  beforeEach(openTestVault);
+  afterEach(clearRawKeyring);
+
   it("a claimed file skips attachFiles/onAttached; an unclaimed one still uploads normally", async () => {
     const puts: string[] = [];
     vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit) => {
