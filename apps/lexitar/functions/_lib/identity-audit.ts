@@ -56,6 +56,29 @@ export async function listRecentAccessEventsForSubject(db: D1Database, subjectAc
   }));
 }
 
+/**
+ * How many rows one action already has inside one consent window.
+ *
+ * `consent_ref` is stamped once per grant (`patient-approved:<ISO>`, @tinytars/vault/break-glass.ts), so
+ * zero means "this is the first open of this window" — which is the difference between telling a patient
+ * once that their record was opened and mailing them on every unattended run for a week.
+ *
+ * Filtered on the subject first so migration 0017's (subject_account_id, created_at) index carries it;
+ * `consent_ref` has no index of its own and this adds no need for one.
+ */
+export async function countAccessEventsInWindow(
+  db: D1Database,
+  subjectAccountId: string,
+  consentRef: string,
+  action: string,
+): Promise<number> {
+  const row = await db
+    .prepare("SELECT count(*) AS n FROM phi_access_events WHERE subject_account_id = ? AND consent_ref = ? AND action = ?")
+    .bind(subjectAccountId, consentRef, action)
+    .first<{ n: number }>();
+  return row?.n ?? 0;
+}
+
 export interface CrmEvent {
   id: string;
   accountId: string;
