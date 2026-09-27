@@ -17,12 +17,14 @@ import { json } from "./http";
 // A TEN-MINUTE WINDOW, NOT AN HOUR. An error report is occasional; a person who mistyped their password
 // wants to retry in seconds. Ten minutes gives someone locked out a short wait and still caps a guesser.
 //
-// A SUCCESSFUL SIGN-IN IS FORGIVEN. That email's bucket is cleared outright, and the one attempt just
-// charged is refunded to the address bucket — which is NOT the same as clearing it: every failure from
-// that address stays counted, so the botnet's meter keeps running. Only the refund makes the per-address
-// cap safe, because a client cannot choose its own address (the edge overwrites `cf-connecting-ip`), so
-// without it a whole household behind one address, or a browser test suite, would be capped at six
-// sign-ins per window however many of them were correct.
+// A SUCCESSFUL SIGN-IN IS FORGIVEN IN FULL, and "in full" is load-bearing. Every bucket here counts
+// FAILURES, never traffic: a client cannot choose its own address (the edge overwrites
+// `cf-connecting-ip`), so a household, a clinic and a browser test suite all arrive as ONE address, and
+// any per-success cost at all caps them however many of their sign-ins were correct. So the email bucket
+// is cleared outright, and the address and global buckets get the whole `COST_SIGNIN` pair back —
+// refunding the login but not the salt probe still charges for succeeding, which is what cost this
+// repository's browser suite its 38th test. A refund is not a clear: every failed guess from that
+// address stays counted, so the guesser's meter keeps running while the family's never starts.
 //
 // IT FAILS OPEN, where `report-budget.ts` fails closed and is right to: there the worst case is a lost
 // error report. Here it is every patient locked out of their own record — including the patient who
@@ -48,6 +50,8 @@ const PRUNE_ODDS = 50;
 export const COST_LOGIN = 2;
 /** The reconnaissance half of the pair — it already returns a decoy, so volume is what the cap limits. */
 export const COST_SALT = 1;
+/** One whole sign-in: the salt probe the browser makes and the login that follows it. What success costs. */
+export const COST_SIGNIN = COST_LOGIN + COST_SALT;
 
 // Deliberately generous to start, because there is no live tuning: `wrangler.jsonc` has no key-value or
 // analytics binding, so changing a cap is a redeploy.
@@ -55,7 +59,8 @@ const PER_IP = 20 * COST_LOGIN;
 const PER_EMAIL = 10 * COST_LOGIN;
 /** Every caller the platform gave us no address for shares one bucket, so it gets the strict cap. */
 const NO_IP = 5 * COST_LOGIN;
-const GLOBAL = 300 * COST_LOGIN;
+/** Exported so its test can seed the bucket up to it, rather than spending 200 real sign-ins reaching it. */
+export const GLOBAL = 300 * COST_LOGIN;
 
 const enc = new TextEncoder();
 
@@ -124,13 +129,14 @@ export async function spendAuthBudget(
 }
 
 /**
- * Forgives an attempt that turned out to be the real person's: clears that email's bucket, and refunds
- * `cost` to the address bucket rather than clearing it, so that address's failures stay counted.
+ * Forgives the sign-in that turned out to be the real person's. There is no `cost` parameter on purpose:
+ * what is forgiven is always one whole sign-in, and a caller free to refund half of one is a caller free
+ * to reintroduce the charge-on-success this module exists to avoid.
  */
 export async function forgiveAuthAttempt(
   db: D1Database,
   env: AuthBudgetEnv,
-  { ip, email, cost, now = new Date() }: { ip: string | null; email: string; cost: number; now?: Date },
+  { ip, email, now = new Date() }: { ip: string | null; email: string; now?: Date },
 ): Promise<void> {
   const window = Math.floor(now.getTime() / WINDOW_MS);
   try {
@@ -139,10 +145,12 @@ export async function forgiveAuthAttempt(
     const ipBucket = await bucketFor(env.SESSION_SECRET, "ip", ip ?? "", window);
     // MAX(0, …) rather than a bare subtraction: the refund is a second statement, so a retry or a
     // concurrent prune must not be able to drive a counter negative and hand out free attempts.
-    await db
-      .prepare("UPDATE auth_attempt_budget SET n = MAX(0, n - ?2) WHERE bucket = ?1")
-      .bind(ipBucket, cost)
-      .run();
+    const refund = db.prepare("UPDATE auth_attempt_budget SET n = MAX(0, n - ?2) WHERE bucket = ?1");
+    await refund.bind(ipBucket, COST_SIGNIN).run();
+    // The global bucket is refunded too. It is the service-wide circuit breaker, so leaving success
+    // charged there caps EVERY account at GLOBAL correct sign-ins per window — the same defect as the
+    // address bucket's, one blast radius wider.
+    await refund.bind(`*:${window}`, COST_SIGNIN).run();
   } catch (e) {
     // A forgiveness that did not happen only leaves the successful attempt counted, so it cannot lock
     // anyone out on its own — and failing the sign-in over it would be the lockout this module avoids.

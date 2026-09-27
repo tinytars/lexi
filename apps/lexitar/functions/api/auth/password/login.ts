@@ -77,9 +77,10 @@ export async function onRequestPost(context: Ctx): Promise<Response> {
     const envelope = vault ? await getEnvelope(env.DB, vault.vaultId, acct.id) : null;
     const { authHashSha256: _authHashSha256, ...publicKdfParams } = kdfParams;
 
-    // The password was right, so this attempt was not a guess: forget the email's window and refund this
-    // one attempt to the address. Failures from that address stay counted — see the module header.
-    await forgiveAuthAttempt(env.DB, env, { ip, email: body.email, cost: COST_LOGIN });
+    // The password was right, so this was not a guess: forget the email's window and refund the whole
+    // sign-in — this login AND the salt probe that preceded it — to the address and global buckets.
+    // Failures from that address stay counted; succeeding costs nothing. See the module header.
+    await forgiveAuthAttempt(env.DB, env, { ip, email: body.email });
 
     const token = await signSession(env, acct.id);
     log(200);

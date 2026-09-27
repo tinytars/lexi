@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { spendAuthBudget, forgiveAuthAttempt, COST_LOGIN, COST_SALT } from "../../functions/_lib/auth-budget";
+import { spendAuthBudget, forgiveAuthAttempt, COST_LOGIN, COST_SALT, COST_SIGNIN, GLOBAL } from "../../functions/_lib/auth-budget";
 import { useWorkerd } from "../support/miniflare";
 import { SqliteD1Database } from "../../server/sqlite-d1";
 
@@ -11,8 +11,14 @@ const env = { SESSION_SECRET: "test-secret" };
 const at = (w: number) => new Date(Date.UTC(2026, 8, 20, 0, 10 * w, 0));
 const spend = (ip: string | null, email: string, now: Date, cost = COST_LOGIN) =>
   spendAuthBudget(d1.db, env, { ip, email, cost, now });
-const forgive = (ip: string, email: string, now: Date, cost = COST_LOGIN) =>
-  forgiveAuthAttempt(d1.db, env, { ip, email, cost, now });
+const forgive = (ip: string, email: string, now: Date) => forgiveAuthAttempt(d1.db, env, { ip, email, now });
+/** One whole correct sign-in as the browser performs it: the salt probe, the login, then forgiveness. */
+async function signIn(ip: string, email: string, now: Date): Promise<boolean> {
+  const probe = await spend(ip, email, now, COST_SALT);
+  const login = await spend(ip, email, now, COST_LOGIN);
+  await forgive(ip, email, now);
+  return probe.allowed && login.allowed;
+}
 
 describe("spendAuthBudget", () => {
   it("allows an address its window and then stops", async () => {
@@ -92,17 +98,45 @@ describe("spendAuthBudget", () => {
     for (let i = 0; i < 10; i++) expect((await spend(`203.0.113.${i}`, "right@x.test", now)).allowed, `after ${i}`).toBe(true);
   });
 
-  it("refunds the correct attempt to the address and not a single one more", async () => {
+  it("hands back one sign-in and not the window, so that address's failures stay counted", async () => {
     const now = at(16);
-    // Twenty attempts from one address is exactly its cap; distinct accounts so per-email cannot fire.
-    for (let i = 0; i < 20; i++) expect((await spend("198.51.100.9", `k${i}@x.test`, now)).allowed, `attempt ${i + 1}`).toBe(true);
+    // Twenty wrong guesses from one address is exactly its cap; distinct accounts so per-email cannot fire.
+    for (let i = 0; i < 20; i++) expect((await spend("198.51.100.9", `k${i}@x.test`, now)).allowed, `guess ${i + 1}`).toBe(true);
 
     // Forgiven at the cap, not after a refusal: a refusal is charged too (that is the point of charging
     // before the verdict), so it would spend the refund the moment it arrived.
     await forgive("198.51.100.9", "k0@x.test", now);
-    // One attempt came back — and only one, which is what separates a refund from clearing the bucket.
+    // One sign-in came back — not the window. Clearing the bucket would have re-opened all twenty guesses;
+    // this is the line between forgiving a success and forgetting the failures around it.
     expect((await spend("198.51.100.9", "k97@x.test", now)).allowed).toBe(true);
     expect((await spend("198.51.100.9", "k96@x.test", now)).allowed).toBe(false);
+  });
+
+  // The two properties the suite lacked, and their absence is what wedged CI: a browser suite, a household
+  // and a clinic all arrive as one address the client cannot choose, so the caps must not count success.
+  // Both loops deliberately run well past their cap in sign-ins, and both fail if a single unit is retained.
+  it("never charges an address for succeeding, however many times it signs in", async () => {
+    const now = at(18);
+    // Sixty correct sign-ins against a cap of twenty attempts. One unit retained per sign-in caps this at
+    // about forty, which is exactly where the 243-test browser suite died.
+    for (let i = 0; i < 60; i++) expect(await signIn("198.51.100.13", "household@x.test", now), `sign-in ${i + 1}`).toBe(true);
+  });
+
+  it("never charges the service-wide bucket for succeeding either", async () => {
+    const now = at(19);
+    // Seeded to one sign-in below the global cap rather than reached by spending two hundred real ones —
+    // the cap is imported, so raising it cannot quietly turn this into a test that seeds nowhere near it.
+    const window = Math.floor(now.getTime() / 600_000);
+    await d1.db
+      .prepare("INSERT INTO auth_attempt_budget (bucket, window_start, n) VALUES (?1, ?2, ?3)")
+      .bind(`*:${window}`, window, GLOBAL - COST_SIGNIN)
+      .run();
+
+    // Distinct addresses and accounts, so the global bucket is the only one in play. Left charged, the
+    // second of these is refused and every account on the service is locked out at once.
+    for (let i = 0; i < 10; i++) {
+      expect(await signIn(`198.51.100.${100 + i}`, `world${i}@x.test`, now), `sign-in ${i + 1}`).toBe(true);
+    }
   });
 
   it("cannot be refunded below zero into free attempts", async () => {
