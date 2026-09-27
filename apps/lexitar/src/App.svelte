@@ -91,7 +91,7 @@
   import type { RefreshStage } from "./lib/finding-refresh";
   import { refreshMarkerGroups } from "./lib/marker-groups-client";
   import { timeAgo } from "@tinytars/frame/time-ago";
-  import { PRODUCT_NAME, FOUNDATION } from "./lib/brand";
+  import { PRODUCT_NAME, FOUNDATION, MODEL_DISCLOSURE } from "./lib/brand";
   import OrgFooter from "@tinytars/frame/OrgFooter.svelte";
   import Disclaimer from "./lib/Disclaimer.svelte";
   import { loadSidebarMode, modeForSection } from "./lib/sidebar-mode";
@@ -1708,6 +1708,12 @@
           {/each}
         </ul>
       {/if}
+      <p class="access-subhead">What leaves this device</p>
+      <p class="access-intro">{MODEL_DISCLOSURE}</p>
+      <p class="access-intro">
+        Read the full <a href={`${FOUNDATION.legalBase}/privacy`} target="_blank" rel="noopener">Privacy Policy</a>.
+      </p>
+
       {#if !roster.isProvider}
         <p class="access-subhead">Delete this account</p>
         <p class="access-intro">Deletes your records, your uploaded files, your chat history and this account. Nobody can undo it — not you, not LexiTar.</p>

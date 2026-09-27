@@ -39,6 +39,26 @@ export const PRIVACY_STATEMENT =
   "medical remarketing. As a donor-supported public asset, we never sell, rent, or monetize your personal " +
   "or health data to third-party advertisers, pharmaceutical companies, or data brokers.";
 
+// DPG 9A.6 — what leaves the deployment, and where it is used. Disclosure rather than a per-patient
+// consent switch (CORPUS.md §7): the documents are what make the answers worth having, so a
+// half-informed answer is worse than an informed one. Four facts are the non-obvious ones and none is
+// softened — the send happens on open rather than on asking, the copy outlives the session, there is
+// no negotiated zero-retention agreement to point at, and whether it happens at all is the operator's
+// setting (`REPORTS`) rather than the user's. That last clause is why the text says "when it is on":
+// a deployment running REPORTS: "never" sends no document anywhere, and a notice claiming otherwise
+// would be as false as one that stayed silent. Kept in step with SECURITY.md's processor table and the
+// Foundation's published privacy policy — three texts that disagree are worse than none.
+export const MODEL_DISCLOSURE =
+  "Answering questions about your records means sending the reports themselves — whole documents, not " +
+  "summaries — to the company that runs the language model behind those answers. Whoever operates this " +
+  "deployment chooses whether that happens at all, and which company it is: with it off, no document ever " +
+  "leaves. With it on, the documents go when you open a record, not only when you ask a question, and a " +
+  "copy stays in the provider's prompt cache for up to about an hour after you stop using it — expiring on " +
+  "the provider's schedule, which we can neither shorten nor recall. Read-aloud text goes to a separate " +
+  "speech provider, on that provider's own terms. The model calls run on standard commercial terms, with " +
+  "no negotiated zero-retention arrangement. The privacy policy names the companies in use today and what " +
+  "each one's terms actually cover. Nothing goes to an advertiser, ever.";
+
 // DPG 9B.4/9B.5 — who answers a safety report and how fast. Audited copy, and here rather than in the
 // dialog because MODERATION.md, the report control and the Foundation's published policy all state it:
 // three texts that disagree about a response time are worse than none.
