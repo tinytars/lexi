@@ -32,7 +32,8 @@ diagnostic engine, not a medical-advice service, and not something built to be s
 
 LexiTar is a **Health Literacy Utility**, developed as a **Digital Public Good** and maintained by
 the **Tiny Tars Foundation**, a registered 501(c)(3) public charity, funded by community
-philanthropy rather than by monetizing the data it holds.
+philanthropy rather than by monetizing the data it holds. [`SDG.md`](SDG.md) says which of the UN's
+Sustainable Development Goals that is meant to serve, target by target, and what it does not claim.
 
 ### The principle underneath it
 

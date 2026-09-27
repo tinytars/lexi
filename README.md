@@ -14,7 +14,8 @@ service, and not a commercial product.
 
 LexiTar is developed as a **Digital Public Good** and maintained by the **Tiny Tars Foundation**, a
 registered 501(c)(3) public charity (EIN 39-2278196), funded by community philanthropy rather than
-by monetizing the data it holds.
+by monetizing the data it holds. Which UN Sustainable Development Goals it is built to serve — two of
+them, against three targets — and what it deliberately does not claim, is [`SDG.md`](SDG.md).
 
 > **New here?** [`START-HERE.md`](START-HERE.md) has two short ways in — a few minutes with no
 > code, or about ten minutes to a running app.
