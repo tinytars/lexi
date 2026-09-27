@@ -59,4 +59,11 @@ describe("erasureSummary", () => {
     expect(erasureSummary({ deleted: 4, unattributable: 2, complete: false })).toContain(ERASURE_REACH);
     expect(ERASURE_REACH).toMatch(/cannot recall/);
   });
+
+  // `npm run record:export` writes a readable copy to an operator's own machine, which self-service
+  // erasure provably cannot reach. The string has to name it or the product tells patients it has
+  // named every class of copy deletion misses while one goes unmentioned.
+  it("names a local export among the copies deletion cannot reach", () => {
+    expect(ERASURE_REACH).toMatch(/exported to a computer/);
+  });
 });
