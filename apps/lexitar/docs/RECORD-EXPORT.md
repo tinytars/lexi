@@ -71,7 +71,9 @@ copy to anyone else.
    record"** — the same badge slot as *Some sections out of date* and *AI unavailable — no credit*.
    Pressing it opens **Access**. It is there so nobody has to already suspect a request exists: until
    2026-09-27 the pending list loaded only when that panel was opened, and the panel is reachable only
-   from the account menu, so a filed request was invisible to the one person who had to answer it.
+   from the account menu, so a filed request was invisible to the one person who had to answer it. The
+   list reloads whenever their tab regains focus, so a request filed while they are already signed in
+   needs no reload to appear.
 3. **They approve.** Under *Support access requests* they find **Record Export CLI · support · wants
    to help**. They choose **7 days** in the dropdown beside it — it is not the default — and press
    **Approve**.

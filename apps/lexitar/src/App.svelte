@@ -29,6 +29,7 @@
   import { b64ToBytes } from "@tinytars/vault/base64";
   import { AI_ERROR_MESSAGES, describeAiError } from "./lib/ai-error";
   import { aiAvailability } from "./lib/ai-availability.svelte";
+  import { reportCaughtError } from "./lib/error-reporter";
   import { dagNode } from "./lib/finding-dag";
   import { tick } from "svelte";
   import { TABS, DEFAULT_TAB, type Tab } from "./lib/nav";
@@ -262,6 +263,14 @@
     session,
     saveVault: (v, id, dek) => saveVaultV2(v, id, dek, vaultSink),
     reportError: (m) => (error = m),
+    // Not the shared error line: this fires on a boot path, and an owner has nothing to do about a
+    // list that would not load. It goes to the tracker instead, under its own name so a request the
+    // owner was never shown separates from every other handled failure.
+    reportLoadFailure: (e) => {
+      const err = e instanceof Error ? e : new Error(String(e));
+      err.name = "AccessRequestLoadFailed";
+      reportCaughtError(err);
+    },
   });
   const recovery = createRecoveryController<RosterPatient>({
     session,
@@ -458,6 +467,10 @@
       if (document.visibilityState !== "visible") return;
       aiAvailability.rearm();
       corpusWarmer.wake();
+      // A request to read this record can be filed while the tab sits open, and the load that feeds
+      // the sidebar badge used to run once per entry — so the owner saw it only after a reload. This
+      // is also what retries a load that failed on entry.
+      if (vault) void vaultAccess.refreshQuietly();
     });
     if (boot.cleanUrl) window.history.replaceState({}, "", boot.cleanUrl);
     // W45 — deferred so the rest of this instance script (the const helpers it calls) has initialized.

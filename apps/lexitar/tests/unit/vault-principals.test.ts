@@ -88,6 +88,7 @@ function makeController(over: { orgRecoveryRevokedAt?: string | null; providers?
   const session = createVaultSession();
   session.open("vault-1", OLD_DEK);
   const errors: (string | null)[] = [];
+  const reported: unknown[] = [];
   const c = createVaultPrincipals({
     getVault: () => VAULT,
     session,
@@ -95,6 +96,7 @@ function makeController(over: { orgRecoveryRevokedAt?: string | null; providers?
       store.blobs.set(id, dek);
     },
     reportError: (m) => errors.push(m),
+    reportLoadFailure: (e) => reported.push(e),
     api: auth,
   });
   auth.getVaultPrincipals.mockResolvedValue({
@@ -107,7 +109,7 @@ function makeController(over: { orgRecoveryRevokedAt?: string | null; providers?
     orgRecoveryRevokedAt: over.orgRecoveryRevokedAt ?? null,
     vaultId: "vault-1",
   });
-  return { c, session, errors };
+  return { c, session, errors, reported };
 }
 
 const link = (over: Partial<ProviderLinkView> = {}): ProviderLinkView =>
@@ -190,6 +192,7 @@ describe("the re-key is atomic: an interruption never strands the vault", () => 
       session,
       saveVault: async () => {},
       reportError: () => {},
+      reportLoadFailure: () => {},
       api: auth,
     });
     await c.rotateVaultKey();
@@ -255,7 +258,7 @@ describe("adding a provider", () => {
 
   it("does nothing without a DEK — a grant needs the key it is wrapping", async () => {
     const session = createVaultSession();
-    const c = createVaultPrincipals({ getVault: () => VAULT, session, saveVault: async () => {}, reportError: () => {}, api: auth });
+    const c = createVaultPrincipals({ getVault: () => VAULT, session, saveVault: async () => {}, reportError: () => {}, reportLoadFailure: () => {}, api: auth });
     c.newProviderEmail = "dr@example.com";
     await c.addProvider();
     expect(auth.lookupProvider).not.toHaveBeenCalled();
@@ -290,6 +293,17 @@ describe("the panel's own state", () => {
     const { c } = makeController();
     await expect(c.refreshQuietly()).resolves.toBeUndefined();
     expect(c.error).toBeNull();
+  });
+
+  // Non-fatal is not the same as unobservable. This method feeds the sidebar's pending-request badge,
+  // and while it swallowed outright, an owner who was never told and a record with nothing pending
+  // were one observable — which is how the badge shipped, looked correct, and told its owner nothing.
+  it("a quiet refresh reports the failure it does not raise", async () => {
+    auth.listMyProviders.mockRejectedValue(new Error("offline"));
+    const { c, reported, errors } = makeController();
+    await c.refreshQuietly();
+    expect((reported[0] as Error).message).toBe("offline");
+    expect(errors).toEqual([]); // never the shared error line: this runs on a boot path
   });
 
   it("reset clears the list and the typed email, not just the open flag", async () => {
