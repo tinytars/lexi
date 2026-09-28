@@ -26,3 +26,15 @@ const VALID = new Set<Tab>(TABS.map((t) => t.id));
 export function isTab(v: string): v is Tab {
   return VALID.has(v as Tab);
 }
+
+// A flat sidebar row for a signed-in session with no record open — today, the clinician roster. The
+// record's nav is derived from a Client; these are handed in instead, as data rather than a snippet,
+// because Svelte scopes CSS where markup is authored and rows written in App.svelte would be unstyled.
+export interface SidebarNavRow {
+  key: string;
+  label: string;
+  icon: string;
+  title: string;
+  active: boolean;
+  onSelect: () => void;
+}
