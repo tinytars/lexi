@@ -228,6 +228,10 @@
       await ensureOrgRecoveryEnvelope(session);
       // W47 — load account info so the top-right account menu can show the email + verification state.
       try { await refreshAccount(); } catch { /* menu falls back to no email */ }
+      // A pending request to read this record used to load only when the Access panel was opened, so
+      // the owner had to already suspect there was one. Load it on entry instead — the sidebar badge
+      // below is the only thing that tells them, and it cannot count what was never fetched.
+      await vaultAccess.refreshQuietly();
       // W44 P4c — a support grant expired while offline; complete the deferred DEK rotation now.
       if (rotationPending) { try { await vaultAccess.rotateVaultKey(); } catch (e) { error = (e as Error).message; } }
     },
@@ -1557,6 +1561,8 @@
     onOpenDag={() => (dagModalOpen = true)}
     aiOutOfCredit={aiAvailability.outOfCredit}
     billingUrl={providerFor("chat").billingUrl}
+    accessRequests={vaultAccess.pendingSupport.length}
+    onOpenAccess={() => vaultAccess.openPanel()}
     {unitSystem}
     onSetUnitSystem={setUnitSystem}
     {persona}
