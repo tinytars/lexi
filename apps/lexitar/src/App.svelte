@@ -31,7 +31,7 @@
   import { aiAvailability } from "./lib/ai-availability.svelte";
   import { dagNode } from "./lib/finding-dag";
   import { tick } from "svelte";
-  import { TABS, DEFAULT_TAB, type Tab } from "./lib/nav";
+  import { TABS, DEFAULT_TAB, type Tab, type SidebarNavRow } from "./lib/nav";
   import { bootFromLocation } from "./lib/boot-location";
   import { parseHash, toHash, SECTION_TAB, type Permalink } from "./lib/permalink";
   import { flashAnchor, reportAnchor } from "./lib/anchor";
@@ -1119,6 +1119,13 @@
   let importOpen = $state(false);
   let dagOpen = $state(false); // provider (roster) view — inspect the Finding DAG structure
   let dagModalOpen = $state(false); // patient view — the same DAG, coloured by staleness for this patient
+  // The clinician roster's sidebar nav. Two destinations rather than one relabelling toggle, matching
+  // the record shell's idiom — and it gives the DAG view a way back that does not depend on one button
+  // changing its own meaning.
+  const rosterNavRows = $derived<SidebarNavRow[]>([
+    { key: "patients", label: "Patients", icon: "👥", title: "Your roster — select a patient to open their record", active: !dagOpen, onSelect: () => (dagOpen = false) },
+    { key: "dag", label: "Translation DAG", icon: "🕸️", title: "Inspect the Translation's reasoning graph", active: dagOpen, onSelect: () => (dagOpen = true) },
+  ]);
 
   // M78 Phase 14 — a top-right kebab mirroring whatever actions the sidebar shows for the active
   // tab/section, via the same Add/New/Import registry (sidebarActionFor now covers Markers/Reports'
@@ -1152,6 +1159,119 @@
   <OrgFooter org={FOUNDATION} />
 {/snippet}
 
+<!-- The one Sidebar call site, rendered by both shells: the record shell passes null and keeps its
+     own section nav, the roster passes its rows. A second call site would duplicate 45 lines of
+     wiring and lose the svelte-check that catches a dropped prop.
+     accessRequests is gated on `vault` because the badge opens a Modal mounted only in the record
+     shell — on the roster it would be a dead button, and the roster already lists the same requests
+     inline (.access-pending). -->
+{#snippet appSidebar(navRows: SidebarNavRow[] | null)}
+  <Sidebar
+    {navRows}
+    activeTab={activeTab}
+    client={currentClient}
+    providerSession={roster.isProvider}
+    active={section}
+    {activeGroup}
+    bind:expanded={sidebarExpanded}
+    bind:mobileOpen={sidebarMobileOpen}
+    onNavigate={navigate}
+    onAction={triggerSidebarAction}
+    onSelectGroup={(key) => { activeGroup = key; activeLeaf = null; if (section) saveLastGroup(selectedClientId, section, key); }}
+    onSelectLeafKey={(key) => (activeLeaf = key)}
+    threads={chatSession.threads}
+    bind:renamingId={chatSession.renamingId}
+    bind:renameText={chatSession.renameText}
+    onSelectThread={chatSession.selectChatThread}
+    onTogglePinThread={chatSession.toggleChatThreadPin} onSidebarTogglePin={sidebarTogglePin} onSidebarRename={sidebarRename} onSidebarDelete={sidebarDelete} sidebarLabelOf={sidebarLabelOf}
+    onDeleteThread={chatSession.deleteChatThread}
+    onCommitRename={chatSession.commitChatRename}
+    {searchOpen}
+    onOpenSearch={() => { searchOpen = true; searchFocusToken++; }}
+    onFreshSearch={() => { searchQuery = ""; searchOpen = true; searchFocusToken++; }}
+    bind:windowYears
+    productName={PRODUCT_NAME}
+    {vault}
+    {selectedClientId}
+    {providerToken}
+    {refreshing}
+    {refreshProgress}
+    {refreshStage}
+    {refreshError}
+    onCancelRefresh={cancelRefresh}
+    onDismissRefreshError={() => (refreshError = null)}
+    saveError={vaultSave.error}
+    onRetrySave={() => vaultSave.retry()}
+    findingStale={leafRegen.stale}
+    onOpenDag={() => (dagModalOpen = true)}
+    aiOutOfCredit={aiAvailability.outOfCredit}
+    billingUrl={providerFor("chat").billingUrl}
+    accessRequests={vault ? vaultAccess.pendingSupport.length : 0}
+    onOpenAccess={() => vaultAccess.openPanel()}
+    {unitSystem}
+    onSetUnitSystem={setUnitSystem}
+    {persona}
+    onSetPersona={personaPreference.choose}
+  >
+    {#snippet accountArea()}
+      {#if roster.isProvider && !vault}
+        <AccountMenu
+          email={account.info?.email ?? null}
+          emailConfirmed={account.info?.emailConfirmed ?? true}
+          onAccount={() => account.openPanel()}
+          onResendVerification={() => account.resendVerification()}
+          onSignOut={signOut}
+          onAbout={() => (aboutOpen = true)}
+        />
+      {:else if roster.isProvider}
+        <AccountMenu
+          email={roster.enteredPatient?.email ?? roster.enteredPatient?.displayName ?? null}
+          providerAccess
+          subjectFallback="patient"
+          viewingSubjectLabel="Viewing patient"
+          backToRosterLabel="← Back to roster"
+          translateBusyTitle="The Translation is being generated — this takes a few minutes"
+          onBackToRoster={() => roster.backToRoster()}
+          onSignOut={signOut}
+          onTranslate={currentClient && providerToken ? doRefresh : undefined}
+          translating={refreshing}
+          translateTitle={currentClient
+            ? [
+                currentClient.finding?.generatedAt
+                  ? `Last translated ${timeAgo(currentClient.finding.generatedAt, Date.now())} · Regenerate this patient's Translation (provider only)`
+                  : `Regenerate this patient's Translation (provider only)`,
+                // W62 — the provider triggering a regeneration is told, at the moment of triggering,
+                // that starred items will steer it. The sidebar notice says the same thing to
+                // whoever does the starring; between them a pin is never silent.
+                pinnedQueryCount > 0
+                  ? `${pinnedQueryCount} starred item${pinnedQueryCount === 1 ? "" : "s"} will be passed as areas of query — topics to look into, never as evidence`
+                  : null,
+              ].filter(Boolean).join(" · ")
+            : undefined}
+          onDiagnostics={providerToken ? () => (diagnosticsOpen = true) : undefined}
+          onVisibility={currentClient ? () => (visibilityOpen = true) : undefined}
+          onDag={currentClient?.finding ? () => (dagModalOpen = true) : undefined}
+          onExport={currentClient ? () => (exportOpen = true) : undefined}
+          onAbout={() => (aboutOpen = true)}
+        />
+      {:else}
+        <AccountMenu
+          email={account.info?.email ?? null}
+          emailConfirmed={account.info?.emailConfirmed ?? true}
+          onAccount={() => account.openPanel()}
+          onAccess={() => vaultAccess.openPanel()}
+          accessLabel="Who can access my record"
+          onResendVerification={() => account.resendVerification()}
+          onSignOut={signOut}
+          onExport={currentClient ? () => (exportOpen = true) : undefined}
+          onAbout={() => (aboutOpen = true)}
+        />
+      {/if}
+    {/snippet}
+  </Sidebar>
+{/snippet}
+
+
 <div class="app-shell">
 <!-- Visually hidden, deliberately: these duplicate messages the page already shows, and exist only so
      assistive tech is told about them. assertive for errors (they interrupt), polite for the save
@@ -1159,7 +1279,9 @@
 <p class="sr-only" role="alert">{announcedError}</p>
 <p class="sr-only" role="status" aria-live="polite">{vaultSave.saved ? "Saved" : ""}</p>
 <SpeechControls />
-<div class="app-body">
+<!-- --shell-top is read by Sidebar's sticky `height: calc(100vh - var(--shell-top))`, and it
+     invalidates silently if absent. Declared here, not on .shell-row, so both shells share one source. -->
+<div class="app-body" style="--shell-top: {shellTop}px">
 <!-- M78 Phase 15 — measures whatever renders in this banner area (0 when nothing is showing),
      now that there's no header to measure instead. -->
 <div bind:clientHeight={headerH}>
@@ -1278,18 +1400,13 @@
   </main>
   {@render appChrome()}
 {:else if roster.isProvider && !vault}
-  <header class="app-header">
-    <div class="brand">{PRODUCT_NAME}</div>
-    <div class="header-spacer"></div>
-    <button class="header-link" onclick={() => (dagOpen = !dagOpen)}>{dagOpen ? "← Back to clients" : "Translation DAG"}</button>
-    <AccountMenu
-      email={account.info?.email ?? null}
-      emailConfirmed={account.info?.emailConfirmed ?? true}
-      onAccount={() => account.openPanel()}
-      onResendVerification={() => account.resendVerification()}
-      onSignOut={signOut}
-    />
-  </header>
+  <!-- The roster used to be a full-width header over a centred column while the record shell next to it
+       was a persistent left bar — the same product in two layouts. It now renders the same Sidebar, with
+       its own rows and the account menu in the same lower-left corner. -->
+  <button class="sidebar-toggle" aria-label="Menu" onclick={() => (sidebarMobileOpen = !sidebarMobileOpen)}>☰</button>
+  <div class="shell-row">
+  {@render appSidebar(rosterNavRows)}
+  <div class="page-container">
   {#if dagOpen}
     <main class="roster wide"><FindingDag /></main>
   {:else}
@@ -1352,6 +1469,8 @@
     </main>
   {/if}
   {@render appChrome()}
+  </div>
+  </div>
 {:else if vault && !roster.isProvider && Object.keys(vault.clients).length === 0}
   <Onboarding
     productName={PRODUCT_NAME}
@@ -1518,100 +1637,8 @@
       </div>
     </Modal>
   {/if}
-  <div class="shell-row" style="--shell-top: {shellTop}px">
-  <Sidebar
-    activeTab={activeTab}
-    client={currentClient}
-    providerSession={roster.isProvider}
-    active={section}
-    {activeGroup}
-    bind:expanded={sidebarExpanded}
-    bind:mobileOpen={sidebarMobileOpen}
-    onNavigate={navigate}
-    onAction={triggerSidebarAction}
-    onSelectGroup={(key) => { activeGroup = key; activeLeaf = null; if (section) saveLastGroup(selectedClientId, section, key); }}
-    onSelectLeafKey={(key) => (activeLeaf = key)}
-    threads={chatSession.threads}
-    bind:renamingId={chatSession.renamingId}
-    bind:renameText={chatSession.renameText}
-    onSelectThread={chatSession.selectChatThread}
-    onTogglePinThread={chatSession.toggleChatThreadPin} onSidebarTogglePin={sidebarTogglePin} onSidebarRename={sidebarRename} onSidebarDelete={sidebarDelete} sidebarLabelOf={sidebarLabelOf}
-    onDeleteThread={chatSession.deleteChatThread}
-    onCommitRename={chatSession.commitChatRename}
-    {searchOpen}
-    onOpenSearch={() => { searchOpen = true; searchFocusToken++; }}
-    onFreshSearch={() => { searchQuery = ""; searchOpen = true; searchFocusToken++; }}
-    bind:windowYears
-    productName={PRODUCT_NAME}
-    {vault}
-    {selectedClientId}
-    {providerToken}
-    {refreshing}
-    {refreshProgress}
-    {refreshStage}
-    {refreshError}
-    onCancelRefresh={cancelRefresh}
-    onDismissRefreshError={() => (refreshError = null)}
-    saveError={vaultSave.error}
-    onRetrySave={() => vaultSave.retry()}
-    findingStale={leafRegen.stale}
-    onOpenDag={() => (dagModalOpen = true)}
-    aiOutOfCredit={aiAvailability.outOfCredit}
-    billingUrl={providerFor("chat").billingUrl}
-    accessRequests={vaultAccess.pendingSupport.length}
-    onOpenAccess={() => vaultAccess.openPanel()}
-    {unitSystem}
-    onSetUnitSystem={setUnitSystem}
-    {persona}
-    onSetPersona={personaPreference.choose}
-  >
-    {#snippet accountArea()}
-      {#if roster.isProvider}
-        <AccountMenu
-          email={roster.enteredPatient?.email ?? roster.enteredPatient?.displayName ?? null}
-          providerAccess
-          subjectFallback="patient"
-          viewingSubjectLabel="Viewing patient"
-          backToRosterLabel="← Back to roster"
-          translateBusyTitle="The Translation is being generated — this takes a few minutes"
-          onBackToRoster={() => roster.backToRoster()}
-          onSignOut={signOut}
-          onTranslate={currentClient && providerToken ? doRefresh : undefined}
-          translating={refreshing}
-          translateTitle={currentClient
-            ? [
-                currentClient.finding?.generatedAt
-                  ? `Last translated ${timeAgo(currentClient.finding.generatedAt, Date.now())} · Regenerate this patient's Translation (provider only)`
-                  : `Regenerate this patient's Translation (provider only)`,
-                // W62 — the provider triggering a regeneration is told, at the moment of triggering,
-                // that starred items will steer it. The sidebar notice says the same thing to
-                // whoever does the starring; between them a pin is never silent.
-                pinnedQueryCount > 0
-                  ? `${pinnedQueryCount} starred item${pinnedQueryCount === 1 ? "" : "s"} will be passed as areas of query — topics to look into, never as evidence`
-                  : null,
-              ].filter(Boolean).join(" · ")
-            : undefined}
-          onDiagnostics={providerToken ? () => (diagnosticsOpen = true) : undefined}
-          onVisibility={currentClient ? () => (visibilityOpen = true) : undefined}
-          onDag={currentClient?.finding ? () => (dagModalOpen = true) : undefined}
-          onExport={currentClient ? () => (exportOpen = true) : undefined}
-          onAbout={() => (aboutOpen = true)}
-        />
-      {:else}
-        <AccountMenu
-          email={account.info?.email ?? null}
-          emailConfirmed={account.info?.emailConfirmed ?? true}
-          onAccount={() => account.openPanel()}
-          onAccess={() => vaultAccess.openPanel()}
-          accessLabel="Who can access my record"
-          onResendVerification={() => account.resendVerification()}
-          onSignOut={signOut}
-          onExport={currentClient ? () => (exportOpen = true) : undefined}
-          onAbout={() => (aboutOpen = true)}
-        />
-      {/if}
-    {/snippet}
-  </Sidebar>
+  <div class="shell-row">
+  {@render appSidebar(null)}
   <div class="page-container">
   <main class="tab-content" aria-label={tabLabel}>
     {#if !currentClient}

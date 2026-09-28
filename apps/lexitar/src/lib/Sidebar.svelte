@@ -7,7 +7,7 @@
   import type { RefreshStage } from "./finding-refresh";
   import type { RefreshProgress } from "./refresh-client";
   import { SECTION_TAB, type Permalink } from "./permalink";
-  import { TABS, type Tab } from "./nav";
+  import { TABS, type Tab, type SidebarNavRow } from "./nav";
   import { canSee } from "./visibility";
   import { PATIENT_SECTIONS, AI_SECTIONS, presentSections, type SectionMeta } from "./report-sections";
   import { sidebarActionFor, type SidebarVerb } from "./sidebar-actions";
@@ -104,6 +104,12 @@ import { pinnedQueries } from "@pablotech/akesi/pinned-queries";
     /** Support agents who have asked to read this record and have not been approved yet. */
     accessRequests?: number;
     onOpenAccess?: () => void;
+    /**
+     * The nav rows to render INSTEAD of the record's own, for a session with no record open (the
+     * clinician roster). Every other prop stays meaningful with `client` null, so the same component
+     * serves both shells rather than a second one drifting from this one's rail, drawer and print CSS.
+     */
+    navRows?: SidebarNavRow[] | null;
   }
   let {
     activeTab, client, providerSession, active, activeGroup,
@@ -124,6 +130,7 @@ import { pinnedQueries } from "@pablotech/akesi/pinned-queries";
     findingStale = false, onOpenDag,
     aiOutOfCredit = false, billingUrl = undefined,
     accessRequests = 0, onOpenAccess = undefined,
+    navRows = null,
   }: Props = $props();
 
   // M78 Phase 10 — moved verbatim from App.svelte's own clientList().
@@ -325,6 +332,17 @@ import { pinnedQueries } from "@pablotech/akesi/pinned-queries";
   </div>
   <div class="sidebar-scroll">
   <div class="nav-list">
+    {#if navRows}
+      {#each navRows as r (r.key)}
+        <div class="side-row" class:active={r.active}>
+          <span class="side-row-gutter" aria-hidden="true"></span>
+          <button class="nav-item" data-testid="nav-{r.key}" class:active={r.active} title={r.title}
+                  onclick={() => { r.onSelect(); mobileOpen = false; }}>
+            <span class="side-icon" aria-hidden="true">{r.icon}</span><span class="nav-label">{r.label}</span>
+          </button>
+        </div>
+      {/each}
+    {:else}
     {#if showToggle}
       <div class="mode-toggle" role="tablist" aria-label="Sidebar section group">
         <button role="tab" data-testid="mode-patient" aria-selected={sidebarMode === "patient"} class:active={sidebarMode === "patient"}
@@ -379,8 +397,11 @@ import { pinnedQueries } from "@pablotech/akesi/pinned-queries";
         </button>
       </div>
     {/each}
+    {/if}
   </div>
-  {#if lowerZoneKind}
+  <!-- The lower zone is the active section's group list, and `lowerZoneKindFor` answers "chat" for the
+       default tab — so without the second half of this gate the roster grows a stray empty chat group. -->
+  {#if lowerZoneKind && !navRows}
   <!-- W58 — remounts SidebarGroupList fresh on every section switch, so a row's expand/collapse
        $state (keyed by r.key, e.g. ALL_GROUP_KEY reused across Markers/Questions/Reports/etc.)
        never leaks from one section into an unrelated one that happens to share a key. -->
