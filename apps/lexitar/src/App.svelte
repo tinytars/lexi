@@ -3,8 +3,9 @@
   import { ALL_GROUP_KEY } from "./lib/sidebar-labels";
   import type { Vault, Client, NoteAttachment } from "./lib/types";
   import type { UnitSystem } from "./lib/units";
-  import { DEFAULT_PERSONA, PERSONAS, type PersonaId } from "./lib/personas";
+  import { PERSONAS } from "./lib/personas";
   import { loadPersona, savePersona, personaTake } from "./lib/persona-client";
+  import { createPersonaPreference } from "./lib/persona-preference.svelte";
   import { configureRetell } from "@tinytars/frame/retell-registry.svelte";
   import { saveVaultV2, vaultSink, rememberVaultEtag, VaultConflictError, setVaultConflictHandler } from "@tinytars/vault/vault-sink";
   import { ageRefusal, attestAge } from "./lib/age-limit";
@@ -572,15 +573,12 @@
   // all consumers (Markers/Chat/Export) read it from here.
   let unitSystem = $state<UnitSystem>("imperial");
   // W84 — the persona that voices chat answers and read-aloud; account-level like unitSystem.
-  let persona = $state<PersonaId>(DEFAULT_PERSONA);
-  async function setPersona(next: PersonaId) {
-    persona = next;
-    try {
-      await savePersona(next);
-    } catch (e) {
-      error = (e as Error).message;
-    }
-  }
+  const personaPreference = createPersonaPreference({
+    load: loadPersona,
+    save: savePersona,
+    reportError: (m) => (error = m),
+  });
+  const persona = $derived(personaPreference.current);
   // W84 — with Cody selected, any assistant bubble offers "Cody's take" on Lexi's words.
   $effect(() => {
     const p = persona;
@@ -588,8 +586,7 @@
   });
   // Every login path re-reads the account; the persona rides along so no path can forget it.
   async function refreshAccount() {
-    const [, p] = await Promise.all([account.refresh(), loadPersona()]);
-    persona = p;
+    await Promise.all([account.refresh(), personaPreference.hydrate()]);
   }
   async function setUnitSystem(next: UnitSystem) {
     unitSystem = next; // optimistic — the toggle reflects the click immediately
@@ -1566,7 +1563,7 @@
     {unitSystem}
     onSetUnitSystem={setUnitSystem}
     {persona}
-    onSetPersona={setPersona}
+    onSetPersona={personaPreference.choose}
   >
     {#snippet accountArea()}
       {#if roster.isProvider}
