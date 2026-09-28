@@ -101,6 +101,9 @@ import { pinnedQueries } from "@pablotech/akesi/pinned-queries";
     aiOutOfCredit?: boolean;
     billingUrl?: string;
     onOpenDag?: () => void;
+    /** Support agents who have asked to read this record and have not been approved yet. */
+    accessRequests?: number;
+    onOpenAccess?: () => void;
   }
   let {
     activeTab, client, providerSession, active, activeGroup,
@@ -120,6 +123,7 @@ import { pinnedQueries } from "@pablotech/akesi/pinned-queries";
     onCancelRefresh, onDismissRefreshError,
     findingStale = false, onOpenDag,
     aiOutOfCredit = false, billingUrl = undefined,
+    accessRequests = 0, onOpenAccess = undefined,
   }: Props = $props();
 
   // M78 Phase 10 — moved verbatim from App.svelte's own clientList().
@@ -491,6 +495,16 @@ import { pinnedQueries } from "@pablotech/akesi/pinned-queries";
       ★ {pinnedCount} starred {pinnedCount === 1 ? "item" : "items"} steer the next Translation
     </div>
   {/if}
+  <!-- The one badge in this stack that is not about the Translation: someone has asked to read this
+       record and is waiting on an answer. It sits above the other two because the Access panel it
+       opens is otherwise reachable only from the account menu, so a request filed while nobody
+       happened to look there was invisible until someone thought to check — which is exactly how it
+       was missed. Not dismissible: it goes away by being approved or denied. -->
+  {#if accessRequests > 0 && onOpenAccess}
+    <button class="access-badge" data-testid="access-request-badge"
+      title="Someone has asked to read your record. Review the request to approve it for a period you choose, or to deny it."
+      onclick={onOpenAccess}>{accessRequests} request{accessRequests === 1 ? "" : "s"} to read your record</button>
+  {/if}
   {#if client && findingStale}
     <button class="stale-badge" title="Some sections were generated from older inputs — see the ● chips on each section. Inspect what changed in the Translation DAG." onclick={onOpenDag}>Some sections out of date</button>
   {/if}
@@ -635,9 +649,19 @@ import { pinnedQueries } from "@pablotech/akesi/pinned-queries";
     border-radius: 6px; padding: 0.3rem 0.55rem; cursor: pointer; font-family: inherit; text-decoration: none;
   }
   .sidebar.rail .credit-badge { display: none; }
+  /* Same badge again, on the accent rather than the severity scale: a request to read the record is
+     an action to take, not a fault to report, so it must not read as either a warning or a stop. */
+  .access-badge {
+    display: block; flex: none; width: auto; box-sizing: border-box; margin: 0.5rem;
+    font-size: 0.7rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+    text-align: left; color: var(--accent); background: var(--band); border: 1px solid var(--accent);
+    border-radius: 6px; padding: 0.3rem 0.55rem; cursor: pointer; font-family: inherit;
+  }
+  .sidebar.rail .access-badge { display: none; }
   @media (max-width: 640px) {
     .sidebar.rail .stale-badge { display: block; }
     .sidebar.rail .credit-badge { display: block; }
+    .sidebar.rail .access-badge { display: block; }
   }
 
   /* M78 Phase 11 — the provider-only refresh/"Generating…" status, moved from the header. */
