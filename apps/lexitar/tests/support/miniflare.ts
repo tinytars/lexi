@@ -17,7 +17,13 @@ export interface Bucket {
   list(opts?: { prefix?: string; cursor?: string }): Promise<{ objects: { key: string }[]; truncated: boolean; cursor?: string }>;
 }
 
+// Miniflare 5 takes a wrangler-shaped config per worker instead of v4's top-level `script`/`d1Databases`
+// shorthand: the stub worker is a module in `config.manifest` and the bindings live in `config.env`.
+// Nothing fetches this worker — it exists because an instance needs a script to hang the bindings off.
+const MAIN_MODULE = "index.mjs";
 const SCRIPT = "export default { fetch() { return new Response('ok'); } }";
+// Matches wrangler.jsonc, so the local D1/R2 run the same workerd semantics production does.
+const COMPATIBILITY_DATE = "2026-05-26";
 
 // A streaming route's writes can still be landing in the bucket directory when the test file that
 // started it ends, and a removal that meets one dies with ENOTEMPTY: `force` forgives a directory
@@ -87,10 +93,19 @@ export function useWorkerd(opts: { r2?: boolean; perTest?: boolean; workerdOnly?
       return;
     }
     mf = new Miniflare({
-      modules: true,
-      script: SCRIPT,
-      d1Databases: { DB: crypto.randomUUID() },
-      ...(opts.r2 ? { r2Buckets: { VAULT: crypto.randomUUID() } } : {}),
+      workers: [
+        {
+          config: {
+            name: "lexi-test",
+            compatibilityDate: COMPATIBILITY_DATE,
+            manifest: { mainModule: MAIN_MODULE, modules: { [MAIN_MODULE]: { type: "esm", contents: SCRIPT } } },
+            env: {
+              DB: { type: "d1", id: crypto.randomUUID() },
+              ...(opts.r2 ? { VAULT: { type: "r2" as const, name: crypto.randomUUID() } } : {}),
+            },
+          },
+        },
+      ],
     });
     db = (await mf.getD1Database("DB")) as unknown as D1Database;
     await applyMigrations(db);

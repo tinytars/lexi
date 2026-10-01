@@ -3,22 +3,24 @@
   // This file is DELIBERATELY DIVERGENT between `dev` and `main`. Cloudflare Pages reads it on
   // every build and it overrides the dashboard config, so a branch's copy *is* its environment.
   // `main` binds prod; `dev` binds dev. A promotion must never carry dev's values through.
-  "name": "health-dash-dev",
+  "name": "health-dash-main",
   "compatibility_date": "2026-05-26",
   "compatibility_flags": ["nodejs_compat"],
   "pages_build_output_dir": "./dist",
-  "r2_buckets": [{ "binding": "VAULT", "bucket_name": "health-vault" }],
+  "r2_buckets": [{ "binding": "VAULT", "bucket_name": "health-vault-prod" }],
   "d1_databases": [
-    // Non-PHI identity/relationship/CRM store. Created 2026-07-07 (region ENAM).
-    { "binding": "DB", "database_name": "health-identity-dev", "database_id": "7adf9a65-de24-4393-a6c2-fe6c31fb1b2c" }
+    // Prod identity store, a separate database rather than just a separate prefix — a
+    // STORE_PREFIX bug or a mis-targeted script cannot reach what it isn't bound to.
+    { "binding": "DB", "database_name": "health-identity-prod", "database_id": "3e87762b-4659-4061-90de-1a470bfbe84b" }
   ],
   // Every R2 key is built via storeKey(env, …), which throws if this is unset — so dev and
   // prod deploys never share keys even if they were ever pointed at the same bucket.
   //
   // REPORTS decides whether every inference is made in sight of the patient's own PDFs (CORPUS.md).
-  // It lives here rather than in inference.config.json because it is an ENVIRONMENT fact, not a
-  // model one: this branch's copy is dev's, main's copy is preserved across every promotion by
-  // promote.yml's keep-paths, and that is what lets dev run the corpus while prod does not.
-  // "never" restores the pre-corpus behaviour wholesale and is the first step of the rollback.
-  "vars": { "STORE_PREFIX": "dev", "REPORTS": "always" }
+  // "never" is what an unset value already means; it is written out because this is the one line
+  // that changes production's inference bill, and a line you can find is worth more than a default
+  // you have to know about. It lives here rather than in inference.config.json because it is an
+  // ENVIRONMENT fact, not a model one — and promote.yml's keep-paths preserves this file across
+  // every promotion, which is what lets dev run the corpus while prod does not.
+  "vars": { "STORE_PREFIX": "prod", "REPORTS": "never" }
 }
