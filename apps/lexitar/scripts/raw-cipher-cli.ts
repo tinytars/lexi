@@ -3,9 +3,8 @@
 // A raw object is AES-GCM ciphertext under a per-file content key that exists only inside the
 // patient's encrypted vault (src/lib/raw-cipher.ts). The browser holds that vault open and reads the
 // key directly. A script does not, so it walks the one path the estate already has to a vault it does
-// not own: the ORG RECOVERY ENVELOPE — `loadOrgPrivateKey` → `unwrapDEKWithPrivateKey` →
-// `decryptVaultV2` → `Vault.rawKeys`, exactly as scripts/recovery-approve.ts does for a locked-out
-// patient.
+// not own: the ORG RECOVERY ENVELOPE — `unwrapVaultDEK` (scripts/org-unwrap.ts) → `decryptVaultV2` →
+// `Vault.rawKeys`, exactly as scripts/recovery-approve.ts does for a locked-out patient.
 //
 // SO EVERY SCRIPT THAT READS RAW BYTES NOW NEEDS ORG_KEY_PASSPHRASE — but only when it meets a sealed
 // object. A store still holding plaintext is read without the key ever being loaded, which is what
@@ -16,15 +15,13 @@
 // only lane that reaches them. And a vault written before the keyring existed simply has no key for
 // a file, which reads as "still plaintext" and is true.
 //
-// Every unwrap is audited: callers pass through `openStored` and finish with `flushOrgKeyUses()`,
-// which writes the `org_key_decrypt` row (scripts/access-log.ts). A decrypt that is not logged is the
-// failure mode that file exists to close.
+// Every unwrap is audited because scripts/org-unwrap.ts records the use before it returns a key; what
+// a caller still owes is the `flushOrgKeyUses()` that writes the buffered rows out.
 
 import { d1, q } from "./d1-remote";
 import { LIVE_BUCKET, getObject, resolveStore } from "./vault-sync";
-import { loadOrgPrivateKey } from "./org-key";
-import { recordOrgKeyUse } from "./access-log";
-import { decryptVaultV2, unwrapDEKWithPrivateKey } from "@tinytars/vault/crypto";
+import { envelopeFromHex, unwrapVaultDEK } from "./org-unwrap";
+import { decryptVaultV2 } from "@tinytars/vault/crypto";
 import { openRaw, isSealed } from "../src/lib/raw-cipher";
 import { ORG_ACCOUNT_ID } from "../functions/_lib/org";
 import type { Vault } from "../src/lib/types";
@@ -50,7 +47,6 @@ export interface OpenVault {
 // unwrap and one vault fetch per patient rather than one per file.
 const ownerBySlug = new Map<string, string | null>();
 const vaultByAccount = new Map<string, OpenVault | null>();
-let orgKey: CryptoKey | undefined;
 
 export async function ownerOf(store: string, slug: string): Promise<string | null> {
   const hit = ownerBySlug.get(slug);
@@ -96,15 +92,10 @@ export async function openVaultFor(store: string, accountId: string, refresh = f
     return null;
   }
 
-  orgKey ??= await loadOrgPrivateKey();
-  const dek = await unwrapDEKWithPrivateKey(
-    Uint8Array.from(Buffer.from(envelope.wrapped_dek, "hex")),
-    JSON.parse(envelope.ephemeral_public_key_jwk) as JsonWebKey,
-    orgKey,
-  );
-  // The audited identifier is the vault's own r2_key stem, which migration 0011 made the account id —
-  // access-log.ts looks the vault up by `data-{id}.enc` and would find nothing for a client slug.
-  recordOrgKeyUse({ clientId: row.r2_key.replace(/^data-/, "").replace(/\.enc$/, ""), purpose: "raw:open" });
+  const dek = await unwrapVaultDEK(envelopeFromHex(envelope.wrapped_dek, envelope.ephemeral_public_key_jwk), {
+    vaultId: row.r2_key.replace(/^data-/, "").replace(/\.enc$/, ""),
+    purpose: "raw:open",
+  });
 
   const open: OpenVault = { vault: await decryptVaultV2<Vault>(blob, dek), dek, r2Key };
   vaultByAccount.set(accountId, open);

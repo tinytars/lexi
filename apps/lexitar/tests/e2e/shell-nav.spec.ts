@@ -112,6 +112,8 @@ test("Provider can inspect the Translation DAG structure", async ({ page }) => {
   // clinician shows the identical graph fam4 would — no need for the real provider account.
   await loginAs(page, E2E_CLINICIAN.email, E2E_CLINICIAN.password);
   await expect(page.locator(".roster")).toBeVisible();
+  // The control moved from a header link to a sidebar nav row; the accessible name is unchanged
+  // because the row's icon is aria-hidden.
   await page.getByRole("button", { name: "Translation DAG" }).click();
   await expect(page.locator(".dag")).toBeVisible();
   // Click the disease-finding hub; its downstream invalidation set is non-empty.

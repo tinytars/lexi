@@ -70,7 +70,10 @@ async function openAsPatient(page: Page, who: Synthetic): Promise<Synthetic> {
 
 async function drillInto(page: Page, who: Synthetic): Promise<Synthetic> {
   await page.click(`.roster-name:has-text("${who.name}")`);
-  await page.waitForSelector(".sidebar .nav-item");
+  // The roster's own sidebar has .nav-item rows too, so waiting on those would be satisfied before the
+  // click is even processed and every caller would race the vault fetch. Search renders only in the
+  // record shell — the same sentinel _nav.ts uses.
+  await page.getByTestId("nav-search").waitFor({ state: "attached" });
   return who;
 }
 

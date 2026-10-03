@@ -7,6 +7,7 @@ import { addIdentity, getCredential, putCredential } from "../../functions/_lib/
 import { generateAccountKeypair, deriveKekFromPassword, wrapPrivateKey, deriveAuthHash } from "@tinytars/vault/crypto";
 import { useWorkerd } from "../support/miniflare";
 import { SESSION_SECRET, cookieFor } from "../support/session";
+import { callerHeaders } from "../support/caller";
 
 const w = useWorkerd();
 const KDF_ITERATIONS = 200_000;
@@ -55,10 +56,10 @@ describe("account methods", () => {
     expect(methods.map((m) => m.method).sort()).toEqual(["passkey", "password"]);
 
     // the new password logs in: fetch salt, derive authHash, POST login → 200
-    const saltRes = await pwSalt({ request: new Request(`http://x/api/auth/password/salt?email=${encodeURIComponent(email)}`), env: makeEnv() });
+    const saltRes = await pwSalt({ request: new Request(`http://x/api/auth/password/salt?email=${encodeURIComponent(email)}`, { headers: callerHeaders() }), env: makeEnv() });
     const { salt } = await saltRes.json() as { salt: string };
     const authHash = await deriveAuthHash("hunter2pw", hexToBytes(salt));
-    const login = await pwLogin({ request: new Request("http://x/api/auth/password/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email, authHash }) }), env: makeEnv() });
+    const login = await pwLogin({ request: new Request("http://x/api/auth/password/login", { method: "POST", headers: { "content-type": "application/json", ...callerHeaders() }, body: JSON.stringify({ email, authHash }) }), env: makeEnv() });
     expect(login.status).toBe(200);
   });
 
@@ -75,7 +76,7 @@ describe("account methods", () => {
     }
     const proofFor = async (email: string, password: string) => {
       const { salt } = (await (await pwSalt({
-        request: new Request(`http://x/api/auth/password/salt?email=${encodeURIComponent(email)}`),
+        request: new Request(`http://x/api/auth/password/salt?email=${encodeURIComponent(email)}`, { headers: callerHeaders() }),
         env: makeEnv(),
       })).json()) as { salt: string };
       return deriveAuthHash(password, hexToBytes(salt));
@@ -101,7 +102,7 @@ describe("account methods", () => {
       const login = await pwLogin({
         request: new Request("http://x/api/auth/password/login", {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: { "content-type": "application/json", ...callerHeaders() },
           body: JSON.stringify({ email: a.email, authHash: await proofFor(a.email, "original-pw") }),
         }),
         env: makeEnv(),
@@ -117,7 +118,7 @@ describe("account methods", () => {
       const login = await pwLogin({
         request: new Request("http://x/api/auth/password/login", {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: { "content-type": "application/json", ...callerHeaders() },
           body: JSON.stringify({ email: a.email, authHash: await proofFor(a.email, "replacement-pw") }),
         }),
         env: makeEnv(),

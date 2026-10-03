@@ -16,6 +16,69 @@ export function listAccessEventsForSubject(db: D1Database, subjectAccountId: str
   return new D1AuditStore(db).listAccessEventsForSubject(subjectAccountId);
 }
 
+interface AccessEventRow {
+  id: string;
+  actor_account_id: string;
+  subject_account_id: string;
+  vault_id: string | null;
+  action: string;
+  consent_ref: string | null;
+  meta: string;
+  created_at: string;
+}
+
+/**
+ * The newest `limit` rows for one subject, bounded in SQL.
+ *
+ * The package's `listAccessEventsForSubject` is `SELECT *` with no LIMIT, and its one caller then sliced
+ * the tail in the isolate — which was tolerable while a patient's own clicks were not logged at all. Now
+ * that privileged reads write a row per object (functions/_lib/phi-audit.ts) a busy record's history is
+ * unbounded, and pulling all of it to return 200 rows is a scan that grows forever.
+ *
+ * `rowid` breaks ties, and that is not cosmetic: `created_at` is an ISO millisecond string, so rows
+ * written inside the same millisecond — which one page render does — otherwise come back in an order
+ * SQLite is free to change between two identical queries.
+ */
+export async function listRecentAccessEventsForSubject(db: D1Database, subjectAccountId: string, limit: number) {
+  const { results } = await db
+    .prepare("SELECT * FROM phi_access_events WHERE subject_account_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?")
+    .bind(subjectAccountId, limit)
+    .all<AccessEventRow>();
+  return results.map((r) => ({
+    id: r.id,
+    actorAccountId: r.actor_account_id,
+    subjectAccountId: r.subject_account_id,
+    vaultId: r.vault_id,
+    action: r.action,
+    consentRef: r.consent_ref,
+    meta: JSON.parse(r.meta),
+    createdAt: r.created_at,
+  }));
+}
+
+/**
+ * How many rows one action already has inside one consent window.
+ *
+ * `consent_ref` is stamped once per grant (`patient-approved:<ISO>`, @tinytars/vault/break-glass.ts), so
+ * zero means "this is the first open of this window" — which is the difference between telling a patient
+ * once that their record was opened and mailing them on every unattended run for a week.
+ *
+ * Filtered on the subject first so migration 0017's (subject_account_id, created_at) index carries it;
+ * `consent_ref` has no index of its own and this adds no need for one.
+ */
+export async function countAccessEventsInWindow(
+  db: D1Database,
+  subjectAccountId: string,
+  consentRef: string,
+  action: string,
+): Promise<number> {
+  const row = await db
+    .prepare("SELECT count(*) AS n FROM phi_access_events WHERE subject_account_id = ? AND consent_ref = ? AND action = ?")
+    .bind(subjectAccountId, consentRef, action)
+    .first<{ n: number }>();
+  return row?.n ?? 0;
+}
+
 export interface CrmEvent {
   id: string;
   accountId: string;

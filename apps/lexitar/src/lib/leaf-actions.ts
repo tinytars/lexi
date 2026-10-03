@@ -63,7 +63,7 @@ function isCoarsePointer(): boolean {
   return typeof window !== "undefined" && !!window.matchMedia?.("(pointer: coarse)").matches;
 }
 
-export type LeafActionKey = "edit" | "chat" | "annotate" | "attach" | "preview" | "download" | "delete";
+export type LeafActionKey = "edit" | "chat" | "annotate" | "attach" | "preview" | "download" | "report" | "delete";
 
 export interface StandardLeafActionsInput {
   edit?: () => void;
@@ -76,6 +76,10 @@ export interface StandardLeafActionsInput {
   // between Attach and Delete, in the canonical order documented at HealthReports.svelte:105-107:
   // Edit -> Chat -> Annotate -> Attach -> leaf-specific secondary -> Delete (danger last).
   extra?: LeafMenuItem[];
+  // DPG 9B.6 — offered on content this app GENERATED, where "this is wrong" is a safety matter and not
+  // an edit. A leaf showing the patient's own data does not pass it: there is nobody to report to
+  // about their own upload, and a control that does nothing is worse than none.
+  report?: () => void;
   delete?: () => void;
   // Per-leaf disable hook (owner decision, W46): default every action on; nothing sets this yet —
   // a later milestone turns individual items off where they prove meaningless on a given leaf.
@@ -111,6 +115,9 @@ export function standardLeafActions(input: StandardLeafActionsInput): LeafMenuIt
     items.push({ key: "download", icon: "⤓", label: "Download", title: "Download original", onClick: input.download });
   }
   if (input.extra) items.push(...input.extra);
+  if (input.report && enabled("report")) {
+    items.push({ key: "report", icon: "⚑", label: "Report", title: "Report a problem with this answer", danger: true, onClick: input.report });
+  }
   if (input.delete && enabled("delete")) {
     items.push({ key: "delete", icon: "🗑", label: "Delete", title: "Delete", danger: true, onClick: input.delete });
   }

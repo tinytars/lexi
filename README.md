@@ -14,7 +14,8 @@ service, and not a commercial product.
 
 LexiTar is developed as a **Digital Public Good** and maintained by the **Tiny Tars Foundation**, a
 registered 501(c)(3) public charity (EIN 39-2278196), funded by community philanthropy rather than
-by monetizing the data it holds.
+by monetizing the data it holds. Which UN Sustainable Development Goals it is built to serve — two of
+them, against three targets — and what it deliberately does not claim, is [`SDG.md`](SDG.md).
 
 > **New here?** [`START-HERE.md`](START-HERE.md) has two short ways in — a few minutes with no
 > code, or about ten minutes to a running app.
@@ -116,4 +117,24 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## License
 
-MIT — see `LICENSE`.
+MIT — see [`LICENSE`](LICENSE). Copyright in this repository is the **Tiny Tars Foundation**'s, for
+`apps/lexitar` and for [`@tinytars/frame`](packages/frame) alike; `packages/frame` carries its own
+copy of the licence because it publishes to npm separately.
+
+**The Foundation does not own every line LexiTar runs on, and does not need to.** The reasoning
+core — [`@pablotech/akesi`](https://github.com/pablo-tech/pilos/tree/main/akesi-pil) and
+[`@pablotech/neuro`](https://github.com/pablo-tech/pilos/tree/main/neuro-pil) — is copyright Pablo
+Rodriguez and licensed to everyone, the Foundation included, under MIT: a perpetual, irrevocable
+grant to use, modify and redistribute, with nothing running back to the author and no way to
+withdraw it. [`@tinytars/vault`](https://github.com/tinytars/vault) is the Foundation's own, on the
+same terms, and the finding-DAG content LexiTar reasons over
+([`tinytars/reasoning`](https://github.com/tinytars/reasoning)) is the Foundation's under
+CC BY-SA 4.0. An operator can fork the whole stack on exactly the terms LexiTar itself has.
+
+**Nobody is charged for the software, and nobody is stopped from charging for a service around it.**
+MIT permits commercial use by anyone, including paid deployment or support. The Foundation's own
+deployment at `literacy.tinytars.foundation` is free, under the zero-monetization policy in
+[Why](#why).
+
+Contributions arrive under a Developer Certificate of Origin sign-off rather than a Contributor
+Licence Agreement — see [`CONTRIBUTING.md`](CONTRIBUTING.md).

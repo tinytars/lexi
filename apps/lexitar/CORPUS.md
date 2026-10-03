@@ -45,9 +45,16 @@ BENCH_LIVE=1 npx vitest run --config vitest.live.config.ts tests/live/corpus-ans
 
 ## 2. Where the bytes come from
 
-`{STORE_PREFIX}/raw/{clientId}/` in R2 — the original upload, plaintext, deliberately outside the
-vault's encryption boundary (`VAULT.md`). Nothing read the objects again after import until this
-feature; now every attached inference does.
+`{STORE_PREFIX}/raw/{clientId}/` in R2 — the original upload, sealed since 2026-09-24 under a
+per-file AES-GCM-256 content key that exists only inside the account's own encrypted vault blob
+(`VAULT.md` §2a). **The object sits outside the vault blob; its key sits inside it.** That split is
+the point: infrastructure can serve, snapshot and back up the bytes without being able to read them,
+and §3 below is how a request that *is* allowed to read them obtains the key.
+
+Objects written before the seal are still stored as plaintext while the migration finishes — two
+lanes are sealing them and the route accepts both formats until a sweep reports none left
+(`VAULT.md` §2a). Nothing read the objects again after import until this feature; now every attached
+inference does.
 
 **Authorisation runs inside the assembler, not in the routes.** `openReportCorpus`
 (`functions/_lib/inference/corpus.ts`) calls `rawAccessFor` itself before it lists anything. A
@@ -103,9 +110,16 @@ Three consequences worth stating:
 - **Caching is unaffected.** AES-GCM decryption is deterministic, so the base64 prefix this file
   describes is byte-identical to the one built from plaintext and the breakpoint keeps hitting.
 
-The deployment therefore still sees the documents in plaintext *while it is answering a question the
-owner asked*. That is the limit of this design, stated in the same words in `SECURITY.md` and
-`DPGA.md`, and it is not the same as holding them readable at rest.
+The deployment therefore sees the documents in plaintext *while their owner is using the record* —
+which is wider than "while answering a question", and the difference is designed rather than
+incidental. `functions/api/corpus-warm.ts` sends the whole corpus at `max_tokens: 0` when a record is
+**opened**, before any question exists, and the browser then refreshes that entry for up to twelve
+idle cycles — §4 *Pre-warming*, where `MAX_IDLE_KEEPALIVES = 12` works out to roughly 54 minutes of
+designed residency at the provider after the patient stops interacting. So the trigger is the owner's
+presence, not their question.
+
+That is the limit of this design, stated in the same words in `SECURITY.md`, `VAULT.md` §2a and
+`DPGA.md`, and it is not the same as holding the documents readable at rest.
 
 ## 4. Caching
 

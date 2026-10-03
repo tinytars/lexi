@@ -7,11 +7,17 @@ import { encryptVault } from "@tinytars/vault/crypto";
 // W44 cutover — proves the shared v2 helpers round-trip against the REAL committed org key
 // (records/org-key.json), not a throwaway one, so a broken/rotated committed key fails here
 // first rather than surfacing later in migrate-accounts or vault:verify.
+
+// openV2 will not hand back a DEK without somewhere to record the use (scripts/org-unwrap.ts). These
+// uses are never flushed, so they land in the spool under the XDG_STATE_HOME vitest.config.ts sets —
+// a throwaway directory, never the operator's real audit backlog.
+const AUDIT = { vaultId: "vault-v2-roundtrip", purpose: "test:vault-v2" };
+
 describe("vault-v2", () => {
   it("buildV2 → openV2 round-trips a sample object via the committed org key", async () => {
     const sample = { hello: "world", n: 42, nested: { a: [1, 2, 3] } };
     const { blob, sidecar } = await buildV2(sample);
-    const back = await openV2<typeof sample>(blob, sidecar);
+    const back = await openV2<typeof sample>(blob, sidecar, AUDIT);
     expect(back).toEqual(sample);
   });
 
@@ -28,7 +34,7 @@ describe("vault-v2", () => {
     const tampered = Buffer.from(sidecar.wrappedDEK, "base64");
     tampered[0] ^= 0xff;
     const badSidecar = { ...sidecar, wrappedDEK: tampered.toString("base64") };
-    await expect(openV2(blob, badSidecar)).rejects.toThrow();
+    await expect(openV2(blob, badSidecar, AUDIT)).rejects.toThrow();
   });
 
   it("sidecarPathFor maps a .enc path to its .dek.enc sidecar", () => {

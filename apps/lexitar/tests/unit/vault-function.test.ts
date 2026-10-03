@@ -21,19 +21,29 @@ const assetsFrom = (assets: Record<string, Uint8Array<ArrayBuffer>>) => async (r
   return assets[key] ? new Response(assets[key]) : new Response(null, { status: 404 });
 };
 
-function makeEnv(fetchAsset: (req: Request) => Promise<Response> = assetsFrom({})) {
+// PUT's ops-bearer path still reaches nothing: it returns before the session gate and writes no audit
+// row, because a write carries its own actor only on the session branch. So the DB throws rather than
+// answer, and any DB work reintroduced there is a failing test.
+const throwingDb = new Proxy({}, {
+  get() { throw new Error("DB reached on PUT's ops-bearer path — the VAULT_TOKEN guard should have returned first"); },
+}) as unknown as D1Database;
+
+// GET's does reach it, for one lookup: the ops bearer names no principal, so the route must resolve the
+// vault to learn whose record it is handing over (functions/api/vault/[id].ts). These are the R2 and
+// self-seed behaviours, and `alex` has no vault row here — seeds are the test's choice
+// (tests/support/migrate.ts:4) — so the lookup misses and no row is written. The audited case is pinned
+// in vault-get-gate-function.test.ts, which owns the vault fixture.
+function makeEnv(fetchAsset: (req: Request) => Promise<Response> = assetsFrom({}), db: D1Database = throwingDb) {
   return {
     VAULT_TOKEN: "t",
     STORE_PREFIX: "dev",
-    // The ops bearer returns before the session gate, so the DB throws rather than answer (gate: vault-get-gate-function).
     SESSION_SECRET: "unused-by-the-bearer-path",
-    DB: new Proxy({}, {
-      get() { throw new Error("DB reached on the ops-bearer path — the VAULT_TOKEN guard should have returned first"); },
-    }) as unknown as D1Database,
+    DB: db,
     VAULT: w.bucket,
     ASSETS: { fetch: fetchAsset },
   };
 }
+const makeGetEnv = (fetchAsset?: (req: Request) => Promise<Response>) => makeEnv(fetchAsset, w.db);
 
 const putCtx = (env: ReturnType<typeof makeEnv>, opts: { auth?: string; body?: BodyInit } = {}) => {
   const headers: Record<string, string> = { "content-type": "application/octet-stream" };
@@ -92,7 +102,7 @@ describe("PUT /api/vault/:id", () => {
 
 describe("GET /api/vault/:id", () => {
   it("round-trips the stored blob", async () => {
-    const env = makeEnv();
+    const env = makeGetEnv();
     const blob = hd1(64);
     await onRequestPut(putCtx(env, { auth: "Bearer t", body: blob }));
     const res = await onRequestGet(getCtx(env));
@@ -102,7 +112,7 @@ describe("GET /api/vault/:id", () => {
 
   it("self-seeds R2 from the (unprefixed) static asset into the prefixed key on a miss", async () => {
     const asset = hd1(48);
-    const env = makeEnv(assetsFrom({ [ASSET]: asset }));
+    const env = makeGetEnv(assetsFrom({ [ASSET]: asset }));
     const res = await onRequestGet(getCtx(env));
     expect(res.status).toBe(200);
     expect(await bytesOf(res)).toEqual(asset);
@@ -110,13 +120,13 @@ describe("GET /api/vault/:id", () => {
   });
 
   it("404s when neither R2 nor a static asset has it", async () => {
-    expect((await onRequestGet(getCtx(makeEnv()))).status).toBe(404);
+    expect((await onRequestGet(getCtx(makeGetEnv()))).status).toBe(404);
   });
 
   it("404s (and does NOT seed) when ASSETS returns the SPA index.html, not a blob", async () => {
     // Prod Pages serves index.html (200) for unknown asset paths — must not be
     // mistaken for a vault blob (regression: unknown id returned 200 HTML + seeded R2).
-    const env = makeEnv(async () => new Response("<!doctype html><html>app</html>"));
+    const env = makeGetEnv(async () => new Response("<!doctype html><html>app</html>"));
     const res = await onRequestGet({ request: new Request("http://x/api/vault/ghost", { headers: { authorization: "Bearer t" } }), env, params: { id: "ghost" } });
     expect(res.status).toBe(404);
     expect(await bucketSize()).toBe(0);

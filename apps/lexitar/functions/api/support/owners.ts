@@ -9,6 +9,12 @@ import { json } from "../../_lib/http";
 
 // W44 P4b — the support console's patient list: active, unexpired support grants only. No envelope is
 // returned here (listing is not access) — entering a patient goes through the audited /api/support/access.
+//
+// DELIBERATELY UNAUDITED, unlike /api/providers/patients which writes a row per patient. This is the
+// support principal reading back the list of grants patients gave IT, every one of which already has a
+// `support_access_granted` row on that patient's own screen, and it withholds the envelope — so there is
+// nothing here a patient has not already been told. Auditing it would file a disclosure row every time
+// an unattended tool polls for work. Not an oversight; the reason is the difference.
 interface Env {
   DB: D1Database;
   SESSION_SECRET: string;

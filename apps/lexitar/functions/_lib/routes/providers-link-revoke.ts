@@ -56,8 +56,12 @@ export async function providersLinkRevokeHandler(request: Request, deps: Provide
       subjectAccountId: link.ownerAccountId,
       providerAccountId: link.providerAccountId,
       vaultId: vault?.vaultId ?? null,
-      // Revoking/denying a support link is a disclosure-audit event (§I); a clinician link isn't.
-      auditAction: link.role === "support" ? "support_access_denied" : undefined,
+      // Both kinds are audited. The earlier premise — that only a support revocation is a disclosure
+      // event — had it backwards: ending a CLINICIAN link ends a standing disclosure, and that is
+      // precisely the fact a patient later needs to be able to prove. An invisible revocation undercuts
+      // half of "you can see and revoke who reads your record" (§I, DPGA 9C). `revokeBreakGlass` writes
+      // a row whenever it is given a name, so both names are all this takes.
+      auditAction: link.role === "support" ? "support_access_denied" : "provider_access_revoked",
       auditMeta: { providerAccountId: link.providerAccountId },
     }
   );

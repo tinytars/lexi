@@ -92,3 +92,11 @@ coverage/
 # Regenerated locally; never committed here — the real destination is clinical-vault
 # (`npm run dag:push -- --out <path>`, see ~/.claude/CLAUDE.md).
 .finding-dag-vault/
+
+# Belt and braces for `npm run record:export`. The ACTUAL control is scripts/export-dir.ts, which
+# refuses at run time any destination inside a git work tree or under records/ — because an ignore
+# rule is the wrong control here twice over: this repo is public, and the `!records/**` re-inclusion
+# above means the one directory an operator would reach for is the one git would happily stage.
+# Exports default to $XDG_STATE_HOME/lexitar/exports, outside every checkout, and `npm run
+# record:export -- --purge` removes them.
+exports/

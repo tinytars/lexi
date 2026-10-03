@@ -26,17 +26,34 @@ test("new user lands on onboarding, creates a record, and is taken to Import", a
   await expect(page.locator(".sidebar .nav-item").first()).toBeVisible();
 });
 
-// W47 — Skip still creates a minimal patient (no birth year/sex), so the user lands in a usable app
-// rather than the empty-vault dead-end.
-test("new user can skip the profile and still reach the app", async ({ page }) => {
+// 9C.3 — Skip used to create a minimal patient with no birth year, which made the 16+ limit one
+// click wide: no year meant nothing to check. Skip now declines to skip the one field the limit
+// needs, and says so on the screen.
+test("Skip is refused because the birth year is required", async ({ page }) => {
   await signUpRaw(page, `e2e-onboard-skip-${Date.now()}@local.invalid`);
   await expect(page.locator(".onboard")).toBeVisible();
 
   await page.click('.onboard button.link:has-text("Skip")');
 
-  // Skip still mints a patient → Import modal opens; closing it reveals the app shell.
+  await expect(page.locator(".onboard p.err")).toContainText(/birth year is required/i);
+  // Still on onboarding: no patient was minted and Import never opened.
+  await expect(page.locator(".onboard")).toBeVisible();
+  await expect(page.locator("button.modal-close")).toHaveCount(0);
+});
+
+// 9C.3 — the refusal an assessor checks first: a birth year that makes the user under 16.
+test("an underage birth year is refused with a readable message", async ({ page }) => {
+  await signUpRaw(page, `e2e-onboard-underage-${Date.now()}@local.invalid`);
+  await expect(page.locator(".onboard")).toBeVisible();
+
+  await page.fill(".onboard input[type='number']", String(new Date().getFullYear() - 10));
+  await page.click(".onboard button.primary");
+
+  await expect(page.locator(".onboard p.err")).toContainText(/aged 16 and over/i);
+  await expect(page.locator("button.modal-close")).toHaveCount(0);
+
+  // The same screen accepts a year that passes, so the refusal is the gate and not a dead end.
+  await page.fill(".onboard input[type='number']", "1980");
+  await page.click(".onboard button.primary");
   await expect(page.locator("button.modal-close")).toBeVisible();
-  await page.click("button.modal-close");
-  await expect(page.locator(".account-trigger")).toBeVisible();
-  await expect(page.locator(".sidebar .nav-item").first()).toBeVisible();
 });

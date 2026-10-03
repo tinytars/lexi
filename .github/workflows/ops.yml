@@ -17,6 +17,11 @@ name: ops
 # A NEW OPERATIONAL FLOW IS AN ENTRY IN THIS FILE, NEVER A SECOND WORKFLOW — the discipline
 # plover-code's ops.yml carried before it was retired, for the reason it carried it (three
 # near-identical workflows drifting independently).
+#
+# THE ONE CARVE-OUT TO THAT RULE: `record:export` (apps/lexitar/VAULT.md §4a) is deliberately not an
+# op here, and must not become one. Every op in this file reads PHI and writes ciphertext back; that one
+# decrypts a whole record to the filesystem it runs on, and on a hosted runner that filesystem is not
+# the operator's. It stays a local command, like scripts/treatment-diagnose.ts.
 
 on:
   workflow_dispatch:

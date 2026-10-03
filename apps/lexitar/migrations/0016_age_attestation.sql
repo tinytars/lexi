@@ -1,0 +1,11 @@
+-- DPG indicator 9C.3 — the 16+ limit, recorded as an attestation rather than as a birth date.
+--
+-- WHAT THIS COLUMN IS NOT. It is not a date of birth and it is not an age. The birth year lives only
+-- inside the encrypted vault (src/lib/age-limit.ts explains why), so the only fact the server can
+-- hold is that the browser ran the check and the user passed it, and when. That is a self-declaration
+-- at year granularity, not verified identity — MODERATION.md states it in those words so nobody
+-- reads this column as proof of age.
+--
+-- NULLABLE and staying that way: every account created before this migration passed no gate, and a
+-- backfill would have to invent a timestamp for a check that never ran.
+ALTER TABLE accounts ADD COLUMN age_attested_at TEXT;

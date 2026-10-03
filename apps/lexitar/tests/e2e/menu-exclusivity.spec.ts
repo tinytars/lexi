@@ -74,7 +74,8 @@ test("switching sidebar mode restores the last section visited in that mode, per
   await page.goto("/");
   await page.waitForSelector(`.roster-name:has-text("${patientA.name}")`);
   await page.click(`.roster-name:has-text("${patientA.name}")`);
-  await page.waitForSelector(".sidebar .nav-item");
+  // Search, not any .nav-item: the roster has its own rows now — see drillInto in _synthetic.ts.
+  await page.getByTestId("nav-search").waitFor({ state: "attached" });
   await expect(page.locator(".sidebar .mode-toggle button.active", { hasText: "Investigator" })).toBeVisible();
   await expect(navRow(page, "Exploration")).toHaveClass(/active/);
 
@@ -89,7 +90,7 @@ test("switching sidebar mode restores the last section visited in that mode, per
   await page.goto("/");
   await page.waitForSelector(`.roster-name:has-text("${patientB.name}")`);
   await page.click(`.roster-name:has-text("${patientB.name}")`);
-  await page.waitForSelector(".sidebar .nav-item");
+  await page.getByTestId("nav-search").waitFor({ state: "attached" });
   await expect(page).not.toHaveURL(/exploration/);
   await expect(navRow(page, "Chat")).toHaveClass(/active/);
 });

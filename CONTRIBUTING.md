@@ -39,6 +39,22 @@ for the primitive itself.
   `src/lib/parsers`) rather than introducing a new pattern for the same kind of problem — see
   [`ARCHITECTURE.md`](ARCHITECTURE.md) for the shape as it stands.
 
+## Inbound contributions: sign off, don't sign a CLA
+
+**Every commit needs a `Signed-off-by` line, and nothing else.** `git commit -s` appends it from your
+`user.name` and `user.email`; `git rebase --signoff dev` adds it across a branch you have already
+written. CI checks it, so a pull request without it goes red before review.
+
+That line is the [Developer Certificate of Origin](https://developercertificate.org/) 1.1 — a
+statement that you wrote the change, or otherwise have the right to submit it, and that you are
+contributing it under this repository's licence. It is deliberately not a Contributor Licence
+Agreement and not an assignment: nothing here aggregates copyright, so you keep yours, this
+repository stays MIT to the Tiny Tars Foundation ([`LICENSE`](LICENSE)), and a downstream user's
+rights come from that licence rather than from a private contract. A CLA would need a signing service
+and a counterparty to guarantee what MIT already grants.
+
+Commits authored by this repo's bots are exempt — they certify nothing and hold no copyright.
+
 ## Releases
 
 `packages/frame` auto-bumps its own patch version and publishes to npm on every merge to `main` —

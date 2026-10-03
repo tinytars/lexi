@@ -16,7 +16,8 @@ import type { Vault, Client } from "../src/lib/types";
 import { decryptVaultV2, encryptVaultV2 } from "@tinytars/vault/crypto";
 import { orgSidecarFromD1 } from "./org-d1";
 import { getObject, putObject, listObjects, LIVE_BUCKET, r2KeyFor } from "./vault-sync";
-import { dekFromSidecar, isV2 } from "./vault-v2";
+import { isV2 } from "./vault-v2";
+import { unwrapVaultDEK } from "./org-unwrap";
 
 /**
  * Which key inside vault.clients this op targets. vaultId (the R2-key-derived id) is the common
@@ -44,7 +45,8 @@ export interface DeployedVault {
   client: Client;
 }
 
-export async function pullDeployedVault(vaultId: string, store: string): Promise<DeployedVault> {
+/** `purpose` is the audit reason; scripts/org-unwrap.ts writes the row before the DEK exists. */
+export async function pullDeployedVault(vaultId: string, store: string, purpose: string): Promise<DeployedVault> {
   const id = normalizeClientId(vaultId);
   const key = r2KeyFor(store, id);
 
@@ -52,7 +54,7 @@ export async function pullDeployedVault(vaultId: string, store: string): Promise
   if (!blob) throw new Error(`no deployed vault at ${LIVE_BUCKET}/${key}`);
   if (!isV2(blob)) throw new Error(`${key} is not an HD1 v2 blob — only v2 carries the org envelope this needs`);
 
-  const dek = await dekFromSidecar(orgSidecarFromD1(id));
+  const dek = await unwrapVaultDEK(orgSidecarFromD1(id), { vaultId: id, purpose });
   const vault = await decryptVaultV2<Vault>(blob, dek);
   const clientKey = resolveClientKey(vault, id);
   return { id, key, vault, dek, clientKey, client: vault.clients[clientKey] };
@@ -74,17 +76,18 @@ export interface VaultOpResult<T> {
  * write reads back. `mutate`'s return value is surfaced to the caller (a count, a summary) —
  * throwing inside it aborts before any write.
  *
- * Caller is responsible for recordOrgKeyUse()/flushOrgKeyUses() around this (access-log.ts) —
- * this module only handles the crypto/IO cycle, not the audit trail.
+ * The org-key use is recorded by the pull itself (scripts/org-unwrap.ts); what a caller still owes
+ * is the flushOrgKeyUses() at the end of its main entry path (scripts/access-log.ts).
  */
 export async function withDeployedClient<T>(opts: {
   vaultId: string;
   store: string;
+  purpose: string;
   dryRun: boolean;
   mutate: (client: Client, vault: Vault, clientKey: string) => Promise<T> | T;
 }): Promise<VaultOpResult<T>> {
-  const { vaultId, store, dryRun, mutate } = opts;
-  const { id, key, vault, dek, clientKey } = await pullDeployedVault(vaultId, store);
+  const { vaultId, store, purpose, dryRun, mutate } = opts;
+  const { id, key, vault, dek, clientKey } = await pullDeployedVault(vaultId, store, purpose);
 
   const value = await mutate(vault.clients[clientKey], vault, clientKey);
 

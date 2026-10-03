@@ -43,6 +43,13 @@ export interface VaultPrincipalsDeps<V> {
    * the Access modal is not mounted. Behaviour preserved from the extraction, not a new idea.
    */
   reportError: (message: string | null) => void;
+  /**
+   * Where a background load failure goes. `refreshQuietly` must not interrupt a boot, but "must not
+   * block" was implemented as "is never seen": a 401, a 500 and an empty list were one observable, so
+   * an owner whose pending-request badge silently never loaded had nothing to look at and neither did
+   * we. Host-supplied because the sink is the app's (the host files it as a handled client error).
+   */
+  reportLoadFailure: (err: unknown) => void;
   /** The server calls, overridable so a test can pass fakes. Defaults to `@tinytars/vault`. */
   api?: Partial<VaultPrincipalsApi>;
 }
@@ -193,8 +200,9 @@ export function createVaultPrincipals<V>(deps: VaultPrincipalsDeps<V>): VaultPri
     async refreshQuietly() {
       try {
         providers = await api.listMyProviders();
-      } catch {
-        /* non-fatal; the section just stays empty */
+      } catch (e) {
+        // Still non-fatal — the caller is a boot path and the panel stays empty — but no longer silent.
+        deps.reportLoadFailure(e);
       }
     },
 

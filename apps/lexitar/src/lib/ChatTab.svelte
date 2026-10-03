@@ -29,6 +29,7 @@
   import { providerFor } from "./model-config";
   import { messageAnchor, reportAnchor } from "./anchor";
   import { type Permalink, parseHash } from "./permalink";
+  import type { ReportTarget } from "./safety-report";
   import { resolveReference } from "./reference-resolver";
   import { corpusSubject } from "./vault-raw-keys";
 
@@ -59,6 +60,8 @@
     onPersist: () => void;
     onImportFile?: (file: File) => Promise<ChatImportResult>;
     onCreateNote?: (attachment: NoteAttachment) => void;
+    /** DPG 9B.6 — opens the safety-report dialog for one of Lexi's answers. */
+    onReport?: (target: ReportTarget) => void;
   }
   let {
     client,
@@ -75,6 +78,7 @@
     onPersist,
     onImportFile,
     onCreateNote,
+    onReport,
   }: Props = $props();
 
   let input = $state("");
@@ -152,6 +156,12 @@
   function turnActions(row: ChatRow): LeafMenuItem[] {
     const items = standardLeafActions({
       annotate: onCreateNote ? () => onCreateNote!(buildAttachment(row)) : undefined,
+      // Only once there is an answer to report, and the subject is the message anchor rather than its
+      // text: the reviewer gets a pointer and asks, which is what keeps the report free of the record.
+      report:
+        onReport && row.reply
+          ? () => onReport!({ reason: "misleading-answer", subject: messageAnchor(current.id, row.turnIdx), feature: "chat" })
+          : undefined,
     });
     const adapted = row.reply?.adapted;
     if (!adapted) return items;

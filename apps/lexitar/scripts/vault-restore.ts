@@ -45,8 +45,9 @@ import {
   type SnapshotObject,
 } from "./vault-snapshot";
 import { isV2, openV2 } from "./vault-v2";
-import { loadOrgPublicKey, bytesToB64, hexToBytes } from "./org-key";
-import { recordOrgKeyUse, flushOrgKeyUses } from "./access-log";
+import { envelopeFromHex } from "./org-unwrap";
+import { loadOrgPublicKey } from "./org-key";
+import { flushOrgKeyUses } from "./access-log";
 import { decryptVault } from "@tinytars/vault/crypto";
 import type { Vault } from "../src/lib/types";
 
@@ -236,10 +237,9 @@ export async function restore(opts: RestoreOptions = {}): Promise<RestoreReport>
           });
           continue;
         }
-        recordOrgKeyUse({ clientId: v.r2_key.replace(/^data-/, "").replace(/\.enc$/, ""), purpose: "vault:restore" });
-        vault = await openV2<Vault>(blob, {
-          wrappedDEK: bytesToB64(hexToBytes(env.wrapped_dek)),
-          ephemeralPublicKeyJwk: JSON.parse(env.ephemeral_public_key_jwk) as JsonWebKey,
+        vault = await openV2<Vault>(blob, envelopeFromHex(env.wrapped_dek, env.ephemeral_public_key_jwk), {
+          vaultId: v.r2_key.replace(/^data-/, "").replace(/\.enc$/, ""),
+          purpose: "vault:restore",
         });
       } else {
         // Legacy v1 blob: passphrase is the client's lowercase id, which is the r2 key's slug.
