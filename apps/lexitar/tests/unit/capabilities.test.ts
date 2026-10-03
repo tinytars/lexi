@@ -72,6 +72,16 @@ describe("the policy matrix", () => {
     expect(capabilitiesOf(null)).toEqual([]);
   });
 
+  it("closes recovery:issue at BOTH of its gates, not just the table's", () => {
+    // Two independent checks refuse a support principal here, and each is silent when the other holds:
+    // this table, and the route's own requirement that the LINK be a clinician one. Losing either leaves
+    // a green suite and a principal that can turn read access into account control, so both are named.
+    expect(can("support", "recovery:issue")).toBe(false);
+    const route = readFileSync(resolve(ROOT, "functions/api/recovery/grant.ts"), "utf8");
+    expect(route).toContain('can(roleOf(me), "recovery:issue")');
+    expect(route).toContain('l.role === "primary"');
+  });
+
   it("covers every capability in the matrix above, so a new one cannot land untested", () => {
     const declared = new Set(ALL.flatMap((r) => capabilitiesOf(r)));
     expect([...declared].sort()).toEqual(rows.map(([c]) => c).sort());

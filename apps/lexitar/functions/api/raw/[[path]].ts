@@ -5,6 +5,7 @@ import { logRequest } from "../../_lib/log";
 import { normalizeClientId } from "../../../src/lib/client-id";
 import { storeKey } from "../../_lib/store";
 import { rawAccessFor, mayRead, mayWrite, mayDestroy, type RawAccess } from "../../_lib/raw-owner";
+import { auditPrivilegedRead, sha8Of, AUDIT_UNAVAILABLE } from "../../_lib/phi-audit";
 import { json } from "../../_lib/http";
 import type { ObjectBucket } from "../../_lib/object-bucket";
 import { MAX_PAGE_COUNT, isPageCount, isPdfFile } from "../../_lib/raw-files";
@@ -91,6 +92,19 @@ export async function onRequestGet(context: Ctx): Promise<Response> {
     log(404, { errorCode: refusal(access), access: access.kind });
     return json(404, { error: "not found" });
   }
+  // An `owner` access carries no vault and no subject because it needs none — the caller IS the subject,
+  // so there is nothing to disclose. Only the `granted` shape names someone else.
+  const auditRead = (action: "raw_object_read" | "raw_namespace_listed", meta: Record<string, unknown>) =>
+    access.kind === "granted"
+      ? auditPrivilegedRead(env.DB, {
+          actor: session.accountId,
+          subject: access.subjectAccountId,
+          vaultId: access.vaultId,
+          action,
+          consentRef: access.consentRef,
+          meta,
+        })
+      : Promise.resolve(null);
 
   // W77 — the corpus refuses to assemble while any PDF is unmeasured, which would strand every
   // object uploaded before page counts existed. Rather than guess a count from byte size (a 12 MB
@@ -103,6 +117,13 @@ export async function onRequestGet(context: Ctx): Promise<Response> {
     const keys = listing
       ? await listRawObjectsUnder(env.DB, prefix)
       : (await listRawPdfsUnder(env.DB, prefix)).filter((r) => r.pages === null).map((r) => r.r2_key);
+    // The keys ARE filenames, so a listing is a disclosure of which documents exist. `meta` records how
+    // many, never which.
+    const refused = await auditRead("raw_namespace_listed", { count: keys.length });
+    if (refused) {
+      log(503, { errorCode: AUDIT_UNAVAILABLE, access: access.kind });
+      return refused;
+    }
     log(200, { access: access.kind });
     return json(200, { files: keys.map((k) => k.slice(prefix.length)) });
   }
@@ -111,6 +132,14 @@ export async function onRequestGet(context: Ctx): Promise<Response> {
   if (!obj) {
     log(404, { errorCode: "not_found", access: access.kind });
     return json(404, { error: "raw source not found" });
+  }
+
+  // Per object, never coalesced: "which documents were disclosed" is the question this log exists to
+  // answer, and one row per request could not answer it.
+  const refused = await auditRead("raw_object_read", { sha8: sha8Of(file) });
+  if (refused) {
+    log(503, { errorCode: AUDIT_UNAVAILABLE, access: access.kind });
+    return refused;
   }
 
   log(200, { access: access.kind });
@@ -126,9 +155,13 @@ export async function onRequestGet(context: Ctx): Promise<Response> {
 // reconciler (W15/2b), the git plaintext survival copy. Path/guard logic mirrors onRequestGet;
 // idempotent (a re-PUT of the same content-addressed file is a harmless overwrite).
 //
-// BOTH FORMATS ARE ACCEPTED while the store migrates, and a plaintext body is logged as such so the
-// sweep's remaining work is visible without listing the bucket. Rejecting plaintext is the flip, a
-// later PR, and it may not land until a sweep reports zero plaintext on both stores.
+// PLAINTEXT IS REFUSED (DPG 9A.5). Every live browser has minted a per-file content key since the
+// sealing landed, so the only caller a refusal can reach is a stale cached bundle, which reloads and
+// retries sealed. Note what this does NOT depend on: refusing to WRITE plaintext is independent of
+// whether any is still STORED. Objects written before the sealing are a GET/heal concern
+// (src/lib/raw-seal-heal.ts, the owner's own browser) and an operator sweep concern
+// (scripts/raw-encrypt-backfill.ts) — neither of them comes through this handler, so the refusal did
+// not have to wait for either to finish.
 const MAX_RAW_BYTES = 24 * 1024 * 1024;
 
 /** `?pages=N` from the browser's pdf.js. Returns undefined when absent, null when present but unusable. */
@@ -177,6 +210,14 @@ export async function onRequestPut(context: Ctx): Promise<Response> {
     return json(404, { error: "not found" });
   }
 
+  // Refused unconditionally, with no lane carved out for an unclaimed namespace: `mayWrite` admits
+  // `unclaimed` because that is every patient's FIRST upload (raw-owner.ts), so scoping the refusal
+  // to proven owners would refuse exactly the new patients it must not.
+  if (!isSealed(bytes)) {
+    log(415, { errorCode: "plaintext_refused", bytes: bytes.length, access: access.kind, sealed: false });
+    return json(415, { error: "raw sources must be sealed before upload", errorCode: "plaintext_refused" });
+  }
+
   const pages = parsePages(request.url, file);
   if (pages === null) {
     log(400, { errorCode: "bad_pages" });
@@ -192,9 +233,10 @@ export async function onRequestPut(context: Ctx): Promise<Response> {
   // W77 — `pages` rides along because pdf.js does not run on Workers, so this request is the only
   // moment the page count is known server-side without a second round trip for the bytes.
   await recordRawObject(env.DB, key, session.accountId, { ...(pages !== undefined && { pages }), bytes: bytes.length });
-  // W8d: audit the write — id + size, never the bytes. `sealed` is how the migration's remaining
-  // work is read off the logs rather than by listing a bucket full of patient files.
-  log(204, { bytes: bytes.length, access: access.kind, sealed: isSealed(bytes) });
+  // W8d: audit the write — id + size, never the bytes. `sealed` is now always true here (the refusal
+  // above is the only way past), and stays in the record so a log that ever shows false is read as
+  // the contradiction it would be.
+  log(204, { bytes: bytes.length, access: access.kind, sealed: true });
   return new Response(null, { status: 204 });
 }
 

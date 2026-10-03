@@ -3,7 +3,11 @@ name: error-pipeline
 # LexiTar's only telemetry is the error sink, and it dies quietly: a revoked token, a secret set on
 # production but not preview, a Worker that stopped filing. From the outside that is indistinguishable
 # from a quiet week — which the promotion gate used to promote on. This proves the sink alive
-# end to end every three hours, and the gate refuses to promote without a recent proof.
+# end to end every two hours, and the gate refuses to promote without a recent proof.
+#
+# Two hours, not the three it ran at: the gate refuses once the proof is 8h old (pedalion-ci's
+# canary-max-age-hours default) and GitHub delivers a 3h schedule as late as 7.7h, so the prover was
+# inside its own gate's noise margin and one late delivery from a refusal with nothing wrong.
 #
 # The canary files through the real anonymous /api/client-error path on health-dash-dev, under a fixed
 # fingerprint, so its issue is always found by label. When its comment list gets long, close it: the
@@ -11,7 +15,7 @@ name: error-pipeline
 
 on:
   schedule:
-    - cron: "0 */3 * * *"
+    - cron: "0 */2 * * *"
   workflow_dispatch:
 
 permissions:

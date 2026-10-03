@@ -7,7 +7,7 @@
   import type { RefreshStage } from "./finding-refresh";
   import type { RefreshProgress } from "./refresh-client";
   import { SECTION_TAB, type Permalink } from "./permalink";
-  import { TABS, type Tab } from "./nav";
+  import { TABS, type Tab, type SidebarNavRow } from "./nav";
   import { canSee } from "./visibility";
   import { PATIENT_SECTIONS, AI_SECTIONS, presentSections, type SectionMeta } from "./report-sections";
   import { sidebarActionFor, type SidebarVerb } from "./sidebar-actions";
@@ -101,6 +101,15 @@ import { pinnedQueries } from "@pablotech/akesi/pinned-queries";
     aiOutOfCredit?: boolean;
     billingUrl?: string;
     onOpenDag?: () => void;
+    /** Support agents who have asked to read this record and have not been approved yet. */
+    accessRequests?: number;
+    onOpenAccess?: () => void;
+    /**
+     * The nav rows to render INSTEAD of the record's own, for a session with no record open (the
+     * clinician roster). Every other prop stays meaningful with `client` null, so the same component
+     * serves both shells rather than a second one drifting from this one's rail, drawer and print CSS.
+     */
+    navRows?: SidebarNavRow[] | null;
   }
   let {
     activeTab, client, providerSession, active, activeGroup,
@@ -120,6 +129,8 @@ import { pinnedQueries } from "@pablotech/akesi/pinned-queries";
     onCancelRefresh, onDismissRefreshError,
     findingStale = false, onOpenDag,
     aiOutOfCredit = false, billingUrl = undefined,
+    accessRequests = 0, onOpenAccess = undefined,
+    navRows = null,
   }: Props = $props();
 
   // M78 Phase 10 — moved verbatim from App.svelte's own clientList().
@@ -321,6 +332,17 @@ import { pinnedQueries } from "@pablotech/akesi/pinned-queries";
   </div>
   <div class="sidebar-scroll">
   <div class="nav-list">
+    {#if navRows}
+      {#each navRows as r (r.key)}
+        <div class="side-row" class:active={r.active}>
+          <span class="side-row-gutter" aria-hidden="true"></span>
+          <button class="nav-item" data-testid="nav-{r.key}" class:active={r.active} title={r.title}
+                  onclick={() => { r.onSelect(); mobileOpen = false; }}>
+            <span class="side-icon" aria-hidden="true">{r.icon}</span><span class="nav-label">{r.label}</span>
+          </button>
+        </div>
+      {/each}
+    {:else}
     {#if showToggle}
       <div class="mode-toggle" role="tablist" aria-label="Sidebar section group">
         <button role="tab" data-testid="mode-patient" aria-selected={sidebarMode === "patient"} class:active={sidebarMode === "patient"}
@@ -375,8 +397,11 @@ import { pinnedQueries } from "@pablotech/akesi/pinned-queries";
         </button>
       </div>
     {/each}
+    {/if}
   </div>
-  {#if lowerZoneKind}
+  <!-- The lower zone is the active section's group list, and `lowerZoneKindFor` answers "chat" for the
+       default tab — so without the second half of this gate the roster grows a stray empty chat group. -->
+  {#if lowerZoneKind && !navRows}
   <!-- W58 — remounts SidebarGroupList fresh on every section switch, so a row's expand/collapse
        $state (keyed by r.key, e.g. ALL_GROUP_KEY reused across Markers/Questions/Reports/etc.)
        never leaks from one section into an unrelated one that happens to share a key. -->
@@ -490,6 +515,16 @@ import { pinnedQueries } from "@pablotech/akesi/pinned-queries";
     <div class="pinned-note" title="Starred items are read as AREAS OF QUERY — they tell {productName} what to look into. They are never treated as evidence, findings, or health record; every statement still comes from your markers, reports and notes.">
       ★ {pinnedCount} starred {pinnedCount === 1 ? "item" : "items"} steer the next Translation
     </div>
+  {/if}
+  <!-- The one badge in this stack that is not about the Translation: someone has asked to read this
+       record and is waiting on an answer. It sits above the other two because the Access panel it
+       opens is otherwise reachable only from the account menu, so a request filed while nobody
+       happened to look there was invisible until someone thought to check — which is exactly how it
+       was missed. Not dismissible: it goes away by being approved or denied. -->
+  {#if accessRequests > 0 && onOpenAccess}
+    <button class="access-badge" data-testid="access-request-badge"
+      title="Someone has asked to read your record. Review the request to approve it for a period you choose, or to deny it."
+      onclick={onOpenAccess}>{accessRequests} request{accessRequests === 1 ? "" : "s"} to read your record</button>
   {/if}
   {#if client && findingStale}
     <button class="stale-badge" title="Some sections were generated from older inputs — see the ● chips on each section. Inspect what changed in the Translation DAG." onclick={onOpenDag}>Some sections out of date</button>
@@ -635,9 +670,19 @@ import { pinnedQueries } from "@pablotech/akesi/pinned-queries";
     border-radius: 6px; padding: 0.3rem 0.55rem; cursor: pointer; font-family: inherit; text-decoration: none;
   }
   .sidebar.rail .credit-badge { display: none; }
+  /* Same badge again, on the accent rather than the severity scale: a request to read the record is
+     an action to take, not a fault to report, so it must not read as either a warning or a stop. */
+  .access-badge {
+    display: block; flex: none; width: auto; box-sizing: border-box; margin: 0.5rem;
+    font-size: 0.7rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+    text-align: left; color: var(--accent); background: var(--band); border: 1px solid var(--accent);
+    border-radius: 6px; padding: 0.3rem 0.55rem; cursor: pointer; font-family: inherit;
+  }
+  .sidebar.rail .access-badge { display: none; }
   @media (max-width: 640px) {
     .sidebar.rail .stale-badge { display: block; }
     .sidebar.rail .credit-badge { display: block; }
+    .sidebar.rail .access-badge { display: block; }
   }
 
   /* M78 Phase 11 — the provider-only refresh/"Generating…" status, moved from the header. */

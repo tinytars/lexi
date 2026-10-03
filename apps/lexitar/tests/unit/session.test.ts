@@ -51,10 +51,12 @@ describe("session", () => {
       expect((result as Response).status).toBe(401);
     });
 
+    // `iat` rides along because `requireFreshSession` needs it; the age it implies is pinned end to end by
+    // tests/unit/recovery-grant-function.test.ts rather than restated here.
     it("returns the accountId when the cookie carries a valid session", async () => {
       const token = await signSession(env, "acc-1");
       const request = new Request("http://x/api/account", { headers: { cookie: `hd_session=${token}` } });
-      expect(await requireSession(request, env)).toEqual({ accountId: "acc-1" });
+      expect(await requireSession(request, env)).toEqual({ accountId: "acc-1", iat: expect.any(Number) });
     });
 
     it("401s on an expired session cookie", async () => {
@@ -70,7 +72,7 @@ describe("session", () => {
       const request = new Request("http://x/api/account", {
         headers: { cookie: `other=1; hd_session=${token}; another=2` },
       });
-      expect(await requireSession(request, env)).toEqual({ accountId: "acc-2" });
+      expect(await requireSession(request, env)).toEqual({ accountId: "acc-2", iat: expect.any(Number) });
     });
   });
 
@@ -83,7 +85,7 @@ describe("session", () => {
     it("a cookie issued before the revocation stops working, while its signature stays valid", async () => {
       const t = Date.now();
       const token = await signSession(env, "acc-3");
-      expect(await requireSession(withCookie(token), env)).toEqual({ accountId: "acc-3" });
+      expect(await requireSession(withCookie(token), env)).toEqual({ accountId: "acc-3", iat: expect.any(Number) });
 
       vi.setSystemTime(t + 1000);
       await revokeSessions(env.DB, "acc-3");
@@ -95,7 +97,7 @@ describe("session", () => {
 
     it("does not touch any other account", async () => {
       const other = await signSession(env, "acc-1");
-      expect(await requireSession(withCookie(other), env)).toEqual({ accountId: "acc-1" });
+      expect(await requireSession(withCookie(other), env)).toEqual({ accountId: "acc-1", iat: expect.any(Number) });
     });
 
     it("a cookie issued after the revocation works — logging back in is not blocked", async () => {
@@ -103,7 +105,7 @@ describe("session", () => {
       await revokeSessions(env.DB, "acc-3");
       vi.setSystemTime(t + 1000);
       const fresh = await signSession(env, "acc-3");
-      expect(await requireSession(withCookie(fresh), env)).toEqual({ accountId: "acc-3" });
+      expect(await requireSession(withCookie(fresh), env)).toEqual({ accountId: "acc-3", iat: expect.any(Number) });
     });
 
     it("a cookie for an account that no longer exists is refused", async () => {

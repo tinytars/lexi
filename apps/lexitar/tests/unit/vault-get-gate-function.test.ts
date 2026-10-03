@@ -4,6 +4,8 @@ import { createAccount } from "../../functions/_lib/identity-accounts";
 import { putPublicKey } from "../../functions/_lib/identity-credentials";
 import { createVault, putEnvelope } from "../../functions/_lib/identity-vault";
 import { generateAccountKeypair, generateDEK, wrapDEKForPublicKey } from "@tinytars/vault/crypto";
+import { listAccessEventsForSubject } from "../../functions/_lib/identity-audit";
+import { ORG_ACCOUNT_ID } from "../../functions/_lib/org";
 import { useWorkerd } from "../support/miniflare";
 import { SESSION_SECRET, cookieFor } from "../support/session";
 import { hd1Blob } from "../support/blobs";
@@ -38,6 +40,12 @@ beforeAll(async () => {
 
   strangerId = crypto.randomUUID();
   await createAccount(w.db, { id: strangerId, displayName: "Stranger" });
+
+  // The ops-bearer read files its audit row against the org principal, and `actor_account_id` is a
+  // foreign key. Production has this row from migrations/0002_seed_migrated_accounts.sql; the harness
+  // skips seed files (tests/support/migrate.ts:4), so the fixture supplies it — without it every
+  // bearer read here would 503 on a constraint, which is a fixture gap masquerading as a bug.
+  await createAccount(w.db, { id: ORG_ACCOUNT_ID, displayName: "Org Operational Key" });
 });
 
 const get = (cookie?: string) =>
@@ -71,5 +79,29 @@ describe("GET /api/vault/:id — §G session/envelope gate", () => {
       params: { id: SLUG },
     });
     expect(res.status).toBe(200);
+  });
+
+  // The bearer is a deploy-held secret, not an account, so this is the one read path with no principal
+  // to name — and the one that would otherwise be invisible on the patient's own access screen.
+  it("files the ops-bearer read on the patient's log, with the org as the actor", async () => {
+    // Counted as a delta, not an absolute: every bearer read in this file files its own row, which is
+    // the per-read granularity the log exists for.
+    const opsRows = async () =>
+      (await listAccessEventsForSubject(w.db, patientId)).filter((e) => e.action === "vault_blob_read_ops");
+    const before = await opsRows();
+
+    await onRequestGet({
+      request: new Request(`http://x/api/vault/${SLUG}`, { headers: { authorization: "Bearer t" } }),
+      env: makeEnv() as any,
+      params: { id: SLUG },
+    });
+
+    const after = await opsRows();
+    expect(after).toHaveLength(before.length + 1);
+    expect(after[after.length - 1]).toMatchObject({
+      actorAccountId: ORG_ACCOUNT_ID,
+      subjectAccountId: patientId,
+      meta: { via: "vault_token" },
+    });
   });
 });

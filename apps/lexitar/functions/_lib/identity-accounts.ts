@@ -36,3 +36,15 @@ export function tombstoneAccount(db: D1Database, accountId: string, at: string) 
 export function markEmailChanged(db: D1Database, accountId: string, at: string) {
   return new D1AccountStore(db).markEmailChanged(accountId, at);
 }
+
+// The one account field this app writes itself rather than through D1AccountStore: the 16+
+// attestation (migrations/0016) is LexiTar's own DPG obligation, not a vault-package concern, and
+// routing it through @tinytars/vault would mean an npm release for a column only this app has.
+// Idempotent on purpose — the browser attests on every first-record creation and the first stamp is
+// the one that matters.
+export async function markAgeAttested(db: D1Database, accountId: string, at: string): Promise<void> {
+  await db
+    .prepare("UPDATE accounts SET age_attested_at = ? WHERE id = ? AND age_attested_at IS NULL")
+    .bind(at, accountId)
+    .run();
+}

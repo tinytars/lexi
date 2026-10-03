@@ -1,15 +1,16 @@
 // Two patients and two clinicians throughout: with one of each, a missing WHERE clause looks like a correct one.
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import type { LinkStatus, ProviderKind } from "../../functions/_lib/identity-types";
 import { createAccount, sessionsValidFrom } from "../../functions/_lib/identity-accounts";
 import { getCredential, putCredential, putPublicKey } from "../../functions/_lib/identity-credentials";
 import { createVault, getEnvelope, getEnvelopeRow, getVault, putEnvelope } from "../../functions/_lib/identity-vault";
 import { createProviderLink } from "../../functions/_lib/identity-providers";
-import { listAccessEventsForSubject } from "../../functions/_lib/identity-audit";
+import { listAccessEventsForSubject, listRecentAccessEventsForSubject } from "../../functions/_lib/identity-audit";
 import { onRequestPost as issue } from "../../functions/api/recovery/grant";
 import { onRequestPost as redeem } from "../../functions/api/auth/recovery/grant-redeem";
 import { onRequestGet as grantSalt } from "../../functions/api/auth/recovery/grant-salt";
 import { getLiveGrant, MAX_ATTEMPTS, GRANT_TTL_MS } from "../../functions/_lib/recovery";
+import { FRESH_SESSION_SECONDS } from "../../functions/_lib/step-up";
 import {
   generateAccountKeypair, generateDEK, wrapDEKForPublicKey, unwrapDEKWithPrivateKey,
   wrapDEKWithKek, unwrapDEKWithKek, deriveKekFromPassword, deriveAuthHash, wrapPrivateKey,
@@ -160,6 +161,67 @@ describe("issuing", () => {
     // Ignored, not honoured: `delivery` is not a parameter, so the grant is still a spoken one.
     expect(res.status).toBe(200);
     expect(await getLiveGrant(w.db, p.id)).toBeTruthy();
+  });
+});
+
+describe("freshness — a stored credential is not enough on its own", () => {
+  /**
+   * A cookie minted `ageSeconds` ago, by moving the clock rather than hand-building the payload: a
+   * hand-built one would keep passing after the signer changed shape, which is the one thing this gate
+   * reads.
+   */
+  async function cookieMintedAgo(accountId: string, ageSeconds: number): Promise<string> {
+    const past = Date.now() - ageSeconds * 1000;
+    const clock = vi.spyOn(Date, "now").mockReturnValue(past);
+    try {
+      return await cookieFor(accountId);
+    } finally {
+      clock.mockRestore();
+    }
+  }
+
+  const issueWith = async (cookie: string, body: unknown) =>
+    issue({
+      request: new Request("http://x/api/recovery/grant", { method: "POST", body: JSON.stringify(body), headers: { cookie } }),
+      env: env(),
+    } as any);
+
+  it("refuses a cookie older than the window, which is what a captured one is", async () => {
+    const p = await makePatient("p@example.com");
+    const doc = await makeClinician();
+    await link(p, doc);
+    const res = await issueWith(await cookieMintedAgo(doc.id, FRESH_SESSION_SECONDS + 60), await grantBody(p.id, p.dek));
+    expect(res.status).toBe(401);
+    expect((await res.json() as any).errorCode).toBe("stale_session");
+    expect(await getLiveGrant(w.db, p.id)).toBeNull();
+  });
+
+  it("refuses a stale cookie before asking whether its holder is permitted at all", async () => {
+    // Ordering, and it is load-bearing: staleness is a fact about the cookie, so a support agent
+    // presenting an old one must read as stale rather than as not permitted — a 403 here would tell
+    // whoever captured that cookie that the cookie itself is still good.
+    const p = await makePatient("p@example.com");
+    const agent = await makeClinician("support");
+    await link(p, agent, { role: "primary" });
+    const res = await issueWith(await cookieMintedAgo(agent.id, FRESH_SESSION_SECONDS + 60), await grantBody(p.id, p.dek));
+    expect((await res.json() as any).errorCode).toBe("stale_session");
+  });
+
+  it("records how fresh the re-authentication actually was", async () => {
+    const p = await makePatient("p@example.com");
+    const doc = await makeClinician();
+    await link(p, doc);
+    expect((await issueWith(await cookieMintedAgo(doc.id, 42), await grantBody(p.id, p.dek))).status).toBe(200);
+    const [row] = await listRecentAccessEventsForSubject(w.db, p.id, 1);
+    expect(row.action).toBe("recovery.grant_issued");
+    // A range, because real crypto and real writes run between minting the cookie and reading it. The
+    // bounds are literals rather than the window constant: a range expressed in terms of the thing
+    // under test widens with it, and this assertion's job is to catch a row that records "the gate
+    // passed" instead of by how much — 0 rather than 42.
+    expect(row.meta).toMatchObject({ sessionAgeSeconds: expect.any(Number) });
+    const age = (row.meta as { sessionAgeSeconds: number }).sessionAgeSeconds;
+    expect(age).toBeGreaterThanOrEqual(42);
+    expect(age).toBeLessThan(90);
   });
 });
 

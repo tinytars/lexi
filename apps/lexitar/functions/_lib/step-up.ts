@@ -24,10 +24,37 @@ import type { D1Database } from "./identity-types";
 import { getCredential } from "./identity-credentials";
 import { sha256Base64Url, timingSafeEqualStr } from "./verifier";
 
+// ---------------------------------------------------------------------------------------------------
+// FRESHNESS, which is the other way to prove the person behind the cookie, and the only one that works
+// on every account here.
+//
+// `stepUpForMethodChange` above can only challenge a PASSWORD, and says so. The account this estate
+// actually needs to protect signs in with Google and a passkey and has no password, so a password
+// challenge on it returns `{ok: true, challenged: false}` — it allows the request and proves nothing.
+// For a route that converts read access into account control, that is not a gate.
+//
+// Requiring a session minted within the last few minutes is. A captured 30-day cookie cannot be made
+// fresh: minting one needs the password, the passkey or the Google identity, whichever the account
+// actually has. So this holds for every login method, including the two a password challenge cannot
+// reach, and it needs nothing new from the browser — the client already handles a 401 by sending the
+// person back to sign in.
 
+/** Five minutes: long enough to sign in and press the button, short enough that a stolen cookie is stale. */
+export const FRESH_SESSION_SECONDS = 300;
 
+export interface FreshSessionResult {
+  ok: boolean;
+  /** How old the cookie was, recorded in the audit row so "how fresh was fresh" is answerable later. */
+  ageSeconds: number;
+}
 
-/** Length-guarded constant-time compare. A plain `===` on a stored verifier leaks by timing. */
+/** `iat` is seconds since the epoch, as `signValue` writes it. */
+export function requireFreshSession(iat: number, now: Date = new Date()): FreshSessionResult {
+  const ageSeconds = Math.floor(now.getTime() / 1000) - iat;
+  // A negative age is a clock skew between the signer and this isolate, not a fresh session: clamping
+  // to 0 would let a cookie dated in the future pass forever.
+  return { ok: ageSeconds >= 0 && ageSeconds <= FRESH_SESSION_SECONDS, ageSeconds };
+}
 
 export type StepUpResult =
   | { ok: true; challenged: boolean }

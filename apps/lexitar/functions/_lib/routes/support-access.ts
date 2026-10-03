@@ -3,6 +3,7 @@ import type { Account, AuditStore, Envelope, EnvelopeStore, ProviderLink, Provid
 import { can, roleOf } from "../capabilities";
 import { logRequest } from "../log";
 import { json } from "../http";
+import type { SupportAccessNotice } from "./support-notice";
 
 // W44 P4b — the audited moment a support agent ENTERS a patient's account. Verifies an active,
 // unexpired support link + envelope, records support_access_opened, and returns the envelope for
@@ -20,6 +21,9 @@ export interface SupportAccessDeps {
   /** App-policy read (provider-link + org-recovery aware) — see identity-vault.ts's getEnvelope. */
   getEnvelope(vaultId: string, principalAccountId: string): Promise<Envelope | null>;
   insertAccessEvent(e: { actorAccountId: string; subjectAccountId: string; vaultId?: string | null; action: string; consentRef?: string | null; meta?: unknown }): Promise<unknown>;
+  /** Opens already recorded against this consent window — 0 means this one is the first. */
+  countOpensInWindow(subjectAccountId: string, consentRef: string): Promise<number>;
+  notify: SupportAccessNotice;
   links: ProviderLinkStore;
   audit: AuditStore;
   envelopes: EnvelopeStore;
@@ -103,6 +107,10 @@ export async function supportAccessHandler(request: Request, deps: SupportAccess
   }
 
   const acct = await deps.getAccount(ownerAccountId);
+  // Counted BEFORE the insert, so "first open of this window" is asked of the rows that existed before
+  // this one. A grant with no consent ref cannot be windowed, so it is not mailed — the audit row still
+  // records the open, and every grant this route can reach is stamped by grantBreakGlass.
+  const firstOpen = link.consentRef ? (await deps.countOpensInWindow(ownerAccountId, link.consentRef)) === 0 : false;
   await deps.insertAccessEvent({
     actorAccountId: session.accountId,
     subjectAccountId: ownerAccountId,
@@ -110,6 +118,9 @@ export async function supportAccessHandler(request: Request, deps: SupportAccess
     action: "support_access_opened",
     consentRef: link.consentRef,
   });
+  // Once per window, not once per open: an unattended export runs daily for a week against a grant the
+  // patient approved once, and a mail per run trains them to ignore the one that matters.
+  if (firstOpen) await deps.notify({ ownerAccountId, event: "opened", expiresAt: link.expiresAt });
 
   log(200);
   return json(200, {

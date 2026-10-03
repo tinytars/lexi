@@ -1,10 +1,13 @@
 <script lang="ts">
-  import { MEDICAL_DISCLAIMER, PRIVACY_STATEMENT, FOUNDATION } from "./brand";
+  import { MEDICAL_DISCLAIMER, PRIVACY_STATEMENT, MODEL_DISCLOSURE, FOUNDATION } from "./brand";
 </script>
 
 <section class="disclaimer" aria-label="Medical disclaimer and privacy">
   <div class="disclaimer-box">
     <p><strong>Medical Disclaimer:</strong> {MEDICAL_DISCLAIMER}</p>
+  </div>
+  <div class="disclaimer-box">
+    <p><strong>What leaves this device:</strong> {MODEL_DISCLOSURE}</p>
   </div>
   <div class="disclaimer-box">
     <p>

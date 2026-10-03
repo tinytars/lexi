@@ -17,6 +17,7 @@ import {
 } from "@tinytars/vault/crypto";
 import { useWorkerd } from "../support/miniflare";
 import { SESSION_SECRET } from "../support/session";
+import { callerHeaders } from "../support/caller";
 
 const w = useWorkerd();
 let orgPublicKeyJwk: JsonWebKey;
@@ -89,7 +90,7 @@ async function buildSignupBody(email: string, displayName: string, password: str
 function postJson(url: string, body: unknown): Request {
   return new Request(url, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...callerHeaders() },
     body: JSON.stringify(body),
   });
 }
@@ -182,7 +183,7 @@ describe("POST /api/auth/password/login", () => {
   // A 404-vs-200 salt lookup would undo login's uniform 401 by answering "is this person a patient here".
   describe("the salt lookup in front of login gives nothing away", () => {
     const saltFor = (env: ReturnType<typeof makeEnv>, email: string) =>
-      pwSalt({ request: new Request(`http://x/api/auth/password/salt?email=${encodeURIComponent(email)}`), env });
+      pwSalt({ request: new Request(`http://x/api/auth/password/salt?email=${encodeURIComponent(email)}`, { headers: callerHeaders() }), env });
 
     it("answers a registered address and an unknown one indistinguishably", async () => {
       const env = makeEnv(new Map());

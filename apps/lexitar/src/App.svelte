@@ -3,10 +3,12 @@
   import { ALL_GROUP_KEY } from "./lib/sidebar-labels";
   import type { Vault, Client, NoteAttachment } from "./lib/types";
   import type { UnitSystem } from "./lib/units";
-  import { DEFAULT_PERSONA, PERSONAS, type PersonaId } from "./lib/personas";
+  import { PERSONAS } from "./lib/personas";
   import { loadPersona, savePersona, personaTake } from "./lib/persona-client";
+  import { createPersonaPreference } from "./lib/persona-preference.svelte";
   import { configureRetell } from "@tinytars/frame/retell-registry.svelte";
   import { saveVaultV2, vaultSink, rememberVaultEtag, VaultConflictError, setVaultConflictHandler } from "@tinytars/vault/vault-sink";
+  import { ageRefusal, attestAge } from "./lib/age-limit";
   import { getMyAccount, loginPassword, loginPasskey, signupPassword, signupPasskey, bootstrapGoogleSession } from "@tinytars/vault/auth-client";
   import { updateProfile, getVaultPrincipals, getAccessEvents, type AccessEventRow } from "@tinytars/vault/auth-recovery";
   import { putAccountKey, getAccountKey, clearAccountKey } from "@tinytars/vault/key-store";
@@ -20,15 +22,17 @@
   import { createRecoveryController } from "@tinytars/frame/recovery-controller.svelte";
   import { createSupportAccess } from "@tinytars/frame/support-access.svelte";
   import { createAccountMethods, type RemovableMethod } from "@tinytars/frame/account-methods.svelte";
+  import { eraseMyAccount, erasureSummary, ERASURE_REACH } from "./lib/erase-account";
   import { createRosterSession, RESUME_MARKER, type RosterPatient } from "@tinytars/frame/roster-session.svelte";
   import { ensureOrgRecoveryEnvelope } from "@tinytars/vault/org-recovery";
   import { fetchPersonalizedRange } from "./lib/ranges-client";
   import { b64ToBytes } from "@tinytars/vault/base64";
   import { AI_ERROR_MESSAGES, describeAiError } from "./lib/ai-error";
   import { aiAvailability } from "./lib/ai-availability.svelte";
+  import { reportCaughtError } from "./lib/error-reporter";
   import { dagNode } from "./lib/finding-dag";
   import { tick } from "svelte";
-  import { TABS, DEFAULT_TAB, type Tab } from "./lib/nav";
+  import { TABS, DEFAULT_TAB, type Tab, type SidebarNavRow } from "./lib/nav";
   import { bootFromLocation } from "./lib/boot-location";
   import { parseHash, toHash, SECTION_TAB, type Permalink } from "./lib/permalink";
   import { flashAnchor, reportAnchor } from "./lib/anchor";
@@ -73,6 +77,8 @@
   import { neuralSpeech } from "./lib/speech-engine";
   import LoginScreen from "@tinytars/frame/LoginScreen.svelte";
   import RecoveryCodeDialog from "./lib/RecoveryCodeDialog.svelte";
+  import ReportDialog from "./lib/ReportDialog.svelte";
+  import type { ReportTarget } from "./lib/safety-report";
   import AttachPicker from "@tinytars/frame/AttachPicker.svelte";
   import FindingDag from "./lib/FindingDag.svelte";
   import VisibilitySettings from "@tinytars/frame/VisibilitySettings.svelte";
@@ -87,7 +93,7 @@
   import type { RefreshStage } from "./lib/finding-refresh";
   import { refreshMarkerGroups } from "./lib/marker-groups-client";
   import { timeAgo } from "@tinytars/frame/time-ago";
-  import { PRODUCT_NAME, FOUNDATION } from "./lib/brand";
+  import { PRODUCT_NAME, FOUNDATION, MODEL_DISCLOSURE } from "./lib/brand";
   import OrgFooter from "@tinytars/frame/OrgFooter.svelte";
   import Disclaimer from "./lib/Disclaimer.svelte";
   import { loadSidebarMode, modeForSection } from "./lib/sidebar-mode";
@@ -224,6 +230,10 @@
       await ensureOrgRecoveryEnvelope(session);
       // W47 — load account info so the top-right account menu can show the email + verification state.
       try { await refreshAccount(); } catch { /* menu falls back to no email */ }
+      // A pending request to read this record used to load only when the Access panel was opened, so
+      // the owner had to already suspect there was one. Load it on entry instead — the sidebar badge
+      // below is the only thing that tells them, and it cannot count what was never fetched.
+      await vaultAccess.refreshQuietly();
       // W44 P4c — a support grant expired while offline; complete the deferred DEK rotation now.
       if (rotationPending) { try { await vaultAccess.rotateVaultKey(); } catch (e) { error = (e as Error).message; } }
     },
@@ -253,6 +263,14 @@
     session,
     saveVault: (v, id, dek) => saveVaultV2(v, id, dek, vaultSink),
     reportError: (m) => (error = m),
+    // Not the shared error line: this fires on a boot path, and an owner has nothing to do about a
+    // list that would not load. It goes to the tracker instead, under its own name so a request the
+    // owner was never shown separates from every other handled failure.
+    reportLoadFailure: (e) => {
+      const err = e instanceof Error ? e : new Error(String(e));
+      err.name = "AccessRequestLoadFailed";
+      reportCaughtError(err);
+    },
   });
   const recovery = createRecoveryController<RosterPatient>({
     session,
@@ -398,6 +416,19 @@
   // stays here because the vault, its key and its R2 id are App's; what left is the queueing.
   const vaultSave = createVaultSave();
 
+  // 9B.3/9B.4/9B.6 and 9C.2 — which report the dialog is open for, or null. The dialog owns its own
+  // busy/error state; App only says what is being reported.
+  let reportTarget = $state<ReportTarget | null>(null);
+
+  // 9A / DPGA 7.5 — the self-erasure the route has always allowed and nothing called. Two steps
+  // (arm, then echo your own email) matching the "Remove recovery key" pattern beside it, because
+  // this one cannot be undone by anyone, including support.
+  let eraseArmed = $state(false);
+  let eraseEmail = $state("");
+  let eraseBusy = $state(false);
+  let eraseError = $state<string | null>(null);
+  let eraseResult = $state<string | null>(null);
+
   // W70 — the app had ZERO live regions: `aria-live`, `role="alert"`, `role="status"` and `aria-busy`
   // returned no matches across App.svelte and all 62 lib components. Every error was a silently
   // inserted <p> and every "✓ saved" passed unannounced, so a screen-reader user who mistyped their
@@ -407,7 +438,7 @@
   // that would be the same fact written in eight places, which is how they drift apart.
 
   const announcedError = $derived(
-    vaultSave.error ?? chatSession.saveError ?? error ?? vaultAccess.error ?? account.error ?? googleError ?? refreshError ?? recovery.issueError ??
+    vaultSave.error ?? chatSession.saveError ?? error ?? vaultAccess.error ?? account.error ?? googleError ?? refreshError ?? recovery.issueError ?? eraseError ??
       (aiAvailability.outOfCredit ? AI_ERROR_MESSAGES.insufficient_credit : ""),
   );
 
@@ -436,6 +467,10 @@
       if (document.visibilityState !== "visible") return;
       aiAvailability.rearm();
       corpusWarmer.wake();
+      // A request to read this record can be filed while the tab sits open, and the load that feeds
+      // the sidebar badge used to run once per entry — so the owner saw it only after a reload. This
+      // is also what retries a load that failed on entry.
+      if (vault) void vaultAccess.refreshQuietly();
     });
     if (boot.cleanUrl) window.history.replaceState({}, "", boot.cleanUrl);
     // W45 — deferred so the rest of this instance script (the const helpers it calls) has initialized.
@@ -551,15 +586,12 @@
   // all consumers (Markers/Chat/Export) read it from here.
   let unitSystem = $state<UnitSystem>("imperial");
   // W84 — the persona that voices chat answers and read-aloud; account-level like unitSystem.
-  let persona = $state<PersonaId>(DEFAULT_PERSONA);
-  async function setPersona(next: PersonaId) {
-    persona = next;
-    try {
-      await savePersona(next);
-    } catch (e) {
-      error = (e as Error).message;
-    }
-  }
+  const personaPreference = createPersonaPreference({
+    load: loadPersona,
+    save: savePersona,
+    reportError: (m) => (error = m),
+  });
+  const persona = $derived(personaPreference.current);
   // W84 — with Cody selected, any assistant bubble offers "Cody's take" on Lexi's words.
   $effect(() => {
     const p = persona;
@@ -567,8 +599,7 @@
   });
   // Every login path re-reads the account; the persona rides along so no path can forget it.
   async function refreshAccount() {
-    const [, p] = await Promise.all([account.refresh(), loadPersona()]);
-    persona = p;
+    await Promise.all([account.refresh(), personaPreference.hydrate()]);
   }
   async function setUnitSystem(next: UnitSystem) {
     unitSystem = next; // optimistic — the toggle reflects the click immediately
@@ -805,6 +836,24 @@
     refreshController?.abort();
   }
 
+  async function eraseAccount() {
+    eraseBusy = true;
+    eraseError = null;
+    try {
+      const summary = erasureSummary(await eraseMyAccount(eraseEmail));
+      // The session is already revoked server-side; drop the local record so nothing decrypted
+      // outlives the account on this screen. The summary stays visible on the lock screen.
+      // Reported only after signOut has torn the panel down: set before it, the banner and the
+      // still-mounted confirm field overlapped, and the lock screen then held two email inputs.
+      await signOut();
+      eraseResult = summary;
+    } catch (err) {
+      eraseError = (err as Error).message;
+    } finally {
+      eraseBusy = false;
+    }
+  }
+
   async function signOut() {
     try { await fetch("/api/auth/logout", { method: "POST" }); } catch { /* best-effort; clear locally regardless */ }
     try { await clearAccountKey(); } catch { /* W49 — best-effort; drop the persisted resume key */ }
@@ -823,6 +872,11 @@
     signupMode = false;
     email = "";
     password = "";
+    // Component-local, so nothing else clears it: left armed, the next sign-in on this page load
+    // reopened Account already primed to delete, with the previous account's address in the field.
+    eraseArmed = false;
+    eraseEmail = "";
+    eraseError = null;
     refreshing = false;
     refreshError = null;
     error = null;
@@ -973,9 +1027,15 @@
     const { id } = await getMyAccount();
     const clientId = normalizeClientId(id);
     // W47 — no name asked; use a neutral label (editable later in Personalization). Birth year → a
-    // Jan-1 dob string, which every dob consumer (ageYears via new Date) reads at year precision; a
-    // skipped year is an empty dob (age renders as null, no clinical default).
+    // Jan-1 dob string, which every dob consumer (ageYears via new Date) reads at year precision.
     const dob = birthYear ? `${birthYear}-01-01` : "";
+    // 9C.3 — the 16+ limit, enforced here because this is the last place the birth year exists in
+    // the clear. Onboarding's Skip omits the year entirely, which is why an empty dob is refused
+    // too: no year means nothing to check, and that is the first thing an assessor tries. The throw
+    // lands in Onboarding.svelte's own error paragraph.
+    const refusal = ageRefusal(dob);
+    if (refusal) throw new Error(refusal);
+    await attestAge();
     const client: Client = { displayName: "My records", dob, gender, watchlist: [], results: [] };
     if (!(await persistClient(clientId, client))) return;
     selectedClientId = clientId;
@@ -1072,6 +1132,13 @@
   let importOpen = $state(false);
   let dagOpen = $state(false); // provider (roster) view — inspect the Finding DAG structure
   let dagModalOpen = $state(false); // patient view — the same DAG, coloured by staleness for this patient
+  // The clinician roster's sidebar nav. Two destinations rather than one relabelling toggle, matching
+  // the record shell's idiom — and it gives the DAG view a way back that does not depend on one button
+  // changing its own meaning.
+  const rosterNavRows = $derived<SidebarNavRow[]>([
+    { key: "patients", label: "Patients", icon: "👥", title: "Your roster — select a patient to open their record", active: !dagOpen, onSelect: () => (dagOpen = false) },
+    { key: "dag", label: "Translation DAG", icon: "🕸️", title: "Inspect the Translation's reasoning graph", active: dagOpen, onSelect: () => (dagOpen = true) },
+  ]);
 
   // M78 Phase 14 — a top-right kebab mirroring whatever actions the sidebar shows for the active
   // tab/section, via the same Add/New/Import registry (sidebarActionFor now covers Markers/Reports'
@@ -1105,6 +1172,119 @@
   <OrgFooter org={FOUNDATION} />
 {/snippet}
 
+<!-- The one Sidebar call site, rendered by both shells: the record shell passes null and keeps its
+     own section nav, the roster passes its rows. A second call site would duplicate 45 lines of
+     wiring and lose the svelte-check that catches a dropped prop.
+     accessRequests is gated on `vault` because the badge opens a Modal mounted only in the record
+     shell — on the roster it would be a dead button, and the roster already lists the same requests
+     inline (.access-pending). -->
+{#snippet appSidebar(navRows: SidebarNavRow[] | null)}
+  <Sidebar
+    {navRows}
+    activeTab={activeTab}
+    client={currentClient}
+    providerSession={roster.isProvider}
+    active={section}
+    {activeGroup}
+    bind:expanded={sidebarExpanded}
+    bind:mobileOpen={sidebarMobileOpen}
+    onNavigate={navigate}
+    onAction={triggerSidebarAction}
+    onSelectGroup={(key) => { activeGroup = key; activeLeaf = null; if (section) saveLastGroup(selectedClientId, section, key); }}
+    onSelectLeafKey={(key) => (activeLeaf = key)}
+    threads={chatSession.threads}
+    bind:renamingId={chatSession.renamingId}
+    bind:renameText={chatSession.renameText}
+    onSelectThread={chatSession.selectChatThread}
+    onTogglePinThread={chatSession.toggleChatThreadPin} onSidebarTogglePin={sidebarTogglePin} onSidebarRename={sidebarRename} onSidebarDelete={sidebarDelete} sidebarLabelOf={sidebarLabelOf}
+    onDeleteThread={chatSession.deleteChatThread}
+    onCommitRename={chatSession.commitChatRename}
+    {searchOpen}
+    onOpenSearch={() => { searchOpen = true; searchFocusToken++; }}
+    onFreshSearch={() => { searchQuery = ""; searchOpen = true; searchFocusToken++; }}
+    bind:windowYears
+    productName={PRODUCT_NAME}
+    {vault}
+    {selectedClientId}
+    {providerToken}
+    {refreshing}
+    {refreshProgress}
+    {refreshStage}
+    {refreshError}
+    onCancelRefresh={cancelRefresh}
+    onDismissRefreshError={() => (refreshError = null)}
+    saveError={vaultSave.error}
+    onRetrySave={() => vaultSave.retry()}
+    findingStale={leafRegen.stale}
+    onOpenDag={() => (dagModalOpen = true)}
+    aiOutOfCredit={aiAvailability.outOfCredit}
+    billingUrl={providerFor("chat").billingUrl}
+    accessRequests={vault ? vaultAccess.pendingSupport.length : 0}
+    onOpenAccess={() => vaultAccess.openPanel()}
+    {unitSystem}
+    onSetUnitSystem={setUnitSystem}
+    {persona}
+    onSetPersona={personaPreference.choose}
+  >
+    {#snippet accountArea()}
+      {#if roster.isProvider && !vault}
+        <AccountMenu
+          email={account.info?.email ?? null}
+          emailConfirmed={account.info?.emailConfirmed ?? true}
+          onAccount={() => account.openPanel()}
+          onResendVerification={() => account.resendVerification()}
+          onSignOut={signOut}
+          onAbout={() => (aboutOpen = true)}
+        />
+      {:else if roster.isProvider}
+        <AccountMenu
+          email={roster.enteredPatient?.email ?? roster.enteredPatient?.displayName ?? null}
+          providerAccess
+          subjectFallback="patient"
+          viewingSubjectLabel="Viewing patient"
+          backToRosterLabel="← Back to roster"
+          translateBusyTitle="The Translation is being generated — this takes a few minutes"
+          onBackToRoster={() => roster.backToRoster()}
+          onSignOut={signOut}
+          onTranslate={currentClient && providerToken ? doRefresh : undefined}
+          translating={refreshing}
+          translateTitle={currentClient
+            ? [
+                currentClient.finding?.generatedAt
+                  ? `Last translated ${timeAgo(currentClient.finding.generatedAt, Date.now())} · Regenerate this patient's Translation (provider only)`
+                  : `Regenerate this patient's Translation (provider only)`,
+                // W62 — the provider triggering a regeneration is told, at the moment of triggering,
+                // that starred items will steer it. The sidebar notice says the same thing to
+                // whoever does the starring; between them a pin is never silent.
+                pinnedQueryCount > 0
+                  ? `${pinnedQueryCount} starred item${pinnedQueryCount === 1 ? "" : "s"} will be passed as areas of query — topics to look into, never as evidence`
+                  : null,
+              ].filter(Boolean).join(" · ")
+            : undefined}
+          onDiagnostics={providerToken ? () => (diagnosticsOpen = true) : undefined}
+          onVisibility={currentClient ? () => (visibilityOpen = true) : undefined}
+          onDag={currentClient?.finding ? () => (dagModalOpen = true) : undefined}
+          onExport={currentClient ? () => (exportOpen = true) : undefined}
+          onAbout={() => (aboutOpen = true)}
+        />
+      {:else}
+        <AccountMenu
+          email={account.info?.email ?? null}
+          emailConfirmed={account.info?.emailConfirmed ?? true}
+          onAccount={() => account.openPanel()}
+          onAccess={() => vaultAccess.openPanel()}
+          accessLabel="Who can access my record"
+          onResendVerification={() => account.resendVerification()}
+          onSignOut={signOut}
+          onExport={currentClient ? () => (exportOpen = true) : undefined}
+          onAbout={() => (aboutOpen = true)}
+        />
+      {/if}
+    {/snippet}
+  </Sidebar>
+{/snippet}
+
+
 <div class="app-shell">
 <!-- Visually hidden, deliberately: these duplicate messages the page already shows, and exist only so
      assistive tech is told about them. assertive for errors (they interrupt), polite for the save
@@ -1112,7 +1292,9 @@
 <p class="sr-only" role="alert">{announcedError}</p>
 <p class="sr-only" role="status" aria-live="polite">{vaultSave.saved ? "Saved" : ""}</p>
 <SpeechControls />
-<div class="app-body">
+<!-- --shell-top is read by Sidebar's sticky `height: calc(100vh - var(--shell-top))`, and it
+     invalidates silently if absent. Declared here, not on .shell-row, so both shells share one source. -->
+<div class="app-body" style="--shell-top: {shellTop}px">
 <!-- M78 Phase 15 — measures whatever renders in this banner area (0 when nothing is showing),
      now that there's no header to measure instead. -->
 <div bind:clientHeight={headerH}>
@@ -1129,6 +1311,11 @@
 <!-- W48 — recovery is no longer forced at signup; nudge (dismissible) until the account has a recovery code. -->
 {#if SHOW_RECOVERY_NUDGE && account.info && !account.hasRecovery && !recovery.nudgeDismissed}
   <div class="verify-banner warn recovery-nudge">Set up account recovery so you can get back in if you lose your sign-in.<button class="verify-link" onclick={() => { recovery.nudgeDismissed = true; account.openPanel(); }}>Set up</button><button class="verify-x" onclick={() => (recovery.nudgeDismissed = true)} aria-label="Dismiss">✕</button></div>
+{/if}
+<!-- The erasure report, shown here because signing out unmounts the Account modal it was asked for
+     in. The account is gone by now, so this banner is the only place the count is ever stated. -->
+{#if eraseResult}
+  <div class="verify-banner erase-report">{eraseResult}<button class="verify-x" onclick={() => (eraseResult = null)} aria-label="Dismiss">✕</button></div>
 {/if}
 </div>
 {#if roster.resuming}
@@ -1226,18 +1413,13 @@
   </main>
   {@render appChrome()}
 {:else if roster.isProvider && !vault}
-  <header class="app-header">
-    <div class="brand">{PRODUCT_NAME}</div>
-    <div class="header-spacer"></div>
-    <button class="header-link" onclick={() => (dagOpen = !dagOpen)}>{dagOpen ? "← Back to clients" : "Translation DAG"}</button>
-    <AccountMenu
-      email={account.info?.email ?? null}
-      emailConfirmed={account.info?.emailConfirmed ?? true}
-      onAccount={() => account.openPanel()}
-      onResendVerification={() => account.resendVerification()}
-      onSignOut={signOut}
-    />
-  </header>
+  <!-- The roster used to be a full-width header over a centred column while the record shell next to it
+       was a persistent left bar — the same product in two layouts. It now renders the same Sidebar, with
+       its own rows and the account menu in the same lower-left corner. -->
+  <button class="sidebar-toggle" aria-label="Menu" onclick={() => (sidebarMobileOpen = !sidebarMobileOpen)}>☰</button>
+  <div class="shell-row">
+  {@render appSidebar(rosterNavRows)}
+  <div class="page-container">
   {#if dagOpen}
     <main class="roster wide"><FindingDag /></main>
   {:else}
@@ -1300,9 +1482,12 @@
     </main>
   {/if}
   {@render appChrome()}
+  </div>
+  </div>
 {:else if vault && !roster.isProvider && Object.keys(vault.clients).length === 0}
   <Onboarding
     productName={PRODUCT_NAME}
+    subheading="Welcome. Your birth year is required — this service is for people aged 16 and over — and your sex helps tailor your results."
     fields={[
       { key: "birthYear", kind: "number", label: "Birth year", placeholder: "e.g. 1980", min: 1900, max: new Date().getFullYear(), invalidMessage: "Enter a valid birth year." },
       { key: "gender", kind: "select", label: "Sex", options: [{ value: "male", label: "Male" }, { value: "female", label: "Female" }] },
@@ -1447,7 +1632,12 @@
             {#each vaultAccess.activeAccess as p (p.linkId)}
               <li>
                 <span class="access-who"><strong>{p.displayName}</strong> <span class="access-kind">{p.kind}{#if p.kind === "support" && p.expiresAt} · until {new Date(p.expiresAt).toLocaleString()}{/if}</span></span>
-                <button class="access-revoke" disabled={vaultAccess.busy} onclick={() => vaultAccess.revoke(p)}>Revoke</button>
+                <span class="access-approve-actions">
+                  <!-- 9C.2 — reporting is the thing revoking is not: revoke ends their access to THIS
+                       record, and says nothing to anyone about why. -->
+                  <button class="access-report" onclick={() => (reportTarget = { reason: "abusive-account", subject: p.linkId, feature: "provider-access" })}>Report</button>
+                  <button class="access-revoke" disabled={vaultAccess.busy} onclick={() => vaultAccess.revoke(p)}>Revoke</button>
+                </span>
               </li>
             {/each}
           </ul>
@@ -1460,98 +1650,8 @@
       </div>
     </Modal>
   {/if}
-  <div class="shell-row" style="--shell-top: {shellTop}px">
-  <Sidebar
-    activeTab={activeTab}
-    client={currentClient}
-    providerSession={roster.isProvider}
-    active={section}
-    {activeGroup}
-    bind:expanded={sidebarExpanded}
-    bind:mobileOpen={sidebarMobileOpen}
-    onNavigate={navigate}
-    onAction={triggerSidebarAction}
-    onSelectGroup={(key) => { activeGroup = key; activeLeaf = null; if (section) saveLastGroup(selectedClientId, section, key); }}
-    onSelectLeafKey={(key) => (activeLeaf = key)}
-    threads={chatSession.threads}
-    bind:renamingId={chatSession.renamingId}
-    bind:renameText={chatSession.renameText}
-    onSelectThread={chatSession.selectChatThread}
-    onTogglePinThread={chatSession.toggleChatThreadPin} onSidebarTogglePin={sidebarTogglePin} onSidebarRename={sidebarRename} onSidebarDelete={sidebarDelete} sidebarLabelOf={sidebarLabelOf}
-    onDeleteThread={chatSession.deleteChatThread}
-    onCommitRename={chatSession.commitChatRename}
-    {searchOpen}
-    onOpenSearch={() => { searchOpen = true; searchFocusToken++; }}
-    onFreshSearch={() => { searchQuery = ""; searchOpen = true; searchFocusToken++; }}
-    bind:windowYears
-    productName={PRODUCT_NAME}
-    {vault}
-    {selectedClientId}
-    {providerToken}
-    {refreshing}
-    {refreshProgress}
-    {refreshStage}
-    {refreshError}
-    onCancelRefresh={cancelRefresh}
-    onDismissRefreshError={() => (refreshError = null)}
-    saveError={vaultSave.error}
-    onRetrySave={() => vaultSave.retry()}
-    findingStale={leafRegen.stale}
-    onOpenDag={() => (dagModalOpen = true)}
-    aiOutOfCredit={aiAvailability.outOfCredit}
-    billingUrl={providerFor("chat").billingUrl}
-    {unitSystem}
-    onSetUnitSystem={setUnitSystem}
-    {persona}
-    onSetPersona={setPersona}
-  >
-    {#snippet accountArea()}
-      {#if roster.isProvider}
-        <AccountMenu
-          email={roster.enteredPatient?.email ?? roster.enteredPatient?.displayName ?? null}
-          providerAccess
-          subjectFallback="patient"
-          viewingSubjectLabel="Viewing patient"
-          backToRosterLabel="← Back to roster"
-          translateBusyTitle="The Translation is being generated — this takes a few minutes"
-          onBackToRoster={() => roster.backToRoster()}
-          onSignOut={signOut}
-          onTranslate={currentClient && providerToken ? doRefresh : undefined}
-          translating={refreshing}
-          translateTitle={currentClient
-            ? [
-                currentClient.finding?.generatedAt
-                  ? `Last translated ${timeAgo(currentClient.finding.generatedAt, Date.now())} · Regenerate this patient's Translation (provider only)`
-                  : `Regenerate this patient's Translation (provider only)`,
-                // W62 — the provider triggering a regeneration is told, at the moment of triggering,
-                // that starred items will steer it. The sidebar notice says the same thing to
-                // whoever does the starring; between them a pin is never silent.
-                pinnedQueryCount > 0
-                  ? `${pinnedQueryCount} starred item${pinnedQueryCount === 1 ? "" : "s"} will be passed as areas of query — topics to look into, never as evidence`
-                  : null,
-              ].filter(Boolean).join(" · ")
-            : undefined}
-          onDiagnostics={providerToken ? () => (diagnosticsOpen = true) : undefined}
-          onVisibility={currentClient ? () => (visibilityOpen = true) : undefined}
-          onDag={currentClient?.finding ? () => (dagModalOpen = true) : undefined}
-          onExport={currentClient ? () => (exportOpen = true) : undefined}
-          onAbout={() => (aboutOpen = true)}
-        />
-      {:else}
-        <AccountMenu
-          email={account.info?.email ?? null}
-          emailConfirmed={account.info?.emailConfirmed ?? true}
-          onAccount={() => account.openPanel()}
-          onAccess={() => vaultAccess.openPanel()}
-          accessLabel="Who can access my record"
-          onResendVerification={() => account.resendVerification()}
-          onSignOut={signOut}
-          onExport={currentClient ? () => (exportOpen = true) : undefined}
-          onAbout={() => (aboutOpen = true)}
-        />
-      {/if}
-    {/snippet}
-  </Sidebar>
+  <div class="shell-row">
+  {@render appSidebar(null)}
   <div class="page-container">
   <main class="tab-content" aria-label={tabLabel}>
     {#if !currentClient}
@@ -1577,7 +1677,7 @@
         onClose={() => (searchOpen = false)}
       />
     {:else if activeTab === "chat" && currentClient}
-      <ChatTab client={currentClient} dek={session.dek} clientId={selectedClientId} {unitSystem} {persona} activeId={section} bind:threads={chatSession.threads} hydrated={chatSession.hydrated} saveError={chatSession.saveError} {vault} onNavigate={navigate} onPersist={chatSession.persistChatThreads} onImportFile={importChatFile} onCreateNote={createNoteFromAttachment} />
+      <ChatTab client={currentClient} dek={session.dek} clientId={selectedClientId} {unitSystem} {persona} activeId={section} bind:threads={chatSession.threads} hydrated={chatSession.hydrated} saveError={chatSession.saveError} {vault} onNavigate={navigate} onPersist={chatSession.persistChatThreads} onImportFile={importChatFile} onCreateNote={createNoteFromAttachment} onReport={(t) => (reportTarget = t)} />
     {:else if currentClient}
       <ReportSections client={currentClient} sections={ALL_SECTIONS} bind:active={section} clientId={selectedClientId} providerSession={roster.isProvider} canTranslate={roster.isProvider && !!providerToken} onTranslate={translateMarker} onCategorizeMarkers={handleCategorizeMarkers} {vault} {unitSystem} bind:windowYears onToggleWatchlist={toggleWatchlist} onTogglePinnedRatio={togglePinnedRatio} onSave={saveEdits} onSaved={(anchor) => navigate({ anchor })} onTriggerRegen={triggerLeafRegen} saved={vaultSave.saved} saveError={vaultSave.error} onStartChat={startChatFromLeaf} onCreateNote={createNoteFromAttachment} pendingSidebarAction={pendingSidebarAction} onConsumeSidebarAction={() => (pendingSidebarAction = null)} bind:activeGroup {activeLeaf} {pendingAnchor} onConsumeAnchor={() => (pendingAnchor = null)} pendingNoteAttachment={pendingNoteAttachment} onPendingNoteAttachmentConsumed={() => (pendingNoteAttachment = null)} onNavigate={navigate} />
     {/if}
@@ -1659,6 +1759,30 @@
           {/each}
         </ul>
       {/if}
+      <p class="access-subhead">What leaves this device</p>
+      <p class="access-intro">{MODEL_DISCLOSURE}</p>
+      <p class="access-intro">
+        Read the full <a href={`${FOUNDATION.legalBase}/privacy`} target="_blank" rel="noopener">Privacy Policy</a>.
+      </p>
+
+      {#if !roster.isProvider}
+        <p class="access-subhead">Delete this account</p>
+        <p class="access-intro">Deletes your records, your uploaded files, your chat history and this account. Nobody can undo it — not you, not LexiTar.</p>
+        <p class="access-intro">{ERASURE_REACH}</p>
+        {#if eraseArmed}
+          <p class="access-kind">Type your email address ({account.info?.email ?? "your account email"}) to confirm.</p>
+          <div class="account-add">
+            <input type="email" aria-label="Confirm your email address" placeholder="you@example.com" bind:value={eraseEmail} disabled={eraseBusy} />
+            <button class="access-revoke" disabled={eraseBusy || !eraseEmail} onclick={eraseAccount}>{eraseBusy ? "Deleting…" : "Delete everything"}</button>
+            <button disabled={eraseBusy} onclick={() => { eraseArmed = false; eraseEmail = ""; eraseError = null; }}>Cancel</button>
+          </div>
+        {:else}
+          <div class="account-add">
+            <button class="access-revoke" disabled={account.busy} onclick={() => (eraseArmed = true)}>Delete this account</button>
+          </div>
+        {/if}
+        {#if eraseError}<p class="access-error">{eraseError}</p>{/if}
+      {/if}
       {#if account.error}<p class="access-error">{account.error}</p>{/if}
     </div>
   </Modal>
@@ -1668,6 +1792,12 @@
      attach-controller.ts, mounted unconditionally so it's present regardless of view state
      (login, roster, patient view, print). -->
 <AttachPicker />
+
+<!-- 9B/9C — mounted out here for the same reason as AttachPicker: a chat answer and a provider's row
+     are in different view branches, and one report control beats two. -->
+{#if reportTarget}
+  <ReportDialog target={reportTarget} onClose={() => (reportTarget = null)} />
+{/if}
 
 <style>
   /* W70 — the conflict surface. Deliberately not the shared Modal: that one dismisses on backdrop
@@ -1726,8 +1856,12 @@
   .access-list li { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.6rem 0.9rem; border-bottom: 1px solid var(--border); }
   .access-list li:last-child { border-bottom: none; }
   .access-kind { color: var(--muted); font-size: 0.8rem; margin-left: 0.4rem; }
+  .erase-report { background: var(--band); color: var(--fg); }
   .access-revoke { padding: 0.3rem 0.7rem; border: 1px solid var(--alert); background: transparent; color: var(--alert); border-radius: 8px; cursor: pointer; font: inherit; font-size: 0.85rem; }
   .access-revoke:disabled { opacity: 0.5; cursor: default; }
+  /* Its own class, not a second .access-revoke: reporting is not revoking, and the e2e suites select
+     the revoke button by class within the access list. */
+  .access-report { padding: 0.3rem 0.7rem; border: 1px solid var(--alert); background: transparent; color: var(--alert); border-radius: 8px; cursor: pointer; font: inherit; font-size: 0.85rem; }
   .access-subhead { font-weight: 600; margin: 0 0 0.4rem; font-size: 0.9rem; }
   .access-pending { border-bottom: 1px solid var(--border); padding-bottom: 0.75rem; }
   .access-approve-actions { display: flex; align-items: center; gap: 0.4rem; }

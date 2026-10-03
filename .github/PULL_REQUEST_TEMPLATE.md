@@ -2,6 +2,9 @@
 
 ## Checklist
 
+- [ ] Every commit carries `Signed-off-by` (`git commit -s`) — the
+      [Developer Certificate of Origin](https://developercertificate.org/), see
+      [CONTRIBUTING.md](../CONTRIBUTING.md#inbound-contributions-sign-off-dont-sign-a-cla).
 - [ ] Read [CONTRIBUTING.md](../CONTRIBUTING.md), especially the "controller shape" section if this
       touches one of `packages/frame`'s six session/auth controllers.
 - [ ] If this adds meaningful new controller logic, added a first test for it (see

@@ -1,8 +1,9 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildAttachmentKey, attachmentsOf, attachFiles, putRaw, MAX_ATTACHMENT_BYTES,
 } from "../../src/lib/attachment-store";
 import { clearRawKeyring, rawKeyFor, setRawKeyring, setRawKeySink, withRawKey } from "../../src/lib/vault-raw-keys";
+import { openTestVault } from "../support/raw-keys";
 import { isSealed, openRaw } from "../../src/lib/raw-cipher";
 import type { Vault } from "../../src/lib/types";
 
@@ -54,6 +55,10 @@ describe("attachmentsOf", () => {
 });
 
 describe("attachFiles", () => {
+  // putRaw refuses an upload it cannot seal, so the flow needs somewhere to record its content keys.
+  beforeEach(openTestVault);
+  afterEach(clearRawKeyring);
+
   it("uploads each file via PUT and returns one Attachment per file", async () => {
     const puts: string[] = [];
     vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit) => {
@@ -115,7 +120,7 @@ describe("putRaw", () => {
   afterEach(clearRawKeyring);
 
   it("seals the bytes, so the bucket never receives the document", async () => {
-    setRawKeySink(async (id, file, key) => void withRawKey({ clients: {} } as Vault, id, file, key));
+    openTestVault();
     const sent = upload();
 
     await putRaw("alex", "ab12cd34-report.pdf", bytes);
@@ -156,19 +161,19 @@ describe("putRaw", () => {
     expect(await openRaw(sent[0].body, "ab12cd34-report.pdf", KEY)).toEqual(bytes);
   });
 
-  // No open vault is no place to record a key. Plaintext is recoverable; a sealed object with no key
-  // is not — and the reader passes plaintext through, so the sweep can still seal it later.
-  it("uploads plaintext when there is no vault to record a key in", async () => {
+  // The client half of the route's plaintext refusal: with no vault there is no key, with no key
+  // there is nothing to seal, and /api/raw answers 415 — so the bytes never leave the browser.
+  it("refuses to upload at all when there is no vault to record a key in", async () => {
     const sent = upload();
 
-    await putRaw("alex", "ab12cd34-report.pdf", bytes);
+    await expect(putRaw("alex", "ab12cd34-report.pdf", bytes)).rejects.toThrow(/record has to be open/);
 
-    expect(sent[0].body).toEqual(bytes);
+    expect(sent).toEqual([]);
   });
 
   // pdf.js cannot count the pages of an envelope, and the corpus checks its ceiling against this.
   it("carries the plaintext page count through unchanged", async () => {
-    setRawKeySink(async (id, file, key) => void withRawKey({ clients: {} } as Vault, id, file, key));
+    openTestVault();
     const sent = upload();
 
     await putRaw("alex", "ab12cd34-report.pdf", bytes, 9);

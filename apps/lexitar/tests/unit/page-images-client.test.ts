@@ -14,6 +14,7 @@ vi.mock("@tinytars/frame/pdf-render", () => ({ openPdf: vi.fn(async () => ({ num
 import { extractReport } from "../../src/lib/extract-client";
 import { attachFiles } from "../../src/lib/attachment-store";
 import type { PageImage } from "@pablotech/akesi/report-extract";
+import { openTestVault } from "../support/raw-keys";
 
 const PAGES: PageImage[] = [{ base64: "AAA", mediaType: "image/jpeg" }, { base64: "BBB", mediaType: "image/jpeg" }];
 const PATIENT = { dob: "1980-01-01", gender: "male" as const, factors: { diseases: [] } };
@@ -24,6 +25,8 @@ function bodyOf(call: number) {
 }
 
 beforeEach(() => {
+  // attachFiles seals every upload, and putRaw refuses what it cannot seal.
+  openTestVault();
   needsPageImages.mockReset().mockReturnValue(false);
   renderPdfPages.mockClear();
   renderOpenPdfPages.mockClear();

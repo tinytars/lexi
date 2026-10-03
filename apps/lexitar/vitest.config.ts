@@ -25,7 +25,9 @@ export default defineConfig({
     // Frame and vault ship raw .ts/.svelte; Node won't strip types under node_modules.
     server: { deps: { inline: ["@tinytars/vault", "@tinytars/frame"] } },
     // Prompt builders derive values from the current date; an unpinned TZ makes goldens flaky.
-    env: { TZ: "UTC" },
+    // XDG_STATE_HOME is redirected because scripts/access-log.ts spools unflushed org-key uses under
+    // it from a process.on("exit") handler — a suite must not append to the operator's real backlog.
+    env: { TZ: "UTC", XDG_STATE_HOME: "./.wrangler/tmp/test-state" },
     reporters: ["default"],
     // Enforced in CI (`npm run coverage`); scripts/coverage-ratchet.ts stops a PR lowering them.
     coverage: {

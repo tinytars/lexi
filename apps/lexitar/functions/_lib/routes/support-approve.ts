@@ -2,6 +2,7 @@ import { grantBreakGlass, type BreakGlassPolicy } from "@tinytars/vault/break-gl
 import type { AuditStore, EnvelopeStore, ProviderLinkStore, VaultRow } from "@tinytars/vault/stores";
 import { logRequest } from "../log";
 import { json } from "../http";
+import type { SupportAccessNotice } from "./support-notice";
 
 // W44 P4b — the patient approves a pending support request: wraps their in-memory DEK to the support
 // agent's public key client-side (zero-knowledge) and posts the opaque envelope + a time-box. Server
@@ -16,6 +17,7 @@ export interface SupportApproveDeps {
   audit: AuditStore;
   envelopes: EnvelopeStore;
   listVaultsForOwner(ownerAccountId: string): Promise<VaultRow[]>;
+  notify: SupportAccessNotice;
 }
 
 const ROUTE = "/api/support/approve";
@@ -81,6 +83,11 @@ export async function supportApproveHandler(request: Request, deps: SupportAppro
     log(403, "forbidden");
     return json(403, { error: "no pending support request to approve" });
   }
+
+  // The approver is the patient themselves, so this is not news to them in the ordinary case. It is the
+  // residual control for the case that is not ordinary — a session that is not theirs approving access to
+  // their record — which is the same argument notify-method.ts makes for an added login method.
+  await deps.notify({ ownerAccountId: session.accountId, event: "approved", expiresAt: result.expiresAt });
 
   log(200);
   return json(200, { ok: true, expiresAt: result.expiresAt });

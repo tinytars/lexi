@@ -13,10 +13,15 @@ vi.mock("../../src/lib/document-extract-client", async (importOriginal) => ({
 
 import { attachFiles, hasExtractedText } from "../../src/lib/attachment-store";
 import { MAX_DOCUMENT_PAGES } from "@pablotech/akesi/document-read";
+import { openTestVault } from "../support/raw-keys";
+import { rawKeyFor } from "../../src/lib/vault-raw-keys";
+import { openRaw } from "../../src/lib/raw-cipher";
 
 const pdf = (name = "report.pdf") => new File([new Uint8Array([0x25, 0x50, 0x44, 0x46])], name, { type: "application/pdf" });
 
 beforeEach(() => {
+  // attachFiles seals every upload, and putRaw refuses what it cannot seal.
+  openTestVault();
   openPdf.mockReset();
   openPdf.mockResolvedValue({ numPages: 3 });
   extractDocument.mockReset();
@@ -96,15 +101,17 @@ describe("attachFiles — the page cap must not consume the bytes it counts", ()
       structuredClone(bytes.buffer, { transfer: [bytes.buffer] });
       return { numPages: 3 };
     });
-    const uploaded: number[] = [];
+    const uploaded: Uint8Array[] = [];
     vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => {
-      if (init?.method === "PUT") uploaded.push((init.body as Uint8Array).byteLength);
+      if (init?.method === "PUT") uploaded.push(init.body as Uint8Array);
       return new Response(null, { status: 204 });
     }));
 
     const file = pdf();
     const [a] = await attachFiles("alex", [file]);
-    expect(uploaded).toEqual([file.size]);
+    // Opened rather than measured: the PUT body is an envelope now, so its length is not the file's.
+    // What the detach bug destroyed, and this pins, is that the plaintext inside it is all there.
+    expect(await openRaw(uploaded[0], a.key, rawKeyFor("alex", a.key))).toEqual(new Uint8Array(await file.arrayBuffer()));
     expect(a.bytes).toBe(file.size);
   });
 });

@@ -12,7 +12,6 @@
 
 import type { Client, InferenceMode, PendingUpload, TreatmentItem, Vault } from "../../src/lib/types";
 import { UsageAccumulator } from "../inference-cost";
-import { recordOrgKeyUse } from "../access-log";
 import { getObject, r2RawKeyFor, LIVE_BUCKET } from "../vault-sync";
 import { openRaw } from "../../src/lib/raw-cipher";
 import { normalizeClientId } from "../../src/lib/client-id";
@@ -38,16 +37,17 @@ export interface OpArgs {
   mode: InferenceMode;
 }
 
-async function run<T>(
+// `purpose` goes down to the pull, which records the org-key use itself (scripts/org-unwrap.ts) — and
+// records it against the vault's `r2_key` stem rather than the client slug this op was invoked with,
+// which is the id access-log.ts can actually find a vault row for.
+function run<T>(
   vaultId: string,
   store: string,
   dryRun: boolean,
   purpose: string,
   mutate: (client: Client, vault: Vault, clientKey: string) => Promise<T> | T,
 ) {
-  recordOrgKeyUse({ clientId: vaultId, purpose });
-  const result = await withDeployedClient({ vaultId, store, dryRun, mutate });
-  return result;
+  return withDeployedClient({ vaultId, store, purpose, dryRun, mutate });
 }
 
 /**

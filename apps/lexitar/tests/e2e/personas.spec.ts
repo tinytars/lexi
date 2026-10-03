@@ -43,3 +43,36 @@ test("the persona picked in the sidebar survives a reload, and Cody's chat turn 
   await expect(answer.locator(".persona-tag")).toHaveText("Lexi");
   await expect(answer.locator(".turn-text")).toHaveText(LEXI);
 });
+
+// The flake this pins: the sidebar is interactive while the login path's account read is still in
+// flight, so a pick made in that window was overwritten by the read's answer — sent BEFORE the pick and
+// therefore still saying Lexi. Both halves of the ordering are forced here, because CI lost the race
+// about every other run and a spec that merely hopes for it is the reason this shipped.
+test("a persona picked before the account read comes back is the one that sticks", async ({ page }) => {
+  let sawRead!: () => void;
+  const readInFlight = new Promise<void>((r) => (sawRead = r));
+  let answerRead!: () => void;
+  const readHeld = new Promise<void>((r) => (answerRead = r));
+  await page.route("**/api/account/persona", async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    sawRead();
+    await readHeld;
+    // Answers what was true when the request went out. A fallback would re-issue the GET after the PUT
+    // had landed and then agree with the pick by luck, which is no test at all.
+    await route.fulfill({ json: { persona: "lexi" } });
+  });
+
+  await openSynthetic(page);
+  await readInFlight;
+  const cody = personaToggle(page).getByRole("button", { name: "Cody", exact: true });
+  const readAnswered = page.waitForResponse((r) => r.url().includes("/api/account/persona") && r.request().method() === "GET");
+  await cody.click();
+  answerRead();
+  await readAnswered;
+
+  // Asserted only once the stale answer has been delivered and had time to be applied. Checked any
+  // earlier it passes on a pick that has not been overwritten yet — which is how this went unnoticed.
+  await page.waitForTimeout(500);
+  await expect(cody).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(async () => (await (await page.request.get("/api/account/persona")).json()).persona).toBe("cody");
+});

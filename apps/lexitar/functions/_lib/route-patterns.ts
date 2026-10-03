@@ -69,6 +69,7 @@ export const ROUTE_PATTERNS: readonly string[] = [
   "/api/refresh-finding",
   "/api/refresh-marker-groups",
   "/api/refresh-range",
+  "/api/report",
   "/api/speak",
   "/api/treatment-infer",
 ];

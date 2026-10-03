@@ -52,10 +52,12 @@ test("the e2e clinician (provider) shows a roster of names only — no client da
 
   const names = (await page.locator(".roster-list .roster-name").allTextContents()).map((s) => s.trim());
   expect(names.sort()).toEqual([...ALL_SYNTHETIC_NAMES].sort());
-  // No client dashboard or section navigation at the provider level. Asserted against `.nav-item`,
-  // which renders for every drilled-in patient: `.tabbar` has not existed since M75 retired the
-  // two-bar model, so that assertion passed no matter what the roster did.
-  await expect(page.locator(".sidebar .nav-list .nav-item")).toHaveCount(0);
+  // No client dashboard or section navigation at the provider level. The roster now carries a sidebar
+  // of its own, so the claim is about WHICH rows it holds: toHaveText(array) asserts the count and each
+  // row's text, so a leaked section row, a dropped roster row and a rename all fail it. Search is named
+  // separately because it is the record shell's sentinel everywhere else.
+  await expect(page.locator(".sidebar .nav-list .nav-item .nav-label")).toHaveText(["Patients", "Translation DAG"]);
+  await expect(page.locator('.sidebar [data-testid="nav-search"]')).toHaveCount(0);
 });
 
 for (const index of [0, 1]) {

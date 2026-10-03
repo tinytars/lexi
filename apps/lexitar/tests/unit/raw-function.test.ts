@@ -3,6 +3,7 @@ import { onRequestGet, onRequestPut, onRequestDelete } from "../../functions/api
 import { signSession } from "../../functions/_lib/session";
 import { fakeSessionDb } from "../support/session-db";
 import { storedObject } from "../../server/fs-bucket";
+import { hd1Blob } from "../support/blobs";
 
 // W73 — the routes now resolve who owns a client namespace before touching R2. These tests are about
 // content types, etags and path handling, so they seed "acct-1 owns the fixture namespaces" and leave
@@ -23,7 +24,9 @@ function ownedDb() {
 }
 
 
-const RAW = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d]); // "%PDF-" — arbitrary bytes; never decrypted
+// Sealed, because the route refuses anything else (DPG 9A.5). Never decrypted here — what matters is
+// only that these are the bytes the store should end up holding.
+const RAW = hd1Blob();
 
 function makeEnv(seed: Record<string, Uint8Array<ArrayBuffer>> = {}) {
   const store = new Map<string, Uint8Array<ArrayBuffer>>(Object.entries(seed));

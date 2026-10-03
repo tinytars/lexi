@@ -1,5 +1,5 @@
 import type { D1Database } from "../_lib/identity-types";
-import { getAccount, markEmailChanged, setEmailConfirmed, updateAccountProfile } from "../_lib/identity-accounts";
+import { getAccount, markAgeAttested, markEmailChanged, setEmailConfirmed, updateAccountProfile } from "../_lib/identity-accounts";
 import { requireSession } from "../_lib/session";
 import { logRequest } from "../_lib/log";
 import type { EmailEnv } from "../_lib/email";
@@ -66,7 +66,7 @@ export async function onRequestPatch(context: Ctx): Promise<Response> {
   }
 
   try {
-    const body = (await request.json()) as Partial<{ email: string; displayName: string; unitSystem: "metric" | "imperial" | null }>;
+    const body = (await request.json()) as Partial<{ email: string; displayName: string; unitSystem: "metric" | "imperial" | null; ageAttested: boolean }>;
     const prev = await getAccount(env.DB, session.accountId);
     const emailChanged = body.email !== undefined && body.email !== (prev?.email ?? null);
 
@@ -99,6 +99,10 @@ export async function onRequestPatch(context: Ctx): Promise<Response> {
         else await notice;
       }
     }
+
+    // 9C.3 — the 16+ gate runs in the browser, because the birth year never reaches us
+    // (src/lib/age-limit.ts). All we record is that it ran and passed; never a date of birth.
+    if (body.ageAttested) await markAgeAttested(env.DB, session.accountId, new Date().toISOString());
 
     const account = await getAccount(env.DB, session.accountId);
     if (!account) {
