@@ -1,0 +1,17 @@
+-- 0012_fix_fam4_provider_kind.sql — the seeded provider has never been able to spend AI budget or
+-- issue a recovery grant.
+--
+-- functions/_lib/capabilities.ts's GRANTS table only recognises the Role literal 'primary' for
+-- "ai:spend" and "recovery:issue" — every other route and every seeded test account agrees on that
+-- spelling. 0002 seeded the provider account and its two provider_links rows with 'clinician'
+-- instead, a value capabilities.ts has never checked. That made every ai:spend/recovery:issue
+-- capability check fail for that account from the day it was seeded.
+--
+-- THIS FILE IS NOW A NO-OP, 2026-10-06, AND IT IS KEPT RATHER THAN DELETED, for the reason
+-- 0011_opaque_vault_r2_keys.sql states: both live databases have it applied and wrangler's ledger
+-- tracks it by name. 0002 was rewritten to seed synthetic principals and now writes 'primary'
+-- directly, so there is nothing here left to correct in a fresh database — which is the better place
+-- for the fix to live, because a reader of 0002 can now see the value capabilities.ts actually
+-- checks. Its three UPDATE statements are removed along with the real account and provider_link
+-- identifiers they were scoped by; see docs/adr/0001-rewrite-applied-migration-0002.md. What they did
+-- on the two live databases is unchanged and is not re-run by their removal.

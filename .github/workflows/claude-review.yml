@@ -1,0 +1,100 @@
+name: Claude PR Review
+
+# The review runs on CI's completion rather than watching checks from inside itself
+# (which would include itself and deadlock — see pablo-tech/pilos#10). It approves and
+# enables auto-merge; the dev/main rulesets then merge only once every required check
+# is green.
+#
+# vars.AUTOPILOT gates the merge: `on` enables auto-merge after approval (unless the PR
+# is labeled `hold`), `dry-run` (or unset) stops at approval, `off` skips review.
+#
+# push-audit stays here: it is an after-the-fact read of a direct push to main, not part
+# of the pull-request pipeline the shared workflow implements.
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  id-token: write
+
+concurrency:
+  group: claude-review-${{ github.event.workflow_run.pull_requests[0].number || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    if: >
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.pull_requests[0] != null
+    uses: promontory-studio/pedalion-ci/.github/workflows/review.yml@6c2d307ada45c3202c2c395b2ac46056c47a40bf # v1.3.0
+    # `secrets: inherit` does not cross owners, so every secret is named.
+    secrets:
+      anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+      app-key: ${{ secrets.AUTOPILOT_APP_KEY }}
+    with:
+      mode: ${{ vars.AUTOPILOT || 'dry-run' }}
+      pr-number: ${{ github.event.workflow_run.pull_requests[0].number }}
+      head-sha: ${{ github.event.workflow_run.head_sha }}
+      ci-conclusion: ${{ github.event.workflow_run.conclusion }}
+      head-branch: ${{ github.event.workflow_run.head_branch }}
+      allowed-bots: dependabot[bot],pedalion-ci[bot]
+      # A security update is raised against main whatever dependabot.yml targets, and main receives
+      # dev whole — a merge there diverges it. The host moves the pull request onto dev and asks
+      # Dependabot to rebase it there, so it stops carrying main's kept-back wrangler.jsonc. The
+      # promotion pull request is untouched: the move is keyed on the dependabot/ branch prefix.
+      retarget-base: dev
+      # A promotion into main keeps dev's history, as every promotion has.
+      merge-method-by-base: '{"main":"merge"}'
+      app-id: ${{ vars.AUTOPILOT_APP_ID }}
+      repair-repo: promontory-studio/plover-factory
+      repair-event: dependabot-broken
+      # Green CI is the whole evidence a version string and a lockfile need, so these merge with
+      # no model call. A major, or a branch carrying a commit that is not Dependabot's own signed
+      # work, still gets one.
+      no-review-update-types: minor,patch
+      no-review-branch-prefixes: dependabot/github_actions/
+
+  push-audit:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+
+      - uses: anthropics/claude-code-base-action@e8132bc5e637a42c27763fc757faa37e1ee43b34 # v0.0.63
+        env:
+          GH_TOKEN: ${{ github.token }}
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          model: "claude-sonnet-5"
+          allowed_tools: "Read,Grep,Glob,Bash(git show:*),Bash(gh api repos/*/commits/*/comments:*)"
+          prompt: |
+            A commit was just pushed directly to main, bypassing PR review.
+            Review its diff with `git show HEAD`. Only if you find a blocking
+            correctness bug, post a commit comment explaining it with
+            `gh api repos/${{ github.repository }}/commits/${{ github.sha }}/comments -f body="..."`.
+            Say nothing and take no action if the commit looks fine — this is
+            an audit pass, not a gate, since the commit is already merged.
+
+  notify-failure:
+    needs: [review, push-audit]
+    if: always() && contains(needs.*.result, 'failure')
+    uses: promontory-studio/pedalion-ci/.github/workflows/notify-failure.yml@6c2d307ada45c3202c2c395b2ac46056c47a40bf # v1.3.0
+    # `secrets: inherit` does not cross owners, so every secret is named.
+    secrets:
+      app-key: ${{ secrets.AUTOPILOT_APP_KEY }}
+    with:
+      issue-repo: promontory-studio/plover-factory
+      app-id: ${{ vars.AUTOPILOT_APP_ID }}
+      assignee: pablo-tech
+      title: Claude PR review workflow failed
+      context: The review automation itself broke, so pushes are going unreviewed until it is fixed.

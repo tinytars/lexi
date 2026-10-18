@@ -1,0 +1,61 @@
+name: error-pipeline
+
+# LexiTar's only telemetry is the error sink, and it dies quietly: a revoked token, a secret set on
+# production but not preview, a Worker that stopped filing. From the outside that is indistinguishable
+# from a quiet week — which the promotion gate used to promote on. This proves the sink alive
+# end to end every two hours, and the gate refuses to promote without a recent proof.
+#
+# Two hours, not the three it ran at: the gate refuses once the proof is 8h old (pedalion-ci's
+# canary-max-age-hours default) and GitHub delivers a 3h schedule as late as 7.7h, so the prover was
+# inside its own gate's noise margin and one late delivery from a refusal with nothing wrong.
+#
+# The canary files through the real anonymous /api/client-error path on health-dash-dev, under a fixed
+# fingerprint, so its issue is always found by label. When its comment list gets long, close it: the
+# next canary opens a fresh one.
+
+on:
+  schedule:
+    - cron: "0 */2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  alive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/lexitar
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - run: npm ci
+        working-directory: .
+      - run: npx tsx scripts/error-pipeline-check.ts health-dash-dev promontory-studio/plover-factory
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # The same classic PAT that is the CLIENT_ERROR_GITHUB_TOKEN Pages secret on both projects
+          # (plover-keys: github-release-pat.env) — checking a copy would prove nothing about the one
+          # the Worker uses, but rotation replaces both from that one file.
+          CLIENT_ERROR_GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
+
+  notify-failure:
+    needs: [alive]
+    if: always() && contains(needs.*.result, 'failure')
+    uses: promontory-studio/pedalion-ci/.github/workflows/notify-failure.yml@6c2d307ada45c3202c2c395b2ac46056c47a40bf # v1.3.0
+    # `secrets: inherit` does not cross owners, so every secret is named.
+    secrets:
+      app-key: ${{ secrets.AUTOPILOT_APP_KEY }}
+    with:
+      issue-repo: promontory-studio/plover-factory
+      app-id: ${{ vars.AUTOPILOT_APP_ID }}
+      assignee: pablo-tech
+      title: LexiTar's error pipeline is not proven alive
+      context: The client/server error sink failed its liveness check. Until it passes, a quiet soak is not evidence of health and promotion is blocked.

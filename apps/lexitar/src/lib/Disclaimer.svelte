@@ -1,0 +1,44 @@
+<script lang="ts">
+  import { MEDICAL_DISCLAIMER, PRIVACY_STATEMENT, MODEL_DISCLOSURE, FOUNDATION } from "./brand";
+</script>
+
+<section class="disclaimer" aria-label="Medical disclaimer and privacy">
+  <div class="disclaimer-box">
+    <p><strong>Medical Disclaimer:</strong> {MEDICAL_DISCLAIMER}</p>
+  </div>
+  <div class="disclaimer-box">
+    <p><strong>What leaves this device:</strong> {MODEL_DISCLOSURE}</p>
+  </div>
+  <div class="disclaimer-box">
+    <p>
+      <strong>Privacy &amp; Data Security:</strong> {PRIVACY_STATEMENT}
+      Read our full <a href={`${FOUNDATION.legalBase}/privacy`} target="_blank" rel="noopener">Privacy Policy</a>
+      and <a href={`${FOUNDATION.legalBase}/terms`} target="_blank" rel="noopener">Terms of Service</a>.
+    </p>
+  </div>
+</section>
+
+<style>
+  .disclaimer {
+    max-width: var(--leaf-max);
+    margin: 2rem auto 0;
+    padding: 0 1.25rem;
+    display: grid;
+    gap: 0.75rem;
+  }
+  .disclaimer-box {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--panel);
+    padding: 0.75rem 1rem;
+  }
+  .disclaimer-box p {
+    margin: 0;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    color: var(--muted);
+  }
+  .disclaimer-box a {
+    color: var(--accent);
+  }
+</style>

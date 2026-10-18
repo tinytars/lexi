@@ -1,0 +1,81 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+  schedule:
+    - cron: '0 6 * * 1'
+
+jobs:
+  # Code scanning is free on a public repository and licensed on a private one, and this repository
+  # is private for the duration of the published-key-material remediation — so every run of this
+  # workflow since it went private has completed its analysis and then died on the last step with
+  # "Advanced Security must be enabled for this repository to use code scanning". The database
+  # builds, every query runs, the SARIF exports; only the upload has nowhere to go.
+  #
+  # So the analysis stays and only the upload is conditional. The two alternatives are both worse:
+  # `continue-on-error` would swallow a genuine CodeQL break for as long as nobody read the log,
+  # and skipping the job outright would stop catching extraction regressions until the repository
+  # is public again. Nothing needs undoing when it is — this reverts to uploading by itself.
+  #
+  # Visibility is asked of the API rather than read from `github.event.repository`, which the
+  # `schedule` payload does not carry. That is the trigger whose failure opens an issue on
+  # plover-factory, so it is the one that must not be the trigger doing the guessing.
+  gate:
+    name: Upload gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      upload: ${{ steps.visibility.outputs.upload }}
+    steps:
+      - id: visibility
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          visibility=$(gh api "repos/$REPO" --jq .visibility)
+          if [ "$visibility" = "public" ]; then
+            upload=always
+          else
+            upload=never
+          fi
+          echo "$REPO is $visibility — upload=$upload"
+          echo "upload=$upload" >> "$GITHUB_OUTPUT"
+
+  analyze:
+    name: Analyze
+    needs: [gate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: github/codeql-action/init@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          languages: javascript-typescript
+      - uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          category: "/language:javascript-typescript"
+          upload: ${{ needs.gate.outputs.upload }}
+
+  notify-failure:
+    needs: [gate, analyze]
+    if: always() && github.event_name != 'pull_request' && contains(needs.*.result, 'failure')
+    uses: promontory-studio/pedalion-ci/.github/workflows/notify-failure.yml@6c2d307ada45c3202c2c395b2ac46056c47a40bf # v1.3.0
+    # `secrets: inherit` does not cross owners, so every secret is named.
+    secrets:
+      app-key: ${{ secrets.AUTOPILOT_APP_KEY }}
+    with:
+      issue-repo: promontory-studio/plover-factory
+      app-id: ${{ vars.AUTOPILOT_APP_ID }}
+      assignee: pablo-tech
+      title: CodeQL analysis failed
+      context: The scheduled security scan did not complete, so no findings are being produced for this repository.

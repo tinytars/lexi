@@ -1,0 +1,16 @@
+-- W71 — server-side session revocation.
+--
+-- The hd_session cookie is a self-contained HMAC with a 30-day TTL, no jti and no server-side store,
+-- and logout only cleared the cookie. A captured cookie therefore stayed valid for thirty days
+-- through logout, a password change and a passkey removal alike: the only lever was rotating
+-- SESSION_SECRET, which signs out every account at once AND invalidates email-verification tokens
+-- and WebAuthn challenges, because all five token types share that one secret.
+--
+-- One nullable column rather than a sessions table: a cookie is accepted only if it was issued at or
+-- after this instant, so revoking every session for an account is a single UPDATE and there is no row
+-- to garbage-collect. It costs one indexed read per authenticated request, which is the price of
+-- being able to revoke at all — the old design's "no D1 lookup per request" was the reason it could not.
+--
+-- NULL means "nothing has ever been revoked for this account", which is the state every existing row
+-- starts in and the common case forever after.
+ALTER TABLE accounts ADD COLUMN sessions_valid_from TEXT;

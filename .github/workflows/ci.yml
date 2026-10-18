@@ -1,0 +1,358 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm run typecheck --workspace packages/frame
+      - run: npm test --workspace packages/frame
+
+  lexitar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # `scope` below asks the API which files the pull request touches.
+    permissions:
+      contents: read
+      pull-requests: read
+    defaults:
+      run:
+        working-directory: apps/lexitar
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - run: npm ci
+        working-directory: .
+      # wrangler.jsonc is deliberately divergent per branch and Cloudflare Pages reads it on every
+      # build, overriding the dashboard — so a branch's copy IS its environment. Nothing else here
+      # can catch it carrying the wrong one: the file stays internally consistent, so
+      # tests/unit/vault-sync.test.ts's dev/prod-split assertion passes, the build succeeds and the
+      # bindings resolve. Only the store the writes land in is wrong.
+      #
+      # It happens on its own. A Dependabot SECURITY update is raised against the DEFAULT branch
+      # whatever dependabot.yml's target-branch says, so it is cut from `main` and carries main's
+      # prod file; claude-review.yml retargets it onto dev and asks for a rebase, and the retarget
+      # lands at once while the rebase may not land at all. #181 and #182 sat in that state from
+      # 2026-10-06 to 2026-10-07, each proposing health-vault-prod / health-identity-prod / prod to
+      # dev — and no-review-update-types merges a patch bump on green with no model call.
+      - name: wrangler.jsonc names the environment this branch owns
+        run: npx tsx scripts/wrangler-branch-check.ts "${{ github.base_ref || github.ref_name }}"
+      - run: npm run check
+      - run: npm run lint
+      - run: npm run build
+      # functions/api/_middleware.ts must never migrate to functions/_middleware.ts: Pages would then
+      # generate include:["/*"] and bill a Worker invocation for every chunk, font and favicon.
+      - name: Pages routing stays scoped to /api/*
+        run: |
+          T=$(mktemp -d)
+          npx wrangler pages functions build --outdir "$T/out" --output-routes-path "$T/routes.json"
+          jq -e '.include == ["/api/*"]' "$T/routes.json"
+      - run: npm run coverage
+      # The same unit suite with the Node host's adapters (SQLite + filesystem blobs) standing in for
+      # Miniflare's D1/R2 — see tests/support/miniflare.ts.
+      - run: npm test
+        env:
+          TEST_BACKEND: node
+      # The base branch's thresholds arrive over the API rather than through a `git fetch`, because
+      # the checkout above deliberately keeps no credential on the runner and an anonymous fetch
+      # works only while the repository is public. It stopped being public on 2026-10-06 and took
+      # this step with it — `fatal: could not read Username for 'https://github.com'`. GITHUB_TOKEN
+      # reads the one file this needs without persisting a git credential or fetching any history.
+      - name: Coverage thresholds only rise
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          B="$RUNNER_TEMP/base-thresholds.json"
+          echo '{}' > "$B"
+          if gh api "repos/$GITHUB_REPOSITORY/contents/apps/lexitar/coverage-thresholds.json?ref=$BASE_REF" \
+               --jq '.content' > "$RUNNER_TEMP/base.b64"; then
+            tr -d '\n' < "$RUNNER_TEMP/base.b64" | base64 -d > "$B" || echo '{}' > "$B"
+          fi
+          npx tsx scripts/coverage-ratchet.ts "$B" coverage-thresholds.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: lexitar-coverage
+          path: apps/lexitar/coverage/coverage-summary.json
+      # A bump that changes nothing but a manifest and its lockfile cannot break the self-host
+      # differently from the browser host, so it pays for one suite instead of two. Asked of the API
+      # rather than of git: the checkout is shallow and has no merge base to diff against.
+      - id: scope
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          files=$(gh api --paginate "repos/$REPO/pulls/$PR/files" -q '.[].filename')
+          if [ -n "$files" ] && ! grep -qvE '^(.*/)?package(-lock)?\.json$' <<<"$files"; then
+            echo "deps-only=true" >> "$GITHUB_OUTPUT"
+          fi
+      - run: npx playwright install --with-deps chromium
+      # Every spec runs against synthetic patients + the local e2e-only clinician/support accounts
+      # (tests/e2e/_synthetic.ts) — none of them needs a credential or touches real patient data.
+      #
+      # NODE_OPTIONS mirrors `npm run test:e2e` — some spec files import a raw .ts entry point
+      # straight from node_modules (e.g. @pablotech/akesi), which Node refuses to type-strip
+      # without this loader (scripts/e2e-node-modules-ts-hooks.mjs).
+      - run: npx playwright test
+        env:
+          NODE_OPTIONS: --import ./scripts/e2e-node-modules-ts-register.mjs
+      # The whole suite again against the Node self-host (server/node.ts): the proof that the backend
+      # is not tied to Cloudflare. Skipped as a step, never as a job — a required check that reports
+      # SKIPPED blocks the merge forever, which is what the autopilot-guard comment below explains.
+      - if: steps.scope.outputs.deps-only != 'true'
+        run: npx playwright test
+        env:
+          NODE_OPTIONS: --import ./scripts/e2e-node-modules-ts-register.mjs
+          E2E_HOST: node
+          E2E_SKIP_BUILD: 1
+
+  lexitar-image:
+    # Boots the Node self-host image and probes a static page, a D1-backed route, and the data volume.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: docker build -f apps/lexitar/Dockerfile -t lexitar .
+      - run: docker run -d --name lexitar -p 8788:8788 -e SESSION_SECRET=ci -e STORE_PREFIX=ci lexitar
+      - run: |
+          for i in $(seq 30); do curl -sf -o /dev/null http://localhost:8788/ && break; sleep 1; done
+          curl -sf http://localhost:8788/ | grep -q '<div id="app"'
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8788/api/account)" = 401
+          docker exec lexitar test -s /data/lexi.sqlite
+      - if: failure()
+        run: docker logs lexitar
+
+  dco:
+    # Every commit needs a Signed-off-by trailer — the Developer Certificate of Origin, see
+    # CONTRIBUTING.md. Unlike autopilot-guard above, this one runs on pushes too and prints
+    # "nothing to check" there, so a required check never reports SKIPPED and wedges the branch.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Every commit signed off
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "$EVENT" != pull_request ]; then
+            echo "Not a pull request — nothing to check."
+            exit 0
+          fi
+          fail=0
+          for sha in $(git log --no-merges --format=%H "$BASE_SHA..$HEAD_SHA"); do
+            author=$(git log -1 --format=%an "$sha")
+            # Bots certify nothing and hold no copyright, and a check they can never satisfy only
+            # teaches everyone to bypass it — the autopilot fixer commits without a sign-off.
+            # Matched by name suffix so a new bot needs no edit here.
+            case "$author" in
+              *'[bot]') echo "skip   $sha  $author"; continue ;;
+            esac
+            if git log -1 --format=%B "$sha" | grep -qiE '^Signed-off-by: .+ <.+@.+>'; then
+              echo "ok     $sha  $author"
+            else
+              echo "MISSING Signed-off-by: $sha  $author  $(git log -1 --format=%s "$sha")"
+              fail=1
+            fi
+          done
+          if [ "$fail" -ne 0 ]; then
+            echo
+            echo "Add it with 'git commit -s', or across a branch already written with"
+            echo "'git rebase --signoff origin/$GITHUB_BASE_REF'. See CONTRIBUTING.md."
+            exit 1
+          fi
+
+  credentials:
+    # The commit that published key material into this repository landed four days before the
+    # `.githooks/pre-commit` shim did, so no guard chain existed at the time. The shim closes that
+    # going forward and nothing else: pre-commit judges the STAGED set, so a file already in
+    # history is never re-read and the chain stays silent about it forever. `--scan-tree` reads the
+    # working tree instead, which is the only thing that reports what is already committed — and it
+    # runs here rather than locally because `--no-verify` cannot walk past a required check.
+    #
+    # Runs on pushes as well as pull requests, for the `dco` job's reason above: a required check
+    # that reports SKIPPED wedges the branch.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: The protocol's guards
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: pablo-tech/principia
+          # Pinned by SHA, never by tag, like every other reusable thing this file calls: a tag is
+          # movable and a guard is exactly the kind of code where that matters. Bump it in a commit
+          # that says what changed.
+          #
+          # Moved 2026-10-06 off `pablo-tech/pablo-protocol` b898920, which PREDATED the rule that
+          # would have caught the file that prompted this job — so the guard this job runs can now
+          # see a wrapped private key committed beside the parameters needed to unwrap it, in both
+          # the SQL-hex and the JSON-base64 spelling. `guards/credentials-guard.sh:113-133` of the
+          # ref below is that rule.
+          #
+          # It moved there in two steps the same afternoon, and the second one was not a choice.
+          # The first pin was `pablo-tech/pablo-protocol@8c608d7`, the merge of the wrapped-key
+          # rule, with a comment here saying that whether this job should follow the protocol's
+          # standing checkout to `pablo-tech/principia` was a question about which repository is
+          # canonical rather than about this guard. That job FAILED, at the checkout rather than at
+          # the guard: `fatal: repository 'https://github.com/pablo-tech/pablo-protocol/' not
+          # found`. The repository was archived and made private at 12:56 PM PT, so a cross-repo
+          # checkout of it from this one cannot succeed at any ref. The question answered itself.
+          #
+          # What was verified before moving, rather than assumed from the migration: `principia`
+          # b425bc7 is a single squashed commit and carries the identical rule at the identical
+          # lines, and `--scan-tree` from a clone of exactly this ref exits 0 over this tree with no
+          # allow-list entry added.
+          ref: b425bc7c780a40c0ac75da17cbeff6190aca9066
+          path: .protocol-guards
+          persist-credentials: false
+      - name: Nothing in the tree is a credential
+        # BLOCKING since 2026-10-06, and it was `continue-on-error: true` until then. The three
+        # tracked files it was expected red about are gone: `apps/lexitar/records/roster.enc` and
+        # `apps/lexitar/records/org-key.json` are untracked and resolve from the operator's
+        # credential store, and `apps/lexitar/migrations/0002_seed_migrated_accounts.sql` seeds
+        # synthetic principals with no key-wrapping material of any kind.
+        #
+        # Not one of them was exempted to get here, and that is the property worth keeping: an
+        # allow-list entry over a real secret is worse than no guard, because it reads as a
+        # decision somebody checked. `.protocol/credentials-allow-name` is still empty and
+        # `-allow-content` still names only files that hold no secret. So a red here is a
+        # regression again, which is what this step was always for.
+        run: bash .protocol-guards/guards/credentials-guard.sh --scan-tree
+
+  autopilot-guard:
+    # The rules it enforces are in .github/autopilot.json. WHICH pull requests it applies to is an
+    # input, never a job-level `if:` — a required check that reports SKIPPED blocks the merge
+    # forever. The `if:` below is about event type, not applicability: it is true for every pull
+    # request, so the check always reports on the path where it is required to.
+    #
+    # On a direct push it does skip, which is why `autopilot-guard / guard` is never satisfied on
+    # a push to `dev` and a human landing a branch there uses the admin bypass. plover-code's copy
+    # runs on pushes and reports "nothing to check" instead; this one has not been changed to match.
+    if: github.event_name == 'pull_request'
+    uses: promontory-studio/pedalion-ci/.github/workflows/guard.yml@6c2d307ada45c3202c2c395b2ac46056c47a40bf # v1.3.0
+    with:
+      base-ref: ${{ github.base_ref }}
+      head-sha: ${{ github.event.pull_request.head.sha }}
+      authors: pedalion-ci[bot],dependabot[bot]
+      pr-author: ${{ github.event.pull_request.user.login }}
+      head-branch: ${{ github.head_ref }}
+      skip-branch-prefixes: promote/
+
+  release:
+    needs: [test, lexitar]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      id-token: write
+    concurrency:
+      group: release-frame
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_PAT }}
+          persist-credentials: true
+      - name: Bump patch version
+        id: bump
+        working-directory: packages/frame
+        run: |
+          version=$(node -p "require('./package.json').version")
+          IFS='.' read -r major minor patch <<< "$version"
+          patch=$((patch + 1))
+          while git rev-parse -q --verify "refs/tags/frame-v$major.$minor.$patch" >/dev/null; do
+            patch=$((patch + 1))
+          done
+          new_version="$major.$minor.$patch"
+          npm version "$new_version" --no-git-tag-version
+          echo "version=$new_version" >> "$GITHUB_OUTPUT"
+      - name: Commit, tag, push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add packages/frame/package.json package-lock.json
+          git commit -m "chore(release): frame v${{ steps.bump.outputs.version }} [skip ci]"
+          git tag "frame-v${{ steps.bump.outputs.version }}"
+          git push origin HEAD:main
+          git push origin "frame-v${{ steps.bump.outputs.version }}"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - name: Publish to npm
+        working-directory: packages/frame
+        run: npm publish --provenance --access public
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "frame-v${{ steps.bump.outputs.version }}" --generate-notes
+
+  # Pages deploys through the git integration, not through CI, so a failed build is invisible here:
+  # the branch quietly keeps serving the previous bundle while this workflow stays green and the
+  # promotion gate reads that green as "dev is deployed".
+  pages-deploy:
+    needs: [lexitar]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npx tsx apps/lexitar/scripts/pages-deploy-status.ts "$PROJECT" "$GITHUB_SHA"
+        env:
+          PROJECT: ${{ github.ref == 'refs/heads/main' && 'health-dash-main' || 'health-dash-dev' }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+  # Only on push: a red PR run is already in front of the person who caused it, but a red dev or
+  # main run is unattended.
+  notify-failure:
+    needs: [test, lexitar, lexitar-image, credentials, autopilot-guard, release, pages-deploy]
+    if: always() && github.event_name == 'push' && contains(needs.*.result, 'failure')
+    uses: promontory-studio/pedalion-ci/.github/workflows/notify-failure.yml@6c2d307ada45c3202c2c395b2ac46056c47a40bf # v1.3.0
+    # `secrets: inherit` does not cross owners, so every secret is named.
+    secrets:
+      app-key: ${{ secrets.AUTOPILOT_APP_KEY }}
+    with:
+      issue-repo: promontory-studio/plover-factory
+      app-id: ${{ vars.AUTOPILOT_APP_ID }}
+      assignee: pablo-tech
+      title: CI failed on a branch that deploys
+      context: A push to dev or main broke CI. Until it is green the promotion gate will not promote, and the branch may be serving a bundle nobody verified.

@@ -1,0 +1,10 @@
+.git
+.claude
+**/node_modules
+**/dist
+**/coverage
+**/test-results
+**/playwright-report
+**/.node-data
+**/.dev.vars*
+**/.wrangler

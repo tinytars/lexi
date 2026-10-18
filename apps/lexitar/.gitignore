@@ -1,0 +1,112 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# wrangler local dev / miniflare R2 simulation state
+.wrangler
+.node-data
+
+# Local Pages Functions secrets (mirror the prod Pages secrets; never committed)
+.dev.vars
+
+# Cloudflare API token / account id are NOT committed here — they live in the operator's private
+# credential store, loaded via scripts/creds.sh. Ignore any local copy.
+.cloudflare.env
+
+# Test artifacts
+test-results
+playwright-report
+
+# Local extraction cache (derived from committed PDFs; makes dry-run→apply
+# deterministic within a session). Plaintext, so never committed.
+.cache/
+
+
+# Stray raw client data / plaintext intermediates ANYWHERE ELSE stay out of git.
+*.xlsx
+*.xls
+*.csv
+data.json
+vault.json
+plaintext*
+
+# records/ is the Vite publicDir umbrella (vite.config.ts:108) and, since 2026-10-06, nothing else
+# this repository tracks. Everything under it is excluded and only the served static layer is
+# re-included — a directory negation, so a new static asset is picked up by the build while the
+# global plaintext bans above keep applying inside it. The two operator artifacts that used to sit
+# here, records/org-key.json and records/roster.enc, resolve from a credential store instead —
+# $LEXI_CREDENTIALS_DIR first, $PLOVER_CREDENTIALS_DIR on a miss. CREDENTIALS.md is the inventory,
+# scripts/creds-dir.ts is the resolver and scripts/load-creds.ts the loader.
+#
+# This replaces W13's `!records/` / `!records/**` force-include, which tracked both of them on the
+# premise that this is a private repository. It stopped being one on 2026-09-09, and the note that
+# sat here — "if the repo ever goes public, purge records/private/ from history" — described a
+# condition that had already occurred and a directory this repository has never had.
+records/*
+!records/public/
+
+# 2026-09-15: this repo is public. The two real accounts' seed blobs that were committed here
+# (data-7de3dfed....enc, data-834bc60d....enc + .dek.enc sidecars) are pulled per owner decision —
+# real per-account ciphertext has no reason to sit in a public git history even encrypted at rest.
+# A new account's blob now reaches R2 directly (see functions/api/vault/[id].ts's PUT path);
+# the "seed from the committed static asset" fallback in that file's GET handler still exists in
+# code but has nothing to fall back to here anymore.
+records/public/data-*.enc
+records/public/data-*.dek.enc
+
+# ...but never the temp files atomic writes rename from (scripts/atomic-write.ts, vite.config.ts).
+# A write interrupted between writeFile and rename leaves one behind holding a full copy of a vault,
+# and the records/public/ re-inclusion above would otherwise leave one a stageable untracked
+# file — i.e. committable plaintext PHI under a name nobody recognises. Found exactly that on
+# 2026-08-11: blair/vault.json.tmp-81353-… , 347122 bytes of real PHI, untracked and not ignored.
+records/**/*.tmp-*
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# W49 — vault-corruption forensics watcher (scripts/vault-watch.sh). Incident logs and heartbeat
+# state; never committed. The canary lives inside records/private/ (same volume/directory as the
+# real vault fixtures it's compared against) and needed its own override past W13's blanket
+# `!records/**` re-inclusion. `records/*` excludes that directory outright since 2026-10-06; this
+# line stays so the path is refused by name rather than only by whatever the umbrella rule is.
+.vault-watch/
+records/private/.vault-watch-canary
+
+# W52 — scheduled-snapshot run logs (scripts/snapshot-cron.sh). Machine-local operational output;
+# the snapshots themselves live in the health-vault-backup R2 bucket, never in git.
+.snapshot/
+coverage/
+
+# scripts/export-finding-dag-vault.ts (`npm run dag:push`) default output — an Obsidian-openable
+# projection of FINDING_DAG, brand-neutral (PRODUCT_NAME is written as a {{PRODUCT_NAME}} token).
+# Regenerated locally; never committed here — the real destination is clinical-vault
+# (`npm run dag:push -- --out <path>`, see ~/.claude/CLAUDE.md).
+.finding-dag-vault/
+
+# Belt and braces for `npm run record:export`. The ACTUAL control is scripts/export-dir.ts, which
+# refuses at run time any destination inside a git work tree or under records/ — because an ignore
+# rule is the wrong control here: this repo is public, an ignore rule binds only the checkout that
+# carries it, and an export lands wherever the operator points `--out`. Until 2026-10-06 it was
+# wrong twice over, W13's `!records/**` re-inclusion having made the one directory an operator
+# would reach for the one git would happily stage.
+# Exports default to $XDG_STATE_HOME/lexitar/exports, outside every checkout, and `npm run
+# record:export -- --purge` removes them.
+exports/

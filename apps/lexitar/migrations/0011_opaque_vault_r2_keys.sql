@@ -1,0 +1,19 @@
+-- 0011_opaque_vault_r2_keys.sql — G1: the two pilot vaults stop being named after their patient.
+--
+-- `r2_key` is the identifier at every layer at once: it is the R2 object name, the `/api/vault/{id}`
+-- route segment (functions/api/vault/[id].ts looks the route up BY r2_key, not by vault_id), and the
+-- name of the served static asset. So while the ciphertext was always sound, `data-<first name>.enc`
+-- was reachable unauthenticated at a guessable URL and the filename alone disclosed who the patient
+-- was. The scheme replacing it is not new: every account created since signup shipped is already
+-- keyed by its own lowercased account id (src/App.svelte, createFirstClient). This backfilled the
+-- two pilots onto it.
+--
+-- THIS FILE IS NOW A NO-OP, 2026-10-06, AND IT IS KEPT RATHER THAN DELETED. Both live databases have
+-- it applied, and wrangler's ledger tracks applied migrations by name — deleting or renaming it makes
+-- the ledger describe a file that is not there, and renaming makes it replay. What changed is the
+-- file it depended on: 0002 used to seed the two pilot vaults under slug-shaped keys and now seeds no
+-- vault at all, so there is nothing here left to rename in a fresh database. Its two UPDATE
+-- statements are removed along with the real vault identifiers they were scoped by, for the reason
+-- docs/adr/0001-rewrite-applied-migration-0002.md gives: after that rewrite they were the only live
+-- vault ids this public repository tracked, and they had stopped doing anything. What they did on the
+-- two live databases is unchanged and is not re-run by their removal.

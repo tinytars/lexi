@@ -1,0 +1,8 @@
+{
+  "lines": 58,
+  "statements": 56,
+  "functions": 53,
+  "branches": 53,
+  "functions/**": { "lines": 89, "statements": 85, "functions": 93, "branches": 79 },
+  "src/lib/**": { "lines": 55, "statements": 53, "functions": 51, "branches": 49 }
+}

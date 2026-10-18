@@ -1,0 +1,131 @@
+name: snapshot
+
+# The daily R2->R2 backup of the live vault, ported from plover-code's snapshot.yml now that
+# apps/lexitar (not apps/health-dash-web) is what reads and writes health-vault/health-identity-*.
+# scripts/snapshot-cron.sh stays the by-hand and recovery path; this is the scheduled path, and the
+# two do not share a mechanism, same as before the port.
+
+on:
+  schedule:
+    # 03:15 UTC, unchanged from plover-code's schedule. GitHub only fires schedules from the
+    # DEFAULT branch, so this stanza is live only once it reaches main.
+    - cron: "15 3 * * *"
+  workflow_dispatch:
+    inputs:
+      store:
+        description: "Which store to snapshot"
+        required: true
+        type: choice
+        options: [prod, dev]
+        default: prod
+      keep:
+        description: "Retention window (snapshots kept)"
+        type: string
+        default: "30"
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      # Both stores on the schedule; exactly one on a dispatch. `fromJSON` because a matrix cannot
+      # take a conditional list any other way.
+      matrix:
+        store: ${{ github.event_name == 'schedule' && fromJSON('["prod","dev"]') || fromJSON(format('["{0}"]', inputs.store)) }}
+      fail-fast: false
+    env:
+      # The store is chosen explicitly rather than read from this branch's wrangler.jsonc
+      # (vault-sync.ts prefers STORE_PREFIX over it). A schedule fires from main, so inferring the
+      # store from the checkout would silently mean "prod only, forever".
+      #
+      # This env var only ever covered the PREFIX. The bucket and the D1 database come from
+      # scripts/target.ts, which reads the worktree's wrangler.jsonc — so the dev leg used to dump
+      # health-identity-prod with nothing but its key prefix saying "dev". The step below moves the
+      # whole target, not just the prefix; this stays as the value that step asserts against.
+      STORE_PREFIX: ${{ matrix.store }}
+      # ORG_KEY_PASSPHRASE went with them on 2026-10-07, measured the same way and twice over. This
+      # job runs `vault:snapshot` and `vault:snapshot:check`, and neither reaches scripts/org-key.ts
+      # from any depth — a snapshot copies ciphertext object-for-object and never unwraps a DEK, so
+      # there was nothing here for a passphrase to open. And no org key FILE reaches a hosted runner
+      # at all: scripts/org-key.ts:28 resolves ORG_KEY_PATH or a credential store's org-key.json
+      # with no in-repo fallback, and no workflow sets any of them. A passphrase with no key beside it is exposure
+      # with no counterpart in capability, which is the argument the paragraph below already makes.
+      # PASSPHRASE, ROSTER_PASS and SEED_PASSPHRASE used to sit here and were removed 2026-10-06:
+      # measured against the tree, not one of the three is read by any file under src, functions,
+      # scripts, server or tests — only by comments describing what they used to open. PASSPHRASE's
+      # last job was the provider login baked into migrations/0002, which now seeds no credential at
+      # all; ROSTER_PASS opened records/roster.enc, which no code path has read since the W44 cutover
+      # moved the roster into D1. A repository secret handed to a job that reads it for nothing is
+      # exposure with no counterpart in capability. apps/lexitar/CREDENTIALS.md is the inventory.
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    # The run ends in a retention prune that lists snapshots and then deletes what it listed, so two
+    # overlapping runs let the second be deleted by a decision the first made before it existed.
+    # Never cancel-in-progress: cancelling mid-prune is the failure this guards against.
+    concurrency:
+      group: snapshot-${{ matrix.store }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # scripts/target.ts resolves bucket + D1 + prefix from the worktree's wrangler.jsonc, which is
+      # deliberately divergent per branch ("THE WORKTREE YOU STAND IN DECIDES"). A schedule always
+      # fires from main, so the dev leg stood in prod: it dumped health-identity-prod and read the
+      # prod bucket, with nothing but its key prefix saying "dev". Rather than restating the bucket
+      # and database names here — a second copy of facts that already drifted once — put the
+      # worktree in the branch that owns this store and let the one source of truth answer.
+      #
+      # The fetch is explicit because checkout only creates a remote ref for the branch it checked
+      # out; the assertion is what makes a wrong branch loud instead of silent.
+      - name: Stand in ${{ matrix.store }}'s target
+        run: |
+          set -euo pipefail
+          branch=$([ "$STORE_PREFIX" = prod ] && echo main || echo dev)
+          git fetch --depth=1 origin "$branch"
+          git show "FETCH_HEAD:apps/lexitar/wrangler.jsonc" > apps/lexitar/wrangler.jsonc
+          grep -E 'bucket_name|database_name|STORE_PREFIX' apps/lexitar/wrangler.jsonc
+          got="$(grep -o '"STORE_PREFIX": *"[^"]*"' apps/lexitar/wrangler.jsonc | cut -d'"' -f4)"
+          if [ "$got" != "$STORE_PREFIX" ]; then
+            echo "::error::origin/$branch declares STORE_PREFIX=$got, but this leg snapshots $STORE_PREFIX"
+            exit 1
+          fi
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Install (root workspaces cover apps/lexitar)
+        run: npm ci
+
+      - name: Snapshot ${{ matrix.store }}
+        working-directory: apps/lexitar
+        run: npm run vault:snapshot -- --keep "${{ inputs.keep || '30' }}"
+
+      # Asked separately from the run above, exactly as snapshot-cron.sh does: this is the check
+      # that catches a job which exited 0 having written nothing. It is the alarm, and a hosted
+      # runner cannot send a macOS notification, so the alarm here is the job going red. Do not
+      # soften it with continue-on-error.
+      - name: A fresh snapshot really exists
+        working-directory: apps/lexitar
+        run: npm run vault:snapshot:check
+
+      - name: Note the independent check
+        if: failure()
+        run: echo "Backup alarm for ${{ matrix.store }}. \`npm run vault:snapshot:check\` re-asks locally." >> "$GITHUB_STEP_SUMMARY"
+
+  notify-failure:
+    needs: [snapshot]
+    if: always() && contains(needs.*.result, 'failure')
+    uses: promontory-studio/pedalion-ci/.github/workflows/notify-failure.yml@6c2d307ada45c3202c2c395b2ac46056c47a40bf # v1.3.0
+    # `secrets: inherit` does not cross owners, so every secret is named.
+    secrets:
+      app-key: ${{ secrets.AUTOPILOT_APP_KEY }}
+    with:
+      issue-repo: promontory-studio/plover-factory
+      app-id: ${{ vars.AUTOPILOT_APP_ID }}
+      assignee: pablo-tech
+      title: Nightly vault snapshot failed
+      context: The vault backup did not complete. Its check step is the only alarm on backup integrity, and until this passes there is no verified recent snapshot.

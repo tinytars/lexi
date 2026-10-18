@@ -1,0 +1,260 @@
+import type { D1Database } from "../_lib/identity-types";
+import { recordRawObject } from "../_lib/identity-audit";
+import { requireSession } from "../_lib/session";
+import { logRequest } from "../_lib/log";
+import { modelErrorReply } from "../_lib/model-errors";
+import { modelFor } from "../_lib/inference/resolve";
+import { storeKey } from "../_lib/store";
+import { rawAccessFor, mayRead, type RawAccess } from "../_lib/raw-owner";
+import { auditPrivilegedRead, sha8Of, AUDIT_UNAVAILABLE } from "../_lib/phi-audit";
+import { readDocument, DOCUMENT_READ_FAILURE, type DocumentReading, type StoredExtraction } from "@pablotech/akesi/document-read";
+import { validatePageImages } from "../_lib/page-images";
+import { isSealed, openRaw, RawKeyError, sealRaw } from "../../src/lib/raw-cipher";
+import type { ObjectBucket } from "../_lib/object-bucket";
+
+// Read one ALREADY-UPLOADED attachment as text, and cache the result forever.
+//
+// The request carries only {id, key} — never the bytes. The browser has already PUT the file to
+// /api/raw/{id}/{key}, and attachment keys are content-addressed ("<sha8>-<name>",
+// attachment-store.ts), so the blob key IS the cache key: re-attaching the same bytes, from any
+// surface, hits the sidecar and never bills a second extraction. Sending the base64 back up would
+// have re-paid an ~18 MB upload per attachment for no benefit.
+//
+// The extracted text is stored as an R2 SIDECAR (text/{id}/{key}.json), not in the vault. A long
+// PDF's transcription in a vault blob would be re-encrypted and rewritten on every unrelated edit;
+// the vault keeps metadata only (Attachment.extracted, types.ts).
+//
+// The sidecar is sealed under the SAME content key as the document it transcribes, which this
+// request has just used to read that document. It has to be: a full transcription lying in
+// cleartext beside the ciphertext of its own source would make encrypting the source cosmetic.
+
+interface Env {
+  VAULT: Pick<ObjectBucket, "get" | "put" | "list">;
+  SESSION_SECRET: string;
+  // W71 — requireSession reads accounts.sessions_valid_from, so every gated route needs the binding.
+  DB: D1Database;
+  STORE_PREFIX: string;
+}
+
+const ROUTE = "/api/document-extract";
+// The request normally carries {id, key} and nothing else — a few hundred bytes, because the bytes
+// are already in R2. It carries the pages rendered as images as well when the configured document
+// model can see but cannot take a PDF (src/lib/pdf-pages-for-model.ts), which is the only reason
+// this ceiling is not still 8 KB. A request WITHOUT them is still held to the old one.
+const MAX_BODY_BYTES = 24 * 1024 * 1024;
+const MAX_METADATA_BODY_BYTES = 8 * 1024;
+// Mirrors /api/extract's ceiling: a base64 PDF inflates ~33%, so ~18 MB of PDF is the most Claude
+// will take as a document block.
+const MAX_DOCUMENT_BYTES = 18 * 1024 * 1024;
+
+/** A file we can read WITHOUT a model call — the bytes already are the text. */
+function isPlainText(file: string, mediaType?: string): boolean {
+  return /\.(txt|md|markdown)$/i.test(file) || (mediaType ?? "").startsWith("text/");
+}
+
+function isPdf(file: string, mediaType?: string): boolean {
+  return /\.pdf$/i.test(file) || mediaType === "application/pdf";
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  // Chunked — String.fromCharCode(...bytes) on a multi-MB array overflows the call stack.
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(binary);
+}
+
+export async function onRequestPost(context: { request: Request; env: Env }): Promise<Response> {
+  const { request, env } = context;
+  const start = Date.now();
+  const requestId = request.headers.get("cf-ray") ?? undefined;
+
+  const finish = (status: number, payload: unknown, extra: Partial<Parameters<typeof logRequest>[0]> = {}): Response => {
+    logRequest({ route: ROUTE, status, latencyMs: Date.now() - start, requestId, ...extra });
+    return new Response(JSON.stringify(payload), { status, headers: { "content-type": "application/json" } });
+  };
+
+  const session = await requireSession(request, env);
+  if (session instanceof Response) {
+    return finish(401, { error: "unauthorized" }, { errorCode: "unauthorized" });
+  }
+
+  const rawBody = await request.text();
+  if (rawBody.length > MAX_BODY_BYTES) {
+    return finish(413, { error: "request too large", errorCode: "too_large" }, { errorCode: "too_large" });
+  }
+  let body: { id?: unknown; key?: unknown; mediaType?: unknown; pageImages?: unknown; rawKey?: unknown };
+  try {
+    body = JSON.parse(rawBody);
+  } catch {
+    return finish(400, { error: "malformed JSON body", errorCode: "bad_json" }, { errorCode: "bad_json" });
+  }
+  const pageImages = validatePageImages(body.pageImages);
+  if (!pageImages && rawBody.length > MAX_METADATA_BODY_BYTES) {
+    return finish(413, { error: "request too large", errorCode: "too_large" }, { errorCode: "too_large" });
+  }
+
+  const id = typeof body.id === "string" ? body.id.trim().toLowerCase() : "";
+  const key = typeof body.key === "string" ? body.key.trim() : "";
+  const mediaType = typeof body.mediaType === "string" ? body.mediaType : undefined;
+  const rawKey = typeof body.rawKey === "string" ? body.rawKey : undefined;
+  // Same path discipline as /api/raw: no traversal, no empties — these become R2 key segments.
+  if (!id || !key || id.includes("/") || key.includes("/") || key === "." || key === "..") {
+    return finish(400, { error: "id and key are required", errorCode: "bad_path" }, { errorCode: "bad_path" });
+  }
+  if (!isPdf(key, mediaType) && !isPlainText(key, mediaType)) {
+    return finish(415, { error: "only PDF and plain-text documents can be read", errorCode: "unsupported_document" }, { errorCode: "unsupported_document" });
+  }
+
+  // W73 (SECURITY.md gap 1). This route was the cleanest oracle of the two: its cache branch below
+  // returns another patient's EXTRACTED PLAINTEXT before it ever touches raw/, so a cross-tenant read
+  // cost nothing and billed nothing. The check therefore goes above the cache, not beside the fetch.
+  // Extraction READS an original, so it is held to the read rule: an empty namespace has nothing to
+  // extract and an orphaned one is nobody's to read (W76).
+  const access = await rawAccessFor(env.DB, env, session.accountId, id);
+  if (!mayRead(access)) {
+    return finish(404, { error: "not found", errorCode: "not_found" }, { errorCode: "not_found" });
+  }
+
+  // Audited above the cache for the same reason the gate is: what this route hands back is the
+  // document's full transcription, so the cached branch is as much a disclosure as a fresh extraction.
+  if (access.kind === "granted") {
+    const refused = await auditPrivilegedRead(env.DB, {
+      actor: session.accountId,
+      subject: access.subjectAccountId,
+      vaultId: access.vaultId,
+      action: "document_text_read",
+      consentRef: access.consentRef,
+      meta: { sha8: sha8Of(key) },
+    });
+    if (refused) {
+      logRequest({ route: ROUTE, status: 503, latencyMs: Date.now() - start, requestId, errorCode: AUDIT_UNAVAILABLE });
+      return refused;
+    }
+  }
+
+  const sidecarKey = storeKey(env, "text", id, `${key}.json`);
+
+  // Cache first — the whole point of content-addressed keys.
+  const cached = await env.VAULT.get(sidecarKey);
+  if (cached) {
+    try {
+      const plain = await openRaw(new Uint8Array(await cached.arrayBuffer()), `${key}.json`, rawKey);
+      const parsed = JSON.parse(new TextDecoder().decode(plain)) as StoredExtraction;
+      return finish(200, { ...parsed, cached: true }, { access: access.kind });
+    } catch {
+      // A corrupt sidecar re-extracts rather than failing the request; the put below overwrites it.
+      // A sidecar this request holds no key for lands here too, and the raw read below refuses for
+      // the same reason before anything is billed.
+    }
+  }
+
+  const raw = await env.VAULT.get(storeKey(env, "raw", id, key));
+  if (!raw) {
+    return finish(404, { error: "attachment not found", errorCode: "not_found" }, { errorCode: "not_found" });
+  }
+  let bytes: Uint8Array;
+  try {
+    bytes = await openRaw(new Uint8Array(await raw.arrayBuffer()), key, rawKey);
+  } catch (err) {
+    if (!(err instanceof RawKeyError)) throw err;
+    // Classified, so _middleware.ts's catch-all never files this as a bug: the caller holds the key
+    // and simply did not send it.
+    return finish(400, { error: "this document could not be opened", errorCode: "raw_key_missing" }, { errorCode: "raw_key_missing" });
+  }
+
+  let reading: DocumentReading;
+  let model: string | undefined;
+  try {
+    if (isPlainText(key, mediaType)) {
+      // No model call at all — free, and the common case for a pasted protocol or an exported note.
+      const text = new TextDecoder().decode(bytes);
+      if (!text.trim()) {
+        return finish(422, { error: "this document is empty", errorCode: "invalid_extraction" }, { errorCode: "invalid_extraction" });
+      }
+      reading = { documentKind: "Text document", isMedicalReport: false, notReportReason: "plain text, not a clinical report", text };
+    } else {
+      if (bytes.length > MAX_DOCUMENT_BYTES) {
+        return finish(413, { error: "document too large to read", errorCode: "too_large" }, { errorCode: "too_large" });
+      }
+      const resolved = modelFor(env, "document");
+      model = resolved.model;
+      if (pageImages) {
+        // The pages come from the caller, not from the blob just fetched — only the browser has
+        // pdfjs. That is safe here and nowhere else: the access check above already proved this is
+        // the caller's own namespace, so the worst they can do is cache a reading of their own
+        // pages under their own key.
+        reading = await readDocument(resolved.client, { pageImages }, key, model);
+      } else {
+        reading = await readDocument(resolved.client, { pdfBase64: bytesToBase64(bytes) }, key, model);
+      }
+    }
+  } catch (err) {
+    const message = (err as Error).message ?? "";
+    if (DOCUMENT_READ_FAILURE.test(message)) {
+      return finish(422, { error: "could not read this document", detail: message, errorCode: "invalid_extraction" }, { errorCode: "invalid_extraction" });
+    }
+    const { status, errorCode, error } = modelErrorReply(err, "document reading backend error");
+    return finish(status, { error, errorCode }, { errorCode });
+  }
+
+  const stored: StoredExtraction = {
+    ...reading,
+    at: new Date().toISOString(),
+    chars: reading.text.length,
+    ...(model ? { model } : {}),
+  };
+  const sidecar = new TextEncoder().encode(JSON.stringify(stored));
+  await env.VAULT.put(sidecarKey, rawKey ? await sealRaw(sidecar, rawKey) : sidecar);
+  // W72 — the sidecar is extracted PLAINTEXT PHI, so it is erasable data in its own right and gets the
+  // same ownership row the original does. Without it an erasure would delete the PDF and leave its
+  // readable text behind, which is the worst of the two outcomes.
+  await recordRawObject(env.DB, sidecarKey, session.accountId);
+  // W8d: audit the write — id + size, never the content.
+  return finish(200, { ...stored, cached: false }, { bytes: stored.chars, access: access.kind });
+}
+
+// GET /api/document-extract?id=&key= — the sidecar only, never a model call. This is what a leaf
+// turn or a chat send uses to pick up text that was extracted at attach time: it must be cheap and
+// must never silently start an extraction as a side effect of rendering.
+export async function onRequestGet(context: { request: Request; env: Env }): Promise<Response> {
+  const { request, env } = context;
+  const start = Date.now();
+  const log = (status: number, extra: { errorCode?: string; access?: RawAccess["kind"] } = {}) =>
+    logRequest({ route: ROUTE, status, latencyMs: Date.now() - start, ...extra });
+
+  const session = await requireSession(request, env);
+  if (session instanceof Response) {
+    log(401, { errorCode: "unauthorized" });
+    return session;
+  }
+  const url = new URL(request.url);
+  const id = (url.searchParams.get("id") ?? "").trim().toLowerCase();
+  const key = (url.searchParams.get("key") ?? "").trim();
+  if (!id || !key || id.includes("/") || key.includes("/")) {
+    log(400, { errorCode: "bad_path" });
+    return new Response(JSON.stringify({ error: "id and key are required" }), { status: 400, headers: { "content-type": "application/json" } });
+  }
+
+  const readAccess = await rawAccessFor(env.DB, env, session.accountId, id);
+  if (!mayRead(readAccess)) {
+    log(404, { errorCode: readAccess.kind === "denied" ? "not_owner" : readAccess.kind, access: readAccess.kind });
+    return new Response(JSON.stringify({ error: "not found", errorCode: "not_found" }), { status: 404, headers: { "content-type": "application/json" } });
+  }
+
+  const cached = await env.VAULT.get(storeKey(env, "text", id, `${key}.json`));
+  if (!cached) {
+    log(404, { errorCode: "not_found", access: readAccess.kind });
+    return new Response(JSON.stringify({ error: "not extracted" }), { status: 404, headers: { "content-type": "application/json" } });
+  }
+  // The sidecar goes back exactly as stored, sealed or not. This route holds no key and never asks
+  // for one: a key in a query string is a key in a log, and the caller that wants the text already
+  // has the keyring the seal came from.
+  const stored = new Uint8Array(await cached.arrayBuffer());
+  log(200, { access: readAccess.kind });
+  return new Response(stored, {
+    status: 200,
+    headers: { "content-type": isSealed(stored) ? "application/octet-stream" : "application/json", "cache-control": "no-store" },
+  });
+}

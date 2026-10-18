@@ -1,0 +1,18 @@
+-- 0019_provider_link_role_primary.sql — finish what 0012 set out to do, on the database that never
+-- received its UPDATEs.
+--
+-- functions/_lib/capabilities.ts's GRANTS table recognises the Role literal 'primary' for "ai:spend"
+-- and "recovery:issue"; 'clinician' appears in none of its lists, so a link row carrying that value
+-- fails every capability check keyed on it. 0002 seeded 'clinician' originally.
+--
+-- 0012_fix_fam4_provider_kind.sql corrected that, and then became a deliberate no-op on 2026-10-06
+-- when its three UPDATEs were removed along with the real account identifiers they were scoped by
+-- (docs/adr/0001-rewrite-applied-migration-0002.md). Both live databases record 0012 as applied, so
+-- wrangler will never replay it — and the prod store, measured 2026-10-08, still carried one row at
+-- 'clinician'. The dev store carried none. That is the whole reason this file exists rather than a
+-- hand-typed UPDATE against production: an unrecorded write to a live database is invisible to the
+-- next reader, which is the defect the ADR above is about.
+--
+-- Scoped by the WRONG VALUE, not by an account id, so this file names no principal and is safe in a
+-- public repository, is idempotent, and is a no-op on any database already correct.
+UPDATE provider_links SET role = 'primary' WHERE role = 'clinician';

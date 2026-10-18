@@ -1,0 +1,148 @@
+// Chat thread model. Threads are persisted per client as an in-browser-encrypted HD1 blob
+// (W16, chat-store.ts) — the same key-loss-proof model as the vault, so PHI is never plaintext
+// at rest. adoptThreads() rebases the id/seq counter onto a restored set so new threads never
+// collide with hydrated ones.
+
+import { readPersonaId, type PersonaId } from "./personas";
+import type { Permalink } from "./permalink";
+import type { ReferenceKind, ResolvedReference } from "./reference-resolver";
+import type { Attachment } from "./types";
+import { sortPinnedFirst } from "./pin-sort";
+
+export interface ReferenceTurnData {
+  permalink: Permalink;
+  kind: ReferenceKind;
+  preview: { title: string; subtitle?: string; tag: string };
+}
+
+export type Turn = {
+  role: "user" | "assistant";
+  text: string;
+  reference?: ReferenceTurnData;
+  // W46 Phase 6 — images attached from the chat composer, ridden as real vision content blocks to
+  // the model (unlike `reference`, which is metadata-only). Scratch-surface only: never folds into
+  // a SourceRecord/pendingUpload, and never reaches the Finding pipeline (see leaf-actions.ts /
+  // decision #4 in docs/health-dash/plans/46-w46-attachments-and-previews.md).
+  attachments?: Attachment[];
+  // W84 — an assistant turn restated by a persona adapter. `text` stays Lexi's canonical answer: it is
+  // what history replays to the brain, so the model only ever reads its own words back.
+  adapted?: { persona: PersonaId; text: string };
+};
+
+export type Thread = {
+  id: string;
+  title: string;
+  pinned: boolean;
+  turns: Turn[];
+  // Monotonic creation counter (not a wall-clock time — Date.now() is avoided so the
+  // model is deterministic/testable); higher = more recent.
+  seq: number;
+  // Wall-clock time of the last turn appended (or creation); drives sortThreads' recency order.
+  lastActivityAt: number;
+};
+
+const UNTITLED = "New chat";
+
+let counter = 0;
+export function newThread(): Thread {
+  counter += 1;
+  return { id: `t${counter}`, title: UNTITLED, pinned: false, turns: [], seq: counter, lastActivityAt: Date.now() };
+}
+
+// First user message becomes the title (trimmed to a scannable length). Only set
+// while still untitled so a manual rename sticks.
+export function titleFor(thread: Thread, firstMessage: string): string {
+  if (thread.title !== UNTITLED) return thread.title;
+  const t = firstMessage.trim().replace(/\s+/g, " ");
+  if (!t) return UNTITLED;
+  return t.length > 48 ? t.slice(0, 47).trimEnd() + "…" : t;
+}
+
+// Shared reference-turn-building logic (M70) — used by both an existing-thread paste
+// (ChatTab's onPaste) and a new-thread seed (Phase 2), so the fallback text/shape stays identical.
+export function buildReferenceTurn(resolved: ResolvedReference): Turn {
+  const text =
+    resolved.kind === "wrong-patient" ? "This link is for a different patient — switch patients first"
+    : resolved.kind === "unresolved" ? "This link's target could not be found"
+    : `Referenced: ${resolved.preview.title} (${resolved.preview.tag})`;
+  return {
+    role: "user",
+    text,
+    reference: { permalink: resolved.permalink, kind: resolved.kind, preview: resolved.preview },
+  };
+}
+
+export function seedNewThread(resolved: ResolvedReference): Thread {
+  const thread = newThread();
+  const previewText = `${resolved.preview.title}${resolved.preview.subtitle ? " — " + resolved.preview.subtitle : ""}`;
+  thread.title = titleFor(thread, previewText);
+  thread.turns = [buildReferenceTurn(resolved)];
+  return thread;
+}
+
+// Rebase the module counter onto a restored set so newThread() ids/seqs stay above every
+// hydrated thread. Returns the set to adopt (a fresh thread if the restored set is empty).
+//
+// Deduplicates by id, keeping the last occurrence: decrypted storage is external input, not a
+// value this module produced itself, and a real account has hit a blob carrying the same id
+// twice (root cause unconfirmed — plausibly an old concurrent-save race, now guarded at the
+// store layer by chat-store.ts's etag check, but that guard is no defense against data already
+// written before it existed). Every render keys threads by id ({#each ... (t.id)} in Sidebar,
+// row.turnIdx within one thread), so a silent duplicate is not cosmetic — it's an uncaught
+// each_key_duplicate crash on every future load of that account's chat tab.
+export function adoptThreads(threads: Thread[]): Thread[] {
+  const deduped = [...new Map(threads.map((t) => [t.id, withCurrentPersonas(t)])).values()];
+  for (const t of deduped) counter = Math.max(counter, t.seq);
+  return deduped.length > 0 ? deduped : [newThread()];
+}
+
+// W85 — reconciles this tab's threads with the ones another tab stored while we held a stale etag.
+// adoptThreads' dedupe is NOT this: it keeps the last occurrence, which would drop whichever side
+// lost the ordering. Chat is append-mostly, so a union by id that keeps the longer turn list
+// recovers both sides of the race in the overwhelmingly common case (the same thread, one extra
+// turn); title and pinned follow the more recently active side, since those are last-writer-wins by
+// nature.
+export function mergeThreads(mine: Thread[], theirs: Thread[]): Thread[] {
+  const merged = new Map(theirs.map((t) => [t.id, t]));
+  for (const ours of mine) {
+    const other = merged.get(ours.id);
+    merged.set(ours.id, other ? mergeThread(ours, other) : ours);
+  }
+  return [...merged.values()];
+}
+
+// Spreading the newer side carries its title/pinned AND its lastActivityAt, which is already the max
+// by construction — so the field is never synthesized, and a historical thread that lacks it keeps
+// lacking it rather than gaining a seq value masquerading as a timestamp (see sortThreads).
+function mergeThread(a: Thread, b: Thread): Thread {
+  const newer = (a.lastActivityAt ?? a.seq) >= (b.lastActivityAt ?? b.seq) ? a : b;
+  const longer = a.turns.length >= b.turns.length ? a : b;
+  return { ...newer, turns: longer.turns, seq: Math.max(a.seq, b.seq) };
+}
+
+// A turn saved under a renamed persona id reads as that persona today; one no longer offered shows
+// Lexi's original, which every adapted turn keeps.
+function withCurrentPersonas(thread: Thread): Thread {
+  if (!thread.turns.some((t) => t.adapted && t.adapted.persona !== readPersonaId(t.adapted.persona))) return thread;
+  const turns = thread.turns.map(({ adapted, ...turn }) => {
+    const persona = adapted && readPersonaId(adapted.persona);
+    return persona ? { ...turn, adapted: { ...adapted, persona } } : turn;
+  });
+  return { ...thread, turns };
+}
+
+// Pinned first, then most-recent-first (by lastActivityAt) within each group. Stable, pure.
+export function sortThreads(threads: Thread[]): Thread[] {
+  // Threads persisted before lastActivityAt existed round-trip through plain JSON with no schema
+  // migration, so a real historical blob can lack the field at runtime; fall back to seq (the
+  // prior tiebreak) so ordering stays deterministic instead of comparing undefined - undefined (NaN).
+  return sortPinnedFirst(threads).sort((a, b) =>
+    a.pinned === b.pinned ? (b.lastActivityAt ?? b.seq) - (a.lastActivityAt ?? a.seq) : 0,
+  );
+}
+
+// W84 — the words an assistant turn shows, and whose they are. The adapted rendering wins unless the
+// reader asked for the original; a turn with no adaptation is always Lexi's own answer.
+export function shownReply(turn: Turn, showOriginal: boolean): { persona: PersonaId; text: string } {
+  return turn.adapted && !showOriginal ? turn.adapted : { persona: "lexi", text: turn.text };
+}

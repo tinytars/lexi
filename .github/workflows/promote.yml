@@ -1,0 +1,62 @@
+name: promote
+
+# Opens the dev -> main promotion PR once dev has soaked, keeping main's prod wrangler.jsonc
+# exactly as every hand promotion has. claude-review.yml then reviews and merges it like any
+# other PR. Veto: label the PR `hold`, or set AUTOPILOT_PROMOTE=off.
+# Scheduled runs fire only from main, so the schedule is live once this file is promoted.
+
+on:
+  schedule:
+    - cron: "0 9 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  # The canary issue is found by a label derived from the canary message rather than written
+  # down, so it has to be computed from this repository's code before the gate can look it up.
+  canary:
+    if: vars.AUTOPILOT != 'off' && vars.AUTOPILOT_PROMOTE != 'off' && vars.AUTOPILOT_APP_ID != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      label: ${{ steps.fingerprint.outputs.label }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - run: npm ci
+      - id: fingerprint
+        run: echo "label=$(npx tsx apps/lexitar/scripts/canary-label.ts)" >> "$GITHUB_OUTPUT"
+
+  promote:
+    needs: [canary]
+    uses: promontory-studio/pedalion-ci/.github/workflows/promote.yml@6c2d307ada45c3202c2c395b2ac46056c47a40bf # v1.3.0
+    # `secrets: inherit` does not cross owners, so every secret is named.
+    secrets:
+      app-key: ${{ secrets.AUTOPILOT_APP_KEY }}
+    with:
+      mode: ${{ vars.AUTOPILOT_PROMOTE || 'on' }}
+      keep-paths: apps/lexitar/wrangler.jsonc
+      report-repo: promontory-studio/plover-factory
+      canary-label: ${{ needs.canary.outputs.label }}
+      app-id: ${{ vars.AUTOPILOT_APP_ID }}
+
+  notify-failure:
+    needs: [canary, promote]
+    if: always() && contains(needs.*.result, 'failure')
+    uses: promontory-studio/pedalion-ci/.github/workflows/notify-failure.yml@6c2d307ada45c3202c2c395b2ac46056c47a40bf # v1.3.0
+    # `secrets: inherit` does not cross owners, so every secret is named.
+    secrets:
+      app-key: ${{ secrets.AUTOPILOT_APP_KEY }}
+    with:
+      issue-repo: promontory-studio/plover-factory
+      app-id: ${{ vars.AUTOPILOT_APP_ID }}
+      assignee: pablo-tech
+      title: Promotion workflow failed
+      context: dev is not reaching main by automation. A gate that blocks promotion exits clean; a failure here means the workflow itself broke.
