@@ -61,6 +61,10 @@ export function createChatThreadSession(deps: ChatThreadSessionDeps): ChatThread
   let chatRenamingId = $state<string | null>(null);
   let chatRenameText = $state("");
   let chatLoadedForId = $state<string | null>(null);
+  // The DEK the conversation now in memory was decrypted out of storage under. Null until a load
+  // actually restores one, so a key that moves mid-load can never mistake the placeholder thread for
+  // a conversation worth writing back.
+  let chatOpenedWithKey: CryptoKey | null = null;
   let chatHydrated = $state(false);
   let chatSaveError = $state<string | null>(null);
   let chatSaveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -69,11 +73,28 @@ export function createChatThreadSession(deps: ChatThreadSessionDeps): ChatThread
   function hydrate() {
     const id = deps.getSelectedClientId();
     const key = deps.getDek();
-    if (!id || !key || chatLoadedForId === id) return;
+    if (!id || !key) return;
+    if (chatLoadedForId === id) {
+      // A rotation replaced the DEK under a client this tab already has open — vault-principals'
+      // rotateVaultKey(), which re-keys the vault blob and leaves the selection exactly where it was.
+      // Nothing in that path touches the chat blob, so it stays encrypted under the key that was just
+      // discarded, and this tab holds the only plaintext copy left. Re-reading would just prove the
+      // blob unopenable and latch chat-store's refusal to overwrite it; writing it back under the new
+      // key is what keeps the conversation readable to the next session.
+      if (chatOpenedWithKey && chatOpenedWithKey !== key) {
+        chatOpenedWithKey = key;
+        persistChatThreads();
+      }
+      return;
+    }
     chatLoadedForId = id;
+    chatOpenedWithKey = null;
     return store.loadThreads(id, key)
       .then((loaded) => {
-        chatThreads = loaded && loaded.length ? adoptThreads(loaded) : [newThread()];
+        const restored = loaded && loaded.length ? adoptThreads(loaded) : null;
+        chatThreads = restored ?? [newThread()];
+        // Only a conversation that came out of storage can be re-keyed back into it.
+        if (restored) chatOpenedWithKey = key;
       })
       .catch((e) => {
         // Opening fresh is still right — a chat tab that will not open is worse than an empty one.
