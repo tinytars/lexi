@@ -134,9 +134,16 @@ export async function pull(id: string, store = resolveStore()): Promise<PullResu
 //
 // CLAUDE.md has held this line in prose since W77 and says outright that it wants a guard, because
 // prose only catches the careful case. The hazard is specific and already documented above: the
-// operator push re-reads the etag immediately before the write and STILL cannot close the window, a
-// laptop run leaves no audit trail, and `concurrency: vault-{client}` can only serialize the runs
-// GitHub can see.
+// operator push re-reads the etag immediately before the write and STILL cannot close the window,
+// and a laptop run leaves no audit trail.
+//
+// What the guard no longer is, as of 2026-10-19, is a redirection to somewhere better. It used to
+// say "dispatch ops.yml instead", and for every operation that reaches this line except
+// orphan-sweep's delete that was never true: each one needs the org PRIVATE key, which never
+// arrives on a hosted runner, so the dispatch it recommended could only fail. Those twelve left
+// the dispatch menu on 2026-10-19 (apps/lexitar/docs/OPS-LOCAL.md), which makes a workstation the
+// only place they CAN run — so the refusal below is a prompt to confirm the record is idle, and
+// not a wall with a lane behind it. In CI it still returns early, which is what orphan-sweep uses.
 //
 // Scoped to the LIVE bucket deliberately. BACKUP_BUCKET writes stay open because snapshot-cron.sh is
 // kept as the one path that works when GitHub does not, and a backup write cannot clobber live data.
@@ -148,9 +155,13 @@ const LOCAL_WRITE_OVERRIDE = "PLOVER_ALLOW_LOCAL_VAULT_WRITE";
 export function liveWriteRefusal(what: string): string {
   return (
     `refusing to write ${what} from a workstation.\n` +
-    `  This writes the deployed vault, so it goes through .github/workflows/ops.yml, which serializes\n` +
-    `  it with concurrency: vault-{client} and leaves an audit trail a local run does not.\n` +
-    `  If this is the unreachable-GitHub emergency the rule allows for, set ${LOCAL_WRITE_OVERRIDE}=1.`
+    `  \`wrangler r2 object put\` has no conditional option, so a browser save landing mid-write is\n` +
+    `  lost silently, with nothing afterwards to show it happened. In CI this guard does not apply:\n` +
+    `  a dispatched run is serialized and leaves a record.\n` +
+    `  If this is orphan-sweep's delete, dispatch .github/workflows/ops.yml and let it run there.\n` +
+    `  Everything else reaching this line needs the org private key, which never arrives on a hosted\n` +
+    `  runner, so a workstation is the only place it can run — see apps/lexitar/docs/OPS-LOCAL.md.\n` +
+    `  Confirm the record's owner is not using it right now, then set ${LOCAL_WRITE_OVERRIDE}=1.`
   );
 }
 
@@ -159,7 +170,7 @@ export function assertLiveWriteAllowed(what: string): void {
   if (process.env.CI) return;
   if (process.env[LOCAL_WRITE_OVERRIDE]) {
     process.stderr.write(
-      `\n!! ${LOCAL_WRITE_OVERRIDE} is set — writing ${what} from this workstation, outside ops.yml.\n` +
+      `\n!! ${LOCAL_WRITE_OVERRIDE} is set — writing ${what} from this workstation.\n` +
         `!! No concurrency guard and no audit trail: a browser save landing right now is lost silently.\n\n`,
     );
     return;

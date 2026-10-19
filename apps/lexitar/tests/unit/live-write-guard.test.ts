@@ -22,13 +22,18 @@ afterEach(() => {
 });
 
 describe("assertLiveWriteAllowed", () => {
-  it("refuses on a workstation, and names ops.yml and the override", () => {
+  it("refuses on a workstation, and names the override and the local runbook", () => {
     expect(() => assertLiveWriteAllowed("the vault")).toThrow(/refusing to write the vault/);
-    expect(liveWriteRefusal("x")).toContain("ops.yml");
     expect(liveWriteRefusal("x")).toContain("PLOVER_ALLOW_LOCAL_VAULT_WRITE");
+    // Every operation that reaches this guard, bar orphan-sweep's delete, needs the org private
+    // key and therefore cannot run in CI at all — so the message has to send the reader to the
+    // local runbook. It used to send them to the dispatch workflow instead, which for those
+    // twelve was a lane that could only fail; that is what this asserts has not come back.
+    expect(liveWriteRefusal("x")).toContain("docs/OPS-LOCAL.md");
+    expect(liveWriteRefusal("x")).toMatch(/orphan-sweep/);
   });
 
-  it("allows the write in CI, which is where ops.yml runs it", () => {
+  it("allows the write in CI, which is where orphan-sweep's delete runs", () => {
     process.env.CI = "true";
     expect(() => assertLiveWriteAllowed("the vault")).not.toThrow();
   });
