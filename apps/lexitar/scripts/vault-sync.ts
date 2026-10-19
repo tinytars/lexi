@@ -16,6 +16,7 @@
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { createHash } from "node:crypto";
 import { rename, rm } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
@@ -380,7 +381,7 @@ export async function listObjects(bucket: string, prefix?: string): Promise<R2Ob
 export async function getObject(bucket: string, key: string): Promise<Uint8Array | null> {
   const res = await apiFetch(objectPath(bucket, key));
   if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`R2 get failed for ${bucket}/${key} (${res.status}): ${await res.text()}`);
+  if (!res.ok) throw new Error(`R2 get failed for ${bucket} ${keyRef(key)} (${res.status}): ${redactedBody(await res.text(), key)}`);
   return new Uint8Array(await res.arrayBuffer());
 }
 
@@ -393,7 +394,7 @@ export async function putObject(bucket: string, key: string, body: Uint8Array): 
     body: body as unknown as BodyInit,
     headers: { "content-type": "application/octet-stream" },
   });
-  if (!res.ok) throw new Error(`R2 put failed for ${bucket}/${key} (${res.status}): ${await res.text()}`);
+  if (!res.ok) throw new Error(`R2 put failed for ${bucket} ${keyRef(key)} (${res.status}): ${redactedBody(await res.text(), key)}`);
 }
 
 // Idempotent: a missing key is success (the goal is "it is gone", matching deleteRef above).
@@ -401,7 +402,7 @@ export async function deleteObject(bucket: string, key: string): Promise<void> {
   if (bucket === LIVE_BUCKET) assertLiveWriteAllowed(`${bucket}/${key}`);
   const res = await apiFetch(objectPath(bucket, key), { method: "DELETE" });
   if (!res.ok && res.status !== 404) {
-    throw new Error(`R2 delete failed for ${bucket}/${key} (${res.status}): ${await res.text()}`);
+    throw new Error(`R2 delete failed for ${bucket} ${keyRef(key)} (${res.status}): ${redactedBody(await res.text(), key)}`);
   }
 }
 
@@ -438,6 +439,29 @@ export function classifyKey(store: string, key: string): KeyClass | null {
   if (/^text\/.+/.test(rest)) return "text";
   if (/^logs\/.+/.test(rest)) return "logs";
   return null;
+}
+
+// Every diagnostic here and in vault-snapshot.ts can reach a world-readable GitHub Actions log —
+// stdout and stderr both land in it — and an R2 key names a person's file: {store}/raw/<account>/…
+// is a filename they uploaded. So no diagnostic prints a key. It prints the key's class and a
+// stable 12-hex digest, which is enough to say which part of the store is affected and to
+// correlate the same object across runs, and not enough to recover a filename or an account id.
+//
+// The store prefix is derived from the key rather than passed in, because classifyKey wants it
+// only in order to strip it, and the call sites that need this most — the R2 failure paths below —
+// hold a key and never held a store.
+export function keyRef(key: string): string {
+  const slash = key.indexOf("/");
+  const cls = (slash < 0 ? null : classifyKey(key.slice(0, slash), key)) ?? "unclassified";
+  return `${cls} (sha256:${createHash("sha256").update(key).digest("hex").slice(0, 12)})`;
+}
+
+// An S3-compatible error document may echo the requested key back — AWS's NoSuchKey carries a
+// <Key> element — so a response body is scrubbed rather than trusted to be key-free. The body is
+// kept otherwise intact: the status alone does not say whether a 400 was a malformed range or a
+// quota, and that is the whole diagnostic value of printing it.
+export function redactedBody(text: string, key: string): string {
+  return text.replaceAll(key, keyRef(key));
 }
 
 // Bounded-concurrency map. R2 REST is per-object, so a snapshot is ~1250 round trips; serial is
