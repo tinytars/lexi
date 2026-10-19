@@ -9,16 +9,22 @@ on:
     - cron: '0 6 * * 1'
 
 jobs:
-  # Code scanning is free on a public repository and licensed on a private one, and this repository
-  # is private for the duration of the published-key-material remediation — so every run of this
-  # workflow since it went private has completed its analysis and then died on the last step with
-  # "Advanced Security must be enabled for this repository to use code scanning". The database
-  # builds, every query runs, the SARIF exports; only the upload has nowhere to go.
+  # Code scanning is free on a public repository and licensed on a private one, so whether the SARIF
+  # can be uploaded is a property of the repository's visibility at the moment the job runs. This
+  # gate asks for that visibility live rather than carrying it as a constant somebody has to
+  # remember to flip: the analysis always runs, and only the upload is conditional.
   #
-  # So the analysis stays and only the upload is conditional. The two alternatives are both worse:
-  # `continue-on-error` would swallow a genuine CodeQL break for as long as nobody read the log,
-  # and skipping the job outright would stop catching extraction regressions until the repository
-  # is public again. Nothing needs undoing when it is — this reverts to uploading by itself.
+  # The two alternatives are both worse. `continue-on-error` would swallow a genuine CodeQL break
+  # for as long as nobody read the log, and skipping the job outright would stop catching
+  # extraction regressions for however long the repository stayed private.
+  #
+  # The design was proved by the case it was written for, which is now a dated instance rather than
+  # the present condition. Through October 2026 this repository was private while published key
+  # material was remediated, and every run completed its analysis and then died on the last step
+  # with "Advanced Security must be enabled for this repository to use code scanning" — the
+  # database built, every query ran, the SARIF exported, only the upload had nowhere to go. It went
+  # public on 2026-10-18 and nothing here was touched: the gate reverted to uploading by itself,
+  # which is what "nothing needs undoing" meant.
   #
   # Visibility is asked of the API rather than read from `github.event.repository`, which the
   # `schedule` payload does not carry. That is the trigger whose failure opens an issue on
