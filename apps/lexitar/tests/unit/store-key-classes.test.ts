@@ -70,6 +70,14 @@ describe("every key class the app writes is one the backup can classify", () => 
     ["dev/data-8dafade9-9f33-426d-bb35-1f63ae168212.enc", "vault"],
     ["dev/chat-patient.enc", "chat"],
     ["dev/logs/refresh-finding/2026-07-15/a1b92036-1.json", "logs"],
+    // W71 — the two prefixes that hold chat ciphertext without beginning `chat-`, which they must
+    // not: orphan-sweep.ts lists `${store}/chat-` and deletes whatever under it has no client row,
+    // and both of these are unresolvable by construction. The first is written through storeKey and
+    // so is already in the sweep above; `rekey-chat/` is built by vault-rekey.ts's own
+    // chatStagingPrefix() and appears in no functions/ call site, so this row is the ONLY thing
+    // standing between a rotation's staging objects and a nightly snapshot that refuses to run.
+    ["dev/orphaned-chat/patient/2026-10-19T04-11-57-318Z.enc", "chat"],
+    ["dev/rekey-chat/8dafade9-9f33-426d-bb35-1f63ae168212/chat-patient.enc", "chat"],
   ])("classifies %s, a real-shaped key, as %s", (key, expected) => {
     expect(classifyKey("dev", key as string)).toBe(expected);
   });
