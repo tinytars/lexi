@@ -124,6 +124,22 @@ export interface OpenCorpus {
 const unreserved = (): OpenCorpus => ({ corpus: emptyCorpus(), release: () => {} });
 
 /**
+ * Whether a row's `bytes` is a measurement the reservation may be computed from.
+ *
+ * `null` means never measured, and so does `0`: no PDF is zero bytes — every one carries a `%PDF-`
+ * header — so a zero in this column is a row nothing ever measured rather than a row measured as
+ * empty. Reading it as real is what silently switches the guard below OFF, because the reservation
+ * then comes out at zero: every request admits however many are already assembling, and the isolate
+ * is killed for memory, taking every unrelated request in flight with it, in place of one classified
+ * `corpus_busy`. That is the exact mode the comment on MAX_IN_FLIGHT_CORPUS_BYTES predicted, and the
+ * reason it was reached is here rather than there.
+ *
+ * Measured rather than reasoned: on 2026-10-19, 61 of dev's 63 PDF rows and all 21 of prod's carried
+ * a zero, so the budget had never refused anything in either environment.
+ */
+export const isMeasured = (bytes: number | null): boolean => bytes !== null && bytes > 0;
+
+/**
  * Assembles one client's reports into the leading turns of a request, and RESERVES the isolate
  * memory they occupy until the caller releases it.
  *
@@ -169,11 +185,11 @@ export async function openReportCorpus(
   // to assume — one explicit comparator is what makes the bytes stable across both.
   const keys = rows.map((r) => r.r2_key).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
 
-  // A row with no `bytes` is a count-only backfill, so this record's true size is unknown until it
-  // has been read — too late to admit on. Reserve the most one assembly can reach instead. Capped at
+  // An unmeasured row (isMeasured, above) leaves this record's true size unknown until it has been
+  // read — too late to admit on. Reserve the most one assembly can reach instead. Capped at
   // MAX_CORPUS_BYTES so a lone request always admits, and so a record too big to send fails in the
   // loop as CorpusTooLargeError rather than here as a refusal that suggests retrying.
-  const measured = rows.every((r) => r.bytes !== null);
+  const measured = rows.every((r) => isMeasured(r.bytes));
   const reserved = Math.min(measured ? rows.reduce((n, r) => n + (r.bytes ?? 0), 0) : MAX_CORPUS_BYTES, MAX_CORPUS_BYTES);
   if (inFlightBytes + reserved > MAX_IN_FLIGHT_CORPUS_BYTES) throw new CorpusBusyError();
   // No await between the test and the increment, which is what makes this safe on one thread.

@@ -9,6 +9,15 @@
 //   npm run raw:pages                                     # report only
 //   npm run raw:pages -- --confirm                        # write the counts
 //   npm run raw:pages -- --purge-unreadable --confirm     # also delete the files nothing can open
+//   npm run raw:sizes                                     # report the rows with no stored size
+//   npm run raw:sizes -- --confirm                        # write the sizes
+//
+// --sizes IS THE OTHER HALF OF THE SAME COLUMN and is here rather than in a script of its own, so
+// that what `bytes` means has one home — the note at the write below. It shares nothing else: no
+// pdf.js, no org key, and no `pages IS NULL` gate, because the rows it exists for already HAVE a
+// page count. Those are the rows a count-only writer left behind, and a zero in `bytes` is what the
+// corpus reads as "measured, and it came to nothing" — see isMeasured in
+// functions/_lib/inference/corpus.ts, which is the guard a zero switches off.
 //
 // Like every script here it targets THIS WORKTREE's environment (scripts/target.ts), so it runs once
 // per environment: from a `dev` checkout for health-identity-dev, from a `main` one for prod.
@@ -25,7 +34,8 @@
 
 import "./load-creds";
 import { d1, q, D1 } from "./d1-remote";
-import { LIVE_BUCKET, deleteObject, getObject, resolveStore } from "./vault-sync";
+import { LIVE_BUCKET, deleteObject, getObject, listObjects, resolveStore } from "./vault-sync";
+import { assertTargetConsistent } from "./target";
 import { openStored } from "./raw-cipher-cli";
 import { flushOrgKeyUses } from "./access-log";
 import { RawKeyError } from "../src/lib/raw-cipher";
@@ -62,6 +72,20 @@ export function fillStatement(rows: Array<{ key: string; pages: number; bytes: n
 }
 
 /**
+ * One statement per chunk, filling `bytes` ALONE and only where nothing has measured it.
+ *
+ * `bytes IS NULL OR bytes = 0` is the same test `pages IS NULL` is in fillStatement — it can only
+ * fill — and the zero half is why this mode exists: a real measurement is never lowered, and a zero
+ * is not a measurement. `pages` is deliberately absent from the SET, because the rows this reaches
+ * are images and spreadsheets as well as PDFs, and a page count of a .jpg is not a thing.
+ */
+export function fillSizesStatement(rows: Array<{ key: string; bytes: number }>): string {
+  const sizes = rows.map((r) => `WHEN ${q(r.key)} THEN ${r.bytes}`).join(" ");
+  const keys = rows.map((r) => q(r.key)).join(", ");
+  return `UPDATE raw_objects SET bytes = CASE r2_key ${sizes} END WHERE r2_key IN (${keys}) AND (bytes IS NULL OR bytes = 0)`;
+}
+
+/**
  * The transcription sidecar document-extract.ts caches beside a raw file (`text/{id}/{key}.json`).
  * Purging the PDF without it would leave a transcription of a document that no longer exists.
  */
@@ -83,9 +107,60 @@ async function purge(unreadable: string[]): Promise<void> {
   process.stdout.write(`Purged ${unreadable.length} unreadable file(s) and their sidecars.\n`);
 }
 
+/**
+ * Record what storage holds for every raw object whose size nothing ever measured.
+ *
+ * ONE LISTING, not one GET per row. R2's list carries each object's size, so this reads no object
+ * content, opens no envelope and loads no org key — which is also why it is correct for a sealed
+ * file, whose stored size is exactly the number this column wants.
+ */
+async function sizes(confirm: boolean): Promise<void> {
+  const rows = await d1<{ r2_key: string }>(
+    `SELECT r2_key FROM raw_objects WHERE (bytes IS NULL OR bytes = 0) AND r2_key LIKE ${q(`${STORE}/%`)} ORDER BY r2_key`,
+  );
+  process.stdout.write(`Target: ${D1} / ${LIVE_BUCKET} (store "${STORE}")\n`);
+  process.stdout.write(`Rows with no stored size: ${rows.length}\n\n`);
+  if (rows.length === 0) return;
+
+  const listed = new Map((await listObjects(LIVE_BUCKET, `${STORE}/`)).map((o) => [o.key, o.size]));
+  const measured: Array<{ key: string; bytes: number }> = [];
+  const absent: string[] = [];
+  const zeroLength: string[] = [];
+  for (const { r2_key } of rows) {
+    const size = listed.get(r2_key);
+    if (size === undefined) absent.push(r2_key);
+    // Writing a 0 would record the very value that means "unmeasured", so an object R2 really does
+    // hold zero bytes of is reported and left alone rather than measured into a lie.
+    else if (size <= 0) zeroLength.push(r2_key);
+    else measured.push({ key: r2_key, bytes: size });
+  }
+
+  const total = measured.reduce((n, r) => n + r.bytes, 0);
+  process.stdout.write(`Measurable: ${measured.length} (${total} bytes)   no object: ${absent.length}   zero-length: ${zeroLength.length}\n`);
+  // A row with no object is the pages mode's --purge-unreadable decision, not this one's: it is an
+  // owner call per environment, and a sizes sweep must not be the thing that quietly makes it.
+  for (const key of absent) process.stdout.write(`  ! ${key}: a raw_objects row with no object\n`);
+  for (const key of zeroLength) process.stdout.write(`  ! ${key}: R2 holds zero bytes under this key\n`);
+
+  if (!confirm) {
+    process.stdout.write(`\nReport only. Re-run with --confirm to write ${measured.length} size(s).\n`);
+    return;
+  }
+  for (let i = 0; i < measured.length; i += CHUNK) {
+    await d1(fillSizesStatement(measured.slice(i, i + CHUNK)));
+    process.stdout.write(`  wrote ${Math.min(i + CHUNK, measured.length)}/${measured.length}\n`);
+  }
+  process.stdout.write(`\nDone.\n`);
+}
+
 async function main(): Promise<void> {
   const confirm = process.argv.includes("--confirm");
   const purgeUnreadable = process.argv.includes("--purge-unreadable");
+  // Both halves of the target, before either mode reads a row: this file writes to a live store and
+  // had no such check, which is the trap target.ts was written for (a `main` tree with STORE_PREFIX=dev
+  // reads one store's objects against the other store's rows).
+  assertTargetConsistent(STORE);
+  if (process.argv.includes("--sizes")) return sizes(confirm);
 
   const unmeasured = await d1<{ r2_key: string }>(
     `SELECT r2_key FROM raw_objects WHERE pages IS NULL AND lower(r2_key) LIKE '%.pdf' AND r2_key LIKE ${q(`${STORE}/raw/%`)} ORDER BY r2_key`,

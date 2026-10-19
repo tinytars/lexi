@@ -49,6 +49,16 @@ async function storeUnmeasured(owner: string, slug: string, file: string, pages:
   return key;
 }
 
+/** The zero-size row: a page count recorded and `bytes` written as 0 by a writer that no longer
+ *  exists in this tree. R2 holds the real file — only the column is a fiction, which is what makes
+ *  this row shape worse than the unmeasured one above rather than better. */
+async function storeZeroSized(owner: string, slug: string, file: string, pages: number) {
+  const key = `${STORE}/raw/${slug}/${file}`;
+  await w.bucket.put(key, PDF(file));
+  await recordRawObject(w.db, key, owner, { pages, bytes: 0 });
+  return key;
+}
+
 /** The corpus alone, its isolate reservation released immediately — what every test outside the
  *  admission-gate block below is asserting about. The gate's own tests hold the scope open instead. */
 async function corpusOf(...args: Parameters<typeof openReportCorpus>): Promise<Corpus> {
@@ -290,6 +300,25 @@ describe("an instance assembles only as much as it can hold", () => {
   it("holds the record's bytes until the scope is released, not until the assembly ends", async () => {
     const who = await account("alex");
     await storeUnmeasured(who, "alex", "labs.pdf", 1);
+
+    const first = await openReportCorpus(env(), who, "alex", { citations: true });
+    expect(first.corpus.docCount).toBe(1);
+
+    await expect(openReportCorpus(env(), who, "alex", { citations: true })).rejects.toBeInstanceOf(CorpusBusyError);
+
+    first.release();
+    await expect(corpusOf(env(), who, "alex", { citations: true })).resolves.toMatchObject({ docCount: 1 });
+  });
+
+  // A ZERO IS NOT A MEASUREMENT, and reading it as one is what turned this gate off in both
+  // environments: `reserved` came out at 0, so every request admitted however many were already
+  // assembling and nothing was ever refused — the isolate was killed for memory instead, which is a
+  // body-less Cloudflare 1102 and not a `corpus_busy` anyone can retry on. Measured on 2026-10-19:
+  // 61 of dev's 63 PDF rows and all 21 of prod's carried a zero, so the budget had never refused
+  // anything. No PDF is zero bytes — every one carries a `%PDF-` header.
+  it("treats a zero byte count as unmeasured, not as weighing nothing", async () => {
+    const who = await account("alex");
+    await storeZeroSized(who, "alex", "labs.pdf", 1);
 
     const first = await openReportCorpus(env(), who, "alex", { citations: true });
     expect(first.corpus.docCount).toBe(1);
