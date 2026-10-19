@@ -32,6 +32,7 @@
   import type { ReportTarget } from "./safety-report";
   import { resolveReference } from "./reference-resolver";
   import { corpusSubject } from "./vault-raw-keys";
+  import { AiError, aiErrorCodeForStatus, describeAiError } from "./ai-error";
 
   // Chat is the primary experience: a Gemini-style thread shell. Threads persist per client as an
   // in-browser-encrypted blob (W16, chat-store.ts) — restored on return, PHI never plaintext at rest.
@@ -288,7 +289,14 @@
         });
         if (!res.ok) {
           const body = (await res.json().catch(() => ({}))) as { error?: string; errorCode?: string };
-          error = { code: body.errorCode ?? "model_error", text: body.error ?? `request failed (${res.status})` };
+          // describeAiError, not the raw status: a 503 can arrive with no body at all, because
+          // Cloudflare answers `error code: 1102` as text/plain when the isolate is killed for
+          // memory and no function of ours runs — so `body.error` is absent and `request failed
+          // (503)` was the whole of what a patient saw, for a failure whose answer is to retry.
+          // This was the one renderer hand-rolling its own wording; the rest already go through
+          // ai-error.ts, which is also where the status decides the code when the body carries none.
+          const code = body.errorCode ?? aiErrorCodeForStatus(res.status) ?? "model_error";
+          error = { code, text: describeAiError(new AiError(body.error ?? "", { errorCode: code, status: res.status })) };
           return;
         }
         const data = (await res.json()) as

@@ -39,6 +39,23 @@ export const AI_ERROR_MESSAGES: Record<string, string> = {
 };
 
 /**
+ * The classified code a bare relay STATUS means, for a caller holding a Response rather than a
+ * throw. One home for that mapping, which `describeAiError` reads too.
+ *
+ * A 503 can carry no body at all: Cloudflare answers `error code: 1102` as text/plain when the
+ * isolate is killed for exceeding its memory, so no function runs, nothing is logged, and the
+ * status is the only thing there is left to classify from.
+ *
+ * `undefined` for every other status, deliberately — an unclassified failure keeps falling through
+ * to its own message rather than being relabelled as something this map has a sentence for.
+ */
+export function aiErrorCodeForStatus(status: number): string | undefined {
+  if (status === 402) return "insufficient_credit";
+  if (status === 503) return "ai_busy";
+  return undefined;
+}
+
+/**
  * The user-facing sentence for a failure. Falls back to the thrown message (and finally to a generic
  * line) so an unclassified failure still says something rather than rendering blank or as raw JSON.
  */
@@ -46,8 +63,8 @@ export function describeAiError(err: unknown): string {
   const code = err instanceof AiError ? err.errorCode : undefined;
   if (code && AI_ERROR_MESSAGES[code]) return AI_ERROR_MESSAGES[code];
   const status = err instanceof AiError ? err.status : undefined;
-  if (status === 402) return AI_ERROR_MESSAGES.insufficient_credit;
-  if (status === 503) return AI_ERROR_MESSAGES.ai_busy;
+  const byStatus = status === undefined ? undefined : aiErrorCodeForStatus(status);
+  if (byStatus) return AI_ERROR_MESSAGES[byStatus];
   const message = err instanceof Error ? err.message.trim() : String(err ?? "").trim();
   // A JSON body that leaked through is noise, not a sentence — never show it to a patient.
   if (!message || message.startsWith("{")) return "Couldn't translate — try again in a moment.";
