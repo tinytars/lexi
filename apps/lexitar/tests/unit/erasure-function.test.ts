@@ -186,6 +186,44 @@ describe("eraseAccount", () => {
     expect(report.r2Deleted).not.toContain(theirs);
     expect(await w.bucket.get(theirs)).not.toBeNull();
   });
+
+  // W71 — the one namespace deliberately written to OUTLIVE a deletion, which is exactly why erasure
+  // has to reach it. The escape hatch out of an unreadable history copies the stored ciphertext to
+  // `orphaned-chat/{client}/{ts}.enc` and only then overwrites, so a patient who used it is carrying a
+  // second copy of their own chat history that no `chat-` key names. Nothing in `vaults` points at it;
+  // it is reachable only through the ownership row the route writes in the same breath.
+  it("deletes a chat history the escape hatch kept aside", async () => {
+    const p = await seedPatient("a@example.com", "alex");
+    const kept = `${STORE}/orphaned-chat/alex/2026-10-19T04-11-57-318Z.enc`;
+    await w.bucket.put(kept, "HD1-ciphertext-of-the-stranded-conversation");
+    await recordRawObject(w.db, kept, p.id);
+
+    const report = await eraseAccount(env(), p.id);
+    expect(report.r2Deleted).toContain(kept);
+    expect(await w.bucket.get(kept)).toBeNull();
+    // And the whole bucket, because a retention copy the report names but leaves behind would be the
+    // worst of the two failures: the subject is told it is gone AND it is still there.
+    expect(await listKeys()).toEqual([]);
+    expect(report.complete).toBe(true);
+  });
+
+  it("reports incomplete when a retention copy in this patient's namespace is owned by someone else", async () => {
+    // First-writer-wins applies here as it does to an upload: a clinician viewing this patient's record
+    // can be the one who clicks the hatch, and the copy is then recorded to the clinician. It is this
+    // patient's conversation either way, so an erasure that neither deletes it nor counts it would
+    // report a clean sweep over the subject's own PHI.
+    const p = await seedPatient("a@example.com", "alex");
+    const clinician = await seedPatient("doc@example.com", "clinic");
+    const kept = `${STORE}/orphaned-chat/alex/2026-10-19T05-02-11-004Z.enc`;
+    await w.bucket.put(kept, "HD1-ciphertext-of-the-stranded-conversation");
+    await recordRawObject(w.db, kept, clinician.id);
+
+    const report = await eraseAccount(env(), p.id);
+    expect(report.unattributable).toBe(1);
+    expect(report.complete).toBe(false);
+    expect(report.r2Deleted).not.toContain(kept);
+    expect(await w.bucket.get(kept)).not.toBeNull();
+  });
 });
 
 describe("the unattributable count follows R2's cursor", () => {
