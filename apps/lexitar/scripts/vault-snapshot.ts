@@ -39,6 +39,7 @@ import {
   BACKUP_BUCKET,
   LIVE_BUCKET,
   classifyKey,
+  keyRef,
   deleteObject,
   getObject,
   listObjects,
@@ -57,7 +58,13 @@ const WRANGLER = resolve(here, "wrangler.sh");
 
 // W53 P4: derived from the worktree's wrangler.jsonc, not hardcoded — see scripts/target.ts.
 export const D1_DATABASE = wranglerTarget().database;
-const CONCURRENCY = 8;
+// Raised 8 -> 24 on 2026-10-19. The dev leg's own successful run copied 4,201 audit-log objects at
+// about three a second and spent 23m20s of a 30-minute cap, in a store that had grown 32x in seven
+// weeks — so the cap was the next thing it would hit, and a backup that times out is a backup that
+// is not happening. The copy is one GET plus one PUT per object with no ordering between objects,
+// which is why raising this is the cheap half; the real fix is that 4,201 objects for 4,201 audit
+// events is the wrong shape, and that carries a migration and a retention decision of its own.
+const CONCURRENCY = 24;
 const DEFAULT_KEEP = 30;
 
 // Snapshot bodies live under snapshots/{id}/…; the manifest is ALSO written to manifests/{id}.json
@@ -209,10 +216,20 @@ export async function snapshot(opts: SnapshotOptions = {}): Promise<SnapshotMani
   const live = await listObjects(LIVE_BUCKET, `${store}/`);
   const unknown = live.filter((o) => classifyKey(store, o.key) === null);
   if (unknown.length) {
+    // The keys themselves are the diagnostic here — classifyKey() cannot be taught a shape nobody
+    // can see — but this message is thrown, and in CI a throw reaches the world-readable Actions
+    // log through the handler at the bottom of this file. So the keys are printed only where the
+    // output belongs to the operator reading it, which is the same test assertLiveWriteAllowed()
+    // already applies (vault-sync.ts:159). In CI the refusal still holds and still says how many;
+    // whoever acts on it has R2 credentials by definition and can list the store locally.
+    const detail = process.env.CI
+      ? unknown.slice(0, 10).map((o) => keyRef(o.key)).join("\n  ") +
+        `\n  (keys withheld: this ran in CI and its log is public — rerun \`npm run vault:snapshot -- --dry-run\` locally to see them)`
+      : unknown.slice(0, 10).map((o) => o.key).join("\n  "); // log-hygiene-ok: not CI, so this log is the operator's own
     throw new Error(
       `refusing to snapshot: ${unknown.length} live key(s) under "${store}/" have an unrecognised shape, ` +
         `so this tool cannot promise it captured them. Teach classifyKey() about them first:\n  ` +
-        unknown.slice(0, 10).map((o) => o.key).join("\n  "),
+        detail,
     );
   }
 
@@ -282,7 +299,7 @@ export async function snapshot(opts: SnapshotOptions = {}): Promise<SnapshotMani
   const tickCopy = progressReporter("copying", perObject.length);
   const copied = await mapPool(perObject, CONCURRENCY, async (o): Promise<SnapshotObject> => {
     const body = await getObject(LIVE_BUCKET, o.key);
-    if (!body) throw new Error(`live object vanished mid-snapshot: ${o.key}`);
+    if (!body) throw new Error(`live object vanished mid-snapshot: ${keyRef(o.key)}`);
     await putObject(BACKUP_BUCKET, bodyKeyFor(store, id, o.key), body);
     tickCopy();
     return { key: o.key, size: body.length, sha256: sha256(body), class: classifyKey(store, o.key) as KeyClass };
@@ -291,14 +308,14 @@ export async function snapshot(opts: SnapshotOptions = {}): Promise<SnapshotMani
   const tickLogs = progressReporter("logs", logObjects.length);
   const bundled = await mapPool(logObjects, CONCURRENCY, async (o): Promise<{ entry: SnapshotObject; line: string }> => {
     const body = await getObject(LIVE_BUCKET, o.key);
-    if (!body) throw new Error(`live object vanished mid-snapshot: ${o.key}`);
+    if (!body) throw new Error(`live object vanished mid-snapshot: ${keyRef(o.key)}`);
     const digest = sha256(body);
     const text = new TextDecoder().decode(body);
     // The bundle carries text, so prove the text round-trips to the exact bytes before trusting it.
     // audit.ts only ever writes JSON.stringify output, so this should never fire — and if it does,
     // a silently mangled audit entry is worse than a failed backup.
     if (sha256(new TextEncoder().encode(text)) !== digest) {
-      throw new Error(`log object is not UTF-8 round-trippable, refusing to bundle it: ${o.key}`);
+      throw new Error(`log object is not UTF-8 round-trippable, refusing to bundle it: ${keyRef(o.key)}`);
     }
     tickLogs();
     return {
@@ -353,9 +370,16 @@ export async function snapshot(opts: SnapshotOptions = {}): Promise<SnapshotMani
 
 // W52 verification #1: the snapshot is only trustworthy if the objects that landed in the backup
 // are exactly the objects that were live. Re-lists BOTH sides and reports the diff per key class.
+// The three lists below carry keyRef() references and never a raw key, because this report exists
+// to be printed and its output lands in a world-readable Actions log. The redaction is here rather
+// than at the print site for two reasons: nothing else reads these lists, so there is no caller to
+// inconvenience; and an entry is "<ref> (<why>)", so redacting at the printer would have to re-parse
+// a string this file formatted in order to keep the reason and the sizes, which are the diagnostic.
+// logBundleKey is the one entry that stays whole (below): it is a snapshot artifact path carrying a
+// snapshot id, not a user object, and which bundle is missing is the point of the line.
 export interface VerifyReport {
   ok: boolean;
-  missing: string[]; // live at verify time, absent from the snapshot
+  missing: string[]; // live at verify time, absent from the snapshot — as keyRef() references
   extra: string[]; // in the snapshot, no longer live (an intervening delete — informational)
   sizeMismatch: string[];
   counts: Record<KeyClass, { live: number; snapshot: number }>;
@@ -379,10 +403,10 @@ export async function verifySnapshot(manifest: SnapshotManifest): Promise<Verify
     if (cls) counts[cls].live++;
     const c = claimed.get(o.key);
     if (!c) {
-      missing.push(o.key);
+      missing.push(keyRef(o.key));
       continue;
     }
-    if (c.size !== o.size) sizeMismatch.push(`${o.key} (live ${o.size} ≠ snapshot ${c.size})`);
+    if (c.size !== o.size) sizeMismatch.push(`${keyRef(o.key)} (live ${o.size} ≠ snapshot ${c.size})`);
   }
   for (const o of manifest.objects) counts[o.class].snapshot++;
 
@@ -392,8 +416,8 @@ export async function verifySnapshot(manifest: SnapshotManifest): Promise<Verify
   for (const o of manifest.objects) {
     if (o.class === "logs") continue;
     const s = stored.get(bodyKeyFor(manifest.store, id, o.key));
-    if (!s) missing.push(`${o.key} (manifest claims it, backup has no object)`);
-    else if (s.size !== o.size) sizeMismatch.push(`${o.key} (manifest ${o.size} ≠ backup ${s.size})`);
+    if (!s) missing.push(`${keyRef(o.key)} (manifest claims it, backup has no object)`);
+    else if (s.size !== o.size) sizeMismatch.push(`${keyRef(o.key)} (manifest ${o.size} ≠ backup ${s.size})`);
   }
 
   const logEntries = manifest.objects.filter((o) => o.class === "logs");
@@ -411,13 +435,13 @@ export async function verifySnapshot(manifest: SnapshotManifest): Promise<Verify
     );
     for (const o of logEntries) {
       const d = inBundle.get(o.key);
-      if (!d) missing.push(`${o.key} (claimed in manifest, absent from the log bundle)`);
-      else if (d !== o.sha256) sizeMismatch.push(`${o.key} (log bundle digest ≠ manifest digest)`);
+      if (!d) missing.push(`${keyRef(o.key)} (claimed in manifest, absent from the log bundle)`);
+      else if (d !== o.sha256) sizeMismatch.push(`${keyRef(o.key)} (log bundle digest ≠ manifest digest)`);
     }
   }
 
   const liveKeys = new Set(live.map((o) => o.key));
-  const extra = manifest.objects.map((o) => o.key).filter((k) => !liveKeys.has(k));
+  const extra = manifest.objects.map((o) => o.key).filter((k) => !liveKeys.has(k)).map(keyRef);
 
   return { ok: missing.length === 0 && sizeMismatch.length === 0, missing, extra, sizeMismatch, counts };
 }

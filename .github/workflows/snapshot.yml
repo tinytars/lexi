@@ -29,7 +29,7 @@ permissions:
 jobs:
   snapshot:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     strategy:
       # Both stores on the schedule; exactly one on a dispatch. `fromJSON` because a matrix cannot
       # take a conditional list any other way.
