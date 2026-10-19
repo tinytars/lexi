@@ -46,6 +46,11 @@ export function resolveStore(explicit?: string): string {
 // (data-{id}.enc) under the store prefix; raw/processed mirror the on-disk records/ layout.
 export const r2KeyFor = (store: string, id: string): string => `${store}/data-${id.toLowerCase()}.enc`;
 export const r2RawKeyFor = (store: string, id: string, file: string): string => `${store}/raw/${id.toLowerCase()}/${file}`;
+// The chat-history key, the one namespace a DEK rotation has to re-seal by hand. Every other
+// namespace below holds per-object keys that live INSIDE the vault (raw/[[path]].ts:17), so they
+// travel with a re-encrypted vault and need no pass of their own; chat- is sealed under the DEK
+// directly, which is why vault-rekey.ts walks it and why the shape lives here rather than there.
+export const r2ChatKeyFor = (store: string, id: string): string => `${store}/chat-${id.toLowerCase()}.enc`;
 export const r2ProcessedKeyFor = (store: string, id: string, sha8: string): string => `${store}/processed/${id.toLowerCase()}/${sha8}.json`;
 
 export const r2RefFor = (store: string, id: string): string => `${BUCKET}/${r2KeyFor(store, id)}`;
@@ -442,6 +447,15 @@ export function classifyKey(store: string, key: string): KeyClass | null {
   const rest = key.slice(store.length + 1);
   if (/^data-[^/]+\.enc$/.test(rest)) return "vault";
   if (/^chat-[^/]+\.enc$/.test(rest)) return "chat";
+  // Two prefixes that hold chat ciphertext and deliberately do NOT begin with `chat-`, because
+  // orphan-sweep.ts lists `${store}/chat-` and deletes any object there whose client id it cannot
+  // resolve in D1 — which both of these are by construction. They are taught here because
+  // vault-snapshot.ts:217 treats an unclassified key as a hard failure, so a retention prefix the
+  // classifier has not met is a prefix the backup refuses to run at all.
+  //   orphaned-chat/  a history the browser could not decrypt, set aside by the W71 escape hatch
+  //   rekey-chat/     vault-rekey.ts staging, live only between the re-seal and the promotion
+  if (/^orphaned-chat\/.+/.test(rest)) return "chat";
+  if (/^rekey-chat\/.+/.test(rest)) return "chat";
   if (/^raw\/.+/.test(rest)) return "raw";
   if (/^processed\/.+/.test(rest)) return "processed";
   // W46 document-extract writes a text-extraction sidecar per attachment (document-extract.ts:98).

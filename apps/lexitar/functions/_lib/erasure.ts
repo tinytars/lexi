@@ -95,16 +95,34 @@ export async function r2KeysForAccount(env: ErasureEnv, accountId: string): Prom
 }
 
 /**
- * The `raw/`/`text/` namespace segments this account's PHI occupies.
+ * Every prefix whose keys are `{store}/{prefix}/{clientKey}/…` — one directory per client, where the
+ * client key comes from a name that lives inside the encrypted vault.
  *
- * Both prefixes are keyed `{store}/{raw|text}/{clientKey}/…`, where `clientKey` is derived from a
- * client name that lives inside the encrypted vault — the server cannot enumerate it, only recognise
- * it from keys it already attributes to the account. Vault slugs are included because a vault blob is
- * `data-{slug}.enc` and the same slug is the natural namespace for that client's originals.
+ * One list rather than two literals, because the two uses below have to agree: the first derives
+ * which client namespaces this account occupies, the second counts what an erasure left behind in
+ * them. A prefix added to one and not the other reports an erasure complete while its objects sit in
+ * the bucket, which is this module's one unacceptable failure.
+ *
+ * `orphaned-chat/` is here for the reason it exists at all (W71, chat-history/[id].ts): the escape
+ * hatch out of an unreadable history copies the stored ciphertext aside before overwriting it, so a
+ * subject's own chat history survives the click BY DESIGN and an erasure that did not reach it would
+ * leave exactly the content the subject was told was gone. Those copies are recorded in `raw_objects`
+ * as they are written, so they are deleted by the key-driven pass above rather than by prefix — what
+ * this list adds is the count that keeps a copy ANOTHER account claimed from reporting as complete,
+ * which is W75's finding applied to a namespace that did not exist when it was made.
+ */
+const NAMESPACED_PREFIXES = ["raw", "text", "orphaned-chat"];
+
+/**
+ * The namespace segments this account's PHI occupies, under every prefix above.
+ *
+ * The server cannot enumerate a client key, only recognise one from keys it already attributes to the
+ * account. Vault slugs are included because a vault blob is `data-{slug}.enc` and the same slug is the
+ * natural namespace for that client's originals — and, since W71, for anything kept aside for them.
  */
 function namespacesForAccount(env: StoreEnv, keys: string[], vaults: VaultRow[]): Set<string> {
   const namespaces = new Set<string>();
-  for (const prefix of ["raw", "text"]) {
+  for (const prefix of NAMESPACED_PREFIXES) {
     const root = storeKey(env, prefix) + "/";
     for (const key of keys) {
       if (!key.startsWith(root)) continue;
@@ -147,7 +165,7 @@ export async function eraseAccount(env: ErasureEnv, accountId: string, now: Date
   const deleted = new Set(keys);
   const namespaces = namespacesForAccount(env, keys, vaults);
   let unattributable = 0;
-  for (const prefix of ["raw", "text"]) {
+  for (const prefix of NAMESPACED_PREFIXES) {
     const root = storeKey(env, prefix) + "/";
     for (const ns of namespaces) {
       for (const k of await listAllKeys(env.VAULT, root + ns + "/")) {

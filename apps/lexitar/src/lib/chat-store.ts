@@ -46,16 +46,24 @@ async function r2Load(id: string): Promise<Uint8Array | null> {
   const buf = new Uint8Array(await res.arrayBuffer());
   return buf.length ? buf : null;
 }
-async function r2Save(id: string, blob: Uint8Array): Promise<void> {
+async function r2Save(id: string, blob: Uint8Array, replaceUnreadable = false): Promise<void> {
   // Both verbs are gated by the hd_session cookie — same-origin fetch sends it automatically.
   const known = etags.get(normalizeClientId(id));
   const res = await fetch(`/api/chat-history/${encodeURIComponent(normalizeClientId(id))}`, {
     method: "PUT",
     headers: {
       "Content-Type": "application/octet-stream",
-      // No etag means this tab has never seen a stored blob, so claim create-only rather than
-      // sending nothing: if another tab wrote one in between, this save must lose, not clobber.
-      ...(known ? { "If-Match": known } : { "If-None-Match": "*" }),
+      // The escape hatch sends neither precondition: this tab could not read the blob, so it has no
+      // etag for it, and create-only would 412 against the object it is deliberately replacing. The
+      // route keeps the old bytes aside before writing, which is what makes the unconditional write
+      // safe to send at all.
+      ...(replaceUnreadable
+        ? { "X-Replace-Unreadable": "1" }
+        : // No etag means this tab has never seen a stored blob, so claim create-only rather than
+          // sending nothing: if another tab wrote one in between, this save must lose, not clobber.
+          known
+          ? { "If-Match": known }
+          : { "If-None-Match": "*" }),
     },
     body: blob as BodyInit,
   });
@@ -130,4 +138,35 @@ async function saveMerged(threads: Thread[], id: string, dek: CryptoKey): Promis
   // the refusal to overwrite it outranks resolving the conflict.
   refuseIfUnreadable(id);
   await r2Save(id, await encrypt(theirs ? mergeThreads(threads, theirs) : threads, dek));
+}
+
+/** Whether this client's stored history exists but could not be opened with the session's key. */
+export const isUnreadable = (id: string): boolean => unreadable.has(normalizeClientId(id));
+
+// THE ESCAPE HATCH the guard above needs in order to be a safe bet rather than a trap.
+//
+// `unreadable` refuses every save for as long as the blob cannot be decrypted, on the reasoning
+// that a wrong DEK is usually transient. Where it is not — a DEK rotation that re-encrypted the
+// vault and never walked chat-, which is what stranded seven histories on 2026-10-06 and
+// 2026-10-07 — the account can never save again, and the UI offers nothing to do about it. That is
+// a guard with no exit, so this is the exit: explicitly asked for by the patient, never automatic,
+// and it does not destroy the conversation it displaces. The route copies the stored bytes to
+// `{store}/orphaned-chat/{id}/` before overwriting, so the ciphertext outlives the click and a key
+// recovered later still opens it.
+//
+// It refuses when the history opened normally, so a mis-wired caller cannot use it as a quiet
+// unconditional overwrite of a conversation that was perfectly readable.
+export async function replaceUnreadableHistory(threads: Thread[], id: string, dek: CryptoKey): Promise<void> {
+  const key = normalizeClientId(id);
+  if (!unreadable.has(key)) {
+    throw new Error("this conversation opened normally — there is nothing to set aside");
+  }
+  if (import.meta.env.DEV) {
+    if (typeof localStorage !== "undefined") localStorage.setItem(lsKey(id), bytesToB64(await encrypt(threads, dek)));
+    unreadable.delete(key);
+    return;
+  }
+  await r2Save(id, await encrypt(threads, dek), true);
+  // Cleared only after the write lands, so a failed attempt leaves the refusal in force.
+  unreadable.delete(key);
 }

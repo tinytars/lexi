@@ -79,13 +79,47 @@ export async function onRequestPut(context: Ctx): Promise<Response> {
     return json(400, { error: "not an HD1 blob" });
   }
 
+  // W71 ESCAPE HATCH — the one route out of a permanently unreadable history.
+  //
+  // chat-store.ts refuses to save over a blob it could not decrypt, and that refusal is right: a
+  // wrong DEK is usually transient, and an overwrite is not. But the guard bets that the blob
+  // "survives long enough to be opened with the right key", and that bet is unfalsifiable once the
+  // key provably no longer exists — which is what the 2026-10-06 and 2026-10-07 DEK rotations did
+  // to seven histories, leaving those accounts unable to save anything, ever, behind a banner with
+  // no action under it. So an orphaned blob has to be a recoverable state rather than a terminal
+  // one, and the recovery cannot be the client silently overwriting it.
+  //
+  // This header is that recovery, and it is deliberately not a new verb: the write the patient
+  // wants is this write, and all that changes is that the bytes already there are kept first. It is
+  // only ever sent after the patient has been shown what it does and has asked for it.
+  const replaceUnreadable = request.headers.get("x-replace-unreadable") === "1";
+  if (replaceUnreadable) {
+    const existing = await env.VAULT.get(r2Key(env, id));
+    if (existing) {
+      // `orphaned-chat/`, NOT `chat-orphaned/`: orphan-sweep.ts lists `${store}/chat-` and deletes
+      // whatever under it has no client row, so a prefix starting `chat-` would be swept away.
+      // vault-sync.ts classifyKey() knows this shape, or the backup refuses to run.
+      const kept = storeKey(env, "orphaned-chat", id, `${new Date().toISOString().replace(/[:.]/g, "-")}.enc`);
+      // Before the overwrite and awaited, so a failure here fails the request with the original
+      // blob still in place. Retention first is the whole reason this is safe to offer.
+      await env.VAULT.put(kept, new Uint8Array(await existing.arrayBuffer()));
+      await recordRawObject(env.DB, kept, session.accountId);
+    }
+  }
+
   // Mirrors /api/vault/{id}. Unlike the vault this does NOT 428 on a missing precondition: chat
   // history is append-mostly and a client that has never read the blob has no etag to send, so
   // requiring one would refuse the first save of every fresh conversation. A precondition is honoured
   // whenever it is offered, which is the case the lost update actually comes from.
+  //
+  // The escape hatch above is the one case with no precondition to honour: the client could not read
+  // the blob, so it holds no etag for it, and create-only would 412 against the very object it is
+  // replacing. An unconditional write is therefore the point rather than an oversight — and it is
+  // not a lost update, because the bytes it replaces were copied aside a few lines up.
   const ifMatch = request.headers.get("if-match");
-  const onlyIf: ObjectConditional | undefined =
-    ifMatch && ifMatch !== "*"
+  const onlyIf: ObjectConditional | undefined = replaceUnreadable
+    ? undefined
+    : ifMatch && ifMatch !== "*"
       ? { etagMatches: unquote(ifMatch) }
       : request.headers.get("if-none-match") === "*"
         ? { etagDoesNotMatch: "*" }
