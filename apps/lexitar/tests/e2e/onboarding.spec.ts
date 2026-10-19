@@ -10,7 +10,16 @@ test("new user lands on onboarding, creates a record, and is taken to Import", a
   await expect(page.locator(".onboard")).toBeVisible();
   await expect(page.locator(".onboard input[type='number']")).toBeVisible(); // birth-year ask
   await expect(page.locator(".needs-client")).toHaveCount(0);
-  await expect(page.locator(".account-trigger")).toHaveCount(0); // app shell not reached yet
+  await expect(page.locator(".sidebar")).toHaveCount(0); // app shell not reached yet
+
+  // The account menu IS on this screen, deliberately: it is the only route to Google or to a
+  // passkey, and an individual whose vault holds no record yet has no other screen to reach it
+  // from, while the sign-up copy promises both are "removable any time in Account settings"
+  // (App.svelte's individualAccountMenu, which Onboarding takes as accountArea). `.account-trigger`
+  // was this assertion's proxy for "the shell is not reached" until that landed, and a proxy that
+  // stops tracking what it stood for makes a correct app read as a regression — so the line now
+  // asserts the sidebar, which is what it always meant, and the trigger is pinned where it belongs.
+  await expect(page.locator(".account-trigger")).toBeVisible();
 
   // W47 — the onboarding asks only birth year + sex (no name). Provide a year and Continue.
   await page.fill(".onboard input[type='number']", "1980");
@@ -20,7 +29,8 @@ test("new user lands on onboarding, creates a record, and is taken to Import", a
   await expect(page.locator("button.modal-close")).toBeVisible();
   await expect(page.getByRole("heading", { name: /import a report/i })).toBeVisible();
 
-  // Closing it reveals the real app shell (owner account menu present) with the new patient selected.
+  // Closing it reveals the real app shell with the new patient selected. The sidebar is what
+  // distinguishes it from the onboarding screen; the account menu is present on both.
   await page.click("button.modal-close");
   await expect(page.locator(".account-trigger")).toBeVisible();
   await expect(page.locator(".sidebar .nav-item").first()).toBeVisible();
