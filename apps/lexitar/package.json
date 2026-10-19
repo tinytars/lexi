@@ -40,6 +40,7 @@
     "recovery:approve": "tsx scripts/recovery-approve.ts",
     "raw:backfill": "tsx scripts/raw-backfill.ts",
     "raw:pages": "tsx scripts/raw-pages-backfill.ts",
+    "raw:sizes": "tsx scripts/raw-pages-backfill.ts --sizes",
     "raw:encrypt": "tsx scripts/raw-encrypt-backfill.ts",
     "corpus:measure": "tsx scripts/corpus-measure.ts",
     "record:export": "tsx scripts/record-export.ts",
