@@ -19,6 +19,19 @@
 // Kept free of every import so the operator scripts can use it too, for the reason namespace-key.ts
 // gives: the one in scripts/raw-cipher-cli.ts is a hand copy of the query that broke.
 
+/**
+ * The longest `LIKE` pattern hosted D1 accepts, in bytes — SQLite's `SQLITE_LIMIT_LIKE_PATTERN_LENGTH`
+ * set far below its own 50,000-byte default. Measured against health-identity-dev on 2026-10-20: 50
+ * accepted, 51 refused with `LIKE or GLOB pattern too complex`.
+ *
+ * It lives here because this module is the thing that exists because of it, and it is exported so the
+ * two suites that check it read one number: `tests/unit/key-range.test.ts`, which holds this module's
+ * own arithmetic to it offline, and `tests/hosted/hosted-query.test.ts`, which re-measures it against
+ * the live platform and fails if it has narrowed. A limit nobody re-measures is a measurement with a
+ * date on it, and this one's date is the day an outage supplied it.
+ */
+export const D1_LIKE_PATTERN_LIMIT = 50;
+
 export interface KeyRange {
   /** Inclusive lower bound — the prefix itself. */
   from: string;
