@@ -46,11 +46,13 @@ export function resolveStore(explicit?: string): string {
 // (data-{id}.enc) under the store prefix; raw/processed mirror the on-disk records/ layout.
 export const r2KeyFor = (store: string, id: string): string => `${store}/data-${id.toLowerCase()}.enc`;
 export const r2RawKeyFor = (store: string, id: string, file: string): string => `${store}/raw/${id.toLowerCase()}/${file}`;
-// The chat-history key, the one namespace a DEK rotation has to re-seal by hand. Every other
-// namespace below holds per-object keys that live INSIDE the vault (raw/[[path]].ts:17), so they
-// travel with a re-encrypted vault and need no pass of their own; chat- is sealed under the DEK
-// directly, which is why vault-rekey.ts walks it and why the shape lives here rather than there.
+// The two namespaces a DEK rotation has to re-seal by hand: the chat-history blob and the
+// regen-log segments. Every other namespace below holds per-object keys that live INSIDE the vault
+// (raw/[[path]].ts:17), so they travel with a re-encrypted vault and need no pass of their own;
+// these two are sealed under the DEK directly, which is why vault-rekey.ts walks them and why the
+// shapes live here rather than there.
 export const r2ChatKeyFor = (store: string, id: string): string => `${store}/chat-${id.toLowerCase()}.enc`;
+export const r2RegenLogPrefixFor = (store: string, id: string): string => `${store}/regen-log/${id.toLowerCase()}/`;
 export const r2ProcessedKeyFor = (store: string, id: string, sha8: string): string => `${store}/processed/${id.toLowerCase()}/${sha8}.json`;
 
 export const r2RefFor = (store: string, id: string): string => `${BUCKET}/${r2KeyFor(store, id)}`;
@@ -440,7 +442,7 @@ export async function bucketExists(bucket: string): Promise<boolean> {
 // `null` means "a key shape this tool has never been taught about" — the snapshot treats that
 // as a hard error rather than skipping it, so a new key class added to storeKey() elsewhere
 // cannot silently fall out of the backup.
-export type KeyClass = "vault" | "chat" | "raw" | "processed" | "text" | "logs";
+export type KeyClass = "vault" | "chat" | "regenLog" | "raw" | "processed" | "text" | "logs";
 
 export function classifyKey(store: string, key: string): KeyClass | null {
   if (!key.startsWith(`${store}/`)) return null;
@@ -456,6 +458,10 @@ export function classifyKey(store: string, key: string): KeyClass | null {
   //   rekey-chat/     vault-rekey.ts staging, live only between the re-seal and the promotion
   if (/^orphaned-chat\/.+/.test(rest)) return "chat";
   if (/^rekey-chat\/.+/.test(rest)) return "chat";
+  // The regen log, one append-only segment per save (src/lib/regen-log-store.ts), plus the
+  // vault-rekey.ts staging prefix that mirrors rekey-chat/ above.
+  if (/^regen-log\/.+/.test(rest)) return "regenLog";
+  if (/^rekey-regen-log\/.+/.test(rest)) return "regenLog";
   if (/^raw\/.+/.test(rest)) return "raw";
   if (/^processed\/.+/.test(rest)) return "processed";
   // W46 document-extract writes a text-extraction sidecar per attachment (document-extract.ts:98).

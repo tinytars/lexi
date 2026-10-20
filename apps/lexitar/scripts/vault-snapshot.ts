@@ -123,7 +123,7 @@ const sha256 = (b: Uint8Array): string => createHash("sha256").update(b).digest(
 // UTC, colon-free so it is safe in an R2 key and still sorts lexicographically by time.
 export const snapshotIdFor = (d: Date): string => d.toISOString().replace(/:/g, "-").replace(/\.\d+Z$/, "Z");
 
-const emptyCounts = (): Record<KeyClass, number> => ({ vault: 0, chat: 0, raw: 0, processed: 0, text: 0, logs: 0 });
+const emptyCounts = (): Record<KeyClass, number> => ({ vault: 0, chat: 0, regenLog: 0, raw: 0, processed: 0, text: 0, logs: 0 });
 
 // ── D1 ───────────────────────────────────────────────────────────────────────
 

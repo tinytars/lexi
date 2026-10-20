@@ -1,5 +1,5 @@
 // W76 — find, date and (after a grace period) delete ORPHANED client namespaces: objects under
-// raw/{client}/, text/{client}/ or chat-{client}.enc that no `raw_objects` row attributes. Every route
+// raw/{client}/, text/{client}/, regen-log/{client}/ or chat-{client}.enc that no `raw_objects` row attributes. Every route
 // refuses them (functions/_lib/raw-owner.ts); the owner reclaims one by opening their vault
 // (POST /api/raw/claim) or the operator assigns it (raw-backfill --assign). This removes the rest.
 //
@@ -60,6 +60,7 @@ async function main(): Promise<void> {
   const objects = [
     ...(await listObjects(LIVE_BUCKET, `${store}/raw/`)),
     ...(await listObjects(LIVE_BUCKET, `${store}/text/`)),
+    ...(await listObjects(LIVE_BUCKET, `${store}/regen-log/`)),
     ...(await listObjects(LIVE_BUCKET, `${store}/chat-`)),
   ];
   const owned = (await d1<{ r2_key: string }>("SELECT r2_key FROM raw_objects")).map((r) => r.r2_key);

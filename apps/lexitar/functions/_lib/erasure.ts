@@ -110,8 +110,16 @@ export async function r2KeysForAccount(env: ErasureEnv, accountId: string): Prom
  * as they are written, so they are deleted by the key-driven pass above rather than by prefix — what
  * this list adds is the count that keeps a copy ANOTHER account claimed from reporting as complete,
  * which is W75's finding applied to a namespace that did not exist when it was made.
+ *
+ * `regen-log/` arrives on the same terms. A regen-log segment is `regen-log/{clientKey}/{ts}-{rand}.enc`
+ * — the before and after text of a rewritten Finding section, sealed under the vault DEK, which is the
+ * subject's own record content and not an operational trace. Each segment is recorded in `raw_objects`
+ * by the route that mints it, so the key-driven pass deletes it; the prefix entry is again only what
+ * keeps a segment another account claimed from letting an erasure report `complete`. It is the first
+ * namespace here the subject's browser never reads back, which is precisely why it needs naming: a log
+ * with no reader would survive an erasure with nothing breaking loudly enough to notice.
  */
-const NAMESPACED_PREFIXES = ["raw", "text", "orphaned-chat"];
+const NAMESPACED_PREFIXES = ["raw", "text", "orphaned-chat", "regen-log"];
 
 /**
  * The namespace segments this account's PHI occupies, under every prefix above.

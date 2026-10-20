@@ -52,6 +52,7 @@ export const ROUTE_PATTERNS: readonly string[] = [
   "/api/vault/rotate",
   "/api/chat-history/:id",
   "/api/providers/:link",
+  "/api/regen-log/:id",
   "/api/vault/:id",
   "/api/raw/:path*",
   "/api/account",

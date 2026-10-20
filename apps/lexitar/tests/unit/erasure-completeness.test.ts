@@ -53,7 +53,12 @@ describe("every R2 key class the app writes is one erasure has an answer for", (
   // it overwrites a history that will not open. It is the subject's own chat content, so excusing it
   // the way `logs` is excused would make the erasure's promise false for the one class deliberately
   // written to OUTLIVE a deletion the subject asked for.
-  const ERASED_DIRS = ["raw", "text", "orphaned-chat"];
+  // W87 added the fourth: `regen-log/{clientKey}/{ts}-{rand}.enc`, the relocated regen log — the before
+  // and after prose of a rewritten Finding, which is record content. Its segments are in `raw_objects`,
+  // so the key-driven pass deletes them; naming the prefix is what counts the ones another account
+  // claimed. Nothing in the app reads this log back, so an omission here would not break anything
+  // loudly — it would only make an erasure's `complete: true` wrong, quietly.
+  const ERASED_DIRS = ["raw", "text", "orphaned-chat", "regen-log"];
   const EXCLUDED_DIRS: Record<string, string> = {
     // Request logs: route, status, latency, an id. Not the subject's content, and deleting them would
     // destroy the operational record of every OTHER request in the same window.

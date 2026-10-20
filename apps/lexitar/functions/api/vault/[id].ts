@@ -28,7 +28,11 @@ interface Ctx {
 
 const ROUTE = "/api/vault";
 const MIN_BYTES = 32; // MAGIC(3) + VERSION(1) + SALT(16) + IV(12) — mirrors decryptVault
-const MAX_BYTES = 5 * 1024 * 1024; // alex is ~405 KB; generous ceiling
+// Generous, and W87 is why it is still 5 MB rather than larger: what crossed it was the regen log,
+// an append-only field that grew without bound inside a blob rewritten on every unrelated edit, and
+// that now lives in its own objects (src/lib/regen-log-store.ts). Raising the ceiling would have
+// bought one more save each time at the cost of re-uploading megabytes on every keystroke-level edit.
+const MAX_BYTES = 5 * 1024 * 1024;
 const HD1 = [0x48, 0x44, 0x31]; // "HD1" — the in-browser crypto magic prefix
 
 // The static-asset filename (unprefixed — Vite copies records/public to the dist root,
@@ -100,8 +104,11 @@ export async function onRequestPut(context: Ctx): Promise<Response> {
 
   const blob = new Uint8Array(await request.arrayBuffer());
   if (blob.length > MAX_BYTES) {
-    log(413, { errorCode: "too_large" });
-    return json(413, { error: "vault blob too large" });
+    // The two numbers, because without them this refusal is a mystery to whoever next meets it: the
+    // 2026-10-20 occurrence cost a full investigation to learn that the blob was 5,163,393 bytes.
+    // Both are sizes, never content.
+    log(413, { errorCode: "too_large", bytes: blob.length });
+    return json(413, { error: "vault blob too large", bytes: blob.length, max: MAX_BYTES });
   }
   if (blob.length < MIN_BYTES || blob[0] !== HD1[0] || blob[1] !== HD1[1] || blob[2] !== HD1[2]) {
     log(400, { errorCode: "not_hd1" });

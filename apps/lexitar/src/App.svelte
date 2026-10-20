@@ -102,6 +102,7 @@
   import { createCorpusWarmer } from "./lib/corpus-warm";
   import { providerFor } from "./lib/model-config";
   import { createCorpusLane } from "./lib/corpus-lane";
+  import { relocateRegenLog, dropRelocated } from "./lib/regen-log-store";
   import { warmCorpus } from "./lib/corpus-warm-client";
   import AccessLog from "./lib/AccessLog.svelte";
   import { partitionAccessEvents, groupIntoEpisodes } from "./lib/access-episodes";
@@ -152,6 +153,26 @@
     revokeAttachmentBlobs();
   });
 
+  // W87 — EVERY vault write goes through here; nothing below calls saveVaultV2 directly.
+  //
+  // The regen log is relocated to its own R2 objects BEFORE the record is sealed, so the blob that
+  // goes on the wire no longer carries it. That ordering is the safety property rather than an
+  // implementation detail: the evidence leaves the record only once it is durable somewhere else
+  // (src/lib/regen-log-store.ts). It sits here, in front of the call sites, rather than inside
+  // saveVaultV2 — that function is @tinytars/vault's and knows nothing of this app's record shape.
+  //
+  // It returns the vault it actually SAVED, which is not always the one handed in: a client whose
+  // segment write failed keeps its log. A caller that assigns the vault itself assigns this.
+  async function saveRecord(v: Vault, id: string, dek: CryptoKey): Promise<Vault> {
+    const { vault: saved } = await relocateRegenLog(v, dek);
+    await saveVaultV2(saved, id, dek, vaultSink);
+    // The live vault may be a NEWER object than `v` — saveEdits and recordRawKey assign it before
+    // this await resolves — so the relocated events are dropped from whatever is live NOW, by object
+    // identity. A regen that landed inside the window is a different object and is kept.
+    if (vault) vault = dropRelocated(vault);
+    return saved;
+  }
+
   // The awaited half of an upload: the key is in R2 before the ciphertext it opens ever is.
   //
   // It THROWS rather than returning quietly, because the caller's next act is to seal bytes under
@@ -167,7 +188,7 @@
     const r2id = session.r2Id;
     const key64 = session.dek;
     vault = next;
-    if (!(await vaultSave.push(() => saveVaultV2(next, r2id, key64, vaultSink)))) throw new Error("the content key could not be saved");
+    if (!(await vaultSave.push(async () => void (await saveRecord(next, r2id, key64))))) throw new Error("the content key could not be saved");
   }
 
   // Content keys recorded OUT OF BAND, adopted without a reload.
@@ -263,7 +284,7 @@
   const vaultAccess = createVaultPrincipals({
     getVault: () => vault,
     session,
-    saveVault: (v, id, dek) => saveVaultV2(v, id, dek, vaultSink),
+    saveVault: async (v, id, dek) => void (await saveRecord(v, id, dek)),
     reportError: (m) => (error = m),
     // Not the shared error line: this fires on a boot path, and an owner has nothing to do about a
     // list that would not load. It goes to the tracker instead, under its own name so a request the
@@ -361,7 +382,7 @@
     getResolving: () => resolvingConflict,
     setResolving: (v) => (resolvingConflict = v),
     fetchVaultBlob,
-    saveVault: (v, id, dek) => saveVaultV2(v, id, dek, vaultSink),
+    saveVault: async (v, id, dek) => void (await saveRecord(v, id, dek)),
     decryptVault: async (blob, dek) => ensureLeafIds(await decryptVaultV2<Vault>(blob, dek)),
   });
   const resolveConflictKeepMine = conflictResolver.resolveConflictKeepMine;
@@ -736,8 +757,8 @@
     if (!res.ok) throw new Error(`vault not found (${res.status})`);
     // W70 — remember the version we are about to work from. Every subsequent save states it as
     // If-Match, so a write is refused if the blob moved underneath instead of silently overwriting
-    // whatever the other tab (or the clinician) put there. This one line is what arms all seven
-    // saveVaultV2 call sites; without it they would all 428.
+    // whatever the other tab (or the clinician) put there. This one line is what arms every save;
+    // without it they would all 428. W87 made that one function — saveRecord, above.
     rememberVaultEtag(id, res.headers.get("ETag"));
     return new Uint8Array(await res.arrayBuffer());
   }
@@ -908,8 +929,7 @@
   async function persistClient(id: string, client: Client): Promise<boolean> {
     if (!vault || !session.dek || !session.r2Id) return false;
     const next = withClient(vault, id, client);
-    await saveVaultV2(next, session.r2Id, session.dek, vaultSink);
-    vault = next;
+    vault = await saveRecord(next, session.r2Id, session.dek);
     return true;
   }
 
@@ -927,7 +947,7 @@
     const r2id = session.r2Id;
     const key = session.dek;
     vault = next; // updates currentClient → children see the new baseline on this same tick
-    void vaultSave.push(() => saveVaultV2(next, r2id, key, vaultSink));
+    void vaultSave.push(async () => void (await saveRecord(next, r2id, key)));
   }
 
   // W30 — watchlist membership is a per-chart toggle now (not the Profile editor). Clone the
