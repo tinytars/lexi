@@ -18,6 +18,7 @@ const auth = {
   listMyProviders: vi.fn(),
   lookupProvider: vi.fn(),
   grantProvider: vi.fn(),
+  grantProviderUntil: vi.fn(),
   revokeProvider: vi.fn(),
   approveSupport: vi.fn(),
   approveSupportAsProvider: vi.fn(),
@@ -349,24 +350,26 @@ describe("an invited clinician is a pending request, not access already granted"
   });
 
   it("approves as an ordinary grant, not as a break-glass one", async () => {
-    // `/api/support/approve` stamps an expiresAt that only the support read path checks, so a
-    // clinician approved through it would hold a link that reads as time-boxed and is permanent.
+    // This cited the wrong danger: that `/api/support/approve` stamps an expiresAt only the support
+    // read path checks, so a clinician approved through it would hold a link reading as time-boxed
+    // and in fact permanent. One chokepoint refuses a lapsed link whatever its role, and always
+    // did. The split stands on what survives — break-glass is support's audited act, a clinician's
+    // access is the patient's own grant — and the grant now carries the window the patient chose.
     const { c } = await withList(asked);
-    c.ttlHours = 24;
     await c.approve(asked);
 
-    expect(auth.grantProvider).toHaveBeenCalledWith(OLD_DEK, { providerAccountId: "p1", publicKeyJwk: { kty: "EC", x: "p1" } });
+    expect(auth.grantProviderUntil).toHaveBeenCalledWith(OLD_DEK, { providerAccountId: "p1", publicKeyJwk: { kty: "EC", x: "p1" } }, 30);
     expect(auth.approveSupport).not.toHaveBeenCalled();
   });
 
   it("still approves a support request the way it always did", async () => {
     const s = link({ linkId: "s", kind: "support", status: "invited", providerAccountId: "sup", publicKeyJwk: { kty: "EC", x: "sup" } });
     const { c } = await withList(s);
-    c.ttlHours = 8;
+    c.setChosenHours("s", 8);
     await c.approve(s);
 
     expect(auth.approveSupport).toHaveBeenCalledWith("s", OLD_DEK, { kty: "EC", x: "sup" }, 8);
-    expect(auth.grantProvider).not.toHaveBeenCalled();
+    expect(auth.grantProviderUntil).not.toHaveBeenCalled();
   });
 
   it("does nothing without the asker's public key — there is nothing to wrap the DEK to", async () => {
@@ -374,7 +377,7 @@ describe("an invited clinician is a pending request, not access already granted"
     // early return is silent, so the patient would press Approve and watch nothing happen.
     const { c } = await withList(asked);
     await c.approve(link({ kind: "primary", status: "invited", publicKeyJwk: undefined }));
-    expect(auth.grantProvider).not.toHaveBeenCalled();
+    expect(auth.grantProviderUntil).not.toHaveBeenCalled();
     expect(auth.approveSupport).not.toHaveBeenCalled();
   });
 
@@ -389,7 +392,7 @@ describe("an invited clinician is a pending request, not access already granted"
 describe("the provider-side pair reports through the shared error line", () => {
   it("approves a roster request with the chosen TTL", async () => {
     const { c, errors } = makeController();
-    c.ttlHours = 24;
+    c.setChosenHours("l1", 24);
     await c.approveAsProvider(link({ kind: "support", status: "invited" }));
 
     expect(auth.approveSupportAsProvider).toHaveBeenCalledWith("l1", 24);
@@ -409,5 +412,101 @@ describe("the provider-side pair reports through the shared error line", () => {
     const { c } = makeController();
     await c.revokeAsProvider(link({ kind: "support", status: "active" }));
     expect(auth.stageVaultRotation).not.toHaveBeenCalled();
+  });
+});
+
+// The owner asked for an option to give thirty days. What stood in the way was not the server —
+// expiry has been enforced at one chokepoint for every role since W71 — but a single `$state(72)`
+// shared by every row on the screen, and the fact that a clinician grant never carried a date at
+// all. These are the two properties that could not be stated before: one duration per asker, and a
+// grant that ends without vanishing.
+describe("each asker gets their own window", () => {
+  const DAY = 86400 * 1000;
+  const iso = (ms: number) => new Date(Date.now() + ms).toISOString();
+
+  async function withList(...links: ProviderLinkView[]) {
+    auth.listMyProviders.mockResolvedValue(links);
+    const made = makeController();
+    await made.c.openPanel();
+    return made;
+  }
+
+  it("defaults to thirty days for a clinician and three days for support", async () => {
+    const { c } = makeController();
+    expect(c.chosenHours(link({ kind: "primary" }))).toBe(720);
+    expect(c.chosenHours(link({ kind: "support" }))).toBe(72);
+  });
+
+  it("answers two pending rows with two different durations", async () => {
+    // Impossible to express before: one shared number meant the second row's select rewrote the
+    // first row's, so the window beside one name was the window another name was granted.
+    const a = link({ linkId: "a", kind: "primary", status: "invited", providerAccountId: "pa", publicKeyJwk: { kty: "EC", x: "a" } });
+    const b = link({ linkId: "b", kind: "primary", status: "invited", providerAccountId: "pb", publicKeyJwk: { kty: "EC", x: "b" } });
+    const { c } = await withList(a, b);
+
+    c.setChosenHours("a", 0); // ongoing
+    c.setChosenHours("b", 720);
+    await c.approve(a);
+    await c.approve(b);
+
+    expect(auth.grantProviderUntil).toHaveBeenNthCalledWith(1, OLD_DEK, { providerAccountId: "pa", publicKeyJwk: { kty: "EC", x: "a" } }, null);
+    expect(auth.grantProviderUntil).toHaveBeenNthCalledWith(2, OLD_DEK, { providerAccountId: "pb", publicKeyJwk: { kty: "EC", x: "b" } }, 30);
+  });
+
+  it("keeps one asker's unsent choice out of the next one's default", async () => {
+    const { c } = await withList(link({ linkId: "a", kind: "support" }), link({ linkId: "b", kind: "support" }));
+    c.setChosenHours("a", 24);
+    expect(c.chosenHours(link({ linkId: "b", kind: "support" }))).toBe(72);
+  });
+
+  it("exposes the unsent choices as a plain object, which is what the dirty check can read", async () => {
+    // `Modal`'s snapshot comparison is JSON.stringify, and a Map stringifies to `{}` — every unsent
+    // choice would read as no choice and the modal would close without warning.
+    const { c } = await withList(link({ linkId: "a" }));
+    c.setChosenHours("a", 24);
+    expect(JSON.stringify(c.chosenSnapshot)).toBe('{"a":24}');
+  });
+
+  it("a grant past its end date is ended, not active, and is still listed", async () => {
+    const { c } = await withList(
+      link({ linkId: "live", expiresAt: iso(5 * DAY) }),
+      link({ linkId: "lapsed", expiresAt: iso(-DAY) }),
+      link({ linkId: "ongoing", expiresAt: null }),
+    );
+    expect(c.activeAccess.map((p) => p.linkId)).toEqual(["live", "ongoing"]);
+    expect(c.endedAccess.map((p) => p.linkId)).toEqual(["lapsed"]);
+  });
+
+  it("treats an unreadable end date as live rather than dropping the row", async () => {
+    // The server is the one refusing the read. A date this cannot parse is a display problem, and
+    // silently moving the row to "ended" would tell the owner access had lapsed when it has not.
+    const { c } = await withList(link({ linkId: "odd", expiresAt: "not a date" }));
+    expect(c.activeAccess.map((p) => p.linkId)).toEqual(["odd"]);
+    expect(c.endedAccess).toEqual([]);
+  });
+
+  it("renews a lapsed grant by re-granting it, and can drop the end date entirely", async () => {
+    const lapsed = link({ linkId: "r", providerAccountId: "p1", publicKeyJwk: { kty: "EC", x: "p1" }, expiresAt: iso(-DAY) });
+    const { c } = await withList(lapsed);
+
+    await c.renew(lapsed, 30);
+    await c.renew(lapsed, null);
+
+    expect(auth.grantProviderUntil).toHaveBeenNthCalledWith(1, OLD_DEK, { providerAccountId: "p1", publicKeyJwk: { kty: "EC", x: "p1" } }, 30);
+    expect(auth.grantProviderUntil).toHaveBeenNthCalledWith(2, OLD_DEK, { providerAccountId: "p1", publicKeyJwk: { kty: "EC", x: "p1" } }, null);
+    expect(auth.listMyProviders).toHaveBeenCalledTimes(3); // the open, then once per renewal
+  });
+
+  it("does not renew without the asker's key — /api/providers is what supplies it", async () => {
+    const { c } = await withList(link({ linkId: "r" }));
+    await c.renew(link({ linkId: "r", publicKeyJwk: null }), 30);
+    expect(auth.grantProviderUntil).not.toHaveBeenCalled();
+  });
+
+  it("forgets every unsent choice on sign-out", async () => {
+    const { c } = await withList(link({ linkId: "a" }));
+    c.setChosenHours("a", 24);
+    c.reset();
+    expect(c.chosenSnapshot).toEqual({});
   });
 });

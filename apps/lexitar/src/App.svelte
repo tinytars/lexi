@@ -1490,7 +1490,7 @@
               <li>
                 <span class="access-who"><strong>{p.displayName}</strong> <span class="access-kind">support · wants your roster</span></span>
                 <span class="access-approve-actions">
-                  <select bind:value={vaultAccess.ttlHours} disabled={vaultAccess.busy} title="How long support may access your roster">
+                  <select value={vaultAccess.chosenHours(p)} onchange={(e) => vaultAccess.setChosenHours(p.linkId, Number(e.currentTarget.value))} disabled={vaultAccess.busy} title="How long support may access your roster">
                     <option value={24}>24h</option>
                     <option value={72}>3 days</option>
                     <option value={168}>7 days</option>
@@ -1684,12 +1684,15 @@
                 <li>
                   <span class="access-who"><strong>{p.displayName}</strong> <span class="access-kind">{p.kind === "support" ? "support · wants to help" : "wants to read your record"}</span></span>
                   <span class="access-approve-actions">
-                    <!-- The clock is support's alone. A clinician link carries no expiry and the
-                         clinician read path checks none, so offering "24h" here would be a control
-                         that does nothing, on the one screen in the product where a promise about
-                         who can read a medical record has to be literally true. -->
+                    <!-- This said the clock was support's alone, because a clinician link carried no
+                         expiry and the clinician read path checked none — so a control here would do
+                         nothing on the one screen where a promise about who can read a medical
+                         record has to be literally true. The second half was never so: one
+                         chokepoint refuses a lapsed link whatever its role. The first half is now
+                         false too, and a clinician approved here takes the 30-day default; the
+                         choice between that and "ongoing" is the redesigned row's, not this one's. -->
                     {#if p.kind === "support"}
-                      <select bind:value={vaultAccess.ttlHours} disabled={vaultAccess.busy} title="How long support may access your record">
+                      <select value={vaultAccess.chosenHours(p)} onchange={(e) => vaultAccess.setChosenHours(p.linkId, Number(e.currentTarget.value))} disabled={vaultAccess.busy} title="How long support may access your record">
                         <option value={24}>24h</option>
                         <option value={72}>3 days</option>
                         <option value={168}>7 days</option>
