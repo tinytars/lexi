@@ -6,6 +6,7 @@
 // own docstring on AuditStore).
 import { D1AuditStore } from "@tinytars/vault/adapters/d1";
 import type { D1Database, LifecycleStage } from "./identity-types";
+import { keyRange } from "./key-range";
 
 export type { AccessEvent } from "@tinytars/vault/stores";
 
@@ -196,9 +197,12 @@ export interface RawPdfRow {
  * the assembler never depends on R2's listing order.
  */
 export async function listRawPdfsUnder(db: D1Database, keyPrefix: string): Promise<RawPdfRow[]> {
+  // A range, not `LIKE ?` — key-range.ts has why. The `'%.pdf'` pattern beside it stays a LIKE: it
+  // is five bytes of code and matches a suffix, which a range cannot express.
+  const { from, to } = keyRange(keyPrefix);
   const { results } = await db
-    .prepare("SELECT r2_key, pages, bytes FROM raw_objects WHERE r2_key LIKE ? AND lower(r2_key) LIKE '%.pdf' ORDER BY r2_key")
-    .bind(`${keyPrefix}%`)
+    .prepare("SELECT r2_key, pages, bytes FROM raw_objects WHERE r2_key >= ? AND r2_key < ? AND lower(r2_key) LIKE '%.pdf' ORDER BY r2_key")
+    .bind(from, to)
     .all<RawPdfRow>();
   return results;
 }
@@ -211,9 +215,10 @@ export async function listRawPdfsUnder(db: D1Database, keyPrefix: string): Promi
  * for refuses that patient's every question even when nothing in the record still points at it.
  */
 export async function listRawObjectsUnder(db: D1Database, keyPrefix: string): Promise<string[]> {
+  const { from, to } = keyRange(keyPrefix);
   const { results } = await db
-    .prepare("SELECT r2_key FROM raw_objects WHERE r2_key LIKE ? ORDER BY r2_key")
-    .bind(`${keyPrefix}%`)
+    .prepare("SELECT r2_key FROM raw_objects WHERE r2_key >= ? AND r2_key < ? ORDER BY r2_key")
+    .bind(from, to)
     .all<{ r2_key: string }>();
   return results.map((r) => r.r2_key);
 }

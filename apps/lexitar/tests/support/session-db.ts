@@ -10,13 +10,28 @@ export function fakeSessionDb(): D1Database & {
   const revoked = new Map<string, string>();
   const owned = new Map<string, string>();
 
-  const matchOwner = (patterns: unknown[]): string | null => {
-    for (const [key, accountId] of owned) {
-      for (const p of patterns) {
-        const s = String(p);
-        if (s.endsWith("%") ? key.startsWith(s.slice(0, -1)) : key === s) return accountId;
+  // The ownership query binds a prefix match as the half-open range functions/_lib/key-range.ts
+  // derives — `from`, then `from` with its final character advanced — and a flat key as itself. A
+  // pair is recognised by that shape rather than by its position, so this does not encode the
+  // query's bind order and does not accept the accidental pair one range's end makes with the next
+  // one's start. It was `LIKE 'prefix%'` until the pattern outgrew what D1 accepts.
+  const isRangeOf = (from: string, to: string): boolean =>
+    to.length === from.length &&
+    to.slice(0, -1) === from.slice(0, -1) &&
+    to.charCodeAt(to.length - 1) === from.charCodeAt(from.length - 1) + 1;
+
+  const matchOwner = (args: unknown[]): string | null => {
+    const vals = args.map(String);
+    const covers = (key: string): boolean => {
+      for (let i = 0; i < vals.length; i++) {
+        if (i + 1 < vals.length && isRangeOf(vals[i], vals[i + 1])) {
+          if (key >= vals[i] && key < vals[i + 1]) return true;
+          i++;
+        } else if (key === vals[i]) return true;
       }
-    }
+      return false;
+    };
+    for (const [key, accountId] of owned) if (covers(key)) return accountId;
     return null;
   };
 
