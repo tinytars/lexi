@@ -33,17 +33,23 @@ async function seed(email = `doc-${crypto.randomUUID()}@x.test`) {
   return { patientId, vaultId, dek, providerId, providerPublicKeyJwk: prov.publicKeyJwk, email };
 }
 
-async function doGrant(patientId: string, dek: CryptoKey, providerId: string, providerPublicKeyJwk: JsonWebKey) {
+async function doGrant(patientId: string, dek: CryptoKey, providerId: string, providerPublicKeyJwk: JsonWebKey, ttl?: { ttlDays: unknown }) {
   const env0 = await wrapDEKForPublicKey(dek, providerPublicKeyJwk);
   return grant({
     request: new Request("http://x/api/providers/grant", {
       method: "POST",
       headers: { "content-type": "application/json", cookie: await cookieFor(patientId) },
-      body: JSON.stringify({ providerAccountId: providerId, wrappedDEK: bytesToBase64(env0.wrappedDEK), ephemeralPublicKeyJwk: env0.ephemeralPublicKeyJwk }),
+      body: JSON.stringify({ providerAccountId: providerId, wrappedDEK: bytesToBase64(env0.wrappedDEK), ephemeralPublicKeyJwk: env0.ephemeralPublicKeyJwk, ...ttl }),
     }),
     env: makeEnv(),
   });
 }
+
+const DAY = 86400 * 1000;
+const linkFor = async (patientId: string, providerId: string) =>
+  (await listProvidersForPatient(w.db, patientId)).find((l) => l.providerAccountId === providerId)!;
+/** Days from now, rounded — the route stamps from its own clock, so an exact equality would be a race. */
+const daysOut = (iso: string) => Math.round((Date.parse(iso) - Date.now()) / DAY);
 
 describe("provider lookup", () => {
   it("401s without a session", async () => {
@@ -185,5 +191,89 @@ describe("provider grant / list / revoke", () => {
     await createAccount(w.db, { id: otherId, displayName: "Other" });
     const res = await revoke({ request: new Request(`http://x/api/providers/${linkId}`, { method: "DELETE", headers: { cookie: await cookieFor(otherId) } }), env: makeEnv(), params: { link: linkId } });
     expect(res.status).toBe(403);
+  });
+});
+
+// W92 — the patient chooses how long a clinician keeps access: 30 days, or ongoing. The window is
+// computed on the server from a count of days, because a consent window set by the caller's clock is
+// set by whoever is holding the caller.
+describe("grant duration", () => {
+  it("defaults to 30 days when the body says nothing", async () => {
+    // An older client that has never heard of `ttlDays` is not asking for permanence; it gets the
+    // product default, which is the time-boxed answer rather than the open-ended one.
+    const s = await seed();
+    const res = await doGrant(s.patientId, s.dek, s.providerId, s.providerPublicKeyJwk);
+    expect(res.status).toBe(200);
+    expect(daysOut((await res.json() as { expiresAt: string }).expiresAt)).toBe(30);
+    expect(daysOut((await linkFor(s.patientId, s.providerId)).expiresAt!)).toBe(30);
+  });
+
+  it("ttlDays: null is ongoing — no end date at all", async () => {
+    const s = await seed();
+    const res = await doGrant(s.patientId, s.dek, s.providerId, s.providerPublicKeyJwk, { ttlDays: null });
+    expect(res.status).toBe(200);
+    expect((await res.json() as { expiresAt: string | null }).expiresAt).toBeNull();
+    expect((await linkFor(s.patientId, s.providerId)).expiresAt).toBeNull();
+  });
+
+  it("a renewal MOVES the window; it does not keep the old date", async () => {
+    // The trap this route used to sit in: `updateProviderLinkStatus` sets status alone, so re-granting
+    // a lapsed link would flip it active against an `expires_at` already in the past — access granted
+    // and refused in the same breath, with nothing in the row to say which the patient chose.
+    const s = await seed();
+    await doGrant(s.patientId, s.dek, s.providerId, s.providerPublicKeyJwk, { ttlDays: 1 });
+    expect(daysOut((await linkFor(s.patientId, s.providerId)).expiresAt!)).toBe(1);
+
+    await doGrant(s.patientId, s.dek, s.providerId, s.providerPublicKeyJwk, { ttlDays: 30 });
+    const renewed = await linkFor(s.patientId, s.providerId);
+    expect(renewed.status).toBe("active");
+    expect(daysOut(renewed.expiresAt!)).toBe(30);
+  });
+
+  it("a renewal can also drop the window entirely (dated grant made ongoing)", async () => {
+    const s = await seed();
+    await doGrant(s.patientId, s.dek, s.providerId, s.providerPublicKeyJwk, { ttlDays: 30 });
+    await doGrant(s.patientId, s.dek, s.providerId, s.providerPublicKeyJwk, { ttlDays: null });
+    expect((await linkFor(s.patientId, s.providerId)).expiresAt).toBeNull();
+  });
+
+  it("clamps a window out of range instead of trusting it", async () => {
+    // Clamped, not refused: the number is a preference and the consent is the thing being recorded, so
+    // throwing the whole grant away over a bad count would lose what the patient actually decided.
+    const far = await seed();
+    await doGrant(far.patientId, far.dek, far.providerId, far.providerPublicKeyJwk, { ttlDays: 100000 });
+    expect(daysOut((await linkFor(far.patientId, far.providerId)).expiresAt!)).toBe(365);
+
+    const past = await seed();
+    await doGrant(past.patientId, past.dek, past.providerId, past.providerPublicKeyJwk, { ttlDays: -5 });
+    expect(daysOut((await linkFor(past.patientId, past.providerId)).expiresAt!)).toBe(1);
+  });
+
+  it("400s a ttlDays that is neither a number nor null", async () => {
+    const s = await seed();
+    const res = await doGrant(s.patientId, s.dek, s.providerId, s.providerPublicKeyJwk, { ttlDays: "30" });
+    expect(res.status).toBe(400);
+    // Refused before anything is written: the body is validated ahead of the envelope, so a malformed
+    // request leaves no half-made grant behind for the next read to find.
+    expect(await getEnvelope(w.db, s.vaultId, s.providerId)).toBeNull();
+    expect(await linkFor(s.patientId, s.providerId)).toBeUndefined();
+  });
+
+  it("tells the clinician their own grant's terms", async () => {
+    // Both ends of one grant print the same date. Without this the clinician would learn the window
+    // existed by losing it.
+    const s = await seed();
+    await doGrant(s.patientId, s.dek, s.providerId, s.providerPublicKeyJwk, { ttlDays: 30 });
+    const pl = await patients({ request: new Request("http://x/api/providers/patients", { headers: { cookie: await cookieFor(s.providerId) } }), env: makeEnv() });
+    const { patients: seen } = (await pl.json()) as { patients: { ownerAccountId: string; expiresAt: string | null }[] };
+    expect(daysOut(seen.find((p) => p.ownerAccountId === s.patientId)!.expiresAt!)).toBe(30);
+  });
+
+  it("an ongoing grant reaches the clinician as a null end date, not a missing field", async () => {
+    const s = await seed();
+    await doGrant(s.patientId, s.dek, s.providerId, s.providerPublicKeyJwk, { ttlDays: null });
+    const pl = await patients({ request: new Request("http://x/api/providers/patients", { headers: { cookie: await cookieFor(s.providerId) } }), env: makeEnv() });
+    const { patients: seen } = (await pl.json()) as { patients: { ownerAccountId: string; expiresAt: string | null }[] };
+    expect(seen.find((p) => p.ownerAccountId === s.patientId)).toHaveProperty("expiresAt", null);
   });
 });

@@ -4,7 +4,7 @@ import { storeKey } from "../../_lib/store";
 import { requireSession } from "../../_lib/session";
 import type { D1Database } from "../../_lib/identity-types";
 import { getEnvelope, getVaultByR2Key, getVaultByStagingR2Key } from "../../_lib/identity-vault";
-import { getActiveProviderLink } from "../../_lib/identity-providers";
+import { getActiveProviderLink, listProvidersForPatient } from "../../_lib/identity-providers";
 import type { BlobConditional } from "@tinytars/vault/blob-store";
 import { R2BlobStore, type R2Bucket } from "@tinytars/vault/adapters/r2";
 import { json } from "../../_lib/http";
@@ -43,6 +43,26 @@ const r2Key = (env: Env, id: string) => storeKey(env, assetName(id));
 /** An `If-Match` header value is quoted (`"abc"`); BlobStore's ifMatch wants the bare token. */
 const unquote = (v: string): string => v.trim().replace(/^W\//, "").replace(/^"|"$/g, "");
 
+/**
+ * Why the refusal — asked only AFTER `getEnvelope` has already said no, so the gate does not move and
+ * this cannot widen it. It exists because "no access to this vault" is the wrong thing to tell a
+ * clinician whose 30-day window simply ran out: that access was real, the patient can renew it, and an
+ * app told only "forbidden" can offer nothing but a dead end. An expired link is still `active` in the
+ * table — `getActiveProviderLink` refuses it on time rather than on status — which is exactly what
+ * makes it distinguishable here from a link that never existed.
+ */
+async function refusalCode(env: Env, ownerAccountId: string, principalAccountId: string): Promise<"access_expired" | "forbidden"> {
+  if (principalAccountId === ownerAccountId) return "forbidden";
+  const link = (await listProvidersForPatient(env.DB, ownerAccountId)).find(
+    (l) => l.providerAccountId === principalAccountId
+  );
+  if (link?.status === "active" && link.expiresAt && Date.parse(link.expiresAt) <= Date.now()) return "access_expired";
+  return "forbidden";
+}
+
+const refusalText = (code: "access_expired" | "forbidden") =>
+  code === "access_expired" ? "this access has ended" : "no access to this vault";
+
 // PUT — store an already-encrypted HD1 blob. Guarded; never decrypts.
 export async function onRequestPut(context: Ctx): Promise<Response> {
   const { request, env, params } = context;
@@ -73,8 +93,9 @@ export async function onRequestPut(context: Ctx): Promise<Response> {
       return json(404, { error: "vault not found" });
     }
     if (!(await getEnvelope(env.DB, vault.vaultId, session.accountId))) {
-      log(403, { errorCode: "forbidden" });
-      return json(403, { error: "no access to this vault" });
+      const errorCode = await refusalCode(env, vault.ownerAccountId, session.accountId);
+      log(403, { errorCode });
+      return json(403, { error: refusalText(errorCode), errorCode });
     }
     // Holding an envelope is permission to READ. Writing needs more: a `support` principal exists to be
     // handed a time-boxed key so it can read a record, and a read-only principal that can overwrite the
@@ -181,8 +202,9 @@ export async function onRequestGet(context: Ctx): Promise<Response> {
       return json(404, { error: "vault not found" });
     }
     if (!(await getEnvelope(env.DB, vault.vaultId, session.accountId))) {
-      log(403, { errorCode: "forbidden" });
-      return json(403, { error: "no access to this vault" });
+      const errorCode = await refusalCode(env, vault.ownerAccountId, session.accountId);
+      log(403, { errorCode });
+      return json(403, { error: refusalText(errorCode), errorCode });
     }
     const refused = await auditPrivilegedRead(env.DB, {
       actor: session.accountId,
