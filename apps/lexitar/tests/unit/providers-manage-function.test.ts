@@ -7,7 +7,8 @@ import { onRequestGet as patients } from "../../functions/api/providers/patients
 import { createAccount } from "../../functions/_lib/identity-accounts";
 import { putPublicKey } from "../../functions/_lib/identity-credentials";
 import { createVault, getEnvelope, listVaultsForOwner } from "../../functions/_lib/identity-vault";
-import { listProvidersForPatient } from "../../functions/_lib/identity-providers";
+import { createProviderLink, listProvidersForPatient } from "../../functions/_lib/identity-providers";
+import { listAccessEventsForSubject } from "../../functions/_lib/identity-audit";
 import { generateAccountKeypair, generateDEK, wrapDEKForPublicKey } from "@tinytars/vault/crypto";
 import { useWorkerd } from "../support/miniflare";
 import { SESSION_SECRET, cookieFor } from "../support/session";
@@ -83,6 +84,46 @@ describe("provider grant / list / revoke", () => {
     const pl = await patients({ request: new Request("http://x/api/providers/patients", { headers: { cookie: await cookieFor(s.providerId) } }), env: makeEnv() });
     const { patients: seen } = (await pl.json()) as { patients: { ownerAccountId: string }[] };
     expect(seen.map((p) => p.ownerAccountId)).toContain(s.patientId);
+  });
+
+  it("writes the consent row the patient's own access screen reads", async () => {
+    // The grant audited nothing until now while its opposite, `provider_access_revoked`, was
+    // written — so a patient's log read as though access had always been there. Actor and subject
+    // are both the owner: this is their act on their own record, which is why it does not go
+    // through the privileged-read chokepoint, whose owner exclusion would drop it.
+    const s = await seed();
+    await doGrant(s.patientId, s.dek, s.providerId, s.providerPublicKeyJwk);
+    const events = await listAccessEventsForSubject(w.db, s.patientId);
+    expect(events.map((e) => e.action)).toEqual(["provider_access_granted"]);
+    expect(events[0]).toMatchObject({ actorAccountId: s.patientId, subjectAccountId: s.patientId, vaultId: s.vaultId });
+  });
+
+  it("attaches the asker's public key to ANY invited link, not only a support one", async () => {
+    // Approve wraps the patient's DEK to this key. The narrower test this replaces failed silently
+    // rather than loudly — `approve()` returns early on a missing key, so the patient would press
+    // the button and watch nothing happen.
+    const s = await seed();
+    await createProviderLink(w.db, {
+      ownerAccountId: s.patientId,
+      providerAccountId: s.providerId,
+      role: "primary",
+      status: "invited",
+      grantedBy: s.providerId,
+    });
+    const list = await myProviders({ request: new Request("http://x/api/providers", { headers: { cookie: await cookieFor(s.patientId) } }), env: makeEnv() });
+    const { providers } = (await list.json()) as { providers: { kind: string; status: string; publicKeyJwk?: unknown }[] };
+    expect(providers).toEqual([expect.objectContaining({ kind: "primary", status: "invited" })]);
+    expect(providers[0].publicKeyJwk).toBeTruthy();
+  });
+
+  it("does not hand out a public key for a link that is already active", async () => {
+    // Nothing is wrapped for an active link — the envelope exists — so the key would be a disclosure
+    // with no use for it.
+    const s = await seed();
+    await doGrant(s.patientId, s.dek, s.providerId, s.providerPublicKeyJwk);
+    const list = await myProviders({ request: new Request("http://x/api/providers", { headers: { cookie: await cookieFor(s.patientId) } }), env: makeEnv() });
+    const { providers } = (await list.json()) as { providers: Record<string, unknown>[] };
+    expect(providers[0]).not.toHaveProperty("publicKeyJwk");
   });
 
   it("rejects granting to a non-provider account", async () => {

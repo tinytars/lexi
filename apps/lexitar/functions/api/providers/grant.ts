@@ -2,6 +2,7 @@ import type { D1Database } from "../../_lib/identity-types";
 import { getAccount } from "../../_lib/identity-accounts";
 import { listVaultsForOwner, putEnvelope } from "../../_lib/identity-vault";
 import { createProviderLink, listProvidersForPatient, updateProviderLinkStatus } from "../../_lib/identity-providers";
+import { insertAccessEvent } from "../../_lib/identity-audit";
 import { requireSession } from "../../_lib/session";
 import { logRequest } from "../../_lib/log";
 import { json } from "../../_lib/http";
@@ -95,6 +96,25 @@ export async function onRequestPost(context: Ctx): Promise<Response> {
     });
     linkId = link.id;
   }
+
+  // The patient's own access screen is where they learn who can read their record, and until now a
+  // grant was the one consent event that left no row on it — `provider_access_revoked` was written,
+  // its opposite was not, so the log read as if access had always been there. Actor and subject are
+  // both the owner: this is their act on their own record, which is exactly why it does NOT go
+  // through the privileged-read chokepoint in `_lib/phi-audit.ts`, whose owner exclusion — right for
+  // a disclosure, wrong for a consent change — would drop it. (Naming that helper here would be a
+  // false positive for the sweep in tests/unit/audit-chokepoint.test.ts, which reads mentions as
+  // call sites; the pointer is the path instead.)
+  //
+  // Not wrapped: a failed insert surfaces as a 500 and the client retries, which is safe because this
+  // route is idempotent in both of its branches. The same trade `providers-link-revoke.ts` makes.
+  await insertAccessEvent(env.DB, {
+    actorAccountId: session.accountId,
+    subjectAccountId: session.accountId,
+    vaultId: vault.vaultId,
+    action: "provider_access_granted",
+    meta: { providerAccountId },
+  });
 
   log(200);
   return json(200, { ok: true, linkId, providerAccountId, displayName: provider.displayName, kind: provider.providerKind });
