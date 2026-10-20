@@ -180,3 +180,67 @@ export function branchMismatch(
     `point ${branch}'s deployment at ${wrong[0][1]}'s store.`
   );
 }
+
+/**
+ * Which environment a BASE URL names, or null where the host is not one of this product's.
+ *
+ * The fifth input, and the only one that is not in the tree at all. `targetMismatch` and
+ * `branchMismatch` both read the worktree — the file, then the branch the file sits on — and a
+ * script's `LEXITAR_BASE_URL` is neither: it is typed on the command line at the moment of use and
+ * nothing cross-checks it, so the dev worktree reaches production by one variable and no refusal.
+ *
+ * `either` rather than `dev` for localhost, because `npm run dev:functions` is run from both
+ * worktrees and binds whichever `wrangler.jsonc` it was started with — the local server IS the
+ * worktree's environment, so it cannot disagree with it.
+ */
+export function envOfBaseUrl(baseUrl: string): "prod" | "dev" | "either" | null {
+  let host: string;
+  try {
+    host = new URL(baseUrl).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+  if (host === "localhost" || host === "127.0.0.1" || host === "::1" || host.endsWith(".localhost")) return "either";
+  if (host === "literacy.tinytars.foundation") return "prod";
+  // A Pages hostname is `<project>.pages.dev`, and a PREVIEW prefixes it with a branch or commit
+  // label — `abc1234.health-dash-dev.pages.dev`. So the project is the label immediately before
+  // `pages.dev` and never the first one, which is what a naive `startsWith` would read.
+  if (host.endsWith(".pages.dev")) {
+    const project = host.slice(0, -".pages.dev".length).split(".").pop();
+    if (project === "health-dash-main") return "prod";
+    if (project === "health-dash-dev" || project === "health-dash-aex") return "dev";
+  }
+  return null;
+}
+
+/**
+ * The refusal text when the base URL names an environment the worktree does not, else null.
+ *
+ * An UNRECOGNISED host is deliberately not a refusal. The incident this closes is a recognised
+ * production origin reached from a dev tree (or the reverse), and an unknown host cannot be either
+ * deployment — refusing it would only break a test harness or a tunnel while catching nothing. The
+ * same "safe direction" reasoning `envOf` is written under: this guard's job is disagreement, and
+ * disagreement needs both halves named.
+ */
+export function baseUrlMismatch(
+  baseUrl: string,
+  t: { bucket: string; database: string; storePrefix: string },
+): string | null {
+  const seen = envOfBaseUrl(baseUrl);
+  if (seen === null || seen === "either") return null;
+  const want = envOf(t.database);
+  if (seen === want) return null;
+  return (
+    `refusing a request aimed at ${seen} from a worktree bound to ${want} — ` +
+    `LEXITAR_BASE_URL=${baseUrl}.\n` +
+    `bucket=${t.bucket} db=${t.database} store=${t.storePrefix}\n` +
+    `The base URL picks the DEPLOYMENT, the worktree's wrangler.jsonc picks the STORE, and nothing ` +
+    `else compares them. Stand in the worktree whose branch owns ${seen} and run it there.`
+  );
+}
+
+/** The refusal, for a script about to sign in to a deployment. Called where the base URL is read. */
+export function assertBaseUrlMatchesTarget(baseUrl: string): void {
+  const m = baseUrlMismatch(baseUrl, wranglerTarget());
+  if (m) throw new Error(m);
+}

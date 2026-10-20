@@ -38,6 +38,7 @@ import {
   unwrapPrivateKey,
 } from "@tinytars/vault/crypto";
 import { b64ToBytes, hexToBytes } from "./org-key";
+import { assertBaseUrlMatchesTarget } from "./target";
 import { vaultIdFromR2Key } from "../src/lib/client-id";
 import type { Vault } from "../src/lib/types";
 import "./load-creds";
@@ -113,8 +114,13 @@ export function supportCredentials(): CliCredentials {
 }
 
 function origin(): Omit<CliCredentials, "email" | "password"> {
+  const baseUrl = (process.env.LEXITAR_BASE_URL || "http://localhost:8788").replace(/\/$/, "");
+  // Here rather than at the first fetch, because by then the passphrase has been typed and the
+  // caller believes it is talking to the deployment it named. This is the last point at which
+  // nothing has happened yet. See `baseUrlMismatch` for why an unknown host passes.
+  assertBaseUrlMatchesTarget(baseUrl);
   return {
-    baseUrl: (process.env.LEXITAR_BASE_URL || "http://localhost:8788").replace(/\/$/, ""),
+    baseUrl,
     accessClientId: process.env.CF_ACCESS_CLIENT_ID,
     accessClientSecret: process.env.CF_ACCESS_CLIENT_SECRET,
   };
