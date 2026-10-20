@@ -1,0 +1,86 @@
+name: hosted-query-check
+
+# Would the platform accept the queries this branch sends? CI could not answer that until now.
+#
+# Every D1 the suite runs against is SQLite with stock limits — workerd's, or Node's own under
+# TEST_BACKEND=node. Cloudflare's caps a LIKE pattern at 50 bytes against SQLite's 50,000, so on
+# 2026-10-20 a commit whose whole suite was green took every authorized /api/raw/* and
+# /api/chat-history/* request on dev to a 500 for 1h14m: the ownership lookup they all pass through
+# had grown a fourth namespace prefix, two bytes over the limit. error-pipeline.yml filed it four
+# minutes after the deploy and that is the half that worked — nothing refused the deploy, because
+# nothing in this repository had ever sent one of its own queries to the platform.
+#
+# tests/hosted/ sends them, read-only, with ids that match nothing, calling the app's own query
+# functions rather than copies of their SQL. It needs a Cloudflare token and a network, which is why
+# it is not in `npm test` — that suite must stay runnable on a clone with no credential store.
+#
+# WHERE IT RUNS AND WHY EACH ONE EARNS ITS PLACE:
+#   pull_request — the only trigger that can refuse the change BEFORE the deploy, which is the whole
+#     point. Same-repo only: a fork PR gets no secrets, and a check that cannot run must not look
+#     like one that ran. This repository is public, so fork PRs are a real case rather than a
+#     hypothetical. Deliberately NOT in the required contexts: a network-dependent check that
+#     blocks every merge buys an outage of its own the first time Cloudflare has a bad minute.
+#   push to dev/main — what actually deployed, which is not always what a PR tested.
+#   schedule — the queries do not change on their own but the platform does, and this is the only
+#     thing that would notice a limit narrowing. Daily is enough for a platform constant.
+#   workflow_dispatch — for re-measuring by hand after a change to key-range.ts.
+
+on:
+  pull_request:
+  push:
+    branches: [dev, main]
+  schedule:
+    - cron: "40 11 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hosted-query-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  hosted:
+    # A fork PR carries no secrets, so there is nothing to run with. Skipped rather than failed:
+    # the contributor has done nothing wrong, and the push to dev that follows a merge runs it.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/lexitar
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - run: npm ci
+        working-directory: .
+      # Which database this probes is NOT named here: scripts/target.ts reads it off the branch's own
+      # wrangler.jsonc, so a run on dev probes dev and a run on main probes prod, and neither can be
+      # pointed at the other by editing this file. scripts/wrangler.sh finds no credential store on a
+      # runner and falls back to the ambient CLOUDFLARE_* below, which is the path it already takes in
+      # error-pipeline.yml.
+      - run: npm run test:hosted
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+  # Only for the unattended triggers. A pull request shows its own red check to whoever opened it,
+  # and an issue per failing PR run would be noise filed against a person who is already looking.
+  notify-failure:
+    needs: [hosted]
+    if: always() && github.event_name != 'pull_request' && contains(needs.*.result, 'failure')
+    uses: promontory-studio/pedalion-ci/.github/workflows/notify-failure.yml@6c2d307ada45c3202c2c395b2ac46056c47a40bf # v1.3.0
+    # `secrets: inherit` does not cross owners, so every secret is named.
+    secrets:
+      app-key: ${{ secrets.AUTOPILOT_APP_KEY }}
+    with:
+      issue-repo: promontory-studio/plover-factory
+      app-id: ${{ vars.AUTOPILOT_APP_ID }}
+      assignee: pablo-tech
+      title: LexiTar sends a query hosted D1 refuses
+      context: The hosted-query conformance suite failed. Either a query shape this branch sends is refused by the platform — the shape of the 2026-10-20 raw/chat-history outage — or the D1 LIKE pattern limit has narrowed below what functions/_lib/key-range.ts records. Both are live defects on whichever environment the failing run probed.

@@ -14,13 +14,12 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { keyRange, prefixMatch } from "../../functions/_lib/key-range";
+import { keyRange, prefixMatch, D1_LIKE_PATTERN_LIMIT } from "../../functions/_lib/key-range";
 import { namespacePrefixes } from "../../functions/_lib/raw-owner";
 
 const ROOT = resolve(__dirname, "../..");
 
-/** Measured against health-identity-dev on 2026-10-20: a 50-byte pattern is accepted, 51 is refused. */
-const D1_LIKE_PATTERN_LIMIT = 50;
+
 
 /**
  * A source file with its comments removed. The sweeps below are about what is sent to D1, and this

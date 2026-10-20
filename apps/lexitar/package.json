@@ -49,6 +49,7 @@
     "r2-ops": "tsx scripts/r2-ops-cli.ts",
     "serve:node": "node --env-file-if-exists=.dev.vars --import tsx server/node.ts",
     "test:live": "BENCH_LIVE=1 vitest run --config vitest.live.config.ts",
+    "test:hosted": "vitest run --config vitest.hosted.config.ts",
     "org:key": "tsx scripts/gen-org-key.ts",
     "vault:rekey": "tsx scripts/vault-rekey.ts",
     "vault:orphans": "tsx scripts/vault-orphan-blobs.ts",
