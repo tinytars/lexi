@@ -4,6 +4,6 @@ import { normalizeClientId } from "../../src/lib/client-id";
 
 /** The inverse of raw-owner.ts's namespacePrefixes: which client namespace an object key belongs to, or null if none. */
 export function clientIdOfObjectKey(key: string): string | null {
-  const m = /^[^/]+\/(?:(?:raw|text)\/([^/]+)\/.+|chat-(.+)\.enc)$/.exec(key);
+  const m = /^[^/]+\/(?:(?:raw|text|regen-log)\/([^/]+)\/.+|chat-(.+)\.enc)$/.exec(key);
   return m ? normalizeClientId(m[1] ?? m[2]) : null;
 }

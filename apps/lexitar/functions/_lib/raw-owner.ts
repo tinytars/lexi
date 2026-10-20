@@ -46,15 +46,21 @@ export interface NamespaceEnv extends StoreEnv {
 }
 
 /**
- * The three key shapes one client's namespace occupies: originals under `raw/{id}/`, their extracted
- * text under `text/{id}/`, and the flat `chat-{id}.enc` blob. Every question about a namespace — who
- * owns it, is it empty, what does claiming it cover — is asked of all three together, because letting
- * them disagree is how an ownership gap reappears one route at a time. The chat key is used as a list
- * PREFIX like the other two, which matches exactly that key.
+ * The four key shapes one client's namespace occupies: originals under `raw/{id}/`, their extracted
+ * text under `text/{id}/`, the regen-log segments under `regen-log/{id}/`, and the flat
+ * `chat-{id}.enc` blob. Every question about a namespace — who owns it, is it empty, what does
+ * claiming it cover — is asked of all four together, because letting them disagree is how an
+ * ownership gap reappears one route at a time. The chat key is used as a list PREFIX like the
+ * others, which matches exactly that key.
  */
 export function namespacePrefixes(env: StoreEnv, clientId: string): string[] {
   const slug = normalizeClientId(clientId);
-  return [`${storeKey(env, "raw", slug)}/`, `${storeKey(env, "text", slug)}/`, storeKey(env, `chat-${slug}.enc`)];
+  return [
+    `${storeKey(env, "raw", slug)}/`,
+    `${storeKey(env, "text", slug)}/`,
+    `${storeKey(env, "regen-log", slug)}/`,
+    storeKey(env, `chat-${slug}.enc`),
+  ];
 }
 
 /**
@@ -62,10 +68,16 @@ export function namespacePrefixes(env: StoreEnv, clientId: string): string[] {
  * First writer wins: a backfill or claim can add rows for a second account and must never flip the owner.
  */
 export async function ownerOfClientNamespace(db: D1Database, env: StoreEnv, clientId: string): Promise<string | null> {
-  const [raw, text, chat] = namespacePrefixes(env, clientId);
+  // Built from the list rather than from three named locals, so a namespace added above is asked
+  // about here without a second edit. A directory prefix matches everything under it; the flat chat
+  // key stays an equality test rather than a wildcard-free LIKE, because `_` is a single-character
+  // wildcard in SQL and a client id may contain one.
+  const prefixes = namespacePrefixes(env, clientId);
+  const dir = (p: string) => p.endsWith("/");
+  const where = prefixes.map((p, i) => `r2_key ${dir(p) ? "LIKE" : "="} ?${i + 1}`).join(" OR ");
   const row = await db
-    .prepare("SELECT account_id FROM raw_objects WHERE r2_key LIKE ?1 OR r2_key LIKE ?2 OR r2_key = ?3 ORDER BY created_at LIMIT 1")
-    .bind(`${raw}%`, `${text}%`, chat)
+    .prepare(`SELECT account_id FROM raw_objects WHERE ${where} ORDER BY created_at LIMIT 1`)
+    .bind(...prefixes.map((p) => (dir(p) ? `${p}%` : p)))
     .first<{ account_id: string }>();
   return row?.account_id ?? null;
 }

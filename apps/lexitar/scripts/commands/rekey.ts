@@ -15,7 +15,7 @@ import { listObjects, getObject, putObject, deleteObject, LIVE_BUCKET, mapPool }
 const CONCURRENCY = 8;
 
 /**
- * The five key shapes one client owns, as `oldPrefix -> newPrefix` pairs.
+ * The six key shapes one client owns, as `oldPrefix -> newPrefix` pairs.
  *
  * Derived from the same builders `vault-sync.ts` exports (`r2KeyFor` and friends) rather than
  * re-spelled: the ids are lowercased for exactly the reason those are, and a namespace added there
@@ -27,6 +27,7 @@ export function namespacePairs(store: string, oldId: string, newId: string): [st
   return [
     [`${store}/data-${o}.enc`, `${store}/data-${n}.enc`],
     [`${store}/chat-${o}.enc`, `${store}/chat-${n}.enc`],
+    [`${store}/regen-log/${o}/`, `${store}/regen-log/${n}/`],
     [`${store}/raw/${o}/`, `${store}/raw/${n}/`],
     [`${store}/text/${o}/`, `${store}/text/${n}/`],
     [`${store}/processed/${o}/`, `${store}/processed/${n}/`],

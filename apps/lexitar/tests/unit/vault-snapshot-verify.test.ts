@@ -47,7 +47,7 @@ function seedConsistent(): SnapshotManifest {
     store: STORE,
     sourceBucket: LIVE_BUCKET,
     backupBucket: BACKUP_BUCKET,
-    counts: { vault: 1, chat: 0, raw: 0, processed: 0, text: 0, logs: 1 },
+    counts: { vault: 1, chat: 0, regenLog: 0, raw: 0, processed: 0, text: 0, logs: 1 },
     bytes: vaultBytes.length + logText.length,
     objects: [
       { key: vaultKey, size: vaultBytes.length, sha256: sha256Hex(vaultBytes), class: "vault" },

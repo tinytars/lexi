@@ -16,6 +16,15 @@
 //     the log worth keeping, and it would do so silently, at exactly the point it started paying off.
 //     If size becomes the binding constraint the answer is to move the log out of the vault — a
 //     migration, which is recoverable, rather than a truncation, which is not.
+//
+// THAT FIRST PARAGRAPH IS NOW HISTORY, AND IT IS KEPT WORD FOR WORD because it is what was decided
+// and the decision held: size DID become the binding constraint — one record's blob reached
+// 5,163,393 bytes, 98.5% of /api/vault/{id}'s ceiling, and the save after it was refused — and the
+// answer taken was the one named above. W87 moved the log out of the vault to its own append-only
+// R2 segments (src/lib/regen-log-store.ts), with no event trimmed. Nothing in THIS file changed:
+// `regenLog` is still appended to exactly as below, and is now drained at the save seam rather than
+// sealed into the record, so an event's life inside a Client is one save long.
+//
 //   - No "why". 09 is explicit that "the AI was wrong" and "new source data arrived" are
 //     indistinguishable from here, so `triggeredBy` records the OPERATION (a Translate, a whole
 //     refresh) and claims nothing about the cause. Recording a guess would poison the dataset in the
