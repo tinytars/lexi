@@ -15,6 +15,7 @@ import { d1, q, D1 } from "./d1-remote";
 import { listObjects, deleteObject, LIVE_BUCKET, resolveStore, type R2ObjectInfo } from "./vault-sync";
 import { clientIdOfObjectKey } from "../functions/_lib/namespace-key";
 import { isMain } from "./is-main";
+import { KEYS_HINT, keyLabel, nsLabel, showsKeys } from "./key-label";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -70,10 +71,12 @@ async function main(): Promise<void> {
   );
 
   process.stdout.write(`Target: ${D1} / ${LIVE_BUCKET} (store "${store}")   grace: ${grace} days\n`);
-  process.stdout.write(`Objects: ${objects.length}   orphaned namespaces: ${orphans.size}\n\n`);
+  process.stdout.write(`Objects: ${objects.length}   orphaned namespaces: ${orphans.size}\n`);
+  process.stdout.write(showsKeys() ? "\n" : `(${KEYS_HINT})\n\n`);
   for (const [c, objs] of orphans) {
     const bytes = objs.reduce((n, o) => n + o.size, 0);
-    process.stdout.write(`  ${c}: ${objs.length} object(s), ${bytes} bytes, first seen ${firstSeen.get(c) ?? "now (unrecorded)"}\n`);
+    // A namespace IS a client name. Redacted unless asked for — see scripts/key-label.ts.
+    process.stdout.write(`  ${nsLabel(c)}: ${objs.length} object(s), ${bytes} bytes, first seen ${firstSeen.get(c) ?? "now (unrecorded)"}\n`);
   }
 
   if (!record) {
@@ -96,7 +99,7 @@ async function main(): Promise<void> {
   for (const c of eligible) {
     for (const o of orphans.get(c) ?? []) {
       await deleteObject(LIVE_BUCKET, o.key);
-      process.stdout.write(`  deleted ${o.key} (${o.size} bytes)\n`);
+      process.stdout.write(`  deleted ${keyLabel(o.key)} (${o.size} bytes)\n`);
     }
     await d1(`DELETE FROM orphaned_namespaces WHERE client_id = ${q(c)}`);
   }
