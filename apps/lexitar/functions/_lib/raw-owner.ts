@@ -86,8 +86,17 @@ export async function ownerOfClientNamespace(db: D1Database, env: StoreEnv, clie
       binds.push(prefix);
     }
   }
+  // `rowid` breaks a tie on `created_at`, which until now the QUERY PLAN broke. `created_at` is an ISO
+  // string at millisecond resolution, so two rows in one namespace can carry the same value — the two
+  // inserts behind a single upload do, and on a fast host most pairs do — and SQLite then answers with
+  // whichever of them the plan reaches first. The clause above changes that plan: a `LIKE` scanned the
+  // table and so answered in insertion order, while a range SEARCHes the `r2_key` index and answers in
+  // KEY order. First writer by filename is not the rule stated above, and getting it wrong is not a
+  // near miss — it makes a clinician's read of their patient's file resolve as `{ kind: "owner" }`,
+  // which records no disclosure at all. `rowid` IS insertion order, which is what "first writer" has
+  // meant here all along.
   const row = await db
-    .prepare(`SELECT account_id FROM raw_objects WHERE ${clauses.join(" OR ")} ORDER BY created_at LIMIT 1`)
+    .prepare(`SELECT account_id FROM raw_objects WHERE ${clauses.join(" OR ")} ORDER BY created_at, rowid LIMIT 1`)
     .bind(...binds)
     .first<{ account_id: string }>();
   return row?.account_id ?? null;

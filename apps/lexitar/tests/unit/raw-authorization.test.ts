@@ -244,6 +244,29 @@ describe("a namespace with rows from two accounts has one stable owner", () => {
     expect(await rawAccessFor(w.db, env(), first.id, "alex")).toMatchObject({ kind: "owner" });
     expect(await rawAccessFor(w.db, env(), later.id, "alex")).toMatchObject({ kind: "denied", ownerAccountId: first.id });
   });
+
+  it("is owned by whoever wrote first even when both rows carry the SAME created_at", async () => {
+    // `created_at` is an ISO string at millisecond resolution, so a tie is ordinary rather than exotic:
+    // the two inserts behind one upload share a millisecond on any quick host. A tie leaves `ORDER BY
+    // created_at` alone to the query plan, and the plan is not a rule — a prefix match by range SEARCHes
+    // the `r2_key` index and so answers in KEY order, where the `LIKE` it replaced scanned the table and
+    // answered in insertion order. That is why raw-owner.ts ties on `rowid`, and this is the test that
+    // says so: the first writer's key is chosen to sort LAST, so key order picks the wrong account and
+    // nothing but insertion order picks the right one. Getting it wrong is not a near miss — the owner
+    // branch records no disclosure, so a flipped owner silently stops auditing a clinician's reads.
+    const first = await patient("alex");
+    const later = await stranger();
+    await w.db.prepare("DELETE FROM raw_objects WHERE r2_key LIKE 'dev/%alex%'").run();
+    const SAME = "2026-10-20T11:50:29.123Z";
+    for (const [key, account] of [
+      [`${STORE}/raw/alex/zz-written-first.pdf`, first.id],
+      [`${STORE}/raw/alex/aa-written-second.pdf`, later.id],
+    ] as const) {
+      await w.db.prepare("INSERT INTO raw_objects (r2_key, account_id, created_at) VALUES (?, ?, ?)").bind(key, account, SAME).run();
+    }
+    expect(await rawAccessFor(w.db, env(), first.id, "alex")).toMatchObject({ kind: "owner" });
+    expect(await rawAccessFor(w.db, env(), later.id, "alex")).toMatchObject({ kind: "denied", ownerAccountId: first.id });
+  });
 });
 
 describe("chat claims its own namespace", () => {

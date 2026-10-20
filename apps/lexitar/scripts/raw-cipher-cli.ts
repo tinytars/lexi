@@ -54,7 +54,8 @@ export async function ownerOf(store: string, slug: string): Promise<string | nul
   if (hit !== undefined) return hit;
   // The namespace's owner, resolved the way functions/_lib/raw-owner.ts resolves it — by PREFIX and
   // oldest row first — so a key with no row of its own still finds the account that holds its keyring.
-  // By range and not by `LIKE`, for that module's reason: functions/_lib/key-range.ts. Two namespaces
+  // By range and not by `LIKE`, for that module's reason: functions/_lib/key-range.ts, and tying on
+  // `rowid` for the reason stated beside that module's own copy of this ORDER BY. Two namespaces
   // and not four, deliberately — this script answers which account's keyring decrypts a `raw/` or
   // `text/` object, and a regen-log segment is sealed under the vault DEK rather than a content key.
   const range = (prefix: string) => {
@@ -62,7 +63,7 @@ export async function ownerOf(store: string, slug: string): Promise<string | nul
     return `(r2_key >= ${q(r.from)} AND r2_key < ${q(r.to)})`;
   };
   const [row] = await d1<{ account_id: string }>(
-    `SELECT account_id FROM raw_objects WHERE ${range(`${store}/raw/${slug}/`)} OR ${range(`${store}/text/${slug}/`)} ORDER BY created_at LIMIT 1`,
+    `SELECT account_id FROM raw_objects WHERE ${range(`${store}/raw/${slug}/`)} OR ${range(`${store}/text/${slug}/`)} ORDER BY created_at, rowid LIMIT 1`,
   );
   const owner = row?.account_id ?? null;
   ownerBySlug.set(slug, owner);
