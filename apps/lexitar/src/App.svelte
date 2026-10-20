@@ -108,7 +108,7 @@
   import AccessPanel from "./lib/AccessPanel.svelte";
   import PrincipalRow from "@tinytars/frame/PrincipalRow.svelte";
   import DurationChoice from "@tinytars/frame/DurationChoice.svelte";
-  import { KIND_CHIP, ROSTER_REQUEST, SUPPORT_WINDOWS, awaitingSentence, grantedUntil, rosterGrantSentence, untilPhrase } from "./lib/access-vocabulary";
+  import { KIND_CHIP, ROSTER_REQUEST, SUPPORT_WINDOWS, awaitingSentence, grantedUntil, kindOf, rosterGrantSentence, untilPhrase, type AccessKind } from "./lib/access-vocabulary";
   import { partitionAccessEvents, groupIntoEpisodes } from "./lib/access-episodes";
 
   // W84 — read-aloud uses the personas' neural voices, the browser voice only as a fallback.
@@ -373,12 +373,15 @@
   const accessSplit = $derived(partitionAccessEvents(accessEvents, orgAccountId));
   const orgKeyEpisodes = $derived(groupIntoEpisodes(accessSplit.orgUses));
   const otherEpisodes = $derived(groupIntoEpisodes(accessSplit.others));
-  // A name a person recognises, from the roster already loaded at boot; the account id is the
-  // honest fallback, never hidden, because an audit row with an unnameable actor still happened.
-  function accessActorName(actorAccountId: string): string {
-    if (actorAccountId === orgAccountId) return "LexiTar's recovery key";
+  // A name a person recognises, from the roster already loaded at boot, and what they are — so a
+  // support agent's visit and a clinician's read stop being the same line in the log. The account
+  // id is the honest fallback, never hidden, because an audit row with an unnameable actor still
+  // happened; it gets no chip, because the one thing worse than an unnamed actor is a mislabelled
+  // one.
+  function accessActorName(actorAccountId: string): { name: string; kind?: AccessKind } {
+    if (actorAccountId === orgAccountId) return { name: "LexiTar's recovery key", kind: "recovery" };
     const link = vaultAccess.providers.find((p) => p.providerAccountId === actorAccountId);
-    return link ? link.displayName : `Account ${actorAccountId.slice(0, 8)}`;
+    return link ? { name: link.displayName, kind: kindOf(link) } : { name: `Account ${actorAccountId.slice(0, 8)}` };
   }
   // W45 — Google OAuth: a lock-screen error surfaced from the callback redirect (?google_error=…).
   let googleError = $state<string | null>(null);

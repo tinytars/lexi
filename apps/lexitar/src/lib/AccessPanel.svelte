@@ -18,6 +18,7 @@
   import type { ProviderLinkView } from "@tinytars/vault/auth-grants";
   import AccessLog from "./AccessLog.svelte";
   import type { AccessEpisode } from "./access-episodes";
+  import type { AccessKind } from "./access-vocabulary";
   import { CLINICIAN_WINDOWS, KIND_CHIP, SUPPORT_WINDOWS, YOU_SENTENCE, grantSentence, kindOf, pendingSentence, recoverySentence } from "./access-vocabulary";
 
   interface Props {
@@ -36,7 +37,7 @@
     /** LexiTar's own uses of the recovery key, and everybody else's visits. */
     orgKeyEpisodes: AccessEpisode[];
     otherEpisodes: AccessEpisode[];
-    nameFor: (actorAccountId: string) => string;
+    nameFor: (actorAccountId: string) => { name: string; kind?: AccessKind };
     onReport: (linkId: string) => void;
     /** Injected so a test can pin every date; the panel is short-lived, so reading it once is enough. */
     now?: number;

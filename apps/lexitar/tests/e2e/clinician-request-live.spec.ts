@@ -39,7 +39,7 @@ test("a clinician asks, the patient sees a request rather than a grant, and appr
   await loginAs(page, patientEmail, pw);
   const badge = page.locator('[data-testid="access-request-badge"]');
   await expect(badge).toBeVisible({ timeout: 20_000 });
-  await expect(badge).toHaveText(/1 request to read your record/i);
+  await expect(badge).toHaveText(/1 access request waiting/i);
 
   await badge.click();
   const pending = page.locator(".access-panel .access-pending");
