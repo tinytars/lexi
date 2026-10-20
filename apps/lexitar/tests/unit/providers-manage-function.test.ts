@@ -122,14 +122,19 @@ describe("provider grant / list / revoke", () => {
     expect(providers[0].publicKeyJwk).toBeTruthy();
   });
 
-  it("does not hand out a public key for a link that is already active", async () => {
-    // Nothing is wrapped for an active link — the envelope exists — so the key would be a disclosure
-    // with no use for it.
+  it("hands out the public key for an active link too, because renewing re-wraps the DEK", async () => {
+    // This asserted the opposite, on the reasoning that nothing is wrapped for an active link —
+    // the envelope already exists — so the key would be a disclosure with no use for it. The first
+    // half stopped being true when a renewal became a re-grant: changing a window goes through
+    // /api/providers/grant like any other consent, so the browser wraps the DEK again and needs the
+    // key for exactly the rows the old condition withheld it from. The second half was never the
+    // objection it reads as — it is a public key, and the patient wrapped their DEK to it already.
     const s = await seed();
     await doGrant(s.patientId, s.dek, s.providerId, s.providerPublicKeyJwk);
     const list = await myProviders({ request: new Request("http://x/api/providers", { headers: { cookie: await cookieFor(s.patientId) } }), env: makeEnv() });
-    const { providers } = (await list.json()) as { providers: Record<string, unknown>[] };
-    expect(providers[0]).not.toHaveProperty("publicKeyJwk");
+    const { providers } = (await list.json()) as { providers: { status: string; publicKeyJwk?: JsonWebKey | null }[] };
+    expect(providers[0].status).toBe("active");
+    expect(providers[0].publicKeyJwk).toMatchObject({ kty: s.providerPublicKeyJwk.kty });
   });
 
   it("rejects granting to a non-provider account", async () => {

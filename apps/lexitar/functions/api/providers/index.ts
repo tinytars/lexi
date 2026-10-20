@@ -46,15 +46,20 @@ export async function onRequestGet(context: Ctx): Promise<Response> {
       status: link.status,
       expiresAt: link.expiresAt,
     };
-    // A pending request needs the ASKER's public key, so the patient's Approve can wrap their DEK to
-    // it. This read "a pending support request" and tested for `role === "support"` as well, which
-    // was indistinguishable from the line below while an invited link could only ever be a support
-    // one. /api/providers/request makes invited+primary possible, and the narrow test fails silently
-    // rather than loudly: `approve()` returns early on a missing `publicKeyJwk`, so the patient would
-    // press Approve and watch nothing happen.
-    if (link.status === "invited") {
-      entry.publicKeyJwk = (await getPublicKey(env.DB, acct.id))?.publicKeyJwk ?? null;
-    }
+    // The patient's Approve wraps their DEK to the ASKER's public key in the browser, so the key has
+    // to reach them. This was gated on `status === "invited"` — and before that on `role ===
+    // "support"` too, which was indistinguishable from the status test while an invited link could
+    // only ever be a support one, until /api/providers/request made invited+primary possible; the
+    // narrow test failed silently rather than loudly, because `approve()` returns early on a missing
+    // key and the patient would press Approve and watch nothing happen.
+    //
+    // The gate is gone entirely now, because renewing access is spelled as re-granting it: moving a
+    // window goes through /api/providers/grant like any other consent, which means re-wrapping the
+    // DEK, which means the key is needed for a link that is already active or has lapsed — exactly the
+    // rows the old condition excluded. Nothing is disclosed by it: it is a public key, and the
+    // patient wrapped their DEK to it already. Revoked links never reach here (`continue`, above),
+    // so no key is handed out for access that has been withdrawn.
+    entry.publicKeyJwk = (await getPublicKey(env.DB, acct.id))?.publicKeyJwk ?? null;
     providers.push(entry);
   }
 
