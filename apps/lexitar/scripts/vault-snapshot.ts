@@ -50,6 +50,7 @@ import {
   type KeyClass,
 } from "./vault-sync";
 import { wranglerTarget, assertTargetConsistent } from "./target";
+import { KEYS_HINT, keyLabel, showsKeys } from "./key-label";
 
 const execFileAsync = promisify(execFile);
 const here = dirname(fileURLToPath(import.meta.url));
@@ -530,9 +531,13 @@ async function main(): Promise<void> {
     const c = report.counts[k];
     process.stdout.write(`  ${k.padEnd(10)} live ${String(c.live).padStart(5)}   snapshot ${String(c.snapshot).padStart(5)}\n`);
   }
-  for (const k of report.missing) process.stderr.write(`  MISSING  ${k}\n`);
-  for (const k of report.sizeMismatch) process.stderr.write(`  SIZE     ${k}\n`);
-  for (const k of report.extra) process.stdout.write(`  note: deleted from live since the copy started — ${k}\n`);
+  // Keys, not counts, and this is a public repository: redacted unless the operator asked. See
+  // scripts/key-label.ts — the digest is stable, so a redacted alarm here matches a local `--keys` run.
+  for (const k of report.missing) process.stderr.write(`  MISSING  ${keyLabel(k)}\n`);
+  for (const k of report.sizeMismatch) process.stderr.write(`  SIZE     ${keyLabel(k)}\n`);
+  for (const k of report.extra) process.stdout.write(`  note: deleted from live since the copy started — ${keyLabel(k)}\n`);
+  const named = report.missing.length + report.sizeMismatch.length + report.extra.length;
+  if (named > 0 && !showsKeys()) process.stdout.write(`  (${KEYS_HINT})\n`);
   if (!report.ok) {
     process.stderr.write("\n✗ snapshot verify FAILED — the backup does not cover the live store.\n");
     process.exit(1);
