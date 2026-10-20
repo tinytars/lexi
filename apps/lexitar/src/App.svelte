@@ -1528,12 +1528,18 @@
       </ul>
       <!-- The ask. Before this the only way a doctor was added was the patient finding them
            unprompted, which is not a workflow any clinic has. Mirrors the support console's own form
-           (above, same classes) and posts to the provider path rather than the support one. -->
-      <form class="access-add" onsubmit={(e) => { e.preventDefault(); roster.askPatient(); }}>
-        <input type="email" placeholder="patient email" aria-label="Patient email" bind:value={roster.askEmail} />
-        <button type="submit" class="access-add-btn" disabled={!roster.askEmail.trim()}>Request access</button>
-      </form>
-      {#if roster.askNotice}<p class="access-empty">{roster.askNotice}</p>{/if}
+           (above, same classes) and posts to the provider path rather than the support one.
+           `isClinician`, not `roster.isProvider`, which this branch already has: a support login
+           raises that flag before the server says which kind of provider it is, so this console
+           renders for the length of that round trip and a form here would be the one a support
+           agent's own typing lands in, to be detached under them when their console mounts. -->
+      {#if roster.isClinician}
+        <form class="access-add" onsubmit={(e) => { e.preventDefault(); roster.askPatient(); }}>
+          <input type="email" placeholder="patient email" aria-label="Patient email" bind:value={roster.askEmail} />
+          <button type="submit" class="access-add-btn" disabled={!roster.askEmail.trim()}>Request access</button>
+        </form>
+        {#if roster.askNotice}<p class="access-empty">{roster.askNotice}</p>{/if}
+      {/if}
       {#if recovery.issuedFor}
         <RecoveryCodeDialog
           patientName={roster.label(recovery.issuedFor)}

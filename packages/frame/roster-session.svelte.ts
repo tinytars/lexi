@@ -77,6 +77,14 @@ export interface RosterSessionDeps {
 export interface RosterSession {
   /** True for a clinician or support account — one without a vault of its own. */
   readonly isProvider: boolean;
+  /**
+   * True once the account is known to be a clinician rather than a support agent. A second flag and
+   * not `isProvider && !support.isSupportSession`, because the two are not complements during a
+   * login: `isProvider` is raised before `getMyAccount()` answers, so for the whole of that round
+   * trip a support session reads as a provider whose support console has not begun, and the host's
+   * clinician branch renders. Anything in that branch a person can act on has to wait for this.
+   */
+  readonly isClinician: boolean;
   /** The clinician's roster. Empty in an owner session. */
   readonly patients: RosterPatient[];
   /** Who is being viewed, when a provider has drilled in. Null on one's own record. */
@@ -121,6 +129,7 @@ export interface RosterSession {
 export function createRosterSession(deps: RosterSessionDeps): RosterSession {
   const api = { ...defaultApi, ...deps.api };
   let isProvider = $state(false);
+  let isClinician = $state(false);
   let patients = $state<RosterPatient[]>([]);
   let enteredPatient = $state<{ email: string | null; displayName: string } | null>(null);
   let resuming = $state(false);
@@ -140,6 +149,7 @@ export function createRosterSession(deps: RosterSessionDeps): RosterSession {
     if (r.vaultId && r.r2Key && r.dek) {
       deps.session.setOwnerKey(r.privateKey);
       isProvider = false;
+      isClinician = false;
       await deps.openOwnVault(r.r2Key, r.dek);
       await deps.afterOwnerEnter(r.rotationPending ?? false);
       return;
@@ -149,6 +159,7 @@ export function createRosterSession(deps: RosterSessionDeps): RosterSession {
     const acct = await api.getMyAccount();
     if (acct.providerKind === "support") await deps.beginSupportSession();
     else {
+      isClinician = true;
       await loadPatients();
       await deps.beginClinicianSession();
     }
@@ -197,6 +208,9 @@ export function createRosterSession(deps: RosterSessionDeps): RosterSession {
   return {
     get isProvider() {
       return isProvider;
+    },
+    get isClinician() {
+      return isClinician;
     },
     get patients() {
       return patients;
@@ -316,6 +330,7 @@ export function createRosterSession(deps: RosterSessionDeps): RosterSession {
       askEmail = "";
       askNotice = null;
       isProvider = false;
+      isClinician = false;
       patients = [];
       enteredPatient = null;
     },

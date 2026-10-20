@@ -116,6 +116,7 @@ describe("enterAccount routing", () => {
     expect(session.providerKey).toBe(PROVIDER_KEY);
     expect(session.ownerKey).toBeNull();
     expect(host.clinician).toBe(1);
+    expect(roster.isClinician).toBe(true);
     expect(roster.patients).toEqual([PATIENT]);
   });
 
@@ -125,7 +126,26 @@ describe("enterAccount routing", () => {
     await roster.enterAccount({ vaultId: null, r2Key: null, privateKey: PROVIDER_KEY, dek: null });
     expect(host.support).toBe(1);
     expect(host.clinician).toBe(0);
+    expect(roster.isClinician).toBe(false);
     expect(fakeFetch).not.toHaveBeenCalled();
+  });
+
+  // The window this flag exists for, and it is a real one rather than a theoretical ordering: a
+  // support account IS a provider, so `isProvider` is raised the moment the key is set and stays
+  // raised for the whole `getMyAccount()` round trip. A host branching on it alone renders its
+  // clinician console in that window — which an e2e spec caught by typing a support request into
+  // the clinician ask form and watching it detach mid-click. Nothing a person can act on may be
+  // gated on `isProvider` without this second flag.
+  it("does not call a support account a clinician while the server has not yet said which it is", async () => {
+    let answer!: (a: { id: string; providerKind: string }) => void;
+    auth.getMyAccount.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+    const { roster } = harness();
+    const entering = roster.enterAccount({ vaultId: null, r2Key: null, privateKey: PROVIDER_KEY, dek: null });
+    expect(roster.isProvider).toBe(true);
+    expect(roster.isClinician).toBe(false);
+    answer({ id: "acct-s", providerKind: "support" });
+    await entering;
+    expect(roster.isClinician).toBe(false);
   });
 
   it("clears the login form on every path", async () => {
@@ -347,6 +367,7 @@ describe("reset", () => {
     roster.setEnteredPatient({ email: "blair@example.com", displayName: "Blair" });
     roster.reset();
     expect(roster.isProvider).toBe(false);
+    expect(roster.isClinician).toBe(false);
     expect(roster.patients).toEqual([]);
     expect(roster.enteredPatient).toBeNull();
     void session;
