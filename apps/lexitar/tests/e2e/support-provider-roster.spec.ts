@@ -1,5 +1,6 @@
 import { test, expect } from "./_fixtures";
 import { loginAs, ownerSignOut } from "./_login";
+import { clickLeafMenuItem } from "./_leaf-menu";
 import { E2E_CLINICIAN, E2E_SUPPORT, revokeClinicianLinks } from "./_synthetic";
 
 test.afterEach(({ page }) => revokeClinicianLinks(page, "providers", E2E_SUPPORT.name));
@@ -15,11 +16,14 @@ test("support requests a provider's roster, provider approves, support views it 
 
   // 2) provider logs in → the roster shows the pending support request → approve.
   await loginAs(page, E2E_CLINICIAN.email, E2E_CLINICIAN.password);
-  const pending = page.locator(".access-pending", { hasText: "Support access requests" });
+  const pending = page.getByTestId("roster-support-pending");
   await expect(pending).toBeVisible();
   await expect(pending).toContainText(E2E_SUPPORT.name);
-  await pending.locator(".access-approve").click();
-  const granted = page.locator(".access-pending", { hasText: "Support agents with roster access" });
+  await expect(pending).toContainText("Asked to see your patient roster.");
+  // The clinician sets the window on their own roster too, and break-glass defaults to 3 days.
+  await expect(pending.locator(".duration .opt.selected")).toHaveText("3 days");
+  await pending.getByTestId("roster-support-approve").click();
+  const granted = page.getByTestId("roster-support-active");
   await expect(granted).toContainText(E2E_SUPPORT.name);
   await ownerSignOut(page);
 
@@ -32,6 +36,6 @@ test("support requests a provider's roster, provider approves, support views it 
 
   // 4) provider revokes the grant.
   await loginAs(page, E2E_CLINICIAN.email, E2E_CLINICIAN.password);
-  await page.locator(".access-pending", { hasText: "Support agents with roster access" }).locator(".access-revoke").click();
-  await expect(page.locator(".access-pending", { hasText: "Support agents with roster access" })).toHaveCount(0);
+  await clickLeafMenuItem(page.getByTestId("roster-support-active"), "Revoke roster access");
+  await expect(page.getByTestId("roster-support-active")).toHaveCount(0);
 });

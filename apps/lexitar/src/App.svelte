@@ -1523,8 +1523,8 @@
             chip={KIND_CHIP.support}
             name={p.displayName}
             detail={ROSTER_REQUEST.text}
-            primary={{ label: "Approve", disabled: vaultAccess.busy, onClick: () => vaultAccess.approveAsProvider(p) }}
-            secondary={{ label: "Deny", disabled: vaultAccess.busy, onClick: () => vaultAccess.revokeAsProvider(p) }}
+            primary={{ label: "Approve", disabled: vaultAccess.busy, onClick: () => vaultAccess.approveAsProvider(p), testid: "roster-support-approve" }}
+            secondary={{ label: "Deny", disabled: vaultAccess.busy, onClick: () => vaultAccess.revokeAsProvider(p), testid: "roster-support-deny" }}
           >
             <div class="row-choice">
               <DurationChoice

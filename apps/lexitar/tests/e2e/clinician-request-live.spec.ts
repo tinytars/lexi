@@ -9,7 +9,8 @@
 // request would have rendered as access already granted, with Revoke and no Approve.
 import { test, expect } from "@playwright/test";
 import { loginAs, signUp, ownerSignOut } from "./_login";
-import { E2E_CLINICIAN } from "./_synthetic";
+import { clickLeafMenuItem } from "./_leaf-menu";
+import { E2E_CLINICIAN, clinicianRosterLoaded, patientRosterRows } from "./_synthetic";
 
 // One flow, as the support spec is: seeding a real request costs a signup, a clinician login and a
 // re-login, and every assertion below is a stage of the same request's life.
@@ -21,19 +22,19 @@ test("a clinician asks, the patient sees a request rather than a grant, and appr
   await ownerSignOut(page);
 
   await loginAs(page, E2E_CLINICIAN.email, E2E_CLINICIAN.password);
-  // The <ul> renders empty while the fetch is in flight, so waiting on it would count zero rows and
-  // then compare against a loaded list. The first row is the signal the fetch resolved, and this
+  // The console renders empty while the fetch is in flight, so waiting on it would count zero rows
+  // and then compare against a loaded list. The first row is the signal the fetch resolved, and this
   // clinician always has one: cover-render.spec.ts asserts its roster exactly.
-  await page.locator(".roster-list .roster-name").first().waitFor();
-  const rosterBefore = await page.locator(".roster-list li").count();
+  await clinicianRosterLoaded(page);
+  const rosterBefore = await patientRosterRows(page).count();
   await page.fill(".access-add input", patientEmail);
   await page.click('.access-add button:has-text("Request access")');
   await expect(page.locator(".access-add input")).toHaveValue(""); // the POST settled
   // The clinician is told where the decision is, because nothing will appear on their own roster:
   // an invited link is not a granted patient and /api/providers/patients returns granted ones.
   await expect(page.locator(".access-empty")).toContainText(patientEmail);
-  await expect(page.locator(".roster-list li")).toHaveCount(rosterBefore);
-  await expect(page.locator(".roster-list")).not.toContainText(patientEmail);
+  await expect(patientRosterRows(page)).toHaveCount(rosterBefore);
+  await expect(patientRosterRows(page).filter({ hasText: patientEmail })).toHaveCount(0);
   await ownerSignOut(page);
 
   await loginAs(page, patientEmail, pw);
@@ -42,20 +43,28 @@ test("a clinician asks, the patient sees a request rather than a grant, and appr
   await expect(badge).toHaveText(/1 access request waiting/i);
 
   await badge.click();
-  const pending = page.locator(".access-panel .access-pending");
+  const pending = page.getByTestId("access-pending-row");
   await expect(pending).toContainText(E2E_CLINICIAN.name);
-  await expect(pending).toContainText("wants to read your record");
+  await expect(pending).toContainText("Asked to read your record.");
   // The defect, from the patient's side: before the fix this row rendered in the list below instead,
   // which says these people CAN read the record — and offered no way to let them.
-  await expect(pending.locator(".access-approve")).toBeVisible();
-  // No clock for a clinician: the link carries no expiry and the clinician read path checks none,
-  // so a TTL control here would be a promise about a medical record that is not kept.
+  await expect(pending.getByTestId("access-approve")).toBeVisible();
+  // W79 — there IS a clock now, and it is the patient's to set before they answer. Radios rather
+  // than a select, so the default is a choice they can see rather than one they never opened, and
+  // 30 days is what they get by pressing Approve without touching it.
   await expect(pending.locator("select")).toHaveCount(0);
+  await expect(pending.locator(".duration .opt.selected")).toHaveText("30 days");
 
-  await pending.locator(".access-approve").click();
-  await expect(page.locator(".access-panel .access-pending")).toHaveCount(0);
-  const granted = page.locator(".access-panel > .access-list");
+  await pending.getByTestId("access-approve").click();
+  await expect(pending).toHaveCount(0);
+  const granted = page.getByTestId("access-active-row");
   await expect(granted).toContainText(E2E_CLINICIAN.name);
+  // Both ends of one grant print the same window: the patient's row says when it ends. The date
+  // itself is deliberately not matched — the browser runs the machine's locale ("Ends Nov 19")
+  // while the vocabulary unit tests pin en-GB ("Ends 19 Nov"), so a spec that spelled the date out
+  // would be asserting the test runner's locale rather than the product's behaviour.
+  await expect(granted).toContainText(/Ends \S+/);
+  await expect(granted).toContainText("You can renew or revoke at any time.");
   await page.click('.modal-close[aria-label="Close"]');
   await expect(badge).toHaveCount(0);
 
@@ -65,6 +74,6 @@ test("a clinician asks, the patient sees a request rather than a grant, and appr
   await badge.waitFor({ state: "detached" });
   await page.click(".account-trigger");
   await page.click('.menu-item:has-text("Who can access")');
-  await page.locator(".access-panel > .access-list .access-revoke").click();
-  await expect(page.locator(".access-panel .access-empty")).toHaveText(/No one else can access your record/i);
+  await clickLeafMenuItem(page.getByTestId("access-active-row"), "Revoke access");
+  await expect(page.getByTestId("access-empty")).toHaveText("Only you.");
 });
