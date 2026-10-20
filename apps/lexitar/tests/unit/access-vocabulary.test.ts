@@ -1,12 +1,18 @@
 import { describe, it, expect } from "vitest";
 import {
+  CLINICIAN_WINDOWS,
   KIND_CHIP,
+  ROSTER_REQUEST,
+  SUPPORT_WINDOWS,
   YOU_SENTENCE,
   grantSentence,
   grantedUntil,
   kindOf,
   pendingSentence,
   recoverySentence,
+  rosterGrantSentence,
+  untilPhrase,
+  awaitingSentence,
   type Detail,
 } from "../../src/lib/access-vocabulary";
 
@@ -45,6 +51,15 @@ describe("the role column never reaches a patient", () => {
       grantedUntil(null, NOW, GB),
       recoverySentence(true, null, 2, NOW, GB).text,
       recoverySentence(false, inDays(-300), 0, NOW, GB).text,
+      ROSTER_REQUEST.text,
+      rosterGrantSentence({ expiresAt: null }, NOW, GB).text,
+      rosterGrantSentence({ expiresAt: inDays(-2) }, NOW, GB).text,
+      untilPhrase(inDays(30), NOW, GB),
+      untilPhrase(null, NOW, GB),
+      awaitingSentence("owner"),
+      awaitingSentence("provider"),
+      ...CLINICIAN_WINDOWS.map((w) => w.label),
+      ...SUPPORT_WINDOWS.map((w) => w.label),
     ];
     for (const s of everything) {
       expect(s, s).not.toMatch(/\bprimary\b/i);
@@ -112,5 +127,39 @@ describe("the rows that are not a provider link", () => {
     expect(recoverySentence(true, null, 1, NOW, GB).text).toBe("Can open your record if you lose your password. Used once.");
     expect(recoverySentence(true, null, 4, NOW, GB).text).toBe("Can open your record if you lose your password. Used 4 times.");
     expect(recoverySentence(false, inDays(-290), 0, NOW, GB).text).toBe("Removed 3 Jan. Your password is the only key to this record.");
+  });
+});
+
+describe("the clinician console says the same things about a roster", () => {
+  it("counts the same window, about the thing that was actually granted", () => {
+    expect(rosterGrantSentence({ expiresAt: null }, NOW, GB).text).toBe(
+      "Can see your patient roster. No end date — until you revoke.",
+    );
+    expect(rosterGrantSentence({ expiresAt: inDays(-2) }, NOW, GB).text).toBe(
+      "Ended 18 Oct. They can no longer see your roster.",
+    );
+  });
+
+  // The two surfaces share one formatter precisely so this holds: a grant that ends on the 19th
+  // must not be a record ending on the 19th and a roster ending on the 20th.
+  it("dates a live window identically on both surfaces", () => {
+    const expires = inDays(30);
+    expect(rosterGrantSentence({ expiresAt: expires }, NOW, GB).text).toBe(
+      grantSentence({ expiresAt: expires }, NOW, GB).text,
+    );
+    expect(untilPhrase(expires, NOW, GB)).toBe("until 19 Nov");
+    expect(untilPhrase(null, NOW, GB)).toBe("no end date");
+  });
+
+  it("names who has not answered, never the column that says so", () => {
+    expect(awaitingSentence("owner")).toBe("Waiting on this patient.");
+    expect(awaitingSentence("provider")).toBe("Waiting on this clinician.");
+  });
+
+  it("offers the default the server also applies, first", () => {
+    expect(CLINICIAN_WINDOWS[0]).toEqual({ label: "30 days", hours: 720 });
+    expect(CLINICIAN_WINDOWS.map((w) => w.hours)).toContain(0);
+    // Break-glass: no option here means "forever".
+    expect(SUPPORT_WINDOWS.map((w) => w.hours)).toEqual([24, 72, 168]);
   });
 });

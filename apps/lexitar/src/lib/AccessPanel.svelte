@@ -18,7 +18,7 @@
   import type { ProviderLinkView } from "@tinytars/vault/auth-grants";
   import AccessLog from "./AccessLog.svelte";
   import type { AccessEpisode } from "./access-episodes";
-  import { KIND_CHIP, YOU_SENTENCE, grantSentence, kindOf, pendingSentence, recoverySentence } from "./access-vocabulary";
+  import { CLINICIAN_WINDOWS, KIND_CHIP, SUPPORT_WINDOWS, YOU_SENTENCE, grantSentence, kindOf, pendingSentence, recoverySentence } from "./access-vocabulary";
 
   interface Props {
     access: VaultPrincipals;
@@ -43,24 +43,12 @@
   }
   let { access, ownerName, isOwner, recovery, recoveryBusy, orgKeyEpisodes, otherEpisodes, nameFor, onReport, now = Date.now() }: Props = $props();
 
-  const DAY_HOURS = 24;
-  const MONTH_HOURS = 30 * DAY_HOURS;
+  const MONTH_HOURS = 30 * 24;
 
   // Two different questions wearing the same control. A clinician is being given a standing
   // relationship, so the choice is "how long before I think about this again" and the alternative
-  // is not thinking about it. Support is break-glass: the windows are short on purpose and
-  // "ongoing" is not among them.
-  const durationOptions = (p: ProviderLinkView) =>
-    kindOf(p) === "support"
-      ? [
-          { label: "24 hours", hours: DAY_HOURS },
-          { label: "3 days", hours: 3 * DAY_HOURS },
-          { label: "7 days", hours: 7 * DAY_HOURS },
-        ]
-      : [
-          { label: "30 days", hours: MONTH_HOURS },
-          { label: "Ongoing", hours: 0 },
-        ];
+  // is not thinking about it. Support is break-glass, and its windows are short on purpose.
+  const durationOptions = (p: ProviderLinkView) => (kindOf(p) === "support" ? SUPPORT_WINDOWS : CLINICIAN_WINDOWS);
 
   const reportItem = (p: ProviderLinkView): LeafMenuItem => ({
     // 9C.2 — reporting is the thing revoking is not: revoking ends their access to this record and

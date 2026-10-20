@@ -106,6 +106,9 @@
   import { relocateRegenLog, dropRelocated } from "./lib/regen-log-store";
   import { warmCorpus } from "./lib/corpus-warm-client";
   import AccessPanel from "./lib/AccessPanel.svelte";
+  import PrincipalRow from "@tinytars/frame/PrincipalRow.svelte";
+  import DurationChoice from "@tinytars/frame/DurationChoice.svelte";
+  import { KIND_CHIP, ROSTER_REQUEST, SUPPORT_WINDOWS, awaitingSentence, grantedUntil, rosterGrantSentence, untilPhrase } from "./lib/access-vocabulary";
   import { partitionAccessEvents, groupIntoEpisodes } from "./lib/access-episodes";
 
   // W84 — read-aloud uses the personas' neural voices, the browser voice only as a fallback.
@@ -353,6 +356,14 @@
       reportCaughtError(err);
     }
   }
+  // Every date on these two consoles is read to the day, and this tab stays open across midnight —
+  // a clock captured at boot has a roster still saying "Ends tomorrow" a week later. A minute is far
+  // finer than the dates it feeds and costs nothing to keep.
+  let now = $state(Date.now());
+  $effect(() => {
+    const tick = setInterval(() => (now = Date.now()), 60_000);
+    return () => clearInterval(tick);
+  });
   let accessEvents = $state<AccessEventRow[]>([]);
   let orgAccountId = $state("");
   // W72 — the Account panel's disclosure log. phi-audit.ts never records the owner's own reads, so
@@ -1455,7 +1466,7 @@
       {#if support.patients.length > 0}
         <ul class="roster-list">
           {#each [...support.patients].sort((a, b) => a.displayName.localeCompare(b.displayName)) as p (p.ownerAccountId)}
-            <li><button class="roster-name" onclick={() => support.enterPatient(p.ownerAccountId)}>{p.displayName}{#if p.expiresAt}<span class="access-kind">until {new Date(p.expiresAt).toLocaleString()}</span>{/if}</button></li>
+            <li><button class="roster-name" onclick={() => support.enterPatient(p.ownerAccountId)}>{p.displayName}<span class="access-kind">{untilPhrase(p.expiresAt, now)}</span></button></li>
           {/each}
         </ul>
       {:else}
@@ -1465,7 +1476,7 @@
         <p class="access-subhead">Providers ({support.providers.length})</p>
         <ul class="roster-list">
           {#each [...support.providers].sort((a, b) => a.displayName.localeCompare(b.displayName)) as p (p.providerAccountId)}
-            <li><button class="roster-name" onclick={() => support.openProvider(p)}>{p.displayName}<span class="access-kind">provider roster{#if p.expiresAt} · until {new Date(p.expiresAt).toLocaleString()}{/if}</span></button></li>
+            <li><button class="roster-name" onclick={() => support.openProvider(p)}>{p.displayName}<span class="access-kind">their roster · {untilPhrase(p.expiresAt, now)}</span></button></li>
           {/each}
         </ul>
       {/if}
@@ -1474,7 +1485,7 @@
         <ul class="roster-list">
           {#each [...support.requests].sort((a, b) => a.displayName.localeCompare(b.displayName)) as r (r.linkId)}
             <li>
-              <span class="roster-name roster-name-disabled">{r.displayName || r.email}<span class="access-kind">{r.kind} · awaiting approval</span></span>
+              <span class="roster-name roster-name-disabled">{r.displayName || r.email}<span class="access-kind">{awaitingSentence(r.kind)}</span></span>
               <button class="roster-remove" title="Cancel this request" onclick={() => support.cancelRequest(r.linkId)}>Cancel</button>
             </li>
           {/each}
@@ -1502,49 +1513,58 @@
     <main class="roster">
       <p class="sub">Provider view — {roster.patients.length} patient{roster.patients.length === 1 ? "" : "s"}. Select one to open their record.</p>
       {#if vaultAccess.pendingSupport.length > 0}
-        <div class="access-pending">
-          <p class="access-subhead">Support access requests</p>
-          <ul class="access-list">
-            {#each vaultAccess.pendingSupport as p (p.linkId)}
-              <li>
-                <span class="access-who"><strong>{p.displayName}</strong> <span class="access-kind">support · wants your roster</span></span>
-                <span class="access-approve-actions">
-                  <select value={vaultAccess.chosenHours(p)} onchange={(e) => vaultAccess.setChosenHours(p.linkId, Number(e.currentTarget.value))} disabled={vaultAccess.busy} title="How long support may access your roster">
-                    <option value={24}>24h</option>
-                    <option value={72}>3 days</option>
-                    <option value={168}>7 days</option>
-                  </select>
-                  <button class="access-approve" disabled={vaultAccess.busy} onclick={() => vaultAccess.approveAsProvider(p)}>Approve</button>
-                  <button class="access-revoke" disabled={vaultAccess.busy} onclick={() => vaultAccess.revokeAsProvider(p)}>Deny</button>
-                </span>
-              </li>
-            {/each}
-          </ul>
-        </div>
+        <p class="access-subhead">Waiting on you</p>
+        {#each vaultAccess.pendingSupport as p (p.linkId)}
+          <PrincipalRow
+            testid="roster-support-pending"
+            chip={KIND_CHIP.support}
+            name={p.displayName}
+            detail={ROSTER_REQUEST.text}
+            primary={{ label: "Approve", disabled: vaultAccess.busy, onClick: () => vaultAccess.approveAsProvider(p) }}
+            secondary={{ label: "Deny", disabled: vaultAccess.busy, onClick: () => vaultAccess.revokeAsProvider(p) }}
+          >
+            <div class="row-choice">
+              <DurationChoice
+                legend={`How long should ${p.displayName} see your roster?`}
+                name={`roster-duration-${p.linkId}`}
+                options={SUPPORT_WINDOWS}
+                value={vaultAccess.chosenHours(p)}
+                onChange={(h) => vaultAccess.setChosenHours(p.linkId, h)}
+              />
+            </div>
+          </PrincipalRow>
+        {/each}
       {/if}
       {#if vaultAccess.activeSupport.length > 0}
-        <div class="access-pending">
-          <p class="access-subhead">Support agents with roster access</p>
-          <ul class="access-list">
-            {#each vaultAccess.activeSupport as p (p.linkId)}
-              <li>
-                <span class="access-who"><strong>{p.displayName}</strong> <span class="access-kind">support{#if p.expiresAt} · until {new Date(p.expiresAt).toLocaleString()}{/if}</span></span>
-                <button class="access-revoke" disabled={vaultAccess.busy} onclick={() => vaultAccess.revokeAsProvider(p)}>Revoke</button>
-              </li>
-            {/each}
-          </ul>
-        </div>
+        <!-- A spec selects on this heading; it is also the plainest thing it could say. -->
+        <p class="access-subhead">Support agents with roster access</p>
+        {#each vaultAccess.activeSupport as p (p.linkId)}
+          {@const sentence = rosterGrantSentence(p, now)}
+          <PrincipalRow
+            testid="roster-support-active"
+            chip={KIND_CHIP.support}
+            name={p.displayName}
+            detail={sentence.text}
+            detailTone={sentence.tone}
+            items={[{ label: "Revoke roster access", danger: true, disabled: vaultAccess.busy, onClick: () => vaultAccess.revokeAsProvider(p) }]}
+          />
+        {/each}
       {/if}
       {#if error}<p class="err">{error}</p>{/if}
-      <ul class="roster-list">
-        {#each [...roster.patients].sort((a, b) => roster.label(a).localeCompare(roster.label(b))) as p (p.ownerAccountId)}
-          <li>
-            <button class="roster-name" onclick={() => roster.enterPatient(p)}>{roster.label(p)}</button>
-            <button class="roster-recover" title="Issue a one-time recovery code to read to this patient" onclick={() => recovery.issueForPatient(p)}>Recovery code</button>
-            <button class="roster-remove" title="Remove this patient from your roster" onclick={() => roster.removeFromRoster(p)}>Remove</button>
-          </li>
-        {/each}
-      </ul>
+      <p class="access-subhead">Your patients</p>
+      {#each [...roster.patients].sort((a, b) => roster.label(a).localeCompare(roster.label(b))) as p (p.ownerAccountId)}
+        <PrincipalRow
+          testid="roster-patient"
+          chip={KIND_CHIP.patient}
+          name={roster.label(p)}
+          detail={grantedUntil(p.expiresAt, now)}
+          primary={{ label: "Open record", onClick: () => roster.enterPatient(p) }}
+          items={[
+            { label: "Issue a recovery code", title: "Issue a one-time recovery code to read to this patient", onClick: () => recovery.issueForPatient(p) },
+            { label: "Remove from your roster", danger: true, onClick: () => roster.removeFromRoster(p) },
+          ]}
+        />
+      {/each}
       <!-- The ask. Before this the only way a doctor was added was the patient finding them
            unprompted, which is not a workflow any clinic has. Mirrors the support console's own form
            (above, same classes) and posts to the provider path rather than the support one.
@@ -1708,6 +1728,7 @@
         {orgKeyEpisodes}
         {otherEpisodes}
         nameFor={accessActorName}
+        {now}
         onReport={(linkId) => (reportTarget = { reason: "abusive-account", subject: linkId, feature: "provider-access" })}
       />
     </Modal>
@@ -1895,11 +1916,6 @@
     font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   }
 
-  .roster-recover {
-    background: none; border: 1px solid var(--border); border-radius: 6px;
-    padding: 0.15rem 0.5rem; font-size: 0.75rem; color: var(--muted); cursor: pointer;
-  }
-  .roster-recover:hover { color: var(--fg); }
   .recovery-code {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1.05rem; letter-spacing: 0.08em;
     background: var(--band); border: 1px solid var(--accent); border-radius: 6px; padding: 0.75rem; margin: 0 0 1.25rem; word-break: break-all;
@@ -1925,25 +1941,18 @@
   .access-panel { display: flex; flex-direction: column; gap: 1rem; min-width: 20rem; }
   .access-intro { color: var(--muted); margin: 0; font-size: 0.9rem; }
   .access-empty { color: var(--muted); margin: 0; }
-  .access-list { list-style: none; padding: 0; margin: 0; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
-  .access-list li { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.6rem 0.9rem; border-bottom: 1px solid var(--border); }
-  .access-list li:last-child { border-bottom: none; }
   .access-kind { color: var(--muted); font-size: 0.8rem; margin-left: 0.4rem; }
   .erase-report { background: var(--band); color: var(--fg); }
   .method-meta { font-size: 0.8rem; color: var(--muted); }
+  .row-choice { display: flex; flex-wrap: wrap; gap: 0.4rem; padding: 0 0.3rem 0.5rem; }
   /* The field column stretches its children; a Remove button at full column width reads as the
      primary act of the panel, which removing a sign-in method is not. */
   .field :global(.btn) { align-self: start; }
   .access-revoke { padding: 0.3rem 0.7rem; border: 1px solid var(--alert); background: transparent; color: var(--alert); border-radius: 8px; cursor: pointer; font: inherit; font-size: 0.85rem; }
   .access-revoke:disabled { opacity: 0.5; cursor: default; }
-  /* Its own class, not a second .access-revoke: reporting is not revoking, and the e2e suites select
-     the revoke button by class within the access list. */
+  /* What is left of this is the Account modal's own destructive buttons — removing a recovery key
+     and deleting an account. A person's access is revoked from a row's menu now, not from here. */
   .access-subhead { font-weight: 600; margin: 0 0 0.4rem; font-size: 0.9rem; }
-  .access-pending { border-bottom: 1px solid var(--border); padding-bottom: 0.75rem; }
-  .access-approve-actions { display: flex; align-items: center; gap: 0.4rem; }
-  .access-approve-actions select { padding: 0.25rem 0.4rem; border: 1px solid var(--border); border-radius: 8px; font: inherit; font-size: 0.8rem; }
-  .access-approve { padding: 0.3rem 0.7rem; border: 1px solid var(--accent); background: var(--accent); color: white; border-radius: 8px; cursor: pointer; font: inherit; font-size: 0.85rem; }
-  .access-approve:disabled { opacity: 0.5; cursor: default; }
   .access-add { display: flex; gap: 0.5rem; }
   .access-add input { flex: 1; padding: 0.5rem 0.7rem; border: 1px solid var(--border); border-radius: 6px; font: inherit; }
   .access-add-btn { padding: 0.5rem 1rem; border: 1px solid var(--accent); background: var(--accent); color: white; border-radius: 8px; cursor: pointer; font: inherit; }
