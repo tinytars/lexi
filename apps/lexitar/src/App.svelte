@@ -56,6 +56,7 @@
   import AboutOverlay from "./lib/AboutOverlay.svelte";
   import Modal from "@tinytars/frame/Modal.svelte";
   import Button from "@tinytars/frame/Button.svelte";
+  import FormGrid from "@tinytars/frame/FormGrid.svelte";
   import ExportTab, { type ExportOption } from "@tinytars/frame/ExportTab.svelte";
   import { exportCsv, exportJson } from "./lib/export";
   import ImportTab from "./lib/ImportTab.svelte";
@@ -104,7 +105,7 @@
   import { createCorpusLane } from "./lib/corpus-lane";
   import { relocateRegenLog, dropRelocated } from "./lib/regen-log-store";
   import { warmCorpus } from "./lib/corpus-warm-client";
-  import AccessLog from "./lib/AccessLog.svelte";
+  import AccessPanel from "./lib/AccessPanel.svelte";
   import { partitionAccessEvents, groupIntoEpisodes } from "./lib/access-episodes";
 
   // W84 — read-aloud uses the personas' neural voices, the browser voice only as a fallback.
@@ -324,16 +325,34 @@
     applyUnitSystem: (u) => (unitSystem = u),
     // The recovery block and the access log are App's: they feed the recovery controller and the
     // events list, neither of which is about a login method.
-    loadOwnerBlocks: async () => {
-      const [principals, access] = await Promise.all([getVaultPrincipals(), getAccessEvents()]);
-      recovery.applyPrincipals(principals);
-      // W72 — the org principal's id is what tells LexiTar's own recovery-key uses apart from a
-      // third party's reads, so the access log needs it too; it used to be handed to the recovery
-      // controller and dropped on the floor.
-      orgAccountId = principals.orgAccountId;
-      accessEvents = access.events;
-    },
+    loadOwnerBlocks,
   });
+  // Both owner panels load this, not just Account. The recovery key and the disclosure log now
+  // render on the access page — which is the page whose question they answer — and a row moved
+  // without its load is a row that reads "never used" until the owner happens to open Account.
+  async function loadOwnerBlocks() {
+    const [principals, access] = await Promise.all([getVaultPrincipals(), getAccessEvents()]);
+    recovery.applyPrincipals(principals);
+    // W72 — the org principal's id is what tells LexiTar's own recovery-key uses apart from a
+    // third party's reads, so the access log needs it too; it used to be handed to the recovery
+    // controller and dropped on the floor.
+    orgAccountId = principals.orgAccountId;
+    accessEvents = access.events;
+  }
+  // A provider session owns no vault here, so it has neither block and asking for them is a 403 on
+  // every open. The failure of the rest is handled rather than shown: the principals list is the
+  // page, and an owner who can see who has access should not lose it to an empty log.
+  async function openAccessPanel() {
+    await vaultAccess.openPanel();
+    if (roster.isProvider) return;
+    try {
+      await loadOwnerBlocks();
+    } catch (e) {
+      const err = e instanceof Error ? e : new Error(String(e));
+      err.name = "OwnerBlocksLoadFailed";
+      reportCaughtError(err);
+    }
+  }
   let accessEvents = $state<AccessEventRow[]>([]);
   let orgAccountId = $state("");
   // W72 — the Account panel's disclosure log. phi-audit.ts never records the owner's own reads, so
@@ -1230,7 +1249,7 @@
     email={account.info?.email ?? null}
     emailConfirmed={account.info?.emailConfirmed ?? true}
     onAccount={() => account.openPanel()}
-    onAccess={Object.keys(vault?.clients ?? {}).length > 0 ? () => vaultAccess.openPanel() : undefined}
+    onAccess={Object.keys(vault?.clients ?? {}).length > 0 ? () => openAccessPanel() : undefined}
     accessLabel="Who can access my record"
     onResendVerification={() => account.resendVerification()}
     onSignOut={signOut}
@@ -1287,7 +1306,7 @@
     aiOutOfCredit={aiAvailability.outOfCredit}
     billingUrl={providerFor("chat").billingUrl}
     accessRequests={vault ? vaultAccess.pendingRequests.length : 0}
-    onOpenAccess={() => vaultAccess.openPanel()}
+    onOpenAccess={() => openAccessPanel()}
     {unitSystem}
     onSetUnitSystem={setUnitSystem}
     {persona}
@@ -1673,62 +1692,24 @@
     </Modal>
   {/if}
   {#if vaultAccess.open}
-    <Modal label="Access" onClose={() => vaultAccess.closePanel()}>
-      <div class="access-panel">
-        <p class="access-intro">People who can access your record. Adding a provider shares this record with them; revoking removes their access.</p>
-        {#if vaultAccess.pendingRequests.length > 0}
-          <div class="access-pending">
-            <p class="access-subhead">Access requests</p>
-            <ul class="access-list">
-              {#each vaultAccess.pendingRequests as p (p.linkId)}
-                <li>
-                  <span class="access-who"><strong>{p.displayName}</strong> <span class="access-kind">{p.kind === "support" ? "support · wants to help" : "wants to read your record"}</span></span>
-                  <span class="access-approve-actions">
-                    <!-- This said the clock was support's alone, because a clinician link carried no
-                         expiry and the clinician read path checked none — so a control here would do
-                         nothing on the one screen where a promise about who can read a medical
-                         record has to be literally true. The second half was never so: one
-                         chokepoint refuses a lapsed link whatever its role. The first half is now
-                         false too, and a clinician approved here takes the 30-day default; the
-                         choice between that and "ongoing" is the redesigned row's, not this one's. -->
-                    {#if p.kind === "support"}
-                      <select value={vaultAccess.chosenHours(p)} onchange={(e) => vaultAccess.setChosenHours(p.linkId, Number(e.currentTarget.value))} disabled={vaultAccess.busy} title="How long support may access your record">
-                        <option value={24}>24h</option>
-                        <option value={72}>3 days</option>
-                        <option value={168}>7 days</option>
-                      </select>
-                    {/if}
-                    <button class="access-approve" disabled={vaultAccess.busy} onclick={() => vaultAccess.approve(p)}>Approve</button>
-                    <button class="access-revoke" disabled={vaultAccess.busy} onclick={() => vaultAccess.revoke(p)}>Deny</button>
-                  </span>
-                </li>
-              {/each}
-            </ul>
-          </div>
-        {/if}
-        {#if vaultAccess.activeAccess.length === 0}
-          <p class="access-empty">No one else can access your record.</p>
-        {:else}
-          <ul class="access-list">
-            {#each vaultAccess.activeAccess as p (p.linkId)}
-              <li>
-                <span class="access-who"><strong>{p.displayName}</strong> <span class="access-kind">{p.kind}{#if p.kind === "support" && p.expiresAt} · until {new Date(p.expiresAt).toLocaleString()}{/if}</span></span>
-                <span class="access-approve-actions">
-                  <!-- 9C.2 — reporting is the thing revoking is not: revoke ends their access to THIS
-                       record, and says nothing to anyone about why. -->
-                  <button class="access-report" onclick={() => (reportTarget = { reason: "abusive-account", subject: p.linkId, feature: "provider-access" })}>Report</button>
-                  <button class="access-revoke" disabled={vaultAccess.busy} onclick={() => vaultAccess.revoke(p)}>Revoke</button>
-                </span>
-              </li>
-            {/each}
-          </ul>
-        {/if}
-        <form class="access-add" onsubmit={(e) => { e.preventDefault(); vaultAccess.addProvider(); }}>
-          <input type="email" placeholder="provider@example.com" aria-label="Provider email" bind:value={vaultAccess.newProviderEmail} disabled={vaultAccess.busy} />
-          <button type="submit" class="access-add-btn" disabled={vaultAccess.busy || !vaultAccess.newProviderEmail.trim()}>Add provider</button>
-        </form>
-        {#if vaultAccess.error}<p class="access-error">{vaultAccess.error}</p>{/if}
-      </div>
+    <!-- One page for both of a patient's questions. `snapshot` is what makes closing it with an
+         unsent duration choice ask first; neither of these two modals passed one before. -->
+    <Modal
+      label="Who can access your record"
+      onClose={() => { vaultAccess.closePanel(); recovery.closeAccountBlocks(); }}
+      snapshot={() => ({ email: vaultAccess.newProviderEmail, chosen: vaultAccess.chosenSnapshot })}
+    >
+      <AccessPanel
+        access={vaultAccess}
+        ownerName={account.info?.displayName || account.info?.email || "You"}
+        isOwner={!roster.isProvider}
+        {recovery}
+        recoveryBusy={account.busy}
+        {orgKeyEpisodes}
+        {otherEpisodes}
+        nameFor={accessActorName}
+        onReport={(linkId) => (reportTarget = { reason: "abusive-account", subject: linkId, feature: "provider-access" })}
+      />
     </Modal>
   {/if}
   <div class="shell-row">
@@ -1787,17 +1768,26 @@
       </form>
 
       <p class="access-subhead">Sign-in methods</p>
-      <ul class="access-list">
+      <!-- These were `.access-list` rows — the very markup the access page used for people — so a
+           stored password rendered identically to a human being with access to a medical record.
+           A password has nobody at the other end of it, so it stays here and takes the form
+           layout. A bare `class="field"` span rather than `<Field>` is that component's own
+           documented case: this is a read-only display column, and a Remove button inside its
+           `<label>` would forward a click on the label text to the button. -->
+      <FormGrid>
         {#each account.loginMethods as m (m.method)}
-          <li>
-            <span class="access-who"
-              ><strong>{m.method === "passkey" ? "Passkey" : m.method === "password" ? "Password" : m.method === "google" ? "Google" : m.method}</strong>
-              <span class="access-kind">added {new Date(m.createdAt).toLocaleDateString()}</span></span
+          <span class="field">
+            <span>{m.method === "passkey" ? "Passkey" : m.method === "password" ? "Password" : m.method === "google" ? "Google" : m.method}</span>
+            <span class="method-meta">added {new Date(m.createdAt).toLocaleDateString()}</span>
+            <Button
+              data-testid="signin-remove"
+              disabled={account.busy || !!account.removeBlockedReason(m.method as RemovableMethod)}
+              title={account.removeBlockedReason(m.method as RemovableMethod) ?? "Remove"}
+              onclick={() => account.remove(m.method as RemovableMethod)}>Remove</Button
             >
-            <button class="access-revoke" disabled={account.busy || !!account.removeBlockedReason(m.method as RemovableMethod)} title={account.removeBlockedReason(m.method as RemovableMethod) ?? "Remove"} onclick={() => account.remove(m.method as RemovableMethod)}>Remove</button>
-          </li>
+          </span>
         {/each}
-      </ul>
+      </FormGrid>
       {#if account.stepUpNeeded && (!account.hasPasskey || !account.hasGoogle)}
         <p class="access-intro">
           Adding a way in needs your current LexiTar password — not your Google one. It proves it is you and
@@ -1842,41 +1832,6 @@
         <button disabled={account.busy} onclick={() => recovery.regenerate()}>{account.hasRecovery ? "Regenerate recovery code" : "Generate recovery code"}</button>
       </div>
 
-      {#if !roster.isProvider}
-        <p class="access-subhead">Recovery key</p>
-        {#if recovery.orgHeld}
-          <p class="access-intro">LexiTar holds a key that can open your record if you lose your password. Every use of it is listed below.</p>
-          {#if recovery.revokeConfirm}
-            <p class="access-kind">Remove the recovery key? Your record stays encrypted with your password alone. If you forget it, nobody can recover this record — not you, not LexiTar.</p>
-            <div class="account-add">
-              <button class="access-revoke" disabled={account.busy} onclick={() => recovery.revokeOrgKey()}>Yes, remove it</button>
-              <button disabled={account.busy} onclick={() => (recovery.revokeConfirm = false)}>Cancel</button>
-            </div>
-          {:else}
-            <div class="account-add">
-              <button class="access-revoke" disabled={account.busy} onclick={() => (recovery.revokeConfirm = true)}>Remove recovery key</button>
-            </div>
-          {/if}
-        {:else}
-          <p class="access-intro">Removed {recovery.orgRevokedAt ? new Date(recovery.orgRevokedAt).toLocaleString() : ""}. Your password is the only key to this record.</p>
-        {/if}
-        <AccessLog
-          episodes={orgKeyEpisodes}
-          nameFor={accessActorName}
-          emptyText="LexiTar has never used this key on your record."
-        />
-
-        <p class="access-subhead">Who has opened your record</p>
-        <p class="access-intro">
-          Everyone other than you who has opened this record, newest first — one line per visit. Your
-          own reading of your record is never listed here. Open a line to see each thing that was read.
-        </p>
-        <AccessLog
-          episodes={otherEpisodes}
-          nameFor={accessActorName}
-          emptyText="Nobody else has opened your record."
-        />
-      {/if}
       <p class="access-subhead">What leaves this device</p>
       <p class="access-intro">{MODEL_DISCLOSURE}</p>
       <p class="access-intro">
@@ -1975,11 +1930,14 @@
   .access-list li:last-child { border-bottom: none; }
   .access-kind { color: var(--muted); font-size: 0.8rem; margin-left: 0.4rem; }
   .erase-report { background: var(--band); color: var(--fg); }
+  .method-meta { font-size: 0.8rem; color: var(--muted); }
+  /* The field column stretches its children; a Remove button at full column width reads as the
+     primary act of the panel, which removing a sign-in method is not. */
+  .field :global(.btn) { align-self: start; }
   .access-revoke { padding: 0.3rem 0.7rem; border: 1px solid var(--alert); background: transparent; color: var(--alert); border-radius: 8px; cursor: pointer; font: inherit; font-size: 0.85rem; }
   .access-revoke:disabled { opacity: 0.5; cursor: default; }
   /* Its own class, not a second .access-revoke: reporting is not revoking, and the e2e suites select
      the revoke button by class within the access list. */
-  .access-report { padding: 0.3rem 0.7rem; border: 1px solid var(--alert); background: transparent; color: var(--alert); border-radius: 8px; cursor: pointer; font: inherit; font-size: 0.85rem; }
   .access-subhead { font-weight: 600; margin: 0 0 0.4rem; font-size: 0.9rem; }
   .access-pending { border-bottom: 1px solid var(--border); padding-bottom: 0.75rem; }
   .access-approve-actions { display: flex; align-items: center; gap: 0.4rem; }
