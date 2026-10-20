@@ -25,14 +25,10 @@ import { insertAccessEvent } from "./identity-audit";
 import { json } from "./http";
 
 /**
- * The complete vocabulary of privileged-access actions this app writes, frozen.
- *
- * `functions/_lib/erasure.ts` deliberately does NOT delete `phi_access_events` rows — they outlive
- * account erasure and stay on patients' screens — so a rename leaves two names for one event in the
- * historical record with no way to reconcile them. `tests/unit/audit-chokepoint.test.ts` pins the set.
- * Convention: `<object>_<verb-past-tense>`, following the pre-existing `support_access_*` family.
+ * Reads of someone else's record — the vocabulary `auditPrivilegedRead` below may write, and the only
+ * one it may. Each of these is a disclosure: a third party saw something of the subject's.
  */
-export const PHI_ACCESS_ACTIONS = [
+export const PRIVILEGED_READ_ACTIONS = [
   "vault_blob_read",
   "vault_blob_read_ops",
   "vault_blob_written",
@@ -40,10 +36,37 @@ export const PHI_ACCESS_ACTIONS = [
   "raw_namespace_listed",
   "document_text_read",
   "provider_roster_viewed",
+] as const;
+
+/**
+ * The consent relationship changing — asked for, given, taken away. Nobody read anything, so these do
+ * NOT go through `auditPrivilegedRead`: its owner exclusion would be wrong here, since the subject
+ * granting their own clinician access is exactly the row the subject most needs to see. They are
+ * written with `insertAccessEvent` directly, by the route that performs the act.
+ *
+ * `provider_access_revoked` was the only member of this family until the clinician could ask, and it
+ * sat in the read list for want of a second one. The split is what makes the three-line rule above
+ * statable: a read is audited through the chokepoint, a consent change is audited by its own route.
+ */
+export const CONSENT_LIFECYCLE_ACTIONS = [
+  "provider_access_requested",
+  "provider_access_granted",
   "provider_access_revoked",
 ] as const;
 
-export type PhiAccessAction = (typeof PHI_ACCESS_ACTIONS)[number];
+/**
+ * The complete vocabulary of access actions this app writes, frozen.
+ *
+ * `functions/_lib/erasure.ts` deliberately does NOT delete `phi_access_events` rows — they outlive
+ * account erasure and stay on patients' screens — so a rename leaves two names for one event in the
+ * historical record with no way to reconcile them. `tests/unit/audit-chokepoint.test.ts` pins the set.
+ * Convention: `<object>_<verb-past-tense>`, following the pre-existing `support_access_*` family.
+ */
+export const PHI_ACCESS_ACTIONS = [...PRIVILEGED_READ_ACTIONS, ...CONSENT_LIFECYCLE_ACTIONS] as const;
+
+export type PrivilegedReadAction = (typeof PRIVILEGED_READ_ACTIONS)[number];
+export type ConsentLifecycleAction = (typeof CONSENT_LIFECYCLE_ACTIONS)[number];
+export type PhiAccessAction = PrivilegedReadAction | ConsentLifecycleAction;
 
 /** The log line every route logs when `auditPrivilegedRead` refuses; the body itself lives below. */
 export const AUDIT_UNAVAILABLE = "audit_unavailable";
@@ -54,7 +77,7 @@ export interface PrivilegedRead {
   /** Whose record it is — the person the row appears for. Never the caller unless they are the same. */
   subject: string;
   vaultId?: string | null;
-  action: PhiAccessAction;
+  action: PrivilegedReadAction;
   /** The `provider_links.consent_ref` this read is exercising, where the route has one in hand. */
   consentRef?: string | null;
   /** Shape only, never content: a content-address prefix or a count. No filename, no PHI. */

@@ -36,6 +36,7 @@ export const ROUTE_PATTERNS: readonly string[] = [
   "/api/providers/grant",
   "/api/providers/lookup",
   "/api/providers/patients",
+  "/api/providers/request",
   "/api/raw/claim",
   "/api/raw/measure",
   "/api/recovery/grant",

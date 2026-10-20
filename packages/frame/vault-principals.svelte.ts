@@ -64,9 +64,17 @@ export interface VaultPrincipals {
   /** Bound to the approval TTL select. */
   ttlHours: number;
 
-  /** Support agents who have asked and not yet been approved. */
+  /**
+   * Everyone who has asked and not yet been answered, of either kind. What the patient's panel
+   * iterates and what the sidebar badge counts.
+   */
+  readonly pendingRequests: ProviderLinkView[];
+  /**
+   * Pending SUPPORT requests alone. Still needed, and not a leftover: the clinician console lists
+   * the support agents asking for its roster, where a patient's pending request has no meaning.
+   */
   readonly pendingSupport: ProviderLinkView[];
-  /** Everything that is not a pending support request — clinicians plus approved support. */
+  /** Who can actually read the record — everything that has been answered and not revoked. */
   readonly activeAccess: ProviderLinkView[];
   /** Approved support agents, as the clinician console lists them. */
   readonly activeSupport: ProviderLinkView[];
@@ -98,8 +106,16 @@ export function createVaultPrincipals<V>(deps: VaultPrincipalsDeps<V>): VaultPri
   let error = $state<string | null>(null);
   let ttlHours = $state(72);
 
-  const pendingSupport = $derived(providers.filter((p) => p.kind === "support" && p.status === "invited"));
-  const activeAccess = $derived(providers.filter((p) => !(p.kind === "support" && p.status === "invited")));
+  // THE LINE THAT WAS WRONG, and what it cost. `activeAccess` was the negation of `pendingSupport`
+  // — "everything that is not a pending support request" — which is the same set as "everything
+  // answered" only while a pending request can only be support. The moment a clinician can ask, an
+  // invited primary link falls into `activeAccess` and the patient's own privacy screen tells them
+  // somebody can read their record who cannot, with a Revoke button and no Approve: no way to grant
+  // the access it claims is already granted. So the test is `status`, which is the question actually
+  // being asked, and `kind` is left to the two places that genuinely mean support.
+  const pendingRequests = $derived(providers.filter((p) => p.status === "invited"));
+  const pendingSupport = $derived(pendingRequests.filter((p) => p.kind === "support"));
+  const activeAccess = $derived(providers.filter((p) => p.status !== "invited"));
   const activeSupport = $derived(providers.filter((p) => p.kind === "support" && p.status === "active"));
 
   /** The busy/error/reload envelope every handler here shares. */
@@ -173,6 +189,9 @@ export function createVaultPrincipals<V>(deps: VaultPrincipalsDeps<V>): VaultPri
     set ttlHours(v: number) {
       ttlHours = v;
     },
+    get pendingRequests() {
+      return pendingRequests;
+    },
     get pendingSupport() {
       return pendingSupport;
     },
@@ -244,7 +263,21 @@ export function createVaultPrincipals<V>(deps: VaultPrincipalsDeps<V>): VaultPri
       if (!deps.session.dek || !p.publicKeyJwk) return;
       const dek = deps.session.dek;
       const jwk = p.publicKeyJwk;
-      await run(() => api.approveSupport(p.linkId, dek, jwk, ttlHours).then(() => undefined), toPanel);
+      // Both branches wrap the owner's DEK to the asker's public key in this browser; they differ in
+      // what the server then records. Support gets a time-boxed break-glass grant it must re-enter
+      // through an audited route; a clinician gets an ordinary provider link, which is exactly what
+      // `grantProvider` has always created for a patient who added a doctor themselves. Approving a
+      // request and adding someone are the same act arriving from opposite directions, so routing
+      // the clinician case through `/api/support/approve` would have stamped an `expiresAt` that only
+      // the support read path ever checks — a link that reads as time-boxed and is in fact permanent.
+      await run(
+        () =>
+          (p.kind === "support"
+            ? api.approveSupport(p.linkId, dek, jwk, ttlHours)
+            : api.grantProvider(dek, { providerAccountId: p.providerAccountId, publicKeyJwk: jwk })
+          ).then(() => undefined),
+        toPanel,
+      );
     },
 
     async approveAsProvider(p: ProviderLinkView) {

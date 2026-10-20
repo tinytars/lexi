@@ -4,7 +4,10 @@ import { clickNav } from "./_nav";
 import { syntheticTag, SYNTHETIC_WORKER_COUNT, FRESH_SEED } from "../fixtures/synthetic-patient";
 
 // Not the pilots' fam4, whose roster cover-render.spec.ts asserts exactly.
-export const E2E_CLINICIAN = { email: "e2e-clinician@local.invalid", password: "e2e-clinician" };
+// `name` matches scripts/provision-e2e-patient.ts's E2E_PROVIDER.displayName — it is what a
+// patient reads on their own access screen when this clinician asks, so a spec asserting the
+// request is visible has to name it.
+export const E2E_CLINICIAN = { email: "e2e-clinician@local.invalid", password: "e2e-clinician", name: "E2E Clinician" };
 
 // Re-seeded on every e2e-serve.sh boot; grants nobody anything until a spec asks.
 export const E2E_SUPPORT = { email: "support@local.invalid", password: "support", name: "Support Agent" };

@@ -30,6 +30,8 @@ export type Capability =
   | "support:patients"
   /** Read and act on the support request queue, including opening a granted vault. */
   | "support:queue"
+  /** Ask another account for access — to their record, or to their roster. */
+  | "access:request"
   /** Read the provider directory and roster. */
   | "support:directory"
   /** Approve a support grant through the crypto-free provider path. */
@@ -49,6 +51,10 @@ const GRANTS: Record<Capability, readonly Role[]> = {
   "ai:spend": ["primary"],
   "support:patients": ["support"],
   "support:queue": ["support"],
+  // Deliberately NOT a widening of "support:queue", which also gates /api/support/requests and the
+  // audited /api/support/access. Asking is the one thing a clinician needs and the only thing they
+  // get: who may ANSWER an ask is settled by the target's own browser, not by this table.
+  "access:request": ["primary", "support"],
   "support:directory": ["support"],
   "grant:approve-support": ["primary", "support"],
   // Every principal may erase itself, including a patient. What that erases differs by role, and the

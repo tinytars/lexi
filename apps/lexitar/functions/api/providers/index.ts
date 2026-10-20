@@ -46,8 +46,13 @@ export async function onRequestGet(context: Ctx): Promise<Response> {
       status: link.status,
       expiresAt: link.expiresAt,
     };
-    // A pending support request needs the agent's public key so the patient's Approve can wrap the DEK.
-    if (link.role === "support" && link.status === "invited") {
+    // A pending request needs the ASKER's public key, so the patient's Approve can wrap their DEK to
+    // it. This read "a pending support request" and tested for `role === "support"` as well, which
+    // was indistinguishable from the line below while an invited link could only ever be a support
+    // one. /api/providers/request makes invited+primary possible, and the narrow test fails silently
+    // rather than loudly: `approve()` returns early on a missing `publicKeyJwk`, so the patient would
+    // press Approve and watch nothing happen.
+    if (link.status === "invited") {
       entry.publicKeyJwk = (await getPublicKey(env.DB, acct.id))?.publicKeyJwk ?? null;
     }
     providers.push(entry);

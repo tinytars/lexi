@@ -1286,7 +1286,7 @@
     onOpenDag={() => (dagModalOpen = true)}
     aiOutOfCredit={aiAvailability.outOfCredit}
     billingUrl={providerFor("chat").billingUrl}
-    accessRequests={vault ? vaultAccess.pendingSupport.length : 0}
+    accessRequests={vault ? vaultAccess.pendingRequests.length : 0}
     onOpenAccess={() => vaultAccess.openPanel()}
     {unitSystem}
     onSetUnitSystem={setUnitSystem}
@@ -1526,6 +1526,14 @@
           </li>
         {/each}
       </ul>
+      <!-- The ask. Before this the only way a doctor was added was the patient finding them
+           unprompted, which is not a workflow any clinic has. Mirrors the support console's own form
+           (above, same classes) and posts to the provider path rather than the support one. -->
+      <form class="access-add" onsubmit={(e) => { e.preventDefault(); roster.askPatient(); }}>
+        <input type="email" placeholder="patient email" aria-label="Patient email" bind:value={roster.askEmail} />
+        <button type="submit" class="access-add-btn" disabled={!roster.askEmail.trim()}>Request access</button>
+      </form>
+      {#if roster.askNotice}<p class="access-empty">{roster.askNotice}</p>{/if}
       {#if recovery.issuedFor}
         <RecoveryCodeDialog
           patientName={roster.label(recovery.issuedFor)}
@@ -1662,19 +1670,25 @@
     <Modal label="Access" onClose={() => vaultAccess.closePanel()}>
       <div class="access-panel">
         <p class="access-intro">People who can access your record. Adding a provider shares this record with them; revoking removes their access.</p>
-        {#if vaultAccess.pendingSupport.length > 0}
+        {#if vaultAccess.pendingRequests.length > 0}
           <div class="access-pending">
-            <p class="access-subhead">Support access requests</p>
+            <p class="access-subhead">Access requests</p>
             <ul class="access-list">
-              {#each vaultAccess.pendingSupport as p (p.linkId)}
+              {#each vaultAccess.pendingRequests as p (p.linkId)}
                 <li>
-                  <span class="access-who"><strong>{p.displayName}</strong> <span class="access-kind">support · wants to help</span></span>
+                  <span class="access-who"><strong>{p.displayName}</strong> <span class="access-kind">{p.kind === "support" ? "support · wants to help" : "wants to read your record"}</span></span>
                   <span class="access-approve-actions">
-                    <select bind:value={vaultAccess.ttlHours} disabled={vaultAccess.busy} title="How long support may access your record">
-                      <option value={24}>24h</option>
-                      <option value={72}>3 days</option>
-                      <option value={168}>7 days</option>
-                    </select>
+                    <!-- The clock is support's alone. A clinician link carries no expiry and the
+                         clinician read path checks none, so offering "24h" here would be a control
+                         that does nothing, on the one screen in the product where a promise about
+                         who can read a medical record has to be literally true. -->
+                    {#if p.kind === "support"}
+                      <select bind:value={vaultAccess.ttlHours} disabled={vaultAccess.busy} title="How long support may access your record">
+                        <option value={24}>24h</option>
+                        <option value={72}>3 days</option>
+                        <option value={168}>7 days</option>
+                      </select>
+                    {/if}
                     <button class="access-approve" disabled={vaultAccess.busy} onclick={() => vaultAccess.approve(p)}>Approve</button>
                     <button class="access-revoke" disabled={vaultAccess.busy} onclick={() => vaultAccess.revoke(p)}>Deny</button>
                   </span>

@@ -320,6 +320,72 @@ describe("the panel's own state", () => {
   });
 });
 
+// The defect this work exists to fix, pinned at the line that had it. `activeAccess` was the
+// negation of `pendingSupport`, so the first clinician request ever made would have rendered on the
+// patient's privacy screen as access already granted — Revoke offered, Approve absent, and the
+// record readable by nobody while the screen said otherwise. Nothing had hit it because nothing
+// could create such a link; these tests create one.
+describe("an invited clinician is a pending request, not access already granted", () => {
+  const asked = link({ linkId: "r1", kind: "primary", status: "invited", providerAccountId: "p1", publicKeyJwk: { kty: "EC", x: "p1" } });
+
+  async function withList(...links: ProviderLinkView[]) {
+    auth.listMyProviders.mockResolvedValue(links);
+    const made = makeController();
+    await made.c.openPanel();
+    return made;
+  }
+
+  it("lands in pendingRequests and NOT in activeAccess", async () => {
+    const { c } = await withList(asked, link({ linkId: "b", kind: "primary", status: "active" }));
+    expect(c.pendingRequests.map((p) => p.linkId)).toEqual(["r1"]);
+    expect(c.activeAccess.map((p) => p.linkId)).toEqual(["b"]);
+  });
+
+  it("stays off the clinician console, which lists support askers alone", async () => {
+    const { c } = await withList(asked, link({ linkId: "s", kind: "support", status: "invited" }));
+    expect(c.pendingRequests.map((p) => p.linkId)).toEqual(["r1", "s"]);
+    expect(c.pendingSupport.map((p) => p.linkId)).toEqual(["s"]);
+    expect(c.activeSupport).toEqual([]);
+  });
+
+  it("approves as an ordinary grant, not as a break-glass one", async () => {
+    // `/api/support/approve` stamps an expiresAt that only the support read path checks, so a
+    // clinician approved through it would hold a link that reads as time-boxed and is permanent.
+    const { c } = await withList(asked);
+    c.ttlHours = 24;
+    await c.approve(asked);
+
+    expect(auth.grantProvider).toHaveBeenCalledWith(OLD_DEK, { providerAccountId: "p1", publicKeyJwk: { kty: "EC", x: "p1" } });
+    expect(auth.approveSupport).not.toHaveBeenCalled();
+  });
+
+  it("still approves a support request the way it always did", async () => {
+    const s = link({ linkId: "s", kind: "support", status: "invited", providerAccountId: "sup", publicKeyJwk: { kty: "EC", x: "sup" } });
+    const { c } = await withList(s);
+    c.ttlHours = 8;
+    await c.approve(s);
+
+    expect(auth.approveSupport).toHaveBeenCalledWith("s", OLD_DEK, { kty: "EC", x: "sup" }, 8);
+    expect(auth.grantProvider).not.toHaveBeenCalled();
+  });
+
+  it("does nothing without the asker's public key — there is nothing to wrap the DEK to", async () => {
+    // Why /api/providers now returns a key for ANY invited link and not only a support one: this
+    // early return is silent, so the patient would press Approve and watch nothing happen.
+    const { c } = await withList(asked);
+    await c.approve(link({ kind: "primary", status: "invited", publicKeyJwk: undefined }));
+    expect(auth.grantProvider).not.toHaveBeenCalled();
+    expect(auth.approveSupport).not.toHaveBeenCalled();
+  });
+
+  it("denies without re-keying — the asker never held the DEK", async () => {
+    const { c } = await withList(asked);
+    await c.revoke(asked);
+    expect(auth.revokeProvider).toHaveBeenCalledWith("r1");
+    expect(auth.stageVaultRotation).not.toHaveBeenCalled();
+  });
+});
+
 describe("the provider-side pair reports through the shared error line", () => {
   it("approves a roster request with the chosen TTL", async () => {
     const { c, errors } = makeController();
