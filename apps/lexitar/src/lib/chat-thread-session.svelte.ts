@@ -96,6 +96,12 @@ export function createChatThreadSession(deps: ChatThreadSessionDeps): ChatThread
         // Opening fresh is still right — a chat tab that will not open is worse than an empty one.
         // What was wrong is that this was the ONLY record of the failure, and it lived in a
         // swallowed promise: a 5xx here leaves the tab with no etag, and the user none the wiser.
+        //
+        // Opening fresh also has to be done, not just intended. Only the success path above replaced
+        // the thread list, so a failed load left the PREVIOUSLY hydrated client's conversation in
+        // place while chatLoadedForId already named the new one — rendered under the wrong client,
+        // and written there by the next save.
+        chatThreads = [newThread()];
         reportCaughtError(named(e, "ChatHistoryLoadFailed"));
       })
       .finally(() => {
