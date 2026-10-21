@@ -1538,21 +1538,6 @@
           </PrincipalRow>
         {/each}
       {/if}
-      {#if vaultAccess.activeSupport.length > 0}
-        <!-- A spec selects on this heading; it is also the plainest thing it could say. -->
-        <p class="access-subhead">Support agents with roster access</p>
-        {#each vaultAccess.activeSupport as p (p.linkId)}
-          {@const sentence = rosterGrantSentence(p, now)}
-          <PrincipalRow
-            testid="roster-support-active"
-            chip={KIND_CHIP.support}
-            name={p.displayName}
-            detail={sentence.text}
-            detailTone={sentence.tone}
-            items={[{ label: "Revoke roster access", danger: true, disabled: vaultAccess.busy, onClick: () => vaultAccess.revokeAsProvider(p) }]}
-          />
-        {/each}
-      {/if}
       {#if error}<p class="err">{error}</p>{/if}
       <p class="access-subhead">Your patients</p>
       {#each [...roster.patients].sort((a, b) => roster.label(a).localeCompare(roster.label(b))) as p (p.ownerAccountId)}
@@ -1568,6 +1553,21 @@
           ]}
         />
       {/each}
+      {#if vaultAccess.activeSupport.length > 0}
+        <!-- A spec selects on this heading; it is also the plainest thing it could say. -->
+        <p class="access-subhead">Support agents with roster access</p>
+        {#each vaultAccess.activeSupport as p (p.linkId)}
+          {@const sentence = rosterGrantSentence(p, now)}
+          <PrincipalRow
+            testid="roster-support-active"
+            chip={KIND_CHIP.support}
+            name={p.displayName}
+            detail={sentence.text}
+            detailTone={sentence.tone}
+            items={[{ label: "Revoke roster access", danger: true, disabled: vaultAccess.busy, onClick: () => vaultAccess.revokeAsProvider(p) }]}
+          />
+        {/each}
+      {/if}
       <!-- The ask. Before this the only way a doctor was added was the patient finding them
            unprompted, which is not a workflow any clinic has. Mirrors the support console's own form
            (above, same classes) and posts to the provider path rather than the support one.
