@@ -33,6 +33,7 @@ const DEK = { id: "dek" } as unknown as CryptoKey;
 
 const PATIENT: RosterPatient = {
   linkId: "link-1",
+  expiresAt: null,
   vaultId: "vault-blair",
   ownerAccountId: "acct-blair",
   displayName: "Blair",

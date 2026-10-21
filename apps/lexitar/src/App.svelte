@@ -56,6 +56,7 @@
   import AboutOverlay from "./lib/AboutOverlay.svelte";
   import Modal from "@tinytars/frame/Modal.svelte";
   import Button from "@tinytars/frame/Button.svelte";
+  import FormGrid from "@tinytars/frame/FormGrid.svelte";
   import ExportTab, { type ExportOption } from "@tinytars/frame/ExportTab.svelte";
   import { exportCsv, exportJson } from "./lib/export";
   import ImportTab from "./lib/ImportTab.svelte";
@@ -104,7 +105,10 @@
   import { createCorpusLane } from "./lib/corpus-lane";
   import { relocateRegenLog, dropRelocated } from "./lib/regen-log-store";
   import { warmCorpus } from "./lib/corpus-warm-client";
-  import AccessLog from "./lib/AccessLog.svelte";
+  import AccessPanel from "./lib/AccessPanel.svelte";
+  import PrincipalRow from "@tinytars/frame/PrincipalRow.svelte";
+  import DurationChoice from "@tinytars/frame/DurationChoice.svelte";
+  import { KIND_CHIP, ROSTER_REQUEST, SUPPORT_WINDOWS, awaitingSentence, grantedUntil, kindOf, rosterGrantSentence, untilPhrase, type AccessKind } from "./lib/access-vocabulary";
   import { partitionAccessEvents, groupIntoEpisodes } from "./lib/access-episodes";
 
   // W84 — read-aloud uses the personas' neural voices, the browser voice only as a fallback.
@@ -324,15 +328,41 @@
     applyUnitSystem: (u) => (unitSystem = u),
     // The recovery block and the access log are App's: they feed the recovery controller and the
     // events list, neither of which is about a login method.
-    loadOwnerBlocks: async () => {
-      const [principals, access] = await Promise.all([getVaultPrincipals(), getAccessEvents()]);
-      recovery.applyPrincipals(principals);
-      // W72 — the org principal's id is what tells LexiTar's own recovery-key uses apart from a
-      // third party's reads, so the access log needs it too; it used to be handed to the recovery
-      // controller and dropped on the floor.
-      orgAccountId = principals.orgAccountId;
-      accessEvents = access.events;
-    },
+    loadOwnerBlocks,
+  });
+  // Both owner panels load this, not just Account. The recovery key and the disclosure log now
+  // render on the access page — which is the page whose question they answer — and a row moved
+  // without its load is a row that reads "never used" until the owner happens to open Account.
+  async function loadOwnerBlocks() {
+    const [principals, access] = await Promise.all([getVaultPrincipals(), getAccessEvents()]);
+    recovery.applyPrincipals(principals);
+    // W72 — the org principal's id is what tells LexiTar's own recovery-key uses apart from a
+    // third party's reads, so the access log needs it too; it used to be handed to the recovery
+    // controller and dropped on the floor.
+    orgAccountId = principals.orgAccountId;
+    accessEvents = access.events;
+  }
+  // A provider session owns no vault here, so it has neither block and asking for them is a 403 on
+  // every open. The failure of the rest is handled rather than shown: the principals list is the
+  // page, and an owner who can see who has access should not lose it to an empty log.
+  async function openAccessPanel() {
+    await vaultAccess.openPanel();
+    if (roster.isProvider) return;
+    try {
+      await loadOwnerBlocks();
+    } catch (e) {
+      const err = e instanceof Error ? e : new Error(String(e));
+      err.name = "OwnerBlocksLoadFailed";
+      reportCaughtError(err);
+    }
+  }
+  // Every date on these two consoles is read to the day, and this tab stays open across midnight —
+  // a clock captured at boot has a roster still saying "Ends tomorrow" a week later. A minute is far
+  // finer than the dates it feeds and costs nothing to keep.
+  let now = $state(Date.now());
+  $effect(() => {
+    const tick = setInterval(() => (now = Date.now()), 60_000);
+    return () => clearInterval(tick);
   });
   let accessEvents = $state<AccessEventRow[]>([]);
   let orgAccountId = $state("");
@@ -343,12 +373,15 @@
   const accessSplit = $derived(partitionAccessEvents(accessEvents, orgAccountId));
   const orgKeyEpisodes = $derived(groupIntoEpisodes(accessSplit.orgUses));
   const otherEpisodes = $derived(groupIntoEpisodes(accessSplit.others));
-  // A name a person recognises, from the roster already loaded at boot; the account id is the
-  // honest fallback, never hidden, because an audit row with an unnameable actor still happened.
-  function accessActorName(actorAccountId: string): string {
-    if (actorAccountId === orgAccountId) return "LexiTar's recovery key";
+  // A name a person recognises, from the roster already loaded at boot, and what they are — so a
+  // support agent's visit and a clinician's read stop being the same line in the log. The account
+  // id is the honest fallback, never hidden, because an audit row with an unnameable actor still
+  // happened; it gets no chip, because the one thing worse than an unnamed actor is a mislabelled
+  // one.
+  function accessActorName(actorAccountId: string): { name: string; kind?: AccessKind } {
+    if (actorAccountId === orgAccountId) return { name: "LexiTar's recovery key", kind: "recovery" };
     const link = vaultAccess.providers.find((p) => p.providerAccountId === actorAccountId);
-    return link ? link.displayName : `Account ${actorAccountId.slice(0, 8)}`;
+    return link ? { name: link.displayName, kind: kindOf(link) } : { name: `Account ${actorAccountId.slice(0, 8)}` };
   }
   // W45 — Google OAuth: a lock-screen error surfaced from the callback redirect (?google_error=…).
   let googleError = $state<string | null>(null);
@@ -1230,7 +1263,7 @@
     email={account.info?.email ?? null}
     emailConfirmed={account.info?.emailConfirmed ?? true}
     onAccount={() => account.openPanel()}
-    onAccess={Object.keys(vault?.clients ?? {}).length > 0 ? () => vaultAccess.openPanel() : undefined}
+    onAccess={Object.keys(vault?.clients ?? {}).length > 0 ? () => openAccessPanel() : undefined}
     accessLabel="Who can access my record"
     onResendVerification={() => account.resendVerification()}
     onSignOut={signOut}
@@ -1287,7 +1320,7 @@
     aiOutOfCredit={aiAvailability.outOfCredit}
     billingUrl={providerFor("chat").billingUrl}
     accessRequests={vault ? vaultAccess.pendingRequests.length : 0}
-    onOpenAccess={() => vaultAccess.openPanel()}
+    onOpenAccess={() => openAccessPanel()}
     {unitSystem}
     onSetUnitSystem={setUnitSystem}
     {persona}
@@ -1436,7 +1469,7 @@
       {#if support.patients.length > 0}
         <ul class="roster-list">
           {#each [...support.patients].sort((a, b) => a.displayName.localeCompare(b.displayName)) as p (p.ownerAccountId)}
-            <li><button class="roster-name" onclick={() => support.enterPatient(p.ownerAccountId)}>{p.displayName}{#if p.expiresAt}<span class="access-kind">until {new Date(p.expiresAt).toLocaleString()}</span>{/if}</button></li>
+            <li><button class="roster-name" onclick={() => support.enterPatient(p.ownerAccountId)}>{p.displayName}<span class="access-kind">{untilPhrase(p.expiresAt, now)}</span></button></li>
           {/each}
         </ul>
       {:else}
@@ -1446,7 +1479,7 @@
         <p class="access-subhead">Providers ({support.providers.length})</p>
         <ul class="roster-list">
           {#each [...support.providers].sort((a, b) => a.displayName.localeCompare(b.displayName)) as p (p.providerAccountId)}
-            <li><button class="roster-name" onclick={() => support.openProvider(p)}>{p.displayName}<span class="access-kind">provider roster{#if p.expiresAt} · until {new Date(p.expiresAt).toLocaleString()}{/if}</span></button></li>
+            <li><button class="roster-name" onclick={() => support.openProvider(p)}>{p.displayName}<span class="access-kind">their roster · {untilPhrase(p.expiresAt, now)}</span></button></li>
           {/each}
         </ul>
       {/if}
@@ -1455,7 +1488,7 @@
         <ul class="roster-list">
           {#each [...support.requests].sort((a, b) => a.displayName.localeCompare(b.displayName)) as r (r.linkId)}
             <li>
-              <span class="roster-name roster-name-disabled">{r.displayName || r.email}<span class="access-kind">{r.kind} · awaiting approval</span></span>
+              <span class="roster-name roster-name-disabled">{r.displayName || r.email}<span class="access-kind">{awaitingSentence(r.kind)}</span></span>
               <button class="roster-remove" title="Cancel this request" onclick={() => support.cancelRequest(r.linkId)}>Cancel</button>
             </li>
           {/each}
@@ -1483,49 +1516,58 @@
     <main class="roster">
       <p class="sub">Provider view — {roster.patients.length} patient{roster.patients.length === 1 ? "" : "s"}. Select one to open their record.</p>
       {#if vaultAccess.pendingSupport.length > 0}
-        <div class="access-pending">
-          <p class="access-subhead">Support access requests</p>
-          <ul class="access-list">
-            {#each vaultAccess.pendingSupport as p (p.linkId)}
-              <li>
-                <span class="access-who"><strong>{p.displayName}</strong> <span class="access-kind">support · wants your roster</span></span>
-                <span class="access-approve-actions">
-                  <select bind:value={vaultAccess.ttlHours} disabled={vaultAccess.busy} title="How long support may access your roster">
-                    <option value={24}>24h</option>
-                    <option value={72}>3 days</option>
-                    <option value={168}>7 days</option>
-                  </select>
-                  <button class="access-approve" disabled={vaultAccess.busy} onclick={() => vaultAccess.approveAsProvider(p)}>Approve</button>
-                  <button class="access-revoke" disabled={vaultAccess.busy} onclick={() => vaultAccess.revokeAsProvider(p)}>Deny</button>
-                </span>
-              </li>
-            {/each}
-          </ul>
-        </div>
+        <p class="access-subhead">Waiting on you</p>
+        {#each vaultAccess.pendingSupport as p (p.linkId)}
+          <PrincipalRow
+            testid="roster-support-pending"
+            chip={KIND_CHIP.support}
+            name={p.displayName}
+            detail={ROSTER_REQUEST.text}
+            primary={{ label: "Approve", disabled: vaultAccess.busy, onClick: () => vaultAccess.approveAsProvider(p), testid: "roster-support-approve" }}
+            secondary={{ label: "Deny", disabled: vaultAccess.busy, onClick: () => vaultAccess.revokeAsProvider(p), testid: "roster-support-deny" }}
+          >
+            <div class="row-choice">
+              <DurationChoice
+                legend={`How long should ${p.displayName} see your roster?`}
+                name={`roster-duration-${p.linkId}`}
+                options={SUPPORT_WINDOWS}
+                value={vaultAccess.chosenHours(p)}
+                onChange={(h) => vaultAccess.setChosenHours(p.linkId, h)}
+              />
+            </div>
+          </PrincipalRow>
+        {/each}
       {/if}
       {#if vaultAccess.activeSupport.length > 0}
-        <div class="access-pending">
-          <p class="access-subhead">Support agents with roster access</p>
-          <ul class="access-list">
-            {#each vaultAccess.activeSupport as p (p.linkId)}
-              <li>
-                <span class="access-who"><strong>{p.displayName}</strong> <span class="access-kind">support{#if p.expiresAt} · until {new Date(p.expiresAt).toLocaleString()}{/if}</span></span>
-                <button class="access-revoke" disabled={vaultAccess.busy} onclick={() => vaultAccess.revokeAsProvider(p)}>Revoke</button>
-              </li>
-            {/each}
-          </ul>
-        </div>
+        <!-- A spec selects on this heading; it is also the plainest thing it could say. -->
+        <p class="access-subhead">Support agents with roster access</p>
+        {#each vaultAccess.activeSupport as p (p.linkId)}
+          {@const sentence = rosterGrantSentence(p, now)}
+          <PrincipalRow
+            testid="roster-support-active"
+            chip={KIND_CHIP.support}
+            name={p.displayName}
+            detail={sentence.text}
+            detailTone={sentence.tone}
+            items={[{ label: "Revoke roster access", danger: true, disabled: vaultAccess.busy, onClick: () => vaultAccess.revokeAsProvider(p) }]}
+          />
+        {/each}
       {/if}
       {#if error}<p class="err">{error}</p>{/if}
-      <ul class="roster-list">
-        {#each [...roster.patients].sort((a, b) => roster.label(a).localeCompare(roster.label(b))) as p (p.ownerAccountId)}
-          <li>
-            <button class="roster-name" onclick={() => roster.enterPatient(p)}>{roster.label(p)}</button>
-            <button class="roster-recover" title="Issue a one-time recovery code to read to this patient" onclick={() => recovery.issueForPatient(p)}>Recovery code</button>
-            <button class="roster-remove" title="Remove this patient from your roster" onclick={() => roster.removeFromRoster(p)}>Remove</button>
-          </li>
-        {/each}
-      </ul>
+      <p class="access-subhead">Your patients</p>
+      {#each [...roster.patients].sort((a, b) => roster.label(a).localeCompare(roster.label(b))) as p (p.ownerAccountId)}
+        <PrincipalRow
+          testid="roster-patient"
+          chip={KIND_CHIP.patient}
+          name={roster.label(p)}
+          detail={grantedUntil(p.expiresAt, now)}
+          primary={{ label: "Open record", onClick: () => roster.enterPatient(p) }}
+          items={[
+            { label: "Issue a recovery code", title: "Issue a one-time recovery code to read to this patient", onClick: () => recovery.issueForPatient(p) },
+            { label: "Remove from your roster", danger: true, onClick: () => roster.removeFromRoster(p) },
+          ]}
+        />
+      {/each}
       <!-- The ask. Before this the only way a doctor was added was the patient finding them
            unprompted, which is not a workflow any clinic has. Mirrors the support console's own form
            (above, same classes) and posts to the provider path rather than the support one.
@@ -1673,59 +1715,25 @@
     </Modal>
   {/if}
   {#if vaultAccess.open}
-    <Modal label="Access" onClose={() => vaultAccess.closePanel()}>
-      <div class="access-panel">
-        <p class="access-intro">People who can access your record. Adding a provider shares this record with them; revoking removes their access.</p>
-        {#if vaultAccess.pendingRequests.length > 0}
-          <div class="access-pending">
-            <p class="access-subhead">Access requests</p>
-            <ul class="access-list">
-              {#each vaultAccess.pendingRequests as p (p.linkId)}
-                <li>
-                  <span class="access-who"><strong>{p.displayName}</strong> <span class="access-kind">{p.kind === "support" ? "support · wants to help" : "wants to read your record"}</span></span>
-                  <span class="access-approve-actions">
-                    <!-- The clock is support's alone. A clinician link carries no expiry and the
-                         clinician read path checks none, so offering "24h" here would be a control
-                         that does nothing, on the one screen in the product where a promise about
-                         who can read a medical record has to be literally true. -->
-                    {#if p.kind === "support"}
-                      <select bind:value={vaultAccess.ttlHours} disabled={vaultAccess.busy} title="How long support may access your record">
-                        <option value={24}>24h</option>
-                        <option value={72}>3 days</option>
-                        <option value={168}>7 days</option>
-                      </select>
-                    {/if}
-                    <button class="access-approve" disabled={vaultAccess.busy} onclick={() => vaultAccess.approve(p)}>Approve</button>
-                    <button class="access-revoke" disabled={vaultAccess.busy} onclick={() => vaultAccess.revoke(p)}>Deny</button>
-                  </span>
-                </li>
-              {/each}
-            </ul>
-          </div>
-        {/if}
-        {#if vaultAccess.activeAccess.length === 0}
-          <p class="access-empty">No one else can access your record.</p>
-        {:else}
-          <ul class="access-list">
-            {#each vaultAccess.activeAccess as p (p.linkId)}
-              <li>
-                <span class="access-who"><strong>{p.displayName}</strong> <span class="access-kind">{p.kind}{#if p.kind === "support" && p.expiresAt} · until {new Date(p.expiresAt).toLocaleString()}{/if}</span></span>
-                <span class="access-approve-actions">
-                  <!-- 9C.2 — reporting is the thing revoking is not: revoke ends their access to THIS
-                       record, and says nothing to anyone about why. -->
-                  <button class="access-report" onclick={() => (reportTarget = { reason: "abusive-account", subject: p.linkId, feature: "provider-access" })}>Report</button>
-                  <button class="access-revoke" disabled={vaultAccess.busy} onclick={() => vaultAccess.revoke(p)}>Revoke</button>
-                </span>
-              </li>
-            {/each}
-          </ul>
-        {/if}
-        <form class="access-add" onsubmit={(e) => { e.preventDefault(); vaultAccess.addProvider(); }}>
-          <input type="email" placeholder="provider@example.com" aria-label="Provider email" bind:value={vaultAccess.newProviderEmail} disabled={vaultAccess.busy} />
-          <button type="submit" class="access-add-btn" disabled={vaultAccess.busy || !vaultAccess.newProviderEmail.trim()}>Add provider</button>
-        </form>
-        {#if vaultAccess.error}<p class="access-error">{vaultAccess.error}</p>{/if}
-      </div>
+    <!-- One page for both of a patient's questions. `snapshot` is what makes closing it with an
+         unsent duration choice ask first; neither of these two modals passed one before. -->
+    <Modal
+      label="Who can access your record"
+      onClose={() => { vaultAccess.closePanel(); recovery.closeAccountBlocks(); }}
+      snapshot={() => ({ email: vaultAccess.newProviderEmail, chosen: vaultAccess.chosenSnapshot })}
+    >
+      <AccessPanel
+        access={vaultAccess}
+        ownerName={account.info?.displayName || account.info?.email || "You"}
+        isOwner={!roster.isProvider}
+        {recovery}
+        recoveryBusy={account.busy}
+        {orgKeyEpisodes}
+        {otherEpisodes}
+        nameFor={accessActorName}
+        {now}
+        onReport={(linkId) => (reportTarget = { reason: "abusive-account", subject: linkId, feature: "provider-access" })}
+      />
     </Modal>
   {/if}
   <div class="shell-row">
@@ -1784,17 +1792,26 @@
       </form>
 
       <p class="access-subhead">Sign-in methods</p>
-      <ul class="access-list">
+      <!-- These were `.access-list` rows — the very markup the access page used for people — so a
+           stored password rendered identically to a human being with access to a medical record.
+           A password has nobody at the other end of it, so it stays here and takes the form
+           layout. A bare `class="field"` span rather than `<Field>` is that component's own
+           documented case: this is a read-only display column, and a Remove button inside its
+           `<label>` would forward a click on the label text to the button. -->
+      <FormGrid>
         {#each account.loginMethods as m (m.method)}
-          <li>
-            <span class="access-who"
-              ><strong>{m.method === "passkey" ? "Passkey" : m.method === "password" ? "Password" : m.method === "google" ? "Google" : m.method}</strong>
-              <span class="access-kind">added {new Date(m.createdAt).toLocaleDateString()}</span></span
+          <span class="field">
+            <span>{m.method === "passkey" ? "Passkey" : m.method === "password" ? "Password" : m.method === "google" ? "Google" : m.method}</span>
+            <span class="method-meta">added {new Date(m.createdAt).toLocaleDateString()}</span>
+            <Button
+              data-testid="signin-remove"
+              disabled={account.busy || !!account.removeBlockedReason(m.method as RemovableMethod)}
+              title={account.removeBlockedReason(m.method as RemovableMethod) ?? "Remove"}
+              onclick={() => account.remove(m.method as RemovableMethod)}>Remove</Button
             >
-            <button class="access-revoke" disabled={account.busy || !!account.removeBlockedReason(m.method as RemovableMethod)} title={account.removeBlockedReason(m.method as RemovableMethod) ?? "Remove"} onclick={() => account.remove(m.method as RemovableMethod)}>Remove</button>
-          </li>
+          </span>
         {/each}
-      </ul>
+      </FormGrid>
       {#if account.stepUpNeeded && (!account.hasPasskey || !account.hasGoogle)}
         <p class="access-intro">
           Adding a way in needs your current LexiTar password — not your Google one. It proves it is you and
@@ -1839,41 +1856,6 @@
         <button disabled={account.busy} onclick={() => recovery.regenerate()}>{account.hasRecovery ? "Regenerate recovery code" : "Generate recovery code"}</button>
       </div>
 
-      {#if !roster.isProvider}
-        <p class="access-subhead">Recovery key</p>
-        {#if recovery.orgHeld}
-          <p class="access-intro">LexiTar holds a key that can open your record if you lose your password. Every use of it is listed below.</p>
-          {#if recovery.revokeConfirm}
-            <p class="access-kind">Remove the recovery key? Your record stays encrypted with your password alone. If you forget it, nobody can recover this record — not you, not LexiTar.</p>
-            <div class="account-add">
-              <button class="access-revoke" disabled={account.busy} onclick={() => recovery.revokeOrgKey()}>Yes, remove it</button>
-              <button disabled={account.busy} onclick={() => (recovery.revokeConfirm = false)}>Cancel</button>
-            </div>
-          {:else}
-            <div class="account-add">
-              <button class="access-revoke" disabled={account.busy} onclick={() => (recovery.revokeConfirm = true)}>Remove recovery key</button>
-            </div>
-          {/if}
-        {:else}
-          <p class="access-intro">Removed {recovery.orgRevokedAt ? new Date(recovery.orgRevokedAt).toLocaleString() : ""}. Your password is the only key to this record.</p>
-        {/if}
-        <AccessLog
-          episodes={orgKeyEpisodes}
-          nameFor={accessActorName}
-          emptyText="LexiTar has never used this key on your record."
-        />
-
-        <p class="access-subhead">Who has opened your record</p>
-        <p class="access-intro">
-          Everyone other than you who has opened this record, newest first — one line per visit. Your
-          own reading of your record is never listed here. Open a line to see each thing that was read.
-        </p>
-        <AccessLog
-          episodes={otherEpisodes}
-          nameFor={accessActorName}
-          emptyText="Nobody else has opened your record."
-        />
-      {/if}
       <p class="access-subhead">What leaves this device</p>
       <p class="access-intro">{MODEL_DISCLOSURE}</p>
       <p class="access-intro">
@@ -1937,11 +1919,6 @@
     font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   }
 
-  .roster-recover {
-    background: none; border: 1px solid var(--border); border-radius: 6px;
-    padding: 0.15rem 0.5rem; font-size: 0.75rem; color: var(--muted); cursor: pointer;
-  }
-  .roster-recover:hover { color: var(--fg); }
   .recovery-code {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1.05rem; letter-spacing: 0.08em;
     background: var(--band); border: 1px solid var(--accent); border-radius: 6px; padding: 0.75rem; margin: 0 0 1.25rem; word-break: break-all;
@@ -1967,22 +1944,18 @@
   .access-panel { display: flex; flex-direction: column; gap: 1rem; min-width: 20rem; }
   .access-intro { color: var(--muted); margin: 0; font-size: 0.9rem; }
   .access-empty { color: var(--muted); margin: 0; }
-  .access-list { list-style: none; padding: 0; margin: 0; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
-  .access-list li { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.6rem 0.9rem; border-bottom: 1px solid var(--border); }
-  .access-list li:last-child { border-bottom: none; }
   .access-kind { color: var(--muted); font-size: 0.8rem; margin-left: 0.4rem; }
   .erase-report { background: var(--band); color: var(--fg); }
+  .method-meta { font-size: 0.8rem; color: var(--muted); }
+  .row-choice { display: flex; flex-wrap: wrap; gap: 0.4rem; padding: 0 0.3rem 0.5rem; }
+  /* The field column stretches its children; a Remove button at full column width reads as the
+     primary act of the panel, which removing a sign-in method is not. */
+  .field :global(.btn) { align-self: start; }
   .access-revoke { padding: 0.3rem 0.7rem; border: 1px solid var(--alert); background: transparent; color: var(--alert); border-radius: 8px; cursor: pointer; font: inherit; font-size: 0.85rem; }
   .access-revoke:disabled { opacity: 0.5; cursor: default; }
-  /* Its own class, not a second .access-revoke: reporting is not revoking, and the e2e suites select
-     the revoke button by class within the access list. */
-  .access-report { padding: 0.3rem 0.7rem; border: 1px solid var(--alert); background: transparent; color: var(--alert); border-radius: 8px; cursor: pointer; font: inherit; font-size: 0.85rem; }
+  /* What is left of this is the Account modal's own destructive buttons — removing a recovery key
+     and deleting an account. A person's access is revoked from a row's menu now, not from here. */
   .access-subhead { font-weight: 600; margin: 0 0 0.4rem; font-size: 0.9rem; }
-  .access-pending { border-bottom: 1px solid var(--border); padding-bottom: 0.75rem; }
-  .access-approve-actions { display: flex; align-items: center; gap: 0.4rem; }
-  .access-approve-actions select { padding: 0.25rem 0.4rem; border: 1px solid var(--border); border-radius: 8px; font: inherit; font-size: 0.8rem; }
-  .access-approve { padding: 0.3rem 0.7rem; border: 1px solid var(--accent); background: var(--accent); color: white; border-radius: 8px; cursor: pointer; font: inherit; font-size: 0.85rem; }
-  .access-approve:disabled { opacity: 0.5; cursor: default; }
   .access-add { display: flex; gap: 0.5rem; }
   .access-add input { flex: 1; padding: 0.5rem 0.7rem; border: 1px solid var(--border); border-radius: 6px; font: inherit; }
   .access-add-btn { padding: 0.5rem 1rem; border: 1px solid var(--accent); background: var(--accent); color: white; border-radius: 8px; cursor: pointer; font: inherit; }

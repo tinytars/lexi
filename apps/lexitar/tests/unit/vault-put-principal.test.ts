@@ -8,7 +8,7 @@ import { onRequestPut as putVault, onRequestGet as getVault } from "../../functi
 import { createAccount } from "../../functions/_lib/identity-accounts";
 import { putPublicKey } from "../../functions/_lib/identity-credentials";
 import { createVault, putEnvelope } from "../../functions/_lib/identity-vault";
-import { createProviderLink } from "../../functions/_lib/identity-providers";
+import { createProviderLink, listProvidersForPatient, updateProviderLinkStatus } from "../../functions/_lib/identity-providers";
 import type { ProviderKind } from "../../functions/_lib/identity-types";
 import { generateAccountKeypair, generateDEK, wrapDEKForPublicKey } from "@tinytars/vault/crypto";
 import { useWorkerd } from "../support/miniflare";
@@ -131,13 +131,49 @@ describe("PUT /api/vault/[id] — who may write, not merely who may read", () =>
 
   it("leaves a closed window to the gate that already enforces it, one layer up", async () => {
     // A lapsed grant never reaches the new check: `getEnvelope` resolves a non-owner principal through
-    // its live link and refuses an expired one first, with the no-access refusal rather than the
+    // its live link and refuses an expired one first, with the ended-access refusal rather than the
     // read-only one. Pinned because the layering is the safety property — the write gate asks only about
     // ROLE, so it would be wrong to later reorder it ahead of the check that asks about TIME.
     const p = await seedPatient();
     const agent = await grantPrincipal(p, "support", "support", new Date(Date.now() - 1000).toISOString());
     const res = await put(p.urlId, agent.id);
     expect(res.status).toBe(403);
-    expect(await res.json()).toEqual({ error: "no access to this vault" });
+    expect(await res.json()).toEqual({ error: "this access has ended", errorCode: "access_expired" });
+  });
+});
+
+// W92 — the refusal names which of the two things happened. Same gate, same 403, same moment: all this
+// adds is a word, and the word is the whole difference between an app that can offer "ask them to renew"
+// and one that can only report a dead end to someone whose access was real yesterday.
+describe("a refused read says whether the access ENDED or never existed", () => {
+  it("GET: a lapsed grant is access_expired", async () => {
+    const p = await seedPatient();
+    const agent = await grantPrincipal(p, "support", "support", new Date(Date.now() - 1000).toISOString());
+    const res = await get(p.urlId, agent.id);
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: "this access has ended", errorCode: "access_expired" });
+  });
+
+  it("GET: an account that was never granted anything is forbidden, not expired", async () => {
+    // The distinction has to survive the easy mistake of reporting every refusal as "ended": a stranger
+    // must not be told that a record exists which they once could read.
+    const p = await seedPatient();
+    const strangerId = crypto.randomUUID();
+    await createAccount(w.db, { id: strangerId, displayName: "Stranger" });
+    const res = await get(p.urlId, strangerId);
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: "no access to this vault", errorCode: "forbidden" });
+  });
+
+  it("GET: a revoked grant is forbidden — it was taken away, it did not lapse", async () => {
+    // Revoked and expired are both "you cannot read this", and only one of them is the patient's to
+    // undo by renewing. Classifying on time alone would invite an ended-row "Renew" button onto access
+    // the patient deliberately pulled.
+    const p = await seedPatient();
+    const agent = await grantPrincipal(p, "support", "support", IN_A_WEEK());
+    await updateProviderLinkStatus(w.db, (await listProvidersForPatient(w.db, p.ownerId)).find((l) => l.providerAccountId === agent.id)!.id, "revoked");
+    const res = await get(p.urlId, agent.id);
+    expect(res.status).toBe(403);
+    expect((await res.json() as any).errorCode).toBe("forbidden");
   });
 });

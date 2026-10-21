@@ -1,6 +1,6 @@
 import { test, expect } from "./_fixtures";
 import { signUp, ownerSignOut, loginAs } from "./_login";
-import { E2E_CLINICIAN } from "./_synthetic";
+import { E2E_CLINICIAN, clinicianRosterLoaded, patientRosterRows } from "./_synthetic";
 
 // W49 — a browser refresh must NOT force re-auth. The hd_session cookie survives; the account private
 // key is persisted (non-extractable) in IndexedDB and the vault DEK is re-derived on load. Signing out
@@ -53,9 +53,9 @@ test("the persisted account key is non-extractable (XSS can't export it)", async
 
 test("a signed-in provider resumes on the roster across a refresh", async ({ page }) => {
   await loginAs(page, E2E_CLINICIAN.email, E2E_CLINICIAN.password);
-  await page.waitForSelector(".roster-list");
+  await clinicianRosterLoaded(page);
 
   await page.reload();
-  await expect(page.locator(".roster-list")).toBeVisible();
+  await expect(patientRosterRows(page).first()).toBeVisible();
   await expect(page.locator('.lock input[type="password"]')).toHaveCount(0);
 });

@@ -1,7 +1,7 @@
 import type { D1Database } from "../../_lib/identity-types";
 import { getAccount } from "../../_lib/identity-accounts";
 import { listVaultsForOwner, putEnvelope } from "../../_lib/identity-vault";
-import { createProviderLink, listProvidersForPatient, updateProviderLinkStatus } from "../../_lib/identity-providers";
+import { createProviderLink, listProvidersForPatient, setLinkGrant } from "../../_lib/identity-providers";
 import { insertAccessEvent } from "../../_lib/identity-audit";
 import { requireSession } from "../../_lib/session";
 import { logRequest } from "../../_lib/log";
@@ -11,7 +11,7 @@ import { json } from "../../_lib/http";
 // in-memory DEK to the provider's public key client-side (crypto.wrapDEKForPublicKey); this endpoint
 // only records the opaque envelope + a provider_link. The server never sees a plaintext DEK.
 // Re-granting an existing (possibly revoked) link is idempotent: the envelope is replaced and the link
-// flipped back to active, so no duplicate rows accumulate.
+// flipped back to active, so no duplicate rows accumulate — which is also the renewal path.
 interface Env {
   DB: D1Database;
   SESSION_SECRET: string;
@@ -22,6 +22,21 @@ interface Ctx {
 }
 
 const ROUTE = "/api/providers/grant";
+
+// How long the access lasts. The patient picks between a 30-day window and "ongoing", and the SERVER
+// owns the arithmetic: a browser's clock does not get to set a consent window, so the body carries a
+// count of days and never a date. Out of range is clamped rather than refused — the number is a
+// preference, and refusing the whole grant over it would lose the consent the patient just gave.
+// `null` is the patient choosing ongoing: no end date until they revoke. An ABSENT field is an older
+// client rather than a request for permanence, so it takes the product default.
+const DEFAULT_TTL_DAYS = 30;
+const MAX_TTL_DAYS = 365;
+
+function expiryFor(ttlDays: number | null): string | null {
+  if (ttlDays === null) return null;
+  const days = Math.min(Math.max(Math.round(ttlDays), 1), MAX_TTL_DAYS);
+  return new Date(Date.now() + days * 86400 * 1000).toISOString();
+}
 
 function base64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64);
@@ -42,7 +57,7 @@ export async function onRequestPost(context: Ctx): Promise<Response> {
     return session;
   }
 
-  let body: { providerAccountId?: unknown; wrappedDEK?: unknown; ephemeralPublicKeyJwk?: unknown };
+  let body: { providerAccountId?: unknown; wrappedDEK?: unknown; ephemeralPublicKeyJwk?: unknown; ttlDays?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -58,6 +73,12 @@ export async function onRequestPost(context: Ctx): Promise<Response> {
     log(400, "self_grant");
     return json(400, { error: "cannot grant to yourself" });
   }
+  const ttlDays = body.ttlDays === undefined ? DEFAULT_TTL_DAYS : body.ttlDays;
+  if (ttlDays !== null && (typeof ttlDays !== "number" || !Number.isFinite(ttlDays))) {
+    log(400, "bad_ttl");
+    return json(400, { error: "ttlDays must be a number of days, or null for no end date" });
+  }
+  const expiresAt = expiryFor(ttlDays);
 
   const provider = await getAccount(env.DB, providerAccountId);
   if (!provider || !provider.providerKind) {
@@ -82,9 +103,15 @@ export async function onRequestPost(context: Ctx): Promise<Response> {
   const existing = (await listProvidersForPatient(env.DB, session.accountId)).find(
     (l) => l.providerAccountId === providerAccountId
   );
+  const consentRef = `patient-granted:${new Date().toISOString()}`;
   let linkId: string;
   if (existing) {
-    await updateProviderLinkStatus(env.DB, existing.id, "active");
+    // NOT `updateProviderLinkStatus`, whose statement is `SET status = ?` alone: a renewal through it
+    // would flip the link active and silently keep whatever `expires_at` it already carried, which is
+    // the one write where a stale date is indistinguishable from the patient's choice — and on a
+    // lapsed link it would re-grant access that expires immediately. `setLinkGrant` writes status,
+    // expiry and consent as one statement, so the row can never half-describe the decision.
+    await setLinkGrant(env.DB, existing.id, { expiresAt, consentRef });
     linkId = existing.id;
   } else {
     const link = await createProviderLink(env.DB, {
@@ -93,6 +120,8 @@ export async function onRequestPost(context: Ctx): Promise<Response> {
       role: provider.providerKind,
       status: "active",
       grantedBy: session.accountId,
+      expiresAt,
+      consentRef,
     });
     linkId = link.id;
   }
@@ -113,9 +142,17 @@ export async function onRequestPost(context: Ctx): Promise<Response> {
     subjectAccountId: session.accountId,
     vaultId: vault.vaultId,
     action: "provider_access_granted",
-    meta: { providerAccountId },
+    consentRef,
+    meta: { providerAccountId, expiresAt },
   });
 
   log(200);
-  return json(200, { ok: true, linkId, providerAccountId, displayName: provider.displayName, kind: provider.providerKind });
+  return json(200, {
+    ok: true,
+    linkId,
+    providerAccountId,
+    displayName: provider.displayName,
+    kind: provider.providerKind,
+    expiresAt,
+  });
 }

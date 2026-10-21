@@ -1,7 +1,8 @@
 // Not on ./_fixtures: the redeemed code must hit the real server, not bytes this run captured.
 import { test, expect } from "@playwright/test";
 import { signUp, openOwnerAccess, ownerSignOut, loginAs } from "./_login";
-import { E2E_CLINICIAN, revokeClinicianLinks } from "./_synthetic";
+import { clickLeafMenuItem } from "./_leaf-menu";
+import { E2E_CLINICIAN, clinicianRosterLoaded, patientRosterRow, revokeClinicianLinks } from "./_synthetic";
 
 // The grant would otherwise sit on the clinician's roster, which cover-render.spec.ts asserts exactly.
 test.afterEach(({ page }) => revokeClinicianLinks(page, "patients", "e2e-grantdetect-"));
@@ -14,17 +15,16 @@ test("a provider-issued grant code is auto-detected and redeems at rung 2", asyn
 
   await signUp(page, patientEmail);
   await openOwnerAccess(page);
-  await page.fill(".access-add input", E2E_CLINICIAN.email);
-  await page.click('.access-add button:has-text("Add provider")');
-  await expect(page.locator(".access-list li")).toHaveCount(1);
+  await page.fill("#access-add-email", E2E_CLINICIAN.email);
+  await page.getByTestId("access-add-btn").click();
+  await expect(page.getByTestId("access-active-row")).toHaveCount(1);
   await page.click('.modal-close[aria-label="Close"]').catch(() => {});
   await ownerSignOut(page);
 
   // Issue the grant code from the provider's roster.
   await loginAs(page, E2E_CLINICIAN.email, E2E_CLINICIAN.password);
-  await page.waitForSelector(".roster-list");
-  const row = page.locator(`.roster-list li:has(.roster-name:has-text("${slug}"))`);
-  await row.locator(".roster-recover").click();
+  await clinicianRosterLoaded(page);
+  await clickLeafMenuItem(patientRosterRow(page, slug), "Issue a recovery code");
   const code = (await page.locator(".rc-code").innerText()).trim();
   expect(code).toMatch(/^[0-9A-Za-z]{4}-[0-9A-Za-z]{4}-[0-9A-Za-z]{4}$/);
   await page.click('.modal-close[aria-label="Close"]');

@@ -26,6 +26,12 @@ export interface RosterPatient extends VaultEntry {
   /** The provider can DELETE /api/providers/{linkId} to drop this patient. */
   linkId: string;
   vaultId: string;
+  /**
+   * When this patient's grant runs out, or null for no end date. The route sends it so both ends
+   * of one grant can print the same date — the patient reads "Ends 19 Nov" and the clinician reads
+   * "Granted until 19 Nov" — rather than the clinician discovering the window by being refused.
+   */
+  expiresAt: string | null;
 }
 
 /** What a login, a resume or a recovery all hand back. */

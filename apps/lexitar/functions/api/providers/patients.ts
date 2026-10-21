@@ -72,6 +72,10 @@ export async function onRequestGet(context: Ctx): Promise<Response> {
       displayName: acct.displayName,
       email: acct.email,
       linkId: link.id, // W48 — lets the provider DELETE /api/providers/{linkId} to drop this patient
+      // Both ends of one grant print the same date. The patient is told "Ends 19 Nov"; without this
+      // field the clinician could only be told they have access, and would learn the window existed
+      // by losing it. Null is a grant with no end date, not an unknown one.
+      expiresAt: link.expiresAt,
       vaultId: vault.vaultId,
       r2Key: vault.r2Key,
       envelope: {

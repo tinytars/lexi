@@ -1,6 +1,6 @@
 import { test, expect } from "./_fixtures";
 import { loginAs } from "./_login";
-import { E2E_CLINICIAN } from "./_synthetic";
+import { E2E_CLINICIAN, patientRosterRows } from "./_synthetic";
 
 // The roster used to be a full-width header over a centred column, while the record shell one click away
 // was a persistent left bar with the account menu in its lower-left — the same product in two layouts.
@@ -26,15 +26,15 @@ test("the roster carries the app's left bar, with the account menu in its lower-
 
 test("the Translation DAG is a nav row with a way back to Patients", async ({ page }) => {
   await loginAs(page, E2E_CLINICIAN.email, E2E_CLINICIAN.password);
-  await expect(page.locator(".roster-list")).toBeVisible();
+  await expect(patientRosterRows(page).first()).toBeVisible();
 
   await page.getByTestId("nav-dag").click();
   await expect(page.locator(".dag")).toBeVisible();
-  await expect(page.locator(".roster-list")).toHaveCount(0);
+  await expect(patientRosterRows(page)).toHaveCount(0);
 
   // The old header button relabelled itself, so there was no independent destination to come back to.
   await page.getByTestId("nav-patients").click();
-  await expect(page.locator(".roster-list")).toBeVisible();
+  await expect(patientRosterRows(page).first()).toBeVisible();
   await expect(page.locator(".dag")).toHaveCount(0);
 });
 

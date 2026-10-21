@@ -1,6 +1,6 @@
 import { test, expect } from "./_fixtures";
 import { loginAs, signUp, openOwnerAccount, ownerSignOut } from "./_login";
-import { E2E_CLINICIAN } from "./_synthetic";
+import { E2E_CLINICIAN, clinicianRosterLoaded } from "./_synthetic";
 
 // W44 P8 — the owner Account modal. Uses a FRESH signed-up account (unique email) so editing the
 // profile doesn't rename an account another spec depends on.
@@ -15,8 +15,9 @@ test("owner edits profile and sees sign-in methods in Account", async ({ page })
   const modal = page.locator(".access-panel");
   await expect(modal).toBeVisible();
   // A password-signup account lists exactly the Password method (with an Add-a-passkey affordance).
-  // (W55 P4 adds a second .access-list — the recovery-key access log — so exclude it.)
-  await expect(modal.locator(".access-list:not(.access-events)")).toContainText("Password");
+  // W79 took these rows off the `.access-list` shape they shared with the people who can read the
+  // record and onto the form layout, so the row is the one carrying a Remove button.
+  await expect(modal.locator('.field:has([data-testid="signin-remove"])')).toContainText("Password");
 
   // openAccount() renders the modal before its getMyAccount() resolves, then assigns editDisplayName —
   // which would clobber a value typed too early. Wait for the field to be populated before editing.
@@ -39,7 +40,7 @@ test("owner edits profile and sees sign-in methods in Account", async ({ page })
 // (they don't own a record). The menu shows Account settings + Sign out, no "Who can access".
 test("provider account menu is present but omits the record-sharing item", async ({ page }) => {
   await loginAs(page, E2E_CLINICIAN.email, E2E_CLINICIAN.password);
-  await page.waitForSelector(".roster-list"); // provider lands on the roster
+  await clinicianRosterLoaded(page); // provider lands on the roster
   await expect(page.locator(".account-trigger")).toBeVisible();
   await page.click(".account-trigger");
   await expect(page.locator('.menu-item:has-text("Account settings")')).toBeVisible();

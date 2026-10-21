@@ -5,7 +5,15 @@
 // signups, whose vaults are far too small to be caught mid-stream by the wrangler crash.
 import { test, expect } from "@playwright/test";
 import { signUp, openOwnerAccess, loginAs, ownerSignOut } from "./_login";
-import { E2E_CLINICIAN, openSyntheticAsProvider, revokeClinicianLinks } from "./_synthetic";
+import { clickLeafMenuItem } from "./_leaf-menu";
+import { E2E_CLINICIAN, clinicianRosterLoaded, openSyntheticAsProvider, patientRosterRow, revokeClinicianLinks } from "./_synthetic";
+
+// W79 — the patient's access page is one list of principal rows, so adding a provider is the form's
+// own button and everything destructive is a named entry in that row's ⋮ menu.
+const addProvider = async (page: import("@playwright/test").Page, email: string) => {
+  await page.fill("#access-add-email", email);
+  await page.getByTestId("access-add-btn").click();
+};
 
 test.afterEach(async ({ page }) => {
   for (const prefix of ["e2e-grant-", "e2e-provrm-"]) await revokeClinicianLinks(page, "patients", prefix);
@@ -19,17 +27,16 @@ test("owner grants then revokes a provider via the Access panel", async ({ page 
 
   await openOwnerAccess(page);
 
-  // A brand-new account has no providers.
-  await expect(page.locator(".access-empty")).toBeVisible();
+  // A brand-new account has nobody else on it — only the owner's own row and the recovery key.
+  await expect(page.getByTestId("access-empty")).toBeVisible();
 
   // Grant the e2e clinician by email → it appears in the list.
-  await page.fill(".access-add input", E2E_CLINICIAN.email);
-  await page.click('.access-add button:has-text("Add provider")');
-  await expect(page.locator(".access-list li")).toHaveCount(1);
+  await addProvider(page, E2E_CLINICIAN.email);
+  await expect(page.getByTestId("access-active-row")).toHaveCount(1);
 
   // Revoke → back to empty.
-  await page.click(".access-revoke");
-  await expect(page.locator(".access-empty")).toBeVisible();
+  await clickLeafMenuItem(page.getByTestId("access-active-row"), "Revoke access");
+  await expect(page.getByTestId("access-empty")).toBeVisible();
 });
 
 // The Access affordance is owner-only: a provider drilled into a patient has an account menu (W48)
@@ -51,18 +58,17 @@ test("a provider removes a patient from their own roster", async ({ page }) => {
 
   await signUp(page, patientEmail, pw);
   await openOwnerAccess(page);
-  await page.fill(".access-add input", E2E_CLINICIAN.email);
-  await page.click('.access-add button:has-text("Add provider")');
-  await expect(page.locator(".access-list li")).toHaveCount(1);
+  await addProvider(page, E2E_CLINICIAN.email);
+  await expect(page.getByTestId("access-active-row")).toHaveCount(1);
   await page.click('.modal-close[aria-label="Close"]').catch(() => {});
   await ownerSignOut(page);
 
   page.on("dialog", (d) => d.accept()); // the Remove confirm()
   await loginAs(page, E2E_CLINICIAN.email, E2E_CLINICIAN.password);
-  await page.waitForSelector(".roster-list");
-  await expect(page.locator(`.roster-name:has-text("${slug}")`)).toBeVisible();
-  await page.locator(`.roster-list li:has(.roster-name:has-text("${slug}")) .roster-remove`).click();
-  await expect(page.locator(`.roster-name:has-text("${slug}")`)).toHaveCount(0);
+  await clinicianRosterLoaded(page);
+  await expect(patientRosterRow(page, slug)).toBeVisible();
+  await clickLeafMenuItem(patientRosterRow(page, slug), "Remove from your roster");
+  await expect(patientRosterRow(page, slug)).toHaveCount(0);
 
   // The patient still owns their record.
   await ownerSignOut(page);
