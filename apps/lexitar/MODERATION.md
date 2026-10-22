@@ -78,7 +78,8 @@ Two different removals, and a report has to be read for which one it needs:
 - **The owner's.** `DELETE /api/raw/{id}/{file}` is session-gated and requires a proven ownership
   claim, so it is the *patient's* delete — the operator cannot call it on their behalf. A user can
   also delete their whole account and everything in it from the account panel.
-- **The operator's.** The ciphertext object is removed out of band, through the `ops.yml` R2 lane.
+- **The operator's.** The ciphertext object is removed out of band, with `r2-ops` at the operator's
+  own terminal (`docs/OPS-LOCAL.md`) — not through a dispatch, which cannot open the org envelope.
   This is possible precisely because deleting never requires reading: an operator who cannot open a
   file can still destroy it. It is what a confirmed report of illegal material gets.
 

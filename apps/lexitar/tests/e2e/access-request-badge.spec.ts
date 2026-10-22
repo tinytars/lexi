@@ -38,13 +38,11 @@ test("a pending request to read the record raises a sidebar badge that opens the
   // Visible without opening anything — the assertion the old behaviour could not pass.
   const badge = page.locator('[data-testid="access-request-badge"]');
   await expect(badge).toBeVisible({ timeout: 20_000 });
-  await expect(badge).toHaveText(/1 request to read your record/i);
+  await expect(badge).toHaveText(/1 access request waiting/i);
 
   await badge.click();
-  await expect(page.locator(".access-panel .access-pending")).toContainText(
-    "Record Export CLI",
-  );
-  await expect(page.locator(".access-panel .access-approve")).toBeVisible();
+  await expect(page.getByTestId("access-pending-row")).toContainText("Record Export CLI");
+  await expect(page.getByTestId("access-approve")).toBeVisible();
 });
 
 test("no badge when nothing is pending", async ({ page }) => {

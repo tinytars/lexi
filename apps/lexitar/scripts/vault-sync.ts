@@ -16,6 +16,7 @@
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { createHash } from "node:crypto";
 import { rename, rm } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
@@ -45,6 +46,13 @@ export function resolveStore(explicit?: string): string {
 // (data-{id}.enc) under the store prefix; raw/processed mirror the on-disk records/ layout.
 export const r2KeyFor = (store: string, id: string): string => `${store}/data-${id.toLowerCase()}.enc`;
 export const r2RawKeyFor = (store: string, id: string, file: string): string => `${store}/raw/${id.toLowerCase()}/${file}`;
+// The two namespaces a DEK rotation has to re-seal by hand: the chat-history blob and the
+// regen-log segments. Every other namespace below holds per-object keys that live INSIDE the vault
+// (raw/[[path]].ts:17), so they travel with a re-encrypted vault and need no pass of their own;
+// these two are sealed under the DEK directly, which is why vault-rekey.ts walks them and why the
+// shapes live here rather than there.
+export const r2ChatKeyFor = (store: string, id: string): string => `${store}/chat-${id.toLowerCase()}.enc`;
+export const r2RegenLogPrefixFor = (store: string, id: string): string => `${store}/regen-log/${id.toLowerCase()}/`;
 export const r2ProcessedKeyFor = (store: string, id: string, sha8: string): string => `${store}/processed/${id.toLowerCase()}/${sha8}.json`;
 
 export const r2RefFor = (store: string, id: string): string => `${BUCKET}/${r2KeyFor(store, id)}`;
@@ -133,9 +141,16 @@ export async function pull(id: string, store = resolveStore()): Promise<PullResu
 //
 // CLAUDE.md has held this line in prose since W77 and says outright that it wants a guard, because
 // prose only catches the careful case. The hazard is specific and already documented above: the
-// operator push re-reads the etag immediately before the write and STILL cannot close the window, a
-// laptop run leaves no audit trail, and `concurrency: vault-{client}` can only serialize the runs
-// GitHub can see.
+// operator push re-reads the etag immediately before the write and STILL cannot close the window,
+// and a laptop run leaves no audit trail.
+//
+// What the guard no longer is, as of 2026-10-19, is a redirection to somewhere better. It used to
+// say "dispatch ops.yml instead", and for every operation that reaches this line except
+// orphan-sweep's delete that was never true: each one needs the org PRIVATE key, which never
+// arrives on a hosted runner, so the dispatch it recommended could only fail. Those twelve left
+// the dispatch menu on 2026-10-19 (apps/lexitar/docs/OPS-LOCAL.md), which makes a workstation the
+// only place they CAN run — so the refusal below is a prompt to confirm the record is idle, and
+// not a wall with a lane behind it. In CI it still returns early, which is what orphan-sweep uses.
 //
 // Scoped to the LIVE bucket deliberately. BACKUP_BUCKET writes stay open because snapshot-cron.sh is
 // kept as the one path that works when GitHub does not, and a backup write cannot clobber live data.
@@ -147,9 +162,13 @@ const LOCAL_WRITE_OVERRIDE = "PLOVER_ALLOW_LOCAL_VAULT_WRITE";
 export function liveWriteRefusal(what: string): string {
   return (
     `refusing to write ${what} from a workstation.\n` +
-    `  This writes the deployed vault, so it goes through .github/workflows/ops.yml, which serializes\n` +
-    `  it with concurrency: vault-{client} and leaves an audit trail a local run does not.\n` +
-    `  If this is the unreachable-GitHub emergency the rule allows for, set ${LOCAL_WRITE_OVERRIDE}=1.`
+    `  \`wrangler r2 object put\` has no conditional option, so a browser save landing mid-write is\n` +
+    `  lost silently, with nothing afterwards to show it happened. In CI this guard does not apply:\n` +
+    `  a dispatched run is serialized and leaves a record.\n` +
+    `  If this is orphan-sweep's delete, dispatch .github/workflows/ops.yml and let it run there.\n` +
+    `  Everything else reaching this line needs the org private key, which never arrives on a hosted\n` +
+    `  runner, so a workstation is the only place it can run — see apps/lexitar/docs/OPS-LOCAL.md.\n` +
+    `  Confirm the record's owner is not using it right now, then set ${LOCAL_WRITE_OVERRIDE}=1.`
   );
 }
 
@@ -158,7 +177,7 @@ export function assertLiveWriteAllowed(what: string): void {
   if (process.env.CI) return;
   if (process.env[LOCAL_WRITE_OVERRIDE]) {
     process.stderr.write(
-      `\n!! ${LOCAL_WRITE_OVERRIDE} is set — writing ${what} from this workstation, outside ops.yml.\n` +
+      `\n!! ${LOCAL_WRITE_OVERRIDE} is set — writing ${what} from this workstation.\n` +
         `!! No concurrency guard and no audit trail: a browser save landing right now is lost silently.\n\n`,
     );
     return;
@@ -380,7 +399,7 @@ export async function listObjects(bucket: string, prefix?: string): Promise<R2Ob
 export async function getObject(bucket: string, key: string): Promise<Uint8Array | null> {
   const res = await apiFetch(objectPath(bucket, key));
   if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`R2 get failed for ${bucket}/${key} (${res.status}): ${await res.text()}`);
+  if (!res.ok) throw new Error(`R2 get failed for ${bucket} ${keyRef(key)} (${res.status}): ${redactedBody(await res.text(), key)}`);
   return new Uint8Array(await res.arrayBuffer());
 }
 
@@ -393,7 +412,7 @@ export async function putObject(bucket: string, key: string, body: Uint8Array): 
     body: body as unknown as BodyInit,
     headers: { "content-type": "application/octet-stream" },
   });
-  if (!res.ok) throw new Error(`R2 put failed for ${bucket}/${key} (${res.status}): ${await res.text()}`);
+  if (!res.ok) throw new Error(`R2 put failed for ${bucket} ${keyRef(key)} (${res.status}): ${redactedBody(await res.text(), key)}`);
 }
 
 // Idempotent: a missing key is success (the goal is "it is gone", matching deleteRef above).
@@ -401,7 +420,7 @@ export async function deleteObject(bucket: string, key: string): Promise<void> {
   if (bucket === LIVE_BUCKET) assertLiveWriteAllowed(`${bucket}/${key}`);
   const res = await apiFetch(objectPath(bucket, key), { method: "DELETE" });
   if (!res.ok && res.status !== 404) {
-    throw new Error(`R2 delete failed for ${bucket}/${key} (${res.status}): ${await res.text()}`);
+    throw new Error(`R2 delete failed for ${bucket} ${keyRef(key)} (${res.status}): ${redactedBody(await res.text(), key)}`);
   }
 }
 
@@ -423,13 +442,26 @@ export async function bucketExists(bucket: string): Promise<boolean> {
 // `null` means "a key shape this tool has never been taught about" — the snapshot treats that
 // as a hard error rather than skipping it, so a new key class added to storeKey() elsewhere
 // cannot silently fall out of the backup.
-export type KeyClass = "vault" | "chat" | "raw" | "processed" | "text" | "logs";
+export type KeyClass = "vault" | "chat" | "regenLog" | "raw" | "processed" | "text" | "logs";
 
 export function classifyKey(store: string, key: string): KeyClass | null {
   if (!key.startsWith(`${store}/`)) return null;
   const rest = key.slice(store.length + 1);
   if (/^data-[^/]+\.enc$/.test(rest)) return "vault";
   if (/^chat-[^/]+\.enc$/.test(rest)) return "chat";
+  // Two prefixes that hold chat ciphertext and deliberately do NOT begin with `chat-`, because
+  // orphan-sweep.ts lists `${store}/chat-` and deletes any object there whose client id it cannot
+  // resolve in D1 — which both of these are by construction. They are taught here because
+  // vault-snapshot.ts:217 treats an unclassified key as a hard failure, so a retention prefix the
+  // classifier has not met is a prefix the backup refuses to run at all.
+  //   orphaned-chat/  a history the browser could not decrypt, set aside by the W71 escape hatch
+  //   rekey-chat/     vault-rekey.ts staging, live only between the re-seal and the promotion
+  if (/^orphaned-chat\/.+/.test(rest)) return "chat";
+  if (/^rekey-chat\/.+/.test(rest)) return "chat";
+  // The regen log, one append-only segment per save (src/lib/regen-log-store.ts), plus the
+  // vault-rekey.ts staging prefix that mirrors rekey-chat/ above.
+  if (/^regen-log\/.+/.test(rest)) return "regenLog";
+  if (/^rekey-regen-log\/.+/.test(rest)) return "regenLog";
   if (/^raw\/.+/.test(rest)) return "raw";
   if (/^processed\/.+/.test(rest)) return "processed";
   // W46 document-extract writes a text-extraction sidecar per attachment (document-extract.ts:98).
@@ -438,6 +470,29 @@ export function classifyKey(store: string, key: string): KeyClass | null {
   if (/^text\/.+/.test(rest)) return "text";
   if (/^logs\/.+/.test(rest)) return "logs";
   return null;
+}
+
+// Every diagnostic here and in vault-snapshot.ts can reach a world-readable GitHub Actions log —
+// stdout and stderr both land in it — and an R2 key names a person's file: {store}/raw/<account>/…
+// is a filename they uploaded. So no diagnostic prints a key. It prints the key's class and a
+// stable 12-hex digest, which is enough to say which part of the store is affected and to
+// correlate the same object across runs, and not enough to recover a filename or an account id.
+//
+// The store prefix is derived from the key rather than passed in, because classifyKey wants it
+// only in order to strip it, and the call sites that need this most — the R2 failure paths below —
+// hold a key and never held a store.
+export function keyRef(key: string): string {
+  const slash = key.indexOf("/");
+  const cls = (slash < 0 ? null : classifyKey(key.slice(0, slash), key)) ?? "unclassified";
+  return `${cls} (sha256:${createHash("sha256").update(key).digest("hex").slice(0, 12)})`;
+}
+
+// An S3-compatible error document may echo the requested key back — AWS's NoSuchKey carries a
+// <Key> element — so a response body is scrubbed rather than trusted to be key-free. The body is
+// kept otherwise intact: the status alone does not say whether a 400 was a malformed range or a
+// quota, and that is the whole diagnostic value of printing it.
+export function redactedBody(text: string, key: string): string {
+  return text.replaceAll(key, keyRef(key));
 }
 
 // Bounded-concurrency map. R2 REST is per-object, so a snapshot is ~1250 round trips; serial is

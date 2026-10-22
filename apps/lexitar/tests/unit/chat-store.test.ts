@@ -27,13 +27,16 @@ const thread = (id: string, title: string, turnTexts: string[] = [], at = 1): Th
 const threads = (label: string): Thread[] => [thread("t1", label)];
 
 function fakeServer() {
-  const state = { blob: null as Uint8Array | null, etag: "", seq: 0, puts: 0 };
+  // `sent` is the last PUT's headers — which preconditions a save claimed is itself the behaviour
+  // under test for the escape hatch, and it is invisible from the stored bytes.
+  const state = { blob: null as Uint8Array | null, etag: "", seq: 0, puts: 0, sent: null as Headers | null };
   const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
     if (!init || (init.method ?? "GET") === "GET") {
       if (!state.blob) return new Response(null, { status: 404 });
       return new Response(state.blob as BodyInit, { status: 200, headers: { etag: state.etag } });
     }
     const headers = new Headers(init.headers);
+    state.sent = headers;
     const ifMatch = headers.get("If-Match");
     const ifNoneMatch = headers.get("If-None-Match");
     const conflict = () => new Response(null, { status: 412, headers: { etag: state.etag } });
@@ -62,9 +65,11 @@ let dek: CryptoKey;
 let other: CryptoKey;
 let loadThreads: (id: string, dek: CryptoKey) => Promise<Thread[] | null>;
 let saveThreads: (t: Thread[], id: string, dek: CryptoKey) => Promise<void>;
+let isUnreadable: (id: string) => boolean;
+let replaceUnreadableHistory: (t: Thread[], id: string, dek: CryptoKey) => Promise<void>;
 beforeEach(async () => {
   vi.stubEnv("DEV", false);
-  ({ loadThreads, saveThreads } = await tab());
+  ({ loadThreads, saveThreads, isUnreadable, replaceUnreadableHistory } = await tab());
   dek = await generateDEK();
   other = await generateDEK();
 });
@@ -173,5 +178,79 @@ describe("two tabs cannot silently overwrite each other", () => {
     );
 
     await expect(fresh.saveThreads(threads("tab B"), "Alex", dek)).rejects.toThrow(/changed since/i);
+  });
+});
+
+// W71 — the exit the refusal above needs in order to be a safe bet rather than a trap.
+//
+// The refusal is right while a wrong DEK is transient. Where the old key provably no longer exists —
+// the 2026-10-06 and 2026-10-07 rotations re-encrypted the vault under a fresh DEK and never walked
+// `chat-`, stranding seven histories — it becomes permanent, and the account can never save again.
+// So these cases are about the two things that make an unconditional overwrite offerable at all: it
+// is unavailable unless the blob really is unreadable, and the bytes it displaces are kept by the
+// route before it writes.
+describe("the escape hatch out of an unreadable history", () => {
+  /** A stored conversation under a key this tab does not hold. */
+  async function stranded() {
+    const server = fakeServer();
+    server.blob = await encryptVaultV2({ threads: threads("theirs") }, other);
+    server.etag = "e0";
+    expect(await loadThreads("Alex", dek)).toBeNull();
+    expect(isUnreadable("Alex")).toBe(true);
+    return server;
+  }
+
+  it("writes unconditionally and says why, rather than sending a precondition it does not have", async () => {
+    const server = await stranded();
+    await replaceUnreadableHistory(threads("mine"), "Alex", dek);
+
+    // The header is what authorizes the route to keep the old bytes aside first. No precondition:
+    // this tab holds no etag for a blob it could not read, and create-only would 412 against the
+    // very object it is replacing.
+    expect(server.sent!.get("X-Replace-Unreadable")).toBe("1");
+    expect(server.sent!.get("If-Match")).toBeNull();
+    expect(server.sent!.get("If-None-Match")).toBeNull();
+
+    // And saving works from here on, which is the whole point of the click.
+    expect((await loadThreads("Alex", dek))![0].title).toBe("mine");
+    await expect(saveThreads(threads("next"), "Alex", dek)).resolves.toBeUndefined();
+  });
+
+  it("refuses a history that opened normally, so it cannot be used as a quiet overwrite", async () => {
+    const server = fakeServer();
+    await saveThreads(threads("readable"), "Alex", dek);
+    const putsBefore = server.puts;
+
+    await expect(replaceUnreadableHistory(threads("mine"), "Alex", dek)).rejects.toThrow(/nothing to set aside/i);
+    expect(server.puts).toBe(putsBefore);
+    expect((await loadThreads("Alex", dek))![0].title).toBe("readable");
+  });
+
+  it("keeps the refusal in force when the write fails", async () => {
+    const server = await stranded();
+    const body = server.blob!;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: RequestInit) =>
+        (init?.method ?? "GET") === "GET"
+          ? new Response(body as BodyInit, { status: 200, headers: { etag: "e0" } })
+          : new Response(null, { status: 500 }),
+      ),
+    );
+
+    await expect(replaceUnreadableHistory(threads("mine"), "Alex", dek)).rejects.toThrow(/save failed \(500\)/);
+    // Cleared only by a write that landed: a tab that cleared it on the attempt would then save
+    // normally over a blob still sealed under the lost key, which is the destruction this prevents.
+    expect(isUnreadable("Alex")).toBe(true);
+    await expect(saveThreads(threads("mine"), "Alex", dek)).rejects.toThrow(/not overwriting/i);
+  });
+
+  it("is scoped to the one client, not to the tab", async () => {
+    const server = await stranded();
+    server.blob = null; // a second client with no history at all
+    expect(await loadThreads("Blair", dek)).toBeNull();
+    expect(isUnreadable("Blair")).toBe(false);
+    await expect(replaceUnreadableHistory(threads("mine"), "Blair", dek)).rejects.toThrow(/nothing to set aside/i);
+    expect(isUnreadable("Alex")).toBe(true);
   });
 });

@@ -1,6 +1,6 @@
 import { test, expect } from "./_fixtures";
 import type { Page } from "@playwright/test";
-import { openSyntheticAsProvider, openSyntheticAsProviderAt, syntheticAt } from "./_synthetic";
+import { openPatientRecord, openSyntheticAsProvider, openSyntheticAsProviderAt, syntheticAt } from "./_synthetic";
 import { openLeafMenu, leafMenuPanel, menuPanelFor } from "./_leaf-menu";
 import { clickNav, setSidebarMode, navRow } from "./_nav";
 
@@ -72,8 +72,7 @@ test("switching sidebar mode restores the last section visited in that mode, per
   // memory). The provider session itself is already resumed, so re-navigating to "/" lands right
   // back on the roster (no login form to fill), unlike openSyntheticAsProviderAt's first call.
   await page.goto("/");
-  await page.waitForSelector(`.roster-name:has-text("${patientA.name}")`);
-  await page.click(`.roster-name:has-text("${patientA.name}")`);
+  await openPatientRecord(page, patientA.name);
   // Search, not any .nav-item: the roster has its own rows now — see drillInto in _synthetic.ts.
   await page.getByTestId("nav-search").waitFor({ state: "attached" });
   await expect(page.locator(".sidebar .mode-toggle button.active", { hasText: "Investigator" })).toBeVisible();
@@ -88,8 +87,7 @@ test("switching sidebar mode restores the last section visited in that mode, per
   // entering their vault lands on the plain chat default, not patientA's Exploration/Treatment.
   const patientB = syntheticAt(1);
   await page.goto("/");
-  await page.waitForSelector(`.roster-name:has-text("${patientB.name}")`);
-  await page.click(`.roster-name:has-text("${patientB.name}")`);
+  await openPatientRecord(page, patientB.name);
   await page.getByTestId("nav-search").waitFor({ state: "attached" });
   await expect(page).not.toHaveURL(/exploration/);
   await expect(navRow(page, "Chat")).toHaveClass(/active/);

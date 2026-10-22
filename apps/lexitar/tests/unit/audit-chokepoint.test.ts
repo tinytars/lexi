@@ -10,7 +10,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { PHI_ACCESS_ACTIONS } from "../../functions/_lib/phi-audit";
+import { CONSENT_LIFECYCLE_ACTIONS, PHI_ACCESS_ACTIONS, PRIVILEGED_READ_ACTIONS } from "../../functions/_lib/phi-audit";
 
 const APP = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const FUNCTIONS = resolve(APP, "functions");
@@ -65,11 +65,18 @@ const PRE_EXISTING = [
   "support_provider_roster_viewed",
 ];
 
-/** Every audit-action name written as a literal anywhere under functions/. */
+/**
+ * Every audit-action name written as a literal anywhere under functions/.
+ *
+ * `[:=]`, not `:` alone. A route that picks its name with a branch writes `const action = … ? "a" :
+ * "b";` and then passes the variable, which the property-only form could not see — and a name this
+ * sweep cannot see is a name outside the closed vocabulary, which is the one thing it exists to
+ * prevent. `[^,;]` spans newlines, so a ternary broken over four lines is still one match.
+ */
 function actionLiterals(): string[] {
   const named = new Set<string>();
   for (const f of files) {
-    for (const assignment of readFileSync(f, "utf8").match(/\b[A-Za-z]*[Aa]ction *: *[^,;]*/g) ?? []) {
+    for (const assignment of readFileSync(f, "utf8").match(/\b[A-Za-z]*[Aa]ction *[:=] *[^,;]*/g) ?? []) {
       for (const literal of assignment.match(/"[a-z][a-z0-9]*(?:_[a-z0-9]+)+"/g) ?? []) named.add(literal.slice(1, -1));
     }
   }
@@ -79,6 +86,29 @@ function actionLiterals(): string[] {
 describe("the phi_access_events vocabulary is closed", () => {
   it("contains nothing beyond the frozen list and what predates it", () => {
     expect(actionLiterals()).toEqual([...PHI_ACCESS_ACTIONS, ...PRE_EXISTING].sort());
+  });
+
+  // The split the clinician's ask made necessary. `auditPrivilegedRead` takes a PrivilegedReadAction
+  // and nothing else, because its owner exclusion is right for a disclosure and wrong for a consent
+  // change: a patient granting their own doctor access is the row that patient most needs to see,
+  // and actor === subject there, so the chokepoint would silently drop it. The compiler holds the
+  // narrowing; these two hold the lists it narrows over.
+  it("splits the vocabulary into reads and consent changes with nothing in both and nothing outside", () => {
+    expect(PHI_ACCESS_ACTIONS).toEqual([...PRIVILEGED_READ_ACTIONS, ...CONSENT_LIFECYCLE_ACTIONS]);
+    const overlap = PRIVILEGED_READ_ACTIONS.filter((a) => (CONSENT_LIFECYCLE_ACTIONS as readonly string[]).includes(a));
+    expect(overlap).toEqual([]);
+  });
+
+  it("keeps consent-lifecycle names out of the read chokepoint", () => {
+    const chokepoint = readFileSync(resolve(FUNCTIONS, "_lib", "phi-audit.ts"), "utf8");
+    // The field is typed `PrivilegedReadAction`, so a consent name handed to `auditPrivilegedRead`
+    // is a compile error rather than a row on the wrong side of the owner exclusion.
+    expect(chokepoint).toContain("action: PrivilegedReadAction;");
+    for (const action of CONSENT_LIFECYCLE_ACTIONS) {
+      expect(mentioning(`"${action}"`), `${action} is a consent change and must not be audited as a read`).not.toContain(
+        "functions/api/vault/[id].ts",
+      );
+    }
   });
 
   it("uses every name it freezes, so a rename shows up as a gap rather than as dead vocabulary", () => {
@@ -98,5 +128,11 @@ describe("the phi_access_events vocabulary is closed", () => {
     expect(writtenIn("raw_object_read")).toEqual(["functions/api/raw/[[path]].ts"]);
     expect(writtenIn("raw_namespace_listed")).toEqual(["functions/api/raw/[[path]].ts"]);
     expect(writtenIn("provider_access_revoked")).toEqual(["functions/_lib/routes/providers-link-revoke.ts"]);
+    expect(writtenIn("provider_access_granted")).toEqual(["functions/api/providers/grant.ts"]);
+    // One handler, two mounts: /api/support/request and /api/providers/request are the same body, so
+    // all three "asked for access" names are written in the one file and the mounts carry none.
+    expect(writtenIn("provider_access_requested")).toEqual(["functions/_lib/routes/access-request.ts"]);
+    expect(writtenIn("support_access_requested")).toEqual(["functions/_lib/routes/access-request.ts"]);
+    expect(writtenIn("support_provider_access_requested")).toEqual(["functions/_lib/routes/access-request.ts"]);
   });
 });

@@ -73,7 +73,7 @@ describe("vault-restore drill — the three DrillStatus outcomes", () => {
       store,
       sourceBucket: LIVE_BUCKET,
       backupBucket: BACKUP_BUCKET,
-      counts: { vault: 3, chat: 0, raw: 0, processed: 0, text: 0, logs: 0 },
+      counts: { vault: 3, chat: 0, regenLog: 0, raw: 0, processed: 0, text: 0, logs: 0 },
       bytes: objects.reduce((n, o) => n + o.bytes.length, 0),
       objects: objects.map((o) => ({ key: o.key, size: o.bytes.length, sha256: sha256Hex(o.bytes), class: "vault" as const })),
       logBundleKey: `${snapshotPrefix(store, snapshotId)}logs.ndjson`,
@@ -129,7 +129,7 @@ describe("vault-restore drill — backup integrity", () => {
       store,
       sourceBucket: LIVE_BUCKET,
       backupBucket: BACKUP_BUCKET,
-      counts: { vault: 1, chat: 0, raw: 0, processed: 0, text: 0, logs: 0 },
+      counts: { vault: 1, chat: 0, regenLog: 0, raw: 0, processed: 0, text: 0, logs: 0 },
       bytes: bytes.length,
       // Wrong digest on purpose — simulates the backup bytes having changed since the manifest
       // was written (bit rot / a partial re-upload), which fetchBody() must catch before it ever
@@ -193,7 +193,7 @@ function seedSnapshot(args: {
     store,
     sourceBucket: LIVE_BUCKET,
     backupBucket: BACKUP_BUCKET,
-    counts: { vault: objects.length, chat: 0, raw: 0, processed: 0, text: 0, logs: logEntries.length },
+    counts: { vault: objects.length, chat: 0, regenLog: 0, raw: 0, processed: 0, text: 0, logs: logEntries.length },
     bytes: objects.reduce((n, o) => n + o.bytes.length, 0),
     objects: [
       ...objects.map((o) => ({ key: o.key, size: o.bytes.length, sha256: sha256Hex(o.bytes), class: o.class ?? ("vault" as const) })),

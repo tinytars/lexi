@@ -1,10 +1,13 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Locator, type Page } from "@playwright/test";
 import { loginAs } from "./_login";
 import { clickNav } from "./_nav";
 import { syntheticTag, SYNTHETIC_WORKER_COUNT, FRESH_SEED } from "../fixtures/synthetic-patient";
 
 // Not the pilots' fam4, whose roster cover-render.spec.ts asserts exactly.
-export const E2E_CLINICIAN = { email: "e2e-clinician@local.invalid", password: "e2e-clinician" };
+// `name` matches scripts/provision-e2e-patient.ts's E2E_PROVIDER.displayName — it is what a
+// patient reads on their own access screen when this clinician asks, so a spec asserting the
+// request is visible has to name it.
+export const E2E_CLINICIAN = { email: "e2e-clinician@local.invalid", password: "e2e-clinician", name: "E2E Clinician" };
 
 // Re-seeded on every e2e-serve.sh boot; grants nobody anything until a spec asks.
 export const E2E_SUPPORT = { email: "support@local.invalid", password: "support", name: "Support Agent" };
@@ -13,7 +16,7 @@ export const E2E_SUPPORT = { email: "support@local.invalid", password: "support"
 export async function revokeClinicianLinks(page: Page, list: "providers" | "patients", namePrefix: string) {
   await page.context().clearCookies();
   await loginAs(page, E2E_CLINICIAN.email, E2E_CLINICIAN.password);
-  await page.locator(".roster-list").waitFor();
+  await clinicianRosterLoaded(page);
   await page.evaluate(async ([list, namePrefix]) => {
     const url = list === "patients" ? "/api/providers/patients" : "/api/providers";
     const links = ((await (await fetch(url, { cache: "no-store" })).json()) as Record<string, { linkId: string; displayName: string }[]>)[list];
@@ -62,14 +65,35 @@ export function freshSynthetic(): Synthetic {
   return syntheticFor(`e2e-${FRESH_SEED}`);
 }
 
+/**
+ * The clinician console's patient rows. W79 replaced the `.roster-list` <ul> with one PrincipalRow
+ * per patient — same row the patient's own access page uses — so a roster row is addressed by its
+ * testid and its name, and entering a record is the row's named "Open record" button rather than a
+ * click on the name text.
+ */
+export const patientRosterRows = (page: Page): Locator => page.getByTestId("roster-patient");
+
+export const patientRosterRow = (page: Page, name: string): Locator =>
+  patientRosterRows(page).filter({ has: page.locator(".pr-name", { hasText: name }) });
+
+/** The first row is the signal /api/providers/patients resolved: the console renders before it does. */
+export async function clinicianRosterLoaded(page: Page, timeout = 15_000): Promise<void> {
+  await patientRosterRows(page).first().waitFor({ timeout });
+}
+
+/** Enter a patient's record from the clinician console. */
+export async function openPatientRecord(page: Page, name: string): Promise<void> {
+  await patientRosterRow(page, name).getByRole("button", { name: "Open record" }).click();
+}
+
 async function openAsPatient(page: Page, who: Synthetic): Promise<Synthetic> {
   await loginAs(page, who.email, who.password);
   await page.waitForSelector(".sidebar .nav-item");
   return who;
 }
 
-async function drillInto(page: Page, who: Synthetic): Promise<Synthetic> {
-  await page.click(`.roster-name:has-text("${who.name}")`);
+export async function drillInto(page: Page, who: Synthetic): Promise<Synthetic> {
+  await openPatientRecord(page, who.name);
   // The roster's own sidebar has .nav-item rows too, so waiting on those would be satisfied before the
   // click is even processed and every caller would race the vault fetch. Search renders only in the
   // record shell — the same sentinel _nav.ts uses.
@@ -84,7 +108,7 @@ async function signInAsClinicianOnto(page: Page, who: Synthetic): Promise<Synthe
 
 export async function reloadOntoPatient(page: Page, who: Synthetic = mySynthetic()): Promise<Synthetic> {
   await page.reload();
-  await page.waitForSelector(".roster-list", { timeout: 15_000 });
+  await clinicianRosterLoaded(page);
   return drillInto(page, who);
 }
 

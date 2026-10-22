@@ -10,7 +10,7 @@
 import type { Vault } from "./types";
 import type { Permalink } from "./permalink";
 import { newThread, sortThreads, adoptThreads, seedNewThread, type Thread } from "./chat-threads";
-import { loadThreads, saveThreads } from "./chat-store";
+import { loadThreads, saveThreads, isUnreadable, replaceUnreadableHistory } from "./chat-store";
 import { resolveReference } from "./reference-resolver";
 import { reportCaughtError } from "./error-reporter";
 
@@ -26,7 +26,12 @@ export interface ChatThreadSessionDeps {
   /** Injected in place of a bare `confirm(...)` call, so the guard is testable. */
   confirmDelete: (message: string) => boolean;
   /** Encrypted thread persistence; defaults to chat-store. */
-  store?: { loadThreads: typeof loadThreads; saveThreads: typeof saveThreads };
+  store?: {
+    loadThreads: typeof loadThreads;
+    saveThreads: typeof saveThreads;
+    isUnreadable: typeof isUnreadable;
+    replaceUnreadableHistory: typeof replaceUnreadableHistory;
+  };
 }
 
 export interface ChatThreadSession {
@@ -34,6 +39,12 @@ export interface ChatThreadSession {
   readonly hydrated: boolean;
   /** A save that failed and stayed failed. Cleared by the next save that succeeds, not by the next attempt. */
   readonly saveError: string | null;
+  /**
+   * The stored history exists but would not open with this session's key, so the store refuses every
+   * save for this client. Distinct from `saveError`, which is the symptom: a 5xx also sets that, and
+   * only this one has a way out.
+   */
+  readonly unreadable: boolean;
   renamingId: string | null;
   renameText: string;
   startNewChatThread(): void;
@@ -42,6 +53,11 @@ export interface ChatThreadSession {
   deleteChatThread(id: string): void;
   commitChatRename(): void;
   persistChatThreads(): void;
+  /**
+   * W71 escape hatch — keep the unreadable history and save this conversation over it. Confirmed by
+   * the patient first, and a no-op unless `unreadable` is true.
+   */
+  setAsideUnreadableHistory(): Promise<void>;
   /** Each `$effect` below is a thin reactive trigger over one of these three, exposed so tests can call them directly. */
   hydrate(): Promise<void> | undefined;
   applyChatFallback(): void;
@@ -63,8 +79,9 @@ export function createChatThreadSession(deps: ChatThreadSessionDeps): ChatThread
   let chatLoadedForId = $state<string | null>(null);
   let chatHydrated = $state(false);
   let chatSaveError = $state<string | null>(null);
+  let chatUnreadable = $state(false);
   let chatSaveTimer: ReturnType<typeof setTimeout> | null = null;
-  const store = deps.store ?? { loadThreads, saveThreads };
+  const store = deps.store ?? { loadThreads, saveThreads, isUnreadable, replaceUnreadableHistory };
 
   function hydrate() {
     const id = deps.getSelectedClientId();
@@ -79,9 +96,20 @@ export function createChatThreadSession(deps: ChatThreadSessionDeps): ChatThread
         // Opening fresh is still right — a chat tab that will not open is worse than an empty one.
         // What was wrong is that this was the ONLY record of the failure, and it lived in a
         // swallowed promise: a 5xx here leaves the tab with no etag, and the user none the wiser.
+        //
+        // Opening fresh also has to be done, not just intended. Only the success path above replaced
+        // the thread list, so a failed load left the PREVIOUSLY hydrated client's conversation in
+        // place while chatLoadedForId already named the new one — rendered under the wrong client,
+        // and written there by the next save.
+        chatThreads = [newThread()];
         reportCaughtError(named(e, "ChatHistoryLoadFailed"));
       })
       .finally(() => {
+        // Read after the load settles, not before: the store decides readability INSIDE loadThreads,
+        // and this flag is the whole difference between a banner with an action under it and a dead
+        // end. A client that opened normally reads false, which is what keeps the hatch unofferable
+        // on a conversation nothing is wrong with.
+        chatUnreadable = store.isUnreadable(id);
         chatHydrated = true;
       });
   }
@@ -133,9 +161,45 @@ export function createChatThreadSession(deps: ChatThreadSessionDeps): ChatThread
           // one until the next load finds it missing. The store already retries a conflict once;
           // reaching here means it could not be resolved, which is a defect worth filing.
           chatSaveError = (e as Error).message;
+          // A save can be the first thing to discover it: the store re-reads the blob to resolve a
+          // conflict and may find it undecryptable then, long after this client hydrated cleanly.
+          chatUnreadable = store.isUnreadable(id);
           reportCaughtError(named(e, "ChatSaveFailed"));
         });
     }, 500);
+  }
+
+  // Shown in a confirm() before anything is written, so it has to say what survives rather than only
+  // what changes. "Kept" is the load-bearing word: the route copies the old ciphertext aside before
+  // the overwrite, so this displaces a conversation and never destroys one.
+  const SET_ASIDE_PROMPT =
+    "Set the earlier conversation aside and save this one?\n\n" +
+    "The earlier conversation can't be opened with your current key, which is why nothing has been " +
+    "saving. It is kept, still encrypted, and is not deleted — but it stays unreadable unless its " +
+    "original key is recovered. Saving starts working again straight away.";
+
+  async function setAsideUnreadableHistory(): Promise<void> {
+    const id = deps.getSelectedClientId();
+    const key = deps.getDek();
+    if (!id || !key || !chatUnreadable) return;
+    if (!deps.confirmDelete(SET_ASIDE_PROMPT)) return;
+    const snapshot = $state.snapshot(chatThreads) as Thread[];
+    // Drop any debounced save still pending: it carries an older snapshot and would land AFTER this
+    // write, so leaving it armed would replace the history with a staler version of itself.
+    if (chatSaveTimer) {
+      clearTimeout(chatSaveTimer);
+      chatSaveTimer = null;
+    }
+    try {
+      await store.replaceUnreadableHistory(snapshot, id, key);
+      chatUnreadable = false;
+      chatSaveError = null;
+    } catch (e) {
+      // The refusal stays in force — the store only clears it once the write lands — so the banner
+      // and its action both remain, which is the correct state after a failed attempt.
+      chatSaveError = (e as Error).message;
+      reportCaughtError(named(e, "ChatSetAsideFailed"));
+    }
   }
 
   function startNewChatThread() {
@@ -182,6 +246,9 @@ export function createChatThreadSession(deps: ChatThreadSessionDeps): ChatThread
     get saveError() {
       return chatSaveError;
     },
+    get unreadable() {
+      return chatUnreadable;
+    },
     get renamingId() {
       return chatRenamingId;
     },
@@ -200,6 +267,7 @@ export function createChatThreadSession(deps: ChatThreadSessionDeps): ChatThread
     deleteChatThread,
     commitChatRename,
     persistChatThreads,
+    setAsideUnreadableHistory,
     hydrate,
     applyChatFallback,
     resolveSeedRequest,

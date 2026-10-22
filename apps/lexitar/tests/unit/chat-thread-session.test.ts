@@ -8,6 +8,11 @@ import type { Permalink } from "../../src/lib/permalink";
 const chatStore = {
   loadThreads: vi.fn(async (): Promise<Thread[] | null> => null),
   saveThreads: vi.fn(async () => {}),
+  // W71 — the two the escape hatch needs. `isUnreadable` is a plain predicate over a module-level
+  // Set in the real store, which is exactly why the session captures it into $state rather than
+  // reading it through a getter; this double is what lets that capture be asserted.
+  isUnreadable: vi.fn((): boolean => false),
+  replaceUnreadableHistory: vi.fn(async (): Promise<void> => {}),
 };
 
 const blair = { displayName: "Blair", results: [{ marker: "ApoB", date: "2026-01-01", value: 90, unit: "mg/dL" }] } as unknown as Client;
@@ -42,6 +47,8 @@ function makeHarness(overrides: Partial<ChatThreadSessionDeps> = {}) {
 beforeEach(() => {
   chatStore.loadThreads.mockReset().mockResolvedValue(null);
   chatStore.saveThreads.mockReset().mockResolvedValue(undefined);
+  chatStore.isUnreadable.mockReset().mockReturnValue(false);
+  chatStore.replaceUnreadableHistory.mockReset().mockResolvedValue(undefined);
 });
 
 describe("hydrate", () => {
@@ -79,6 +86,24 @@ describe("hydrate", () => {
     await session.hydrate();
     expect(session.threads).toHaveLength(1);
     expect(session.threads[0].id).not.toEqual(before[0]);
+  });
+
+  // W71 — an undecryptable blob loads as "no history", which is indistinguishable from a first-ever
+  // chat from the threads alone. The flag is the only thing that tells them apart, and it has to be
+  // read AFTER the load settles because the store decides readability inside loadThreads.
+  it("records that the stored history could not be opened", async () => {
+    chatStore.isUnreadable.mockReturnValue(true);
+    const { session } = makeHarness();
+    expect(session.unreadable).toBe(false); // nothing is claimed before the load has run
+    await session.hydrate();
+    expect(session.unreadable).toBe(true);
+    expect(chatStore.isUnreadable).toHaveBeenCalledWith("blair");
+  });
+
+  it("leaves the flag clear for a history that opened normally", async () => {
+    const { session } = makeHarness();
+    await session.hydrate();
+    expect(session.unreadable).toBe(false);
   });
 });
 
@@ -267,5 +292,107 @@ describe("persistChatThreads", () => {
     vi.advanceTimersByTime(500);
     await vi.runOnlyPendingTimersAsync();
     expect(chatStore.saveThreads).toHaveBeenCalledTimes(1);
+  });
+
+  // W71 — hydrating cleanly does not settle the question for the session's lifetime: saveThreads
+  // re-reads the blob to resolve a conflict, and that read is where a rotation mid-session is first
+  // noticed. Without this the banner would appear with no action under it.
+  it("re-reads readability when a save fails", async () => {
+    const { session } = makeHarness();
+    await session.hydrate();
+    chatStore.saveThreads.mockRejectedValue(new Error("not overwriting it"));
+    chatStore.isUnreadable.mockReturnValue(true);
+    session.persistChatThreads();
+    vi.advanceTimersByTime(500);
+    await vi.runOnlyPendingTimersAsync();
+    expect(session.saveError).toBe("not overwriting it");
+    expect(session.unreadable).toBe(true);
+  });
+});
+
+// W71 — the escape hatch out of a permanently unreadable history. The guard it relieves is a good
+// bet on a transient wrong DEK and a trap on a rotation that re-keyed the vault and never walked
+// chat-, so what these cases hold is the narrowness: it is unavailable where nothing is wrong, it is
+// never taken without being asked for, and a failed attempt leaves the refusal exactly as it was.
+describe("setAsideUnreadableHistory", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  /** The state the hatch is offered in: a stored blob this session's key will not open. */
+  async function stranded(overrides: Partial<ChatThreadSessionDeps> = {}) {
+    chatStore.isUnreadable.mockReturnValue(true);
+    const h = makeHarness(overrides);
+    await h.session.hydrate();
+    return h;
+  }
+
+  it("refuses a history that opened normally, without asking", async () => {
+    const { session, confirmDelete } = makeHarness();
+    await session.hydrate();
+    await session.setAsideUnreadableHistory();
+    expect(confirmDelete).not.toHaveBeenCalled();
+    expect(chatStore.replaceUnreadableHistory).not.toHaveBeenCalled();
+  });
+
+  it("does nothing without a dek", async () => {
+    const { session, confirmDelete } = await stranded({ getDek: () => null });
+    await session.setAsideUnreadableHistory();
+    expect(confirmDelete).not.toHaveBeenCalled();
+    expect(chatStore.replaceUnreadableHistory).not.toHaveBeenCalled();
+  });
+
+  it("asks first, and says what is kept rather than only what changes", async () => {
+    // Its own mock rather than the harness's: the prompt text is the subject here, so the stub has
+    // to declare the argument it is asserted on.
+    const asked = vi.fn((message: string) => message.length > 0);
+    const { session } = await stranded({ confirmDelete: asked });
+    await session.setAsideUnreadableHistory();
+    const prompt = asked.mock.calls[0][0];
+    expect(prompt).toMatch(/kept/);
+    expect(prompt).toMatch(/not deleted/);
+  });
+
+  it("writes nothing on a decline, and leaves the refusal in force", async () => {
+    const declined = vi.fn(() => false);
+    const { session } = await stranded({ confirmDelete: declined });
+    await session.setAsideUnreadableHistory();
+    expect(declined).toHaveBeenCalled();
+    expect(chatStore.replaceUnreadableHistory).not.toHaveBeenCalled();
+    expect(session.unreadable).toBe(true);
+  });
+
+  it("replaces the history and clears both the refusal and the banner", async () => {
+    const { session } = await stranded();
+    chatStore.saveThreads.mockRejectedValue(new Error("not overwriting it"));
+    session.persistChatThreads();
+    vi.advanceTimersByTime(500);
+    await vi.runOnlyPendingTimersAsync();
+    expect(session.saveError).toBe("not overwriting it");
+
+    chatStore.saveThreads.mockResolvedValue(undefined);
+    await session.setAsideUnreadableHistory();
+    expect(chatStore.replaceUnreadableHistory).toHaveBeenCalledWith(expect.any(Array), "blair", expect.anything());
+    expect(session.unreadable).toBe(false);
+    expect(session.saveError).toBeNull();
+  });
+
+  it("keeps the refusal and reports the failure when the write does not land", async () => {
+    const { session } = await stranded();
+    chatStore.replaceUnreadableHistory.mockRejectedValue(new Error("chat history save failed (500)"));
+    await session.setAsideUnreadableHistory();
+    expect(session.unreadable).toBe(true); // the banner and its action both stay
+    expect(session.saveError).toBe("chat history save failed (500)");
+  });
+
+  // The lost update this would otherwise have: a debounced save armed before the click carries a
+  // snapshot taken before it, and firing afterwards would replace the history with a staler version
+  // of the very conversation that was just written.
+  it("cancels a debounced save still pending", async () => {
+    const { session } = await stranded();
+    session.persistChatThreads();
+    await session.setAsideUnreadableHistory();
+    vi.advanceTimersByTime(1000);
+    await vi.runOnlyPendingTimersAsync();
+    expect(chatStore.saveThreads).not.toHaveBeenCalled();
   });
 });

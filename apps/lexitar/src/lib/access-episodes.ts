@@ -63,6 +63,8 @@ export const ACTION_PHRASES: Record<string, string> = {
   raw_namespace_listed: "listed what your record contains",
   document_text_read: "read a document in your record",
   provider_roster_viewed: "looked at who has access",
+  provider_access_requested: "asked to read your record",
+  provider_access_granted: "was given access to your record",
   provider_access_revoked: "removed someone's access",
   org_key_decrypt: "used LexiTar's recovery key on your record",
 };

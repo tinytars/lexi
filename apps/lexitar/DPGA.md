@@ -511,7 +511,8 @@ What's in place:
 - **Removal works on a file nobody but its owner can open**, and `MODERATION.md` says which of the two
   paths applies to which report: the owner deletes through `DELETE /api/raw/{id}/{file}`, which is
   session-gated and needs a real ownership claim; the operator removes the ciphertext out of band
-  through the `ops.yml` lane, which is possible precisely because deleting never requires reading.
+  with `r2-ops` at their own terminal (`docs/OPS-LOCAL.md`), which is possible precisely because
+  deleting never requires reading.
 
 **Gaps** — none. The response-time figures are targets rather than measured averages until the tracker
 has reports to measure; an assessor may ask for the observed number at that point.

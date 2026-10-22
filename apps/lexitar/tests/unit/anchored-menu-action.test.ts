@@ -319,3 +319,43 @@ describe("repositioning", () => {
     a.destroy();
   });
 });
+
+// W79 — the panel's HOST, which no test asked about while <body> was the only answer. It stopped
+// being the only answer when the access page became a modal: `Modal.svelte` opens with
+// `showModal()`, so the dialog sits in the browser's top layer and a panel left in <body> renders
+// behind it, unclickable. That failure is invisible to jsdom (which lays nothing out and paints
+// nothing), so what can be pinned here is the choice itself — which parent the node is appended to.
+describe("the panel's host", () => {
+  it("stays in <body> for a trigger that is not in a dialog", () => {
+    const a = anchoredMenu(panel, { anchor, open: false });
+    expect(panel.parentElement).toBe(document.body);
+    a.destroy();
+  });
+
+  it("moves into the dialog that owns the trigger, so both share the top layer", () => {
+    const dialog = document.createElement("dialog");
+    const inner = document.createElement("div");
+    dialog.appendChild(inner);
+    inner.appendChild(anchor);
+    document.body.appendChild(dialog);
+
+    const a = anchoredMenu(panel, { anchor, open: false });
+    // The dialog itself, not the trigger's own parent: `inner` may scroll or clip, and the point of
+    // portalling at all is to leave the subtree that can.
+    expect(panel.parentElement).toBe(dialog);
+    a.destroy();
+    expect(panel.parentElement).toBe(null);
+  });
+
+  it("picks the innermost dialog when they are nested", () => {
+    const outer = document.createElement("dialog");
+    const inner = document.createElement("dialog");
+    outer.appendChild(inner);
+    inner.appendChild(anchor);
+    document.body.appendChild(outer);
+
+    const a = anchoredMenu(panel, { anchor, open: false });
+    expect(panel.parentElement).toBe(inner);
+    a.destroy();
+  });
+});
