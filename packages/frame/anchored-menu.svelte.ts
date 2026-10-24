@@ -1,9 +1,10 @@
 // Shared collision-aware positioning for popover panels (LeafActionMenu, AccountMenu).
 // Both used to be `position: absolute` with a hard-coded direction (`top: 100%` / `bottom: 100%`),
 // so a trigger inside a sticky-bottom container (the chat composer) opened its menu straight off the
-// bottom of the viewport. This action portals the panel to <body> (so no ancestor's `overflow` or
-// `sticky`/`transform` can clip it) and keeps it positioned in `position: fixed` space, flipping to
-// whichever side has room and clamping into the viewport when neither side fully fits.
+// bottom of the viewport. This action portals the panel out of the trigger's subtree (so no
+// ancestor's `overflow` or `sticky`/`transform` can clip it) and keeps it positioned in
+// `position: fixed` space, flipping to whichever side has room and clamping into the viewport when
+// neither side fully fits.
 
 export interface Rect {
   top: number;
@@ -68,6 +69,16 @@ export function placeMenu(trigger: Rect, panel: PanelSize, viewport: Viewport): 
   return { top, left, maxHeight };
 }
 
+/**
+ * Where the panel is hosted: the trigger's nearest open `<dialog>` if it has one, `<body>` otherwise.
+ *
+ * Exported for the unit test — the choice is not observable from `placeMenu`, and getting it wrong
+ * makes every menu inside a modal unclickable rather than merely mispositioned.
+ */
+export function portalTarget(anchor: HTMLElement): HTMLElement {
+  return anchor.closest("dialog") ?? document.body;
+}
+
 interface AnchoredMenuParams {
   anchor: HTMLElement;
   open: boolean;
@@ -83,7 +94,18 @@ export function anchoredMenu(node: HTMLElement, params: AnchoredMenuParams) {
 
   node.style.position = "fixed";
   node.style.margin = "0";
-  document.body.appendChild(node);
+  // <body> is the right host everywhere EXCEPT inside an open <dialog>. `Modal.svelte` opens with
+  // `showModal()`, which puts the dialog in the browser's TOP LAYER — above every z-index in the
+  // document, not merely above a large one — so a panel appended to <body> renders *behind* the
+  // modal and every click on a menu item is swallowed by the dialog's own content. Playwright reads
+  // that as the menuitem being "visible, enabled and stable" while some element of the modal
+  // "intercepts pointer events", and retries until the test times out; a patient reads it as a
+  // Revoke button that does nothing. Hosting the panel inside the dialog puts it in the same top
+  // layer as the surface that owns the trigger. It costs nothing elsewhere — a dialog is not a
+  // containing block for `position: fixed` unless it carries a transform/filter/will-change (none
+  // does here), so the panel is still placed in viewport space and still escapes the modal's
+  // `overflow-y: auto` rather than being clipped by it.
+  portalTarget(anchor).appendChild(node);
 
   function reposition() {
     if (!open) return;

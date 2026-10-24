@@ -17,6 +17,7 @@ import { unwrapDEKWithPrivateKey } from "@tinytars/vault/crypto";
 import { b64ToBytes } from "@tinytars/vault/base64";
 import { resumeSession, bootstrapGoogleSession, getMyAccount } from "@tinytars/vault/auth-client";
 import { revokeProvider } from "@tinytars/vault/auth-grants";
+import { requestAccessAsProvider } from "./access-request";
 
 /** Non-sensitive flag marking that a session may be resumable on reload. */
 export const RESUME_MARKER = "hd_resume";
@@ -25,6 +26,12 @@ export interface RosterPatient extends VaultEntry {
   /** The provider can DELETE /api/providers/{linkId} to drop this patient. */
   linkId: string;
   vaultId: string;
+  /**
+   * When this patient's grant runs out, or null for no end date. The route sends it so both ends
+   * of one grant can print the same date — the patient reads "Ends 19 Nov" and the clinician reads
+   * "Granted until 19 Nov" — rather than the clinician discovering the window by being refused.
+   */
+  expiresAt: string | null;
 }
 
 /** What a login, a resume or a recovery all hand back. */
@@ -44,6 +51,7 @@ const defaultApi = {
   bootstrapGoogleSession,
   getMyAccount,
   revokeProvider,
+  requestAccessAsProvider,
   // Wrapped, because a bare `fetch` invoked as `api.fetch` throws "Illegal invocation" in browsers.
   fetch: (input: RequestInfo | URL, init?: RequestInit) => fetch(input, init),
 };
@@ -75,6 +83,14 @@ export interface RosterSessionDeps {
 export interface RosterSession {
   /** True for a clinician or support account — one without a vault of its own. */
   readonly isProvider: boolean;
+  /**
+   * True once the account is known to be a clinician rather than a support agent. A second flag and
+   * not `isProvider && !support.isSupportSession`, because the two are not complements during a
+   * login: `isProvider` is raised before `getMyAccount()` answers, so for the whole of that round
+   * trip a support session reads as a provider whose support console has not begun, and the host's
+   * clinician branch renders. Anything in that branch a person can act on has to wait for this.
+   */
+  readonly isClinician: boolean;
   /** The clinician's roster. Empty in an owner session. */
   readonly patients: RosterPatient[];
   /** Who is being viewed, when a provider has drilled in. Null on one's own record. */
@@ -86,6 +102,17 @@ export interface RosterSession {
    * that copy was never lowered, leaving every reloaded page on "Restoring your session…" forever.
    */
   readonly resuming: boolean;
+
+  /** Bound to the clinician's "ask a patient for access" field. */
+  askEmail: string;
+  /**
+   * What the clinician is told after asking. A sentence rather than a list, because there is nothing
+   * to list: an invited link appears on nobody's roster, least of all the asker's, until the patient
+   * answers it in their own browser. Saying so is the whole feedback this act can honestly give.
+   */
+  readonly askNotice: string | null;
+  /** Asks the account at `askEmail` for access to their record. Clears the field on success. */
+  askPatient(): Promise<void>;
 
   /** Routes a login/resume/recovery result to the owner, clinician or support path. */
   enterAccount(r: EnteredAccount): Promise<void>;
@@ -108,9 +135,12 @@ export interface RosterSession {
 export function createRosterSession(deps: RosterSessionDeps): RosterSession {
   const api = { ...defaultApi, ...deps.api };
   let isProvider = $state(false);
+  let isClinician = $state(false);
   let patients = $state<RosterPatient[]>([]);
   let enteredPatient = $state<{ email: string | null; displayName: string } | null>(null);
   let resuming = $state(false);
+  let askEmail = $state("");
+  let askNotice = $state<string | null>(null);
 
   async function loadPatients(): Promise<void> {
     const res = await api.fetch("/api/providers/patients", { cache: "no-store" });
@@ -125,6 +155,7 @@ export function createRosterSession(deps: RosterSessionDeps): RosterSession {
     if (r.vaultId && r.r2Key && r.dek) {
       deps.session.setOwnerKey(r.privateKey);
       isProvider = false;
+      isClinician = false;
       await deps.openOwnVault(r.r2Key, r.dek);
       await deps.afterOwnerEnter(r.rotationPending ?? false);
       return;
@@ -134,6 +165,7 @@ export function createRosterSession(deps: RosterSessionDeps): RosterSession {
     const acct = await api.getMyAccount();
     if (acct.providerKind === "support") await deps.beginSupportSession();
     else {
+      isClinician = true;
       await loadPatients();
       await deps.beginClinicianSession();
     }
@@ -183,6 +215,9 @@ export function createRosterSession(deps: RosterSessionDeps): RosterSession {
     get isProvider() {
       return isProvider;
     },
+    get isClinician() {
+      return isClinician;
+    },
     get patients() {
       return patients;
     },
@@ -191,6 +226,32 @@ export function createRosterSession(deps: RosterSessionDeps): RosterSession {
     },
     get resuming() {
       return resuming;
+    },
+    get askEmail() {
+      return askEmail;
+    },
+    set askEmail(v: string) {
+      askEmail = v;
+    },
+    get askNotice() {
+      return askNotice;
+    },
+
+    async askPatient() {
+      const email = askEmail.trim();
+      if (!email) return;
+      deps.reportError(null);
+      askNotice = null;
+      try {
+        await api.requestAccessAsProvider(email);
+        askEmail = "";
+        askNotice = `Asked ${email}. They decide, in their own browser — nothing is shared until they do.`;
+        // Deliberately no reload: `/api/providers/patients` returns granted patients, and an invited
+        // link is not one. Re-listing would be a round trip whose result is identical and whose
+        // emptiness would read as the ask having failed.
+      } catch (e) {
+        deps.reportError((e as Error).message);
+      }
     },
 
     enterAccount,
@@ -272,7 +333,10 @@ export function createRosterSession(deps: RosterSessionDeps): RosterSession {
     },
 
     reset() {
+      askEmail = "";
+      askNotice = null;
       isProvider = false;
+      isClinician = false;
       patients = [];
       enteredPatient = null;
     },

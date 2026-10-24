@@ -5,7 +5,10 @@
   // A native <details>/<summary> rather than a hand-rolled disclosure: it is keyboard-operable and
   // announced as an expander with no script at all, and tests/unit/a11y-static.test.ts sweeps every
   // component in this directory for exactly the kind of DIY overlay this would otherwise become.
+  import PrincipalChip from "@tinytars/frame/PrincipalChip.svelte";
   import { actionPhrase, episodeActions, type AccessEpisode } from "./access-episodes";
+  import type { AccessKind } from "./access-vocabulary";
+  import { KIND_CHIP } from "./access-vocabulary";
 
   const {
     episodes,
@@ -13,8 +16,14 @@
     emptyText,
   }: {
     episodes: AccessEpisode[];
-    /** Resolve an actor's account id to something a person recognises. */
-    nameFor: (actorAccountId: string) => string;
+    /**
+     * Resolve an actor's account id to something a person recognises, and to what they are.
+     *
+     * The kind is optional and absent means absent: a row whose actor cannot be resolved still
+     * happened, and guessing a chip for it would be the first lie on a page whose whole job is to
+     * be believed. Without it, a support agent's visit and a clinician's read were the same line.
+     */
+    nameFor: (actorAccountId: string) => { name: string; kind?: AccessKind };
     /** What to say when nothing matched — the two call sites mean different things by empty. */
     emptyText: string;
   } = $props();
@@ -34,10 +43,14 @@
 
 <ul class="al-list">
   {#each episodes as ep (ep.id)}
+    {@const actor = nameFor(ep.actorAccountId)}
     <li>
       <details>
         <summary>
-          <span class="al-who">{nameFor(ep.actorAccountId)}</span>
+          {#if actor.kind}
+            <PrincipalChip label={KIND_CHIP[actor.kind].label} tone={KIND_CHIP[actor.kind].tone} title={KIND_CHIP[actor.kind].title} />
+          {/if}
+          <span class="al-who">{actor.name}</span>
           <span class="al-what">{episodeActions(ep)}</span>
           <span class="al-when">{when(ep)}</span>
         </summary>

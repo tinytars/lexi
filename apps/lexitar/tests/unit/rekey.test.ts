@@ -14,6 +14,7 @@ describe("namespacePairs", () => {
     expect(namespacePairs("dev", "Alex", "0b8c")).toEqual([
       ["dev/data-alex.enc", "dev/data-0b8c.enc"],
       ["dev/chat-alex.enc", "dev/chat-0b8c.enc"],
+      ["dev/regen-log/alex/", "dev/regen-log/0b8c/"],
       ["dev/raw/alex/", "dev/raw/0b8c/"],
       ["dev/text/alex/", "dev/text/0b8c/"],
       ["dev/processed/alex/", "dev/processed/0b8c/"],
@@ -73,5 +74,92 @@ describe("renameClientKey", () => {
 
   it("refuses to merge into an existing client rather than dropping its results", () => {
     expect(() => renameClientKey(vault(), "Alex", "Blair")).toThrow(/refusing to merge/);
+  });
+});
+
+// W71 — the same G1 failure as above, one directory away, and it had already happened twice when
+// this was written: `scripts/vault-rekey.ts` rotated the DEK, re-encrypted the vault to a new object,
+// re-wrapped the new DEK to every principal and DELETEd the old envelopes — and never walked
+// `chat-`. The rotation reported success. Seven chat histories across dev and prod were left sealed
+// under a DEK that no longer exists anywhere, and the accounts holding them could not save again.
+//
+// What makes the fix's ORDERING the thing worth pinning is that a chat blob is addressed by its
+// client id and nothing in D1 points at it, so unlike the vault it cannot be written to a new key
+// and repointed. Both in-place orderings lose data: re-seal before the commit and a crash leaves
+// chat under the new DEK while the envelopes still hold the old one; re-seal after it and a crash
+// leaves chat under a DEK nothing references. So the re-seal goes to a STAGING prefix before the
+// commit, and the promotion onto the live keys happens after the repoint is proved — at which point
+// it is a pure object copy that needs no key at all.
+//
+// Asserted against the source because every step of that path is an authenticated Cloudflare API
+// call, which is also why a reordering would not fail anything else here. Same technique as the
+// drift guard above, which reads vault-sync.ts.
+describe("a DEK rotation covers chat, in the one order that cannot lose it", () => {
+  const SOURCE = readFileSync(resolve(__dirname, "../../scripts/vault-rekey.ts"), "utf8");
+  const at = (needle: string): number => {
+    const i = SOURCE.indexOf(needle);
+    expect(i, `vault-rekey.ts no longer contains ${needle}`).toBeGreaterThan(-1);
+    return i;
+  };
+
+  it("re-seals chat to staging BEFORE the D1 transaction", () => {
+    expect(at("await resealChatToStaging(")).toBeLessThan(at("await d1(statements.join("));
+  });
+
+  it("promotes onto the live chat- keys only AFTER the repoint is proved from D1", () => {
+    expect(at("await promoteChatFromStaging(")).toBeGreaterThan(at("if (after[0]?.r2_key !== newR2Key)"));
+  });
+
+  it("stages under a prefix the orphan sweep cannot reach", () => {
+    // orphan-sweep.ts lists `${store}/chat-` and deletes what it cannot resolve in D1 — which every
+    // staged object is by construction, being named for a vault blob id rather than a client.
+    expect(SOURCE).toContain("/rekey-chat/");
+    expect(SOURCE).not.toContain("/chat-rekey/");
+  });
+
+  it("reads out staging residue from an earlier interrupted run", () => {
+    // Residue is the only trace a crashed rotation leaves, and it is ambiguous once a second
+    // rotation runs, so it is printed before this run's first write rather than after its last.
+    expect(at("await reportChatStagingResidue(")).toBeLessThan(at("await rekeyOne(a, store)"));
+  });
+});
+
+// W87 — and the same failure one namespace later. `chat-` was the only namespace sealed under the
+// DEK directly until the regen log moved out of the vault blob, so a rotation that walks chat and
+// not `regen-log/` leaves every segment sealed under a DEK that no longer exists. That is softer
+// than the chat case — the log has no reader, so nothing breaks loudly — and softer is worse: the
+// evidence would be silently unreadable and nobody would find out until somebody tried to read a
+// year of it.
+//
+// The ordering is pinned for the reason above and not because it is likely to be reordered: a
+// segment is addressed by its client id with nothing in D1 pointing at it, exactly as a chat blob
+// is, so both in-place orderings lose it and staging-then-promote is the only safe one. The four
+// assertions deliberately mirror the four above — the two passes are separate functions, and what
+// holds them in step is this file asserting the same order of both.
+describe("a DEK rotation covers the regen log, in the same order", () => {
+  const SOURCE = readFileSync(resolve(__dirname, "../../scripts/vault-rekey.ts"), "utf8");
+  const at = (needle: string): number => {
+    const i = SOURCE.indexOf(needle);
+    expect(i, `vault-rekey.ts no longer contains ${needle}`).toBeGreaterThan(-1);
+    return i;
+  };
+
+  it("re-seals every segment to staging BEFORE the D1 transaction", () => {
+    expect(at("await resealRegenLogToStaging(")).toBeLessThan(at("await d1(statements.join("));
+  });
+
+  it("promotes onto the live regen-log/ keys only AFTER the repoint is proved from D1", () => {
+    expect(at("await promoteRegenLogFromStaging(")).toBeGreaterThan(at("if (after[0]?.r2_key !== newR2Key)"));
+  });
+
+  it("stages under a prefix the orphan sweep cannot reach", () => {
+    // orphan-sweep.ts lists `${store}/regen-log/` and deletes what it cannot resolve in D1, which
+    // every staged object is by construction, being named for a vault blob id rather than a client.
+    expect(SOURCE).toContain("/rekey-regen-log/");
+    expect(SOURCE).not.toContain("/regen-log-rekey/");
+  });
+
+  it("reads out staging residue from an earlier interrupted run", () => {
+    expect(at("await reportRegenLogStagingResidue(")).toBeLessThan(at("await rekeyOne(a, store)"));
   });
 });

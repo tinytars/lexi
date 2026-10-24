@@ -1,8 +1,16 @@
 # CUTOVER.md — moving beta users from dev to prod
 
-The runbook for the one irreversible-feeling step: `health-dash-dev` currently holds the live
-beta users' vaults, and `health-dash-main` must take them over. Written before the window, to be
-followed *during* it — the point of a runbook is that nothing is decided under time pressure.
+The runbook for the one irreversible-feeling step: moving the live beta users' vaults from
+`health-dash-dev` to `health-dash-main`. Written before the window, to be followed *during* it —
+the point of a runbook is that nothing is decided under time pressure.
+
+**It has been followed.** As of 2026-10-20 `main` is the live deployment, at
+`literacy.tinytars.foundation` and bound to `health-vault-prod` / `health-identity-prod`, and
+`health-dash-dev` is rollback residue rather than where anyone's record lives. The sentence this
+paragraph replaces said the opposite in the present tense, which in a document whose whole subject
+is which deployment holds real PHI is the most expensive kind of stale: a reader acting on it aims
+a recovery at the wrong store. What follows is the record of how the move was done and the
+procedure for repeating it, not a description of today.
 
 **Read BACKUP.md first.** This procedure copies live PHI. It must not start without a snapshot whose
 restore has actually been exercised, because the rollback below depends on dev being untouched, and

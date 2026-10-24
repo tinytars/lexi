@@ -5,6 +5,7 @@
 // signups, whose vaults are far too small to be caught mid-stream by the wrangler crash.
 import { test, expect } from "@playwright/test";
 import { loginAs, signUp, ownerSignOut, openOwnerAccess } from "./_login";
+import { clickLeafMenuItem } from "./_leaf-menu";
 import { E2E_SUPPORT } from "./_synthetic";
 
 // W44 P4b — support consented access, end to end and SELF-CONTAINED (idempotent, re-runnable): a fresh
@@ -32,21 +33,24 @@ test("support requests access and the patient approves it", async ({ page }) => 
   await loginAs(page, patientEmail, pw);
   await expect(page.locator(".account-trigger")).toBeVisible();
   await openOwnerAccess(page);
-  const pending = page.locator(".access-pending");
+  const pending = page.getByTestId("access-pending-row");
   await expect(pending).toBeVisible();
   await expect(pending).toContainText(E2E_SUPPORT.name);
-  await pending.locator(".access-approve").click();
+  // Break-glass keeps its short windows, and 3 days is the one preselected.
+  await expect(pending.locator(".duration .opt.selected")).toHaveText("3 days");
+  await pending.getByTestId("access-approve").click();
 
   // approved → moves out of pending into active access.
-  await expect(page.locator(".access-pending")).toHaveCount(0);
-  await expect(page.locator(".access-list")).toContainText(E2E_SUPPORT.name);
+  await expect(pending).toHaveCount(0);
+  const granted = page.getByTestId("access-active-row");
+  await expect(granted).toContainText(E2E_SUPPORT.name);
 
   // W44 P4c — revoking active support re-keys the vault (client rotation). It must succeed with no error,
   // the support must disappear, and — the real test — the patient must still open their record from a
   // FRESH login (the new blob decrypts via the re-wrapped owner envelope).
-  await page.locator(".access-list .access-revoke").click();
+  await clickLeafMenuItem(granted, "Revoke access");
   await expect(page.locator(".access-error")).toHaveCount(0);
-  await expect(page.locator(".access-empty")).toBeVisible(); // support gone
+  await expect(page.getByTestId("access-empty")).toBeVisible(); // support gone
 
   await page.click(".modal-close[aria-label=\"Close\"]").catch(() => {});
   await ownerSignOut(page);

@@ -279,8 +279,8 @@ patient's *every* question. An unused key costs nothing; a lost one cannot be re
 **Two lanes seal what was already there**, and both are needed. `src/lib/raw-seal-heal.ts` runs in
 the browser on each record open, diffing the namespace's recorded objects (`GET /api/raw/{id}?files=1`)
 against this vault's ring — **the only lane that reaches an account which revoked org recovery**.
-`scripts/raw-encrypt-backfill.ts` (`npm run raw:encrypt`, and the `raw-encrypt-backfill` op in
-`ops.yml`) does the same store-wide through the org recovery envelope, and refuses an orphaned
+`scripts/raw-encrypt-backfill.ts` (`npm run raw:encrypt`, an operator command at their own terminal
+— `docs/OPS-LOCAL.md`, since it needs the org private key no runner has) does the same store-wide through the org recovery envelope, and refuses an orphaned
 namespace so its bytes stay claimable.
 
 **The deployment still sees plaintext while its owner is using the record.** It must: it is the thing

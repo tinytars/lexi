@@ -1,120 +1,94 @@
 name: ops
 
 # The dispatch surface for lexitar's live vault operations — the R2/D1-native replacement for
-# plover-code's ops.yml, ported here now that scripts/r2-ops-cli.ts (refresh-finding,
-# refresh-ranges, refresh-marker-groups, process-pending, reconcile, sync-treatment-attachments,
-# treatment-groups-backfill, treatment-photo-extract) and scripts/raw-backfill.ts /
-# scripts/recovery-approve.ts / scripts/orphan-sweep.ts read and write R2/D1 directly, with no dependency on plover-code's
-# local plaintext vault mirror.
+# plover-code's ops.yml, ported here now that scripts/orphan-sweep.ts reads and writes R2/D1
+# directly, with no dependency on plover-code's local plaintext vault mirror.
 #
 # sync_pages_secret (below) is a boolean modifier, not an `op` choice: it is project-wide, not
-# per-client, and must never run through lexitar-op (that action asserts a client and a run
-# command — wrong shape for something that touches neither). Ported from plover-code's own
-# ops.yml once the Cloudflare Pages repoint (migration plan Phase 6) made health-dash-dev a
-# project this repo's runs can legitimately push a secret to. plover-code's copy is gone; this is
-# the only one.
+# per-client, and must never run through lexitar-op (that action asserts a run command — wrong
+# shape for something that touches neither R2 nor D1). Ported from plover-code's own ops.yml once
+# the Cloudflare Pages repoint (migration plan Phase 6) made health-dash-dev a project this repo's
+# runs can legitimately push a secret to. plover-code's copy is gone; this is the only one.
 #
 # A NEW OPERATIONAL FLOW IS AN ENTRY IN THIS FILE, NEVER A SECOND WORKFLOW — the discipline
 # plover-code's ops.yml carried before it was retired, for the reason it carried it (three
-# near-identical workflows drifting independently).
+# near-identical workflows drifting independently). AND AN ENTRY IS ALSO A CLAIM THAT THE
+# OPERATION CAN RUN ON A HOSTED RUNNER, which is what 2026-10-19 adds to that rule: an operation
+# that cannot belongs in apps/lexitar/docs/OPS-LOCAL.md instead, and a menu listing one is a form
+# that can only fail.
 #
-# FIVE OF THE OPS BELOW CANNOT RUN HERE AND ARE OPERATOR-ONLY, recorded 2026-10-07 rather than
-# left to be discovered by dispatching one. `raw-backfill`, `raw-pages-backfill`,
-# `raw-encrypt-backfill`, `recovery-approve` and every `r2-ops` operation reach
-# scripts/org-unwrap.ts, measured transitively from each entrypoint — so each needs the org
-# PRIVATE key, and the key file never arrives: scripts/org-key.ts:28 resolves ORG_KEY_PATH or
-# a credential store's org-key.json with no in-repo fallback, and no workflow here sets any of them.
-# `org-key-passphrase` is passed to ./.github/actions/lexitar-op below and opens nothing on a hosted
-# runner on its own. `orphan-sweep` is the one op in this group that does NOT reach the org key and
-# runs here fine. The fix, if these are ever wanted in CI, is a decision and not a config change:
-# putting the org private key in Actions secrets gives every workflow-dispatch a recovery envelope
-# into every vault, which the remediation of 2026-10 deliberately declined. Until that decision is
-# taken, run them locally against the credential store.
+# TWELVE OPS LEFT THIS FILE ON 2026-10-19 AND ARE NOW IN apps/lexitar/docs/OPS-LOCAL.md — every
+# `r2-ops` operation plus `raw-backfill`, `raw-pages-backfill`, `raw-encrypt-backfill` and
+# `recovery-approve`. Not a deprecation: not one of them could ever run here. Each reaches
+# scripts/org-unwrap.ts, measured transitively from each entrypoint, so each needs the org PRIVATE
+# key, and the key file never arrives — scripts/org-key.ts:33 resolves ORG_KEY_PATH or a credential
+# store's org-key.json with no in-repo fallback, and no workflow here sets either. So they were
+# menu entries that installed the repository, billed the minutes and failed on the key, every time.
+# `orphan-sweep` is the one op in that group that does NOT reach the org key, which is why it is the
+# one that stayed. The fix, if the others are ever wanted in CI, is a decision and not a config
+# change: putting the org private key in Actions secrets gives every workflow-dispatch a recovery
+# envelope into every vault, which the remediation of 2026-10 deliberately declined. That document
+# carries the commands, since these case arms were the only written copy of them.
 #
-# THE ONE CARVE-OUT TO THAT RULE: `record:export` (apps/lexitar/VAULT.md §4a) is deliberately not an
-# op here, and must not become one. Every op in this file reads PHI and writes ciphertext back; that one
-# decrypts a whole record to the filesystem it runs on, and on a hosted runner that filesystem is not
-# the operator's. It stays a local command, like scripts/treatment-diagnose.ts.
+# THE `client` AND `reason` INPUTS WENT WITH THEM, AND THAT HALF IS NOT ABOUT THE ORG KEY. This
+# repository is public, so a dispatch's inputs and its run page are readable by anyone. `client`
+# took an account id — and for `recovery-approve` the patient's own email address — while `reason`
+# was free text that ./.github/actions/lexitar-op echoed into the run summary. A run page naming
+# who an operation was run for is a disclosure whether or not the run then failed on a missing key.
+# `orphan-sweep` is store-wide and reads neither, so nothing was traded away to remove them; the
+# per-client concurrency key went too, having spelled an account id into a group name. `force`,
+# `marker`, `name` and `purge_unreadable` are gone for the duller reason that nothing reads them
+# any more.
+#
+# THE ONE CARVE-OUT TO THE RULE ABOVE: `record:export` (apps/lexitar/VAULT.md §4a) is deliberately not
+# an op here, and must not become one. Every op in this file reads PHI and writes ciphertext back; that
+# one decrypts a whole record to the filesystem it runs on, and on a hosted runner that filesystem is
+# not the operator's. It stays a local command, like scripts/treatment-diagnose.ts.
 
 on:
   workflow_dispatch:
     inputs:
       op:
-        description: "Operation"
+        description: "Operation (the only one that can run on a hosted runner — see apps/lexitar/docs/OPS-LOCAL.md for the rest)"
         required: true
         type: choice
         options:
-          - refresh-finding
-          - refresh-ranges
-          - refresh-marker-groups
-          - process-pending
-          - reconcile
-          - sync-treatment-attachments
-          - treatment-groups-backfill
-          - treatment-photo-extract
-          - raw-backfill
-          - raw-pages-backfill
-          - raw-encrypt-backfill
           - orphan-sweep
-          - recovery-approve
-      client:
-        description: "Client id (e.g. alex). Ignored by raw-backfill, raw-pages-backfill, raw-encrypt-backfill and orphan-sweep, which are store-wide. recovery-approve reads this as the patient's account email instead. Omit for reconcile to fan out across every deployed vault."
-        required: false
-        type: string
       preview:
         description: "No Anthropic call, no R2 write — print what the real run would do"
         required: true
         type: boolean
         default: true
-      force:
-        description: "Regenerate even when the plan says nothing changed (refresh-finding, refresh-ranges, refresh-marker-groups)"
-        type: boolean
-        default: false
-      marker:
-        description: "refresh-ranges: one marker name, or `all` for every marker with readings"
-        type: string
-        default: ""
-      name:
-        description: "sync-treatment-attachments: optional treatment name filter (omit for every treatment). treatment-photo-extract: required treatment name to patch."
-        type: string
-        default: ""
       extra_args:
         description: "Escape hatch for uncurated CLI flags. Whitespace-split, each token shell-quoted."
         type: string
         default: ""
-      reason:
-        description: "Why this run is happening — echoed into the summary"
-        type: string
-        default: ""
-      purge_unreadable:
-        description: "raw-pages-backfill only: also DELETE the PDFs no parser can open. Irreversible outside the snapshot window; ignored unless preview is false."
-        type: boolean
-        default: false
       sync_pages_secret:
-        description: "Push secrets.ANTHROPIC_API_KEY to health-dash-dev's Cloudflare Pages project as ANTHROPIC_API_KEY + RANGES_ANTHROPIC_API_KEY, then exit. Ignores op/client/preview/etc — op still must be picked to satisfy the form, but does nothing."
+        description: "Push secrets.ANTHROPIC_API_KEY to health-dash-dev's Cloudflare Pages project as ANTHROPIC_API_KEY + RANGES_ANTHROPIC_API_KEY, then exit. Ignores op/preview/etc — op still must be picked to satisfy the form, but does nothing."
         type: boolean
         default: false
 
 # vault-sync.ts's operator push re-reads the etag immediately before the write and cannot close the
-# window (no conditional option on `wrangler r2 object put`) — serializing per-client runs is what
-# keeps that race theoretical rather than likely. Never cancel in progress: a run killed mid-write
-# leaves the deployed vault in an inconsistent state.
+# window (no conditional option on `wrangler r2 object put`) — serializing runs is what keeps that
+# race theoretical rather than likely. The group is a constant rather than per-client because the
+# one remaining op is store-wide, and because a group name is part of a public run's metadata.
+# Never cancel in progress: a run killed mid-write leaves the deployed vault in an inconsistent state.
 concurrency:
-  group: vault-${{ inputs.client }}
+  group: vault-ops
   cancel-in-progress: false
 
 jobs:
   op:
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ inputs.preview && 10 || fromJSON('{"refresh-finding":45,"refresh-ranges":30,"refresh-marker-groups":20,"process-pending":30,"reconcile":20,"sync-treatment-attachments":10,"treatment-groups-backfill":30,"treatment-photo-extract":10,"raw-backfill":15,"raw-pages-backfill":30,"raw-encrypt-backfill":45,"orphan-sweep":15,"recovery-approve":5}')[inputs.op] }}
+    timeout-minutes: ${{ inputs.preview && 10 || 15 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       # sync_pages_secret's own path — deliberately not lexitar-op (see the header comment): no
-      # client, no R2/D1 touch, nothing to preview. Own Node setup + install because it never
-      # reaches the composite action that would otherwise provide them.
+      # R2/D1 touch, nothing to preview. Own Node setup + install because it never reaches the
+      # composite action that would otherwise provide them.
       - name: Set up Node (sync_pages_secret only)
         if: ${{ inputs.sync_pages_secret }}
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -150,122 +124,28 @@ jobs:
         id: plan
         env:
           # Every dispatcher-supplied value reaches the shell as an environment variable, never
-          # interpolated into the script text — `${{ inputs.client }}` spliced into a `run:` block
-          # is a script-injection hole; "$CLIENT" is not.
+          # interpolated into the script text — `${{ inputs.extra_args }}` spliced into a `run:`
+          # block is a script-injection hole; "$EXTRA" is not.
           OP: ${{ inputs.op }}
-          CLIENT: ${{ inputs.client }}
           PREVIEW: ${{ inputs.preview }}
-          FORCE: ${{ inputs.force }}
-          MARKER: ${{ inputs.marker }}
-          NAME: ${{ inputs.name }}
-          PURGE: ${{ inputs.purge_unreadable }}
           EXTRA: ${{ inputs.extra_args }}
         run: |
           set -euo pipefail
           # In a shell step a `type: boolean` input renders as the literal text true/false.
           preview=false; if [ "$PREVIEW" = "true" ]; then preview=true; fi
-          force="";      if [ "$FORCE" = "true" ]; then force="--force"; fi
           note=""
           exception=""
 
+          # One arm, and still a `case`: an unknown op must fail loudly rather than run the only
+          # command this file has. A choice input constrains the form and not the API.
           case "$OP" in
-            refresh-finding)
-              [ -n "$CLIENT" ] || { echo "refresh-finding needs a client id" >&2; exit 1; }
-              cmd="npm run r2-ops -- --refresh-finding --client $(printf %q "$CLIENT") $force"
-              # --dry-run carries the same no-Anthropic-call guarantee refresh-finding-preview.ts
-              # gave in plover-code (refresh.ts:44-50) — it prints the plan and returns.
-              if $preview; then cmd="$cmd --dry-run"; fi
-              ;;
-            refresh-ranges)
-              [ -n "$CLIENT" ] || { echo "refresh-ranges needs a client id" >&2; exit 1; }
-              case "$MARKER" in
-                "")    echo "refresh-ranges needs a marker name, or all" >&2; exit 1 ;;
-                all)   sel="--all-markers" ;;
-                *)     sel="--marker $(printf %q "$MARKER")" ;;
-              esac
-              cmd="npm run r2-ops -- --refresh-ranges --client $(printf %q "$CLIENT") $sel $force"
-              if $preview; then cmd="$cmd --dry-run"; fi
-              ;;
-            refresh-marker-groups)
-              [ -n "$CLIENT" ] || { echo "refresh-marker-groups needs a client id" >&2; exit 1; }
-              cmd="npm run r2-ops -- --refresh-marker-groups --client $(printf %q "$CLIENT") $force"
-              if $preview; then cmd="$cmd --dry-run"; fi
-              ;;
-            process-pending)
-              [ -n "$CLIENT" ] || { echo "process-pending needs a client id" >&2; exit 1; }
-              cmd="npm run r2-ops -- --process-pending --client $(printf %q "$CLIENT")"
-              if $preview; then cmd="$cmd --dry-run"; fi
-              ;;
-            reconcile)
-              if [ -n "$CLIENT" ]; then
-                cmd="npm run r2-ops -- --reconcile --client $(printf %q "$CLIENT")"
-              else
-                cmd="npm run r2-ops -- --reconcile"
-              fi
-              if $preview; then cmd="$cmd --dry-run"; fi
-              ;;
-            sync-treatment-attachments)
-              [ -n "$CLIENT" ] || { echo "sync-treatment-attachments needs a client id" >&2; exit 1; }
-              cmd="npm run r2-ops -- --sync-treatment-attachments --client $(printf %q "$CLIENT")"
-              if [ -n "$NAME" ]; then cmd="$cmd $(printf %q "$NAME")"; fi
-              if $preview; then cmd="$cmd --dry-run"; fi
-              ;;
-            treatment-groups-backfill)
-              [ -n "$CLIENT" ] || { echo "treatment-groups-backfill needs a client id" >&2; exit 1; }
-              cmd="npm run r2-ops -- --treatment-groups-backfill --client $(printf %q "$CLIENT")"
-              if $preview; then cmd="$cmd --dry-run"; fi
-              ;;
-            treatment-photo-extract)
-              [ -n "$CLIENT" ] || { echo "treatment-photo-extract needs a client id" >&2; exit 1; }
-              [ -n "$NAME" ] || { echo "treatment-photo-extract needs a treatment name (name input)" >&2; exit 1; }
-              cmd="npm run r2-ops -- --treatment-photo-extract --client $(printf %q "$CLIENT") --name $(printf %q "$NAME")"
-              # --id/--key have no menu entry — pass via extra_args, e.g. "--key raw/abc.jpg --key raw/def.jpg --id row_123"
-              if $preview; then cmd="$cmd --dry-run"; fi
-              ;;
-            raw-backfill)
-              # Store-wide against D1, not per-client; `client` only sets the concurrency key.
-              cmd="npx tsx scripts/raw-backfill.ts"
-              if ! $preview; then cmd="$cmd --confirm"; fi
-              ;;
-            raw-pages-backfill)
-              # Store-wide, like raw-backfill. Reads every PDF in the store to count its pages, so it
-              # is the slowest op here; the preview reads them too and writes nothing.
-              cmd="npx tsx scripts/raw-pages-backfill.ts"
-              if ! $preview; then cmd="$cmd --confirm"; fi
-              # The purge deletes patient files whose only undo is the nightly snapshot, so it is its
-              # own input rather than an extra_args token: a run's recorded parameters then say
-              # whether this run could delete, without anyone parsing a command line.
-              if [ "$PURGE" = "true" ]; then
-                cmd="$cmd --purge-unreadable"
-                if $preview; then
-                  exception="purge_unreadable was requested; this preview still writes and deletes nothing."
-                else
-                  note="This run DELETES the unreadable files it finds. The nightly snapshot is the only undo."
-                fi
-              fi
-              ;;
-            raw-encrypt-backfill)
-              # Store-wide, like raw-backfill. It reads and rewrites every plaintext original, so the
-              # preview reads them all too and writes nothing — the counts it prints are the migration's
-              # remaining work. A real run overwrites patient objects IN PLACE; the nightly snapshot is
-              # the only undo, so verify `npm run vault:snapshot:check` is green before dispatching one.
-              cmd="npx tsx scripts/raw-encrypt-backfill.ts"
-              if ! $preview; then
-                cmd="$cmd --confirm"
-                note="This run OVERWRITES patient objects in place with their sealed form. The nightly snapshot is the only undo."
-              fi
-              ;;
             orphan-sweep)
-              # A real run only dates orphans; deleting them needs --delete in extra_args, deliberately.
+              # Store-wide, so there is no client to assert. A real run only dates orphans;
+              # deleting them needs --delete in extra_args, deliberately.
               cmd="npx tsx scripts/orphan-sweep.ts"
               if ! $preview; then cmd="$cmd --record"; fi
               ;;
-            recovery-approve)
-              [ -n "$CLIENT" ] || { echo "recovery-approve needs the patient's account email as client" >&2; exit 1; }
-              cmd="npm run recovery:approve -- --email $(printf %q "$CLIENT")"
-              if ! $preview; then cmd="$cmd --confirm"; fi
-              ;;
-            *) echo "unknown op: $OP" >&2; exit 1 ;;
+            *) echo "unknown op: $OP — see apps/lexitar/docs/OPS-LOCAL.md, which has the twelve that run locally" >&2; exit 1 ;;
           esac
 
           if [ -n "$EXTRA" ]; then
@@ -283,12 +163,10 @@ jobs:
         if: ${{ !inputs.sync_pages_secret }}
         with:
           op: ${{ inputs.op }}
-          client: ${{ inputs.client }}
           run: ${{ steps.plan.outputs.cmd }}
           preview: ${{ inputs.preview }}
           preview-note: ${{ steps.plan.outputs.note }}
           preview-exception: ${{ steps.plan.outputs.exception }}
-          reason: ${{ inputs.reason }}
           org-key-passphrase: ${{ secrets.ORG_KEY_PASSPHRASE }}
           cloudflare-api-token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           cloudflare-account-id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

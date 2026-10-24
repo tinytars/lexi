@@ -522,9 +522,11 @@ import { pinnedQueries } from "@pablotech/akesi/pinned-queries";
        happened to look there was invisible until someone thought to check — which is exactly how it
        was missed. Not dismissible: it goes away by being approved or denied. -->
   {#if accessRequests > 0 && onOpenAccess}
+    <!-- Not "to read your record": a support agent's request is for a clinician's roster, and the
+         same badge counts both. What is true of every one of them is that somebody is waiting. -->
     <button class="access-badge" data-testid="access-request-badge"
-      title="Someone has asked to read your record. Review the request to approve it for a period you choose, or to deny it."
-      onclick={onOpenAccess}>{accessRequests} request{accessRequests === 1 ? "" : "s"} to read your record</button>
+      title="Someone has asked for access and is waiting on you. Review the request to approve it for a period you choose, or to deny it."
+      onclick={onOpenAccess}>{accessRequests} access request{accessRequests === 1 ? "" : "s"} waiting</button>
   {/if}
   {#if client && findingStale}
     <button class="stale-badge" title="Some sections were generated from older inputs — see the ● chips on each section. Inspect what changed in the Translation DAG." onclick={onOpenDag}>Some sections out of date</button>

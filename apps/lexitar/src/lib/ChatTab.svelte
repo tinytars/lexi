@@ -32,6 +32,7 @@
   import type { ReportTarget } from "./safety-report";
   import { resolveReference } from "./reference-resolver";
   import { corpusSubject } from "./vault-raw-keys";
+  import { AiError, aiErrorCodeForStatus, describeAiError } from "./ai-error";
 
   // Chat is the primary experience: a Gemini-style thread shell. Threads persist per client as an
   // in-browser-encrypted blob (W16, chat-store.ts) — restored on return, PHI never plaintext at rest.
@@ -53,6 +54,13 @@
     hydrated: boolean;
     /** A chat save that failed and stayed failed (chat-thread-session). Distinct from `error`, which is this turn's request. */
     saveError?: string | null;
+    /**
+     * W71 — the stored history cannot be opened with this session's key, so no save can ever land.
+     * It is the one failure with a way out, and `onSetAsideUnreadable` is that way out: the banner
+     * gets an action instead of being a dead end.
+     */
+    unreadable?: boolean;
+    onSetAsideUnreadable?: () => Promise<void> | void;
     // M69 — pasted-permalink reference cards: vault to resolve against, onNavigate to reuse
     // App.svelte's navigate() when a card is clicked.
     vault: Vault | null;
@@ -73,6 +81,8 @@
     threads = $bindable(),
     hydrated,
     saveError = null,
+    unreadable = false,
+    onSetAsideUnreadable,
     vault,
     onNavigate,
     onPersist,
@@ -93,11 +103,24 @@
   // outgoing user turn.
   let pendingAttachments = $state<Attachment[]>([]);
   let attachError = $state<string | null>(null);
+  // In flight for the escape hatch below. The write is a round trip that copies the old ciphertext
+  // aside before replacing it, so a second click while it runs would be a second retention copy.
+  let settingAside = $state(false);
   const chatPhotos = supports("chat", "photos");
   // Switching threads (new/select/delete, all driven from the sidebar now) clears any stale error
   // banner from the previously-open thread.
   $effect(() => { void activeId; error = null; });
   let chatTabEl: HTMLDivElement | undefined;
+
+  async function setAsideUnreadable() {
+    if (!onSetAsideUnreadable || settingAside) return;
+    settingAside = true;
+    try {
+      await onSetAsideUnreadable();
+    } finally {
+      settingAside = false;
+    }
+  }
 
   const BILLING_URL = providerFor("chat").billingUrl;
 
@@ -266,7 +289,14 @@
         });
         if (!res.ok) {
           const body = (await res.json().catch(() => ({}))) as { error?: string; errorCode?: string };
-          error = { code: body.errorCode ?? "model_error", text: body.error ?? `request failed (${res.status})` };
+          // describeAiError, not the raw status: a 503 can arrive with no body at all, because
+          // Cloudflare answers `error code: 1102` as text/plain when the isolate is killed for
+          // memory and no function of ours runs — so `body.error` is absent and `request failed
+          // (503)` was the whole of what a patient saw, for a failure whose answer is to retry.
+          // This was the one renderer hand-rolling its own wording; the rest already go through
+          // ai-error.ts, which is also where the status decides the code when the body carries none.
+          const code = body.errorCode ?? aiErrorCodeForStatus(res.status) ?? "model_error";
+          error = { code, text: describeAiError(new AiError(body.error ?? "", { errorCode: code, status: res.status })) };
           return;
         }
         const data = (await res.json()) as
@@ -491,7 +521,22 @@
 
     {#if attachError}<p class="chat-error">{attachError}</p>{/if}
     <!-- Survives a thread switch, unlike `error` above: an unsaved conversation stays unsaved. -->
-    {#if saveError}<p class="chat-error">This conversation isn't saving — {saveError}</p>{/if}
+    {#if saveError}
+      <p class="chat-error">
+        This conversation isn't saving — {saveError}
+        <!-- Only an unreadable history has a recovery, and it is offered rather than taken: the
+             click is the patient's, and the confirm() behind it says what is kept. -->
+        {#if unreadable && onSetAsideUnreadable}
+          <button class="chat-error-action" onclick={setAsideUnreadable} disabled={settingAside}>
+            {settingAside ? "Setting the earlier conversation aside…" : "Set the earlier conversation aside and save this one"}
+          </button>
+          <span class="chat-error-hint">
+            The earlier conversation is kept, still encrypted, and is not deleted — it stays unreadable
+            unless its original key is recovered.
+          </span>
+        {/if}
+      </p>
+    {/if}
     {#if pendingAttachments.length > 0}
       <AttachmentStrip
         attachments={pendingAttachments}
@@ -576,6 +621,12 @@
   .chat-error { color: var(--alert); font-size: 0.85rem; }
   .chat-error a { display: inline-block; margin-top: 0.3rem; color: var(--alert); font-weight: 600; }
   .chat-error-hint { display: block; margin-top: 0.2rem; }
+  .chat-error-action {
+    display: inline-block; margin-top: 0.4rem; padding: 0.3rem 0.6rem;
+    border: 1px solid var(--alert); border-radius: 0.3rem; background: transparent;
+    color: var(--alert); font-size: 0.85rem; font-weight: 600; cursor: pointer;
+  }
+  .chat-error-action:disabled { opacity: 0.6; cursor: default; }
   .chat-input {
     display: flex;
     gap: 0.5rem;

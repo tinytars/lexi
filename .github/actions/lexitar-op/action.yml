@@ -9,9 +9,12 @@ inputs:
   op:
     description: "Operation name, for the summary"
     required: true
-  client:
-    description: "Client id the run targets"
-    required: true
+  # `client` and `reason` were inputs here until 2026-10-19 and are deliberately not replaced.
+  # tinytars/lexi is public, so this summary is a page anyone can read: the first named an account
+  # id — the patient's own email address, for the recovery-approve op — and the second was free
+  # text, both echoed into the heading and body below. The one op that still dispatches is
+  # store-wide and reads neither, so nothing diagnostic was traded away. See the header of
+  # .github/workflows/ops.yml, which is where the ops that needed a client went.
   run:
     description: "Command to execute, from apps/lexitar"
     required: true
@@ -23,10 +26,6 @@ inputs:
     default: ""
   preview-note:
     description: "Shown in the summary when this op has no real preview — say so rather than faking one"
-    required: false
-    default: ""
-  reason:
-    description: "Free text from the dispatcher, echoed into the summary"
     required: false
     default: ""
   # Composite actions do not inherit `secrets`, so every one is passed explicitly by the caller.
@@ -70,15 +69,13 @@ runs:
       shell: bash
       env:
         OP: ${{ inputs.op }}
-        CLIENT: ${{ inputs.client }}
         PREVIEW: ${{ inputs.preview }}
         NOTE: ${{ inputs.preview-note }}
         EXCEPTION: ${{ inputs.preview-exception }}
-        REASON: ${{ inputs.reason }}
         CMD: ${{ inputs.run }}
       run: |
         {
-          echo "### $OP — $CLIENT"
+          echo "### $OP"
           echo
           if [ "$PREVIEW" = "true" ]; then
             if [ -n "$EXCEPTION" ]; then
@@ -90,7 +87,6 @@ runs:
           else
             echo "**Real run.** This billed Anthropic and pushed to R2/D1."
           fi
-          if [ -n "$REASON" ]; then echo; echo "Reason: $REASON"; fi
           echo
           echo '```'
           echo "$CMD"

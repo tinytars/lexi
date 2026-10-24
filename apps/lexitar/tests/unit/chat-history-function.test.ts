@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { onRequestPut, onRequestGet } from "../../functions/api/chat-history/[id]";
 import { fakeSessionDb } from "../support/session-db";
-import { useWorkerd, emptyBucket } from "../support/miniflare";
+import { useWorkerd, emptyBucket, type Bucket } from "../support/miniflare";
 import { SESSION_SECRET, cookieFor } from "../support/session";
 import { hd1Blob as hd1 } from "../support/blobs";
 
@@ -33,12 +33,16 @@ const etagOf = async (key: string) => (await w.bucket.get(key))!.etag;
 
 const makeEnv = () => ({ SESSION_SECRET, DB: ownedDb(), STORE_PREFIX: "dev", VAULT: w.bucket });
 
-const putCtx = async (env: ReturnType<typeof makeEnv>, opts: { auth?: "valid" | "bogus"; body?: BodyInit; ifMatch?: string; ifNoneMatch?: string } = {}) => {
+const putCtx = async (
+  env: ReturnType<typeof makeEnv>,
+  opts: { auth?: "valid" | "bogus"; body?: BodyInit; ifMatch?: string; ifNoneMatch?: string; replaceUnreadable?: boolean } = {},
+) => {
   const headers: Record<string, string> = { "content-type": "application/octet-stream" };
   if (opts.auth === "valid") headers.cookie = await cookieFor("acct-1");
   else if (opts.auth === "bogus") headers.cookie = "hd_session=bogus";
   if (opts.ifMatch) headers["if-match"] = opts.ifMatch;
   if (opts.ifNoneMatch) headers["if-none-match"] = opts.ifNoneMatch;
+  if (opts.replaceUnreadable) headers["x-replace-unreadable"] = "1";
   return {
     request: new Request("http://x/api/chat-history/alex", { method: "PUT", headers, body: opts.body ?? hd1() }),
     env,
@@ -165,5 +169,92 @@ describe("W8d chat-history write audit is PHI-free", () => {
     const entry = JSON.parse(lines.find((l) => l.includes('"/api/chat-history"'))!);
     expect(entry).toMatchObject({ route: "/api/chat-history", status: 204, id: "alex", bytes: 64, access: "owner" });
     expect(Object.keys(entry).sort()).toEqual(["access", "at", "bytes", "id", "latencyMs", "route", "status"]);
+  });
+});
+
+// W71 — the escape hatch, from the server's side.
+//
+// chat-store refuses to save over a blob it could not decrypt, which is right while a wrong DEK is
+// transient and a trap once the old key provably no longer exists — the 2026-10-06 and 2026-10-07
+// rotations re-keyed the vault under a fresh DEK and never walked `chat-`, so seven accounts could
+// never save again. The way out cannot be the client quietly overwriting PHI it cannot read, so the
+// route keeps the stored bytes before it writes and the write is the patient's explicit act.
+describe("PUT keeps the stored bytes aside when asked to replace an unreadable history", () => {
+  const ORPHANED = "dev/orphaned-chat/alex/";
+  const keptKeys = async () => (await w.bucket.list({ prefix: ORPHANED })).objects.map((o) => o.key);
+
+  /** The bucket with the retention copy refused, and only it: the live write still works. */
+  const retentionFails = (bucket: Bucket): Bucket => ({
+    get: (k) => bucket.get(k),
+    delete: (k) => bucket.delete(k),
+    list: (o) => bucket.list(o),
+    put: (k, v, o) => (k.startsWith(ORPHANED) ? Promise.reject(new Error("retention copy failed")) : bucket.put(k, v, o)),
+  });
+
+  it("copies the old ciphertext under orphaned-chat/ and only then overwrites", async () => {
+    const env = makeEnv();
+    const orphan = hd1(64);
+    await onRequestPut(await putCtx(env, { auth: "valid", body: orphan }));
+
+    const mine = hd1(80);
+    const res = await onRequestPut(await putCtx(env, { auth: "valid", body: mine, replaceUnreadable: true }));
+    expect(res.status).toBe(204);
+    expect(await stored(KEY)).toEqual(mine);
+
+    // The displaced conversation is still here, byte for byte, so a key recovered later opens it.
+    // `orphaned-chat/` and NOT `chat-orphaned/`: orphan-sweep.ts deletes under `${store}/chat-`.
+    const kept = await keptKeys();
+    expect(kept).toHaveLength(1);
+    expect(kept[0]).toMatch(/^dev\/orphaned-chat\/alex\/[\dTZ.-]+\.enc$/);
+    expect(await stored(kept[0])).toEqual(orphan);
+  });
+
+  // The client sends no precondition here — it could not read the blob, so it holds no etag for it —
+  // and create-only would 412 against the very object it is deliberately replacing. The write is
+  // unconditional on purpose, and is not a lost update because the bytes were copied aside first.
+  it("writes unconditionally, even against a precondition that would otherwise refuse", async () => {
+    const env = makeEnv();
+    await onRequestPut(await putCtx(env, { auth: "valid", body: hd1(64) }));
+
+    const mine = hd1(80);
+    const res = await onRequestPut(await putCtx(env, { auth: "valid", body: mine, ifNoneMatch: "*", replaceUnreadable: true }));
+    expect(res.status).toBe(204);
+    expect(await stored(KEY)).toEqual(mine);
+  });
+
+  it("keeps nothing aside when there is nothing stored to keep", async () => {
+    const env = makeEnv();
+    const res = await onRequestPut(await putCtx(env, { auth: "valid", body: hd1(64), replaceUnreadable: true }));
+    expect(res.status).toBe(204);
+    expect(await keptKeys()).toEqual([]);
+    expect(await bucketSize()).toBe(1);
+  });
+
+  // Retention first is the whole reason this is safe to offer, so a failed copy must fail the
+  // request. Writing anyway would destroy the conversation the patient was told would be kept.
+  it("fails the request with the original intact when the retention copy fails", async () => {
+    const orphan = hd1(64);
+    const env = makeEnv();
+    await onRequestPut(await putCtx(env, { auth: "valid", body: orphan }));
+
+    const guarded = { ...env, VAULT: retentionFails(w.bucket) };
+    await expect(onRequestPut(await putCtx(guarded, { auth: "valid", body: hd1(80), replaceUnreadable: true }))).rejects.toThrow(
+      /retention copy failed/,
+    );
+    expect(await stored(KEY)).toEqual(orphan);
+    expect(await keptKeys()).toEqual([]);
+  });
+
+  it("is off unless the header says so — an ordinary save keeps nothing aside", async () => {
+    const env = makeEnv();
+    await onRequestPut(await putCtx(env, { auth: "valid", body: hd1(64) }));
+    await onRequestPut(await putCtx(env, { auth: "valid", body: hd1(80), ifMatch: await etagOf(KEY) }));
+    expect(await keptKeys()).toEqual([]);
+  });
+
+  it("needs a session like every other write", async () => {
+    const env = makeEnv();
+    expect((await onRequestPut(await putCtx(env, { body: hd1(64), replaceUnreadable: true }))).status).toBe(401);
+    expect(await bucketSize()).toBe(0);
   });
 });

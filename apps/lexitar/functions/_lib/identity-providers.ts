@@ -12,7 +12,12 @@ export function createProviderLink(db: D1Database, l: Parameters<D1ProviderLinkS
 export function updateProviderLinkStatus(db: D1Database, id: string, status: Parameters<D1ProviderLinkStore["updateStatus"]>[1]) {
   return new D1ProviderLinkStore(db).updateStatus(id, status);
 }
-export function grantSupportLink(db: D1Database, id: string, opts: Parameters<D1ProviderLinkStore["grantSupport"]>[1]) {
+// One consent decision written as one statement: status, time-box and consent ref together. The store
+// method is named `grantSupport` for the break-glass case it was written for, but its SQL asks nothing
+// about role — the support-only check lives in `grantBreakGlass`, a layer up — and a clinician grant
+// needs exactly the same three columns. Named for what it does, because the alternative is a clinician
+// renewal calling something named for support. (It was `grantSupportLink` and had no call sites.)
+export function setLinkGrant(db: D1Database, id: string, opts: Parameters<D1ProviderLinkStore["grantSupport"]>[1]) {
   return new D1ProviderLinkStore(db).grantSupport(id, opts);
 }
 export function getProviderLink(db: D1Database, id: string) {

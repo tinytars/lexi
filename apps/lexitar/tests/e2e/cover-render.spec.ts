@@ -1,7 +1,7 @@
 import { test, expect } from "./_fixtures";
 import type { Page } from "@playwright/test";
 import { loginAs } from "./_login";
-import { E2E_CLINICIAN, ALL_SYNTHETIC_NAMES, syntheticAt, openSyntheticAt, openSyntheticAsProviderAt } from "./_synthetic";
+import { E2E_CLINICIAN, ALL_SYNTHETIC_NAMES, syntheticAt, openSyntheticAt, openSyntheticAsProviderAt, clinicianRosterLoaded, patientRosterRows } from "./_synthetic";
 import { clickNav } from "./_nav";
 import { stubChatHistory } from "./_stubs";
 
@@ -48,9 +48,9 @@ test("the e2e clinician (provider) shows a roster of names only — no client da
   await loginAs(page, E2E_CLINICIAN.email, E2E_CLINICIAN.password);
   // .roster renders as soon as providerSession flips, before loadPatients() resolves; wait for the
   // names themselves so a cold-start-slow patient fetch can't be read as an empty roster.
-  await page.waitForSelector(".roster-list .roster-name", { timeout: 10_000 });
+  await clinicianRosterLoaded(page, 10_000);
 
-  const names = (await page.locator(".roster-list .roster-name").allTextContents()).map((s) => s.trim());
+  const names = (await patientRosterRows(page).locator(".pr-name").allTextContents()).map((s) => s.trim());
   expect(names.sort()).toEqual([...ALL_SYNTHETIC_NAMES].sort());
   // No client dashboard or section navigation at the provider level. The roster now carries a sidebar
   // of its own, so the claim is about WHICH rows it holds: toHaveText(array) asserts the count and each

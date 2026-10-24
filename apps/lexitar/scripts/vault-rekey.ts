@@ -62,10 +62,14 @@ import { d1, q } from "./d1-remote";
 import {
   getObject,
   putObject,
+  deleteObject,
+  listObjects,
   resolveStore,
   assertLiveWriteAllowed,
   LIVE_BUCKET,
   r2KeyFor,
+  r2ChatKeyFor,
+  r2RegenLogPrefixFor,
 } from "./vault-sync";
 import { checkFreshness } from "./vault-snapshot-check";
 import { isV2 } from "./vault-v2";
@@ -192,6 +196,228 @@ function report(a: Assessment): void {
  * artifact is an unreferenced blob; after step 3 the old blob is unreferenced instead. There is no
  * moment at which the vault is openable by nobody.
  */
+// G1 — WHY THIS FILE WALKS chat- AND NOTHING ELSE.
+// scripts/commands/rekey.ts:4 already enumerated the five namespaces a re-key has to think about,
+// and a rotation that stops at the vault "would leave the patient's chat history ... stranded".
+// This command stopped at the vault anyway: it minted a fresh DEK, re-encrypted data-*.enc, and
+// DELETEd every old envelope row in the same transaction — so on 2026-10-06 (dev) and 2026-10-07
+// (prod) it sealed seven chat histories under a key that no longer exists anywhere. The vault
+// still opened, which is why it read as a UI bug: chat-store.ts caught the decrypt failure, armed
+// its unreadable guard and refused every save from then on, permanently.
+// raw/, text/ and processed/ need no pass of their own — their per-object keys live INSIDE the
+// vault (functions/api/raw/[[path]].ts:17), so they travelled with the re-encrypted vault.
+// chat- WAS the one namespace sealed under the DEK directly. W87 made that false — see the
+// regen-log pass below — and the correction is here rather than only there, because this is the
+// sentence a reader checks before concluding a namespace needs no pass.
+const chatStagingPrefix = (store: string, vaultBlobId: string): string =>
+  `${store}/rekey-chat/${vaultBlobId.toLowerCase()}/`;
+
+interface ChatMove {
+  clientId: string;
+  liveKey: string;
+  stagingKey: string;
+}
+
+// WHY A STAGING KEY AND NOT AN IN-PLACE REWRITE, WHICH IS THE WHOLE SAFETY ARGUMENT.
+// A chat blob is addressed by its client id and nothing in D1 points at it, so unlike the vault
+// it cannot be written to a new key and repointed — the live key is the only address it has.
+// That leaves ordering, and both in-place orderings lose data on a crash:
+//   re-seal before the D1 commit, and a crash leaves chat on the new DEK with the vault on the
+//     old one; the next run mints a DIFFERENT new DEK, and the half-rotated blob is unrecoverable.
+//   re-seal after the D1 commit, and a crash leaves chat on the old DEK whose envelopes that
+//     same transaction just deleted — which is exactly the loss this fix exists to prevent.
+// So the re-seal happens BEFORE the commit and lands somewhere else. Then nothing is destroyed
+// until the commit has succeeded, and after it the finish is a pure object copy that needs no key
+// at all: whatever sits under the staging prefix is already sealed under the new DEK, so an
+// operator can complete an interrupted run with a copy and no secret in hand.
+// The prefix sits outside `${store}/chat-`, which orphan-sweep.ts:63 lists and deletes from.
+async function resealChatToStaging(
+  store: string,
+  vault: Vault,
+  dek: CryptoKey,
+  newDek: CryptoKey,
+  newVaultBlobId: string,
+): Promise<ChatMove[]> {
+  const moves: ChatMove[] = [];
+  for (const clientId of Object.keys(vault.clients)) {
+    const liveKey = r2ChatKeyFor(store, clientId);
+    const blob = await getObject(LIVE_BUCKET, liveKey);
+    if (!blob) continue;
+    if (!isV2(blob)) {
+      throw new Error(
+        `chat history for one client is not an HD1 v2 blob — refusing to rotate, because this ` +
+          `command cannot re-seal it and completing the rotation would strand it permanently`,
+      );
+    }
+    // Opaque on purpose: the schema belongs to src/lib/chat-store.ts, and a copy of it here is a
+    // copy that goes stale. The round trip needs the bytes, not the meaning.
+    const hist = await decryptVaultV2<unknown>(blob, dek);
+    const size = JSON.stringify(hist).length;
+    const stagingKey = `${chatStagingPrefix(store, newVaultBlobId)}chat-${clientId.toLowerCase()}.enc`;
+    await putObject(LIVE_BUCKET, stagingKey, await encryptVaultV2(hist, newDek));
+    const back = await getObject(LIVE_BUCKET, stagingKey);
+    if (!back) throw new Error(`wrote a chat staging object but it reads back missing`);
+    if (JSON.stringify(await decryptVaultV2<unknown>(back, newDek)).length !== size) {
+      throw new Error(`chat re-seal verify failed: the staged copy does not round-trip`);
+    }
+    moves.push({ clientId, liveKey, stagingKey });
+  }
+  // No key is printed. vault-sync.ts:464 is the rule — stdout here can reach a public Actions log
+  // and a chat key names a person, so the count is the diagnostic.
+  process.stdout.write(`  ${moves.length} chat history(ies) re-sealed to staging\n`);
+  return moves;
+}
+
+// Runs only after the D1 commit has landed, so the DEK the live app will use is the one these
+// bytes are already sealed under. Idempotent per object: the staging copy is deleted last, so a
+// crash leaves the remainder of the work sitting under the prefix, finishable by copy alone.
+async function promoteChatFromStaging(moves: ChatMove[], newDek: CryptoKey, prefix: string): Promise<void> {
+  for (const m of moves) {
+    const staged = await getObject(LIVE_BUCKET, m.stagingKey);
+    if (!staged) {
+      throw new Error(
+        `chat staging object vanished before promotion — the remaining histories are under ` +
+          `${prefix} and each one copies onto ${"chat-<client>.enc"} with no key needed`,
+      );
+    }
+    await putObject(LIVE_BUCKET, m.liveKey, staged);
+    const back = await getObject(LIVE_BUCKET, m.liveKey);
+    if (!back) throw new Error(`promoted a chat history but it reads back missing — finish from ${prefix}`);
+    await decryptVaultV2<unknown>(back, newDek);
+    await deleteObject(LIVE_BUCKET, m.stagingKey);
+  }
+  if (moves.length) process.stdout.write(`  ${moves.length} chat history(ies) promoted and staging cleared\n`);
+}
+
+// Anything left under the prefix is a run that failed between the commit and the promotion, and
+// it is PHI sealed under a live DEK. Reported rather than deleted: which half of the rotation it
+// belongs to is the operator's call, and this command does not destroy a patient's history.
+// Residue is a diagnostic rather than a refusal, and which of the two kinds it is cannot be read
+// off the listing — so it names both. A run interrupted AFTER its D1 commit left copies sealed under
+// the DEK the envelopes now hold, and those promote onto their live chat- keys with no secret in
+// hand. One interrupted BEFORE the commit left copies under a DEK nothing references, which are
+// garbage. Neither put a live history at risk: nothing is written to a chat- key until the repoint
+// is proved, so the blob the browser reads was never touched by the run that died.
+async function reportChatStagingResidue(store: string): Promise<void> {
+  const left = await listObjects(LIVE_BUCKET, `${store}/rekey-chat/`);
+  if (left.length) {
+    process.stdout.write(
+      `WARNING: ${left.length} chat staging object(s) remain under ${store}/rekey-chat/ from an ` +
+        `earlier interrupted run. If that run reached its D1 commit they are sealed under the DEK in ` +
+        `force now and copy onto their live chat- keys as-is; if it did not, they are sealed under a ` +
+        `DEK nothing references and are discardable. No live history is at risk either way — the ` +
+        `chat- keys themselves were never written.\n`,
+    );
+  }
+}
+
+// W87 — THE REGEN LOG, FOR THE SAME REASON AND IN THE SAME ORDER.
+//
+// The regen log moved out of the vault blob into `regen-log/{client}/{segment}.enc`, one immutable
+// append-only object per save, sealed under the DEK exactly as a chat history is
+// (src/lib/regen-log-store.ts). So it needs a pass of its own, and a rotation that skipped it would
+// seal a patient's whole regen history under a key that no longer exists anywhere — the 2026-10-06
+// loss again, in a namespace that did not exist when that was fixed.
+//
+// The ordering argument is resealChatToStaging's, unchanged and not restated: re-seal to staging
+// before the D1 commit, promote only after the repoint is proved.
+//
+// A SECOND PAIR OF FUNCTIONS RATHER THAN A GENERALISATION OF THE FIRST, deliberately. The chat path
+// is the one that has already failed against real patients and been fixed; parameterising it to
+// serve two namespaces means every later change to either one reaches both, in the one file in this
+// tree where a mistake destroys a person's history irrecoverably. The duplication is the cheaper
+// risk, and what holds the two in step is tests/unit/rekey.test.ts, which asserts the same source
+// ordering for both rather than trusting them to be read together.
+//
+// One structural difference, and it is why the code is not a copy: a chat history is ONE key per
+// client, so the chat pass can name it. A regen log is a PREFIX holding any number of segments, so
+// this walks the listing — and each segment is re-sealed individually, which also means an
+// interrupted run leaves whole segments either done or untouched, never half.
+const regenLogStagingPrefix = (store: string, vaultBlobId: string): string =>
+  `${store}/rekey-regen-log/${vaultBlobId.toLowerCase()}/`;
+
+interface SegmentMove {
+  liveKey: string;
+  stagingKey: string;
+}
+
+async function resealRegenLogToStaging(
+  store: string,
+  vault: Vault,
+  dek: CryptoKey,
+  newDek: CryptoKey,
+  newVaultBlobId: string,
+): Promise<SegmentMove[]> {
+  const moves: SegmentMove[] = [];
+  for (const clientId of Object.keys(vault.clients)) {
+    const prefix = r2RegenLogPrefixFor(store, clientId);
+    for (const obj of await listObjects(LIVE_BUCKET, prefix)) {
+      const blob = await getObject(LIVE_BUCKET, obj.key);
+      if (!blob) continue;
+      if (!isV2(blob)) {
+        throw new Error(
+          `a regen log segment is not an HD1 v2 blob — refusing to rotate, because this command ` +
+            `cannot re-seal it and completing the rotation would strand it permanently`,
+        );
+      }
+      // Opaque on purpose, as the chat path is: the schema belongs to src/lib/regen-log-store.ts,
+      // and a copy of it here is a copy that goes stale. The round trip needs the bytes.
+      const segment = await decryptVaultV2<unknown>(blob, dek);
+      const size = JSON.stringify(segment).length;
+      const stagingKey = `${regenLogStagingPrefix(store, newVaultBlobId)}${clientId.toLowerCase()}/${obj.key.slice(prefix.length)}`;
+      await putObject(LIVE_BUCKET, stagingKey, await encryptVaultV2(segment, newDek));
+      const back = await getObject(LIVE_BUCKET, stagingKey);
+      if (!back) throw new Error(`wrote a regen log staging object but it reads back missing`);
+      if (JSON.stringify(await decryptVaultV2<unknown>(back, newDek)).length !== size) {
+        throw new Error(`regen log re-seal verify failed: the staged copy does not round-trip`);
+      }
+      moves.push({ liveKey: obj.key, stagingKey });
+    }
+  }
+  // No key is printed — vault-sync.ts's rule: stdout here can reach a public Actions log and one of
+  // these keys names a person. The count is the diagnostic.
+  process.stdout.write(`  ${moves.length} regen log segment(s) re-sealed to staging\n`);
+  return moves;
+}
+
+// Runs only after the D1 commit has landed, so the DEK the live app will use is the one these bytes
+// are already sealed under. Idempotent per object: the staging copy is deleted last, so a crash
+// leaves the remainder under the prefix, finishable by copy alone and with no secret in hand.
+async function promoteRegenLogFromStaging(moves: SegmentMove[], newDek: CryptoKey, prefix: string): Promise<void> {
+  for (const m of moves) {
+    const staged = await getObject(LIVE_BUCKET, m.stagingKey);
+    if (!staged) {
+      throw new Error(
+        `regen log staging object vanished before promotion — the remaining segments are under ` +
+          `${prefix} and each one copies back onto regen-log/<client>/ with no key needed`,
+      );
+    }
+    await putObject(LIVE_BUCKET, m.liveKey, staged);
+    const back = await getObject(LIVE_BUCKET, m.liveKey);
+    if (!back) throw new Error(`promoted a regen log segment but it reads back missing — finish from ${prefix}`);
+    await decryptVaultV2<unknown>(back, newDek);
+    await deleteObject(LIVE_BUCKET, m.stagingKey);
+  }
+  if (moves.length) process.stdout.write(`  ${moves.length} regen log segment(s) promoted and staging cleared\n`);
+}
+
+// reportChatStagingResidue's argument, applied to this prefix. Reported rather than deleted for the
+// same reason: which half of a rotation the residue belongs to is the operator's call, and no live
+// segment is at risk either way, because nothing is written to a regen-log/ key until the repoint is
+// proved.
+async function reportRegenLogStagingResidue(store: string): Promise<void> {
+  const left = await listObjects(LIVE_BUCKET, `${store}/rekey-regen-log/`);
+  if (left.length) {
+    process.stdout.write(
+      `WARNING: ${left.length} regen log staging object(s) remain under ${store}/rekey-regen-log/ ` +
+        `from an earlier interrupted run. If that run reached its D1 commit they are sealed under the ` +
+        `DEK in force now and copy back onto their live regen-log/ keys as-is; if it did not, they are ` +
+        `sealed under a DEK nothing references and are discardable. No live segment is at risk either ` +
+        `way — the regen-log/ keys themselves were never written.\n`,
+    );
+  }
+}
+
 async function rekeyOne(a: Assessment, store: string): Promise<{ vaultId: string; newR2Key: string }> {
   const { row, principals } = a;
   const stem = stemOf(row.r2_key);
@@ -244,6 +470,10 @@ async function rekeyOne(a: Assessment, store: string): Promise<{ vaultId: string
     if (!env.wrappedDEK.length) throw new Error(`empty wrapped DEK for ${p.accountId} — refusing to write it`);
   }
 
+  // BEFORE the transaction, and the ordering is the safety argument — see resealChatToStaging.
+  const chatMoves = await resealChatToStaging(store, vault, dek, newDek, newVaultBlobId);
+  const regenMoves = await resealRegenLogToStaging(store, vault, dek, newDek, newVaultBlobId);
+
   // ONE command, one implicit transaction. A partial apply here is the unrecoverable failure.
   const statements = [
     `DELETE FROM vault_envelopes WHERE vault_id = ${q(row.vault_id)};`,
@@ -267,6 +497,8 @@ async function rekeyOne(a: Assessment, store: string): Promise<{ vaultId: string
   if (now.length !== want.size || now.some((p) => !want.has(p.accountId))) {
     throw new Error(`envelope set after rotation is ${now.map((p) => p.accountId).join(", ")}, expected ${[...want].join(", ")}`);
   }
+  await promoteChatFromStaging(chatMoves, newDek, chatStagingPrefix(store, newVaultBlobId));
+  await promoteRegenLogFromStaging(regenMoves, newDek, regenLogStagingPrefix(store, newVaultBlobId));
   process.stdout.write(`  repointed and ${now.length} envelope(s) re-minted — old object left at ${oldKey}\n`);
   return { vaultId: row.vault_id, newR2Key };
 }
@@ -305,6 +537,12 @@ async function main(): Promise<void> {
     throw new Error(`refusing to rotate without a recent backup — ${fresh.reason}\n  run: npm run vault:snapshot`);
   }
   process.stdout.write(`backup ok — snapshot ${fresh.snapshotId} is ${fresh.ageHours!.toFixed(1)}h old\n`);
+
+  // Before the first write, so an earlier interrupted rotation is read out while its residue can
+  // still be told apart from this run's. Rotating again is what makes it ambiguous: a second staging
+  // prefix appears beside the first, and the DEK that could have opened the first is gone.
+  await reportChatStagingResidue(store);
+  await reportRegenLogStagingResidue(store);
 
   // A named --vault outside the scope is a mistake worth naming rather than a silent no-op; under
   // --all it is simply not work.

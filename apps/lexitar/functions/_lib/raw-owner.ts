@@ -25,6 +25,7 @@ import { getActiveProviderLink } from "./identity-providers";
 import { recordRawObject } from "./identity-audit";
 import { listAllKeys, type ObjectBucket } from "./object-bucket";
 import { storeKey, type StoreEnv } from "./store";
+import { prefixMatch } from "./key-range";
 import { normalizeClientId } from "../../src/lib/client-id";
 
 // `unclaimed` and `orphaned` both mean "no owner row", and they are split because they deserve opposite
@@ -46,15 +47,21 @@ export interface NamespaceEnv extends StoreEnv {
 }
 
 /**
- * The three key shapes one client's namespace occupies: originals under `raw/{id}/`, their extracted
- * text under `text/{id}/`, and the flat `chat-{id}.enc` blob. Every question about a namespace — who
- * owns it, is it empty, what does claiming it cover — is asked of all three together, because letting
- * them disagree is how an ownership gap reappears one route at a time. The chat key is used as a list
- * PREFIX like the other two, which matches exactly that key.
+ * The four key shapes one client's namespace occupies: originals under `raw/{id}/`, their extracted
+ * text under `text/{id}/`, the regen-log segments under `regen-log/{id}/`, and the flat
+ * `chat-{id}.enc` blob. Every question about a namespace — who owns it, is it empty, what does
+ * claiming it cover — is asked of all four together, because letting them disagree is how an
+ * ownership gap reappears one route at a time. The chat key is used as a list PREFIX like the
+ * others, which matches exactly that key.
  */
 export function namespacePrefixes(env: StoreEnv, clientId: string): string[] {
   const slug = normalizeClientId(clientId);
-  return [`${storeKey(env, "raw", slug)}/`, `${storeKey(env, "text", slug)}/`, storeKey(env, `chat-${slug}.enc`)];
+  return [
+    `${storeKey(env, "raw", slug)}/`,
+    `${storeKey(env, "text", slug)}/`,
+    `${storeKey(env, "regen-log", slug)}/`,
+    storeKey(env, `chat-${slug}.enc`),
+  ];
 }
 
 /**
@@ -62,10 +69,35 @@ export function namespacePrefixes(env: StoreEnv, clientId: string): string[] {
  * First writer wins: a backfill or claim can add rows for a second account and must never flip the owner.
  */
 export async function ownerOfClientNamespace(db: D1Database, env: StoreEnv, clientId: string): Promise<string | null> {
-  const [raw, text, chat] = namespacePrefixes(env, clientId);
+  // Built from the list rather than from named locals, so a namespace added above is asked about here
+  // without a second edit. A directory prefix matches everything under it as a RANGE and never as a
+  // `LIKE` — see key-range.ts, which is the whole reason this is not three lines: `regen-log/` made
+  // the pattern longer than D1 accepts, and a prefix match must not have a length ceiling. The flat
+  // chat key is an equality test, which it already was.
+  const clauses: string[] = [];
+  const binds: string[] = [];
+  for (const prefix of namespacePrefixes(env, clientId)) {
+    if (prefix.endsWith("/")) {
+      const m = prefixMatch("r2_key", prefix, binds.length + 1);
+      clauses.push(m.sql);
+      binds.push(...m.binds);
+    } else {
+      clauses.push(`r2_key = ?${binds.length + 1}`);
+      binds.push(prefix);
+    }
+  }
+  // `rowid` breaks a tie on `created_at`, which until now the QUERY PLAN broke. `created_at` is an ISO
+  // string at millisecond resolution, so two rows in one namespace can carry the same value — the two
+  // inserts behind a single upload do, and on a fast host most pairs do — and SQLite then answers with
+  // whichever of them the plan reaches first. The clause above changes that plan: a `LIKE` scanned the
+  // table and so answered in insertion order, while a range SEARCHes the `r2_key` index and answers in
+  // KEY order. First writer by filename is not the rule stated above, and getting it wrong is not a
+  // near miss — it makes a clinician's read of their patient's file resolve as `{ kind: "owner" }`,
+  // which records no disclosure at all. `rowid` IS insertion order, which is what "first writer" has
+  // meant here all along.
   const row = await db
-    .prepare("SELECT account_id FROM raw_objects WHERE r2_key LIKE ?1 OR r2_key LIKE ?2 OR r2_key = ?3 ORDER BY created_at LIMIT 1")
-    .bind(`${raw}%`, `${text}%`, chat)
+    .prepare(`SELECT account_id FROM raw_objects WHERE ${clauses.join(" OR ")} ORDER BY created_at, rowid LIMIT 1`)
+    .bind(...binds)
     .first<{ account_id: string }>();
   return row?.account_id ?? null;
 }

@@ -18,6 +18,7 @@ const auth = {
   bootstrapGoogleSession: vi.fn(),
   getMyAccount: vi.fn(),
   revokeProvider: vi.fn(),
+  requestAccessAsProvider: vi.fn(),
 };
 const keyStore = {
   getAccountKey: vi.fn(),
@@ -32,6 +33,7 @@ const DEK = { id: "dek" } as unknown as CryptoKey;
 
 const PATIENT: RosterPatient = {
   linkId: "link-1",
+  expiresAt: null,
   vaultId: "vault-blair",
   ownerAccountId: "acct-blair",
   displayName: "Blair",
@@ -115,6 +117,7 @@ describe("enterAccount routing", () => {
     expect(session.providerKey).toBe(PROVIDER_KEY);
     expect(session.ownerKey).toBeNull();
     expect(host.clinician).toBe(1);
+    expect(roster.isClinician).toBe(true);
     expect(roster.patients).toEqual([PATIENT]);
   });
 
@@ -124,7 +127,26 @@ describe("enterAccount routing", () => {
     await roster.enterAccount({ vaultId: null, r2Key: null, privateKey: PROVIDER_KEY, dek: null });
     expect(host.support).toBe(1);
     expect(host.clinician).toBe(0);
+    expect(roster.isClinician).toBe(false);
     expect(fakeFetch).not.toHaveBeenCalled();
+  });
+
+  // The window this flag exists for, and it is a real one rather than a theoretical ordering: a
+  // support account IS a provider, so `isProvider` is raised the moment the key is set and stays
+  // raised for the whole `getMyAccount()` round trip. A host branching on it alone renders its
+  // clinician console in that window — which an e2e spec caught by typing a support request into
+  // the clinician ask form and watching it detach mid-click. Nothing a person can act on may be
+  // gated on `isProvider` without this second flag.
+  it("does not call a support account a clinician while the server has not yet said which it is", async () => {
+    let answer!: (a: { id: string; providerKind: string }) => void;
+    auth.getMyAccount.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+    const { roster } = harness();
+    const entering = roster.enterAccount({ vaultId: null, r2Key: null, privateKey: PROVIDER_KEY, dek: null });
+    expect(roster.isProvider).toBe(true);
+    expect(roster.isClinician).toBe(false);
+    answer({ id: "acct-s", providerKind: "support" });
+    await entering;
+    expect(roster.isClinician).toBe(false);
   });
 
   it("clears the login form on every path", async () => {
@@ -346,8 +368,60 @@ describe("reset", () => {
     roster.setEnteredPatient({ email: "blair@example.com", displayName: "Blair" });
     roster.reset();
     expect(roster.isProvider).toBe(false);
+    expect(roster.isClinician).toBe(false);
     expect(roster.patients).toEqual([]);
     expect(roster.enteredPatient).toBeNull();
     void session;
+  });
+});
+
+// Before this, a clinician could not ask at all: the only principal allowed to file a request was
+// an internal support account, so the only way a doctor was ever added was the patient finding them
+// unprompted. The console asks; the browser the patient is sitting at decides.
+describe("asking a patient for access", () => {
+  it("asks for the trimmed address and reports back without reloading the roster", async () => {
+    const { roster, host } = harness();
+    await roster.enterAccount({ vaultId: null, r2Key: null, privateKey: PROVIDER_KEY, dek: null });
+    fakeFetch.mockClear();
+    roster.askEmail = "  pat@example.com  ";
+
+    await roster.askPatient();
+
+    expect(auth.requestAccessAsProvider).toHaveBeenCalledWith("pat@example.com");
+    expect(roster.askEmail).toBe("");
+    expect(roster.askNotice).toContain("pat@example.com");
+    expect(host.error).toBeNull();
+    // /api/providers/patients returns GRANTED patients, so re-listing would return the same list and
+    // its unchanged emptiness would read as the ask having failed.
+    expect(fakeFetch).not.toHaveBeenCalled();
+  });
+
+  it("says nothing and asks nobody on an empty field", async () => {
+    const { roster } = harness();
+    roster.askEmail = "   ";
+    await roster.askPatient();
+    expect(auth.requestAccessAsProvider).not.toHaveBeenCalled();
+    expect(roster.askNotice).toBeNull();
+  });
+
+  it("surfaces a refusal on the shared error line and keeps the typed address", async () => {
+    auth.requestAccessAsProvider.mockRejectedValue(new Error("account not found"));
+    const { roster, host } = harness();
+    roster.askEmail = "typo@example.com";
+
+    await roster.askPatient();
+
+    expect(host.error).toBe("account not found");
+    expect(roster.askEmail).toBe("typo@example.com");
+    expect(roster.askNotice).toBeNull();
+  });
+
+  it("clears both halves on sign-out", async () => {
+    const { roster } = harness();
+    roster.askEmail = "pat@example.com";
+    await roster.askPatient();
+    roster.reset();
+    expect(roster.askEmail).toBe("");
+    expect(roster.askNotice).toBeNull();
   });
 });

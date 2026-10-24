@@ -43,6 +43,7 @@ describe("the policy matrix", () => {
     ["support:queue", ["support"]],
     ["support:directory", ["support"]],
     ["grant:approve-support", ["primary", "support"]],
+    ["access:request", ["primary", "support"]],
     ["account:erase-self", ["patient", "primary", "support"]],
     ["recovery:issue", ["primary"]],
   ];
@@ -61,13 +62,17 @@ describe("the policy matrix", () => {
 
   it("gives a patient nothing beyond erasing themselves", () => {
     expect(capabilitiesOf("patient")).toEqual(["account:erase-self"]);
+    // Asking is a provider act in both directions. A patient adds a clinician by granting, which
+    // needs no capability because it is their own record; what they must not have is the power to
+    // put a pending row on somebody else's access screen.
+    expect(can("patient", "access:request")).toBe(false);
   });
 
   it("lists a role's capabilities without inventing any", () => {
     // Note what is NOT here: recovery:issue. A support agent can already open a granted vault through
     // the audited path; letting them mint account control as well would make support a superuser.
     expect(capabilitiesOf("support").sort()).toEqual(
-      ["account:erase-self", "grant:approve-support", "support:directory", "support:patients", "support:queue"].sort(),
+      ["access:request", "account:erase-self", "grant:approve-support", "support:directory", "support:patients", "support:queue"].sort(),
     );
     expect(capabilitiesOf(null)).toEqual([]);
   });

@@ -18,7 +18,7 @@ vi.mock("../../scripts/vault-sync", async (importOriginal) => {
   return { ...(await importOriginal<typeof import("../../scripts/vault-sync")>()), getObject, putObject, listObjects, deleteObject };
 });
 
-import { BACKUP_BUCKET, LIVE_BUCKET } from "../../scripts/vault-sync";
+import { BACKUP_BUCKET, LIVE_BUCKET, keyRef } from "../../scripts/vault-sync";
 import { verifySnapshot, bodyKeyFor, logBundleKeyFor, snapshotPrefix, type SnapshotManifest } from "../../scripts/vault-snapshot";
 
 const STORE = "verify-store";
@@ -47,7 +47,7 @@ function seedConsistent(): SnapshotManifest {
     store: STORE,
     sourceBucket: LIVE_BUCKET,
     backupBucket: BACKUP_BUCKET,
-    counts: { vault: 1, chat: 0, raw: 0, processed: 0, text: 0, logs: 1 },
+    counts: { vault: 1, chat: 0, regenLog: 0, raw: 0, processed: 0, text: 0, logs: 1 },
     bytes: vaultBytes.length + logText.length,
     objects: [
       { key: vaultKey, size: vaultBytes.length, sha256: sha256Hex(vaultBytes), class: "vault" },
@@ -97,7 +97,8 @@ describe("verifySnapshot — the manifest is a claim, not evidence", () => {
 
     const report = await verifySnapshot(manifest);
     expect(report.ok).toBe(false);
-    expect(report.missing).toContain(`${STORE}/data-missed.enc`);
+    expect(report.missing).toContain(keyRef(`${STORE}/data-missed.enc`));
+    expect(report.missing.join(" ")).not.toContain("data-missed");
   });
 
   it("reports a live object that grew since the snapshot as a size mismatch, not a pass", async () => {
@@ -114,7 +115,7 @@ describe("verifySnapshot — the manifest is a claim, not evidence", () => {
     r2.delete(`${LIVE_BUCKET}::${STORE}/data-a.enc`);
     // Deleting the live object leaves the backup and the manifest agreeing with each other.
     const report = await verifySnapshot(manifest);
-    expect(report.extra).toContain(`${STORE}/data-a.enc`);
+    expect(report.extra).toContain(keyRef(`${STORE}/data-a.enc`));
     expect(report.ok).toBe(true);
   });
 });
@@ -151,7 +152,7 @@ describe("verifySnapshot — the log bundle is checked, not assumed", () => {
   it("does not look for log entries in the per-object backup — they live only in the bundle", async () => {
     const manifest = seedConsistent();
     const report = await verifySnapshot(manifest);
-    expect(report.missing.join(" ")).not.toContain("logs/refresh-finding");
+    expect(report.missing).not.toContain(keyRef(`${STORE}/logs/refresh-finding/2026-08-01/a1-1.json`));
     expect(r2.has(`${BACKUP_BUCKET}::${snapshotPrefix(STORE, ID)}r2/${STORE}/logs/refresh-finding/2026-08-01/a1-1.json`)).toBe(false);
   });
 });

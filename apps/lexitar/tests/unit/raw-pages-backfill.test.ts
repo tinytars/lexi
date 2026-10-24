@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { fillStatement, purgedKeys, sidecarKeyOf } from "../../scripts/raw-pages-backfill";
+import { fillSizesStatement, fillStatement, purgedKeys, sidecarKeyOf } from "../../scripts/raw-pages-backfill";
 
 // W77 — the sweep writes page counts straight into D1, bypassing every route's validation, and a
 // stored count is what the corpus ceiling is then checked against. So the one thing worth pinning is
@@ -25,6 +25,34 @@ describe("fillStatement", () => {
   it("escapes a quote in an R2 key rather than ending the literal", () => {
     const sql = fillStatement([{ key: "prod/raw/o'brien/a.pdf", pages: 1, bytes: 1 }]);
     expect(sql).toContain("'prod/raw/o''brien/a.pdf'");
+  });
+});
+
+// --sizes writes the column the corpus budgets against, for rows a count-only writer already gave a
+// page count. The zero half of its gate is the whole reason it exists: a 0 reads as measured to
+// functions/_lib/inference/corpus.ts, which is what made the in-flight budget refuse nothing.
+describe("fillSizesStatement", () => {
+  const rows = [
+    { key: "prod/raw/alex/a.pdf", bytes: 100 },
+    { key: "prod/raw/alex/b.jpg", bytes: 200 },
+  ];
+
+  it("fills a size that is missing or zero, and never changes one that is real", () => {
+    expect(fillSizesStatement(rows)).toMatch(/AND \(bytes IS NULL OR bytes = 0\)$/);
+  });
+
+  it("leaves pages alone, because the rows it reaches are not all PDFs", () => {
+    expect(fillSizesStatement(rows)).not.toContain("pages");
+  });
+
+  it("pairs each key with its own size, and touches no other key", () => {
+    const sql = fillSizesStatement(rows);
+    expect(sql).toContain("bytes = CASE r2_key WHEN 'prod/raw/alex/a.pdf' THEN 100 WHEN 'prod/raw/alex/b.jpg' THEN 200 END");
+    expect(sql).toContain("WHERE r2_key IN ('prod/raw/alex/a.pdf', 'prod/raw/alex/b.jpg')");
+  });
+
+  it("escapes a quote in an R2 key rather than ending the literal", () => {
+    expect(fillSizesStatement([{ key: "prod/raw/o'brien/a.pdf", bytes: 1 }])).toContain("'prod/raw/o''brien/a.pdf'");
   });
 });
 

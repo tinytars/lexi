@@ -30,14 +30,14 @@ test("a real pending request raises the sidebar badge, and approving it clears t
   await loginAs(page, patientEmail, pw);
   const badge = page.locator('[data-testid="access-request-badge"]');
   await expect(badge).toBeVisible({ timeout: 20_000 });
-  await expect(badge).toHaveText(/1 request to read your record/i);
+  await expect(badge).toHaveText(/1 access request waiting/i);
 
   await badge.click();
-  const pending = page.locator(".access-panel .access-pending");
+  const pending = page.getByTestId("access-pending-row");
   await expect(pending).toContainText(E2E_SUPPORT.name);
-  await pending.locator(".access-approve").click();
+  await pending.getByTestId("access-approve").click();
 
-  await expect(page.locator(".access-panel .access-pending")).toHaveCount(0);
+  await expect(pending).toHaveCount(0);
   await page.click('.modal-close[aria-label="Close"]');
   await expect(badge).toHaveCount(0);
 });

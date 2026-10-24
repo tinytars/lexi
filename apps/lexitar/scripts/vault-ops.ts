@@ -7,9 +7,13 @@
 // against one proven shape instead of re-deriving it eight times.
 //
 // No CAS guard on the write: putObject (vault-sync.ts) has no conditional-write option to give
-// one, and ops.yml's `concurrency: vault-{client}, cancel-in-progress: false` is what actually
-// serializes writes to a given vault. The read-back-verify below catches a half-applied write
-// (rekey-vault.ts's own posture), not a concurrent one.
+// one. Until 2026-10-19 `ops.yml`'s per-client concurrency group was named here as what serialized
+// these writes, and it never did for these eight: each reaches org-unwrap.ts and so needs the org
+// private key, which no hosted runner has, so none of them had ever completed a dispatched run.
+// They are local commands now (apps/lexitar/docs/OPS-LOCAL.md) and **nothing serializes them** —
+// the operator does, by not running one while the record's owner is in it, which is what
+// assertLiveWriteAllowed() makes them acknowledge. The read-back-verify below catches a
+// half-applied write (rekey-vault.ts's own posture), not a concurrent one.
 
 import { normalizeClientId } from "../src/lib/client-id";
 import type { Vault, Client } from "../src/lib/types";
