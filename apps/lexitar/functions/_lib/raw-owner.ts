@@ -127,6 +127,26 @@ export const mayDestroy = mayRead;
 /** Writing additionally allows an EMPTY namespace, whose first write claims it. Never an orphaned one. */
 export const mayWrite = (access: RawAccess): boolean => mayRead(access) || access.kind === "unclaimed";
 
+/**
+ * Whose record an object belongs to — the account id `recordRawObject` must be given.
+ *
+ * A GRANTED caller writes on the SUBJECT's behalf, so the row names the subject rather than the
+ * caller. Naming the caller is what leaves a patient permanently un-erasable: `erasure.ts` counts the
+ * object inside their namespace, finds it attributed to another account, and by design never deletes
+ * by prefix — a slug collision would destroy a third party's only copy — so the report reads
+ * `complete: false` for ever with no route that can resolve it.
+ *
+ * `subjectAccountId` and NOT `ownerAccountId`: the latter is only the namespace's FIRST WRITER
+ * (`rawAccessFor` above), which on a clinician-first namespace is the clinician — the very account the
+ * row must stop naming. Every other kind records the caller, who IS the subject there: `owner` means
+ * actor === subject, and `unclaimed` is a patient's own first write.
+ *
+ * It does not reach the first-writer case, where a clinician who claimed the namespace resolves as
+ * `owner` rather than `granted`. That is the gap `rawAccessFor`'s own comment already tracks.
+ */
+export const recordSubject = (access: RawAccess, callerAccountId: string): string =>
+  access.kind === "granted" ? access.subjectAccountId : callerAccountId;
+
 /** Decides what `accountId` may do with `clientId`'s objects; the routes apply mayRead/mayWrite/mayDestroy. */
 export async function rawAccessFor(
   db: D1Database,

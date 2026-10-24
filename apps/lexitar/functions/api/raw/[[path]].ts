@@ -4,7 +4,7 @@ import { requireSession } from "../../_lib/session";
 import { logRequest } from "../../_lib/log";
 import { normalizeClientId } from "../../../src/lib/client-id";
 import { storeKey } from "../../_lib/store";
-import { rawAccessFor, mayRead, mayWrite, mayDestroy, type RawAccess } from "../../_lib/raw-owner";
+import { rawAccessFor, mayRead, mayWrite, mayDestroy, recordSubject, type RawAccess } from "../../_lib/raw-owner";
 import { auditPrivilegedRead, sha8Of, AUDIT_UNAVAILABLE } from "../../_lib/phi-audit";
 import { json } from "../../_lib/http";
 import type { ObjectBucket } from "../../_lib/object-bucket";
@@ -226,13 +226,14 @@ export async function onRequestPut(context: Ctx): Promise<Response> {
 
   const key = storeKey(env, "raw", normalizeClientId(id), file);
   await env.VAULT.put(key, bytes);
-  // W72 — record who wrote it. The key carries a client DISPLAY NAME, which lives only inside the
+  // W72 — record WHOSE RECORD it is, which on a granted write is the subject and not the caller
+  // (recordSubject, raw-owner.ts). The key carries a client DISPLAY NAME, which lives only inside the
   // encrypted vault, so without this row the server can never afterwards say whose object this is —
   // which is why erasure could not promise to delete a patient's originals. Written after the put, so
   // a failed upload leaves no ownership claim; INSERT OR IGNORE, so a re-PUT does not reassign it.
   // W77 — `pages` rides along because pdf.js does not run on Workers, so this request is the only
   // moment the page count is known server-side without a second round trip for the bytes.
-  await recordRawObject(env.DB, key, session.accountId, { ...(pages !== undefined && { pages }), bytes: bytes.length });
+  await recordRawObject(env.DB, key, recordSubject(access, session.accountId), { ...(pages !== undefined && { pages }), bytes: bytes.length });
   // W8d: audit the write — id + size, never the bytes. `sealed` is now always true here (the refusal
   // above is the only way past), and stays in the record so a log that ever shows false is read as
   // the contradiction it would be.
