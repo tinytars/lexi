@@ -39,6 +39,7 @@
     "brain:versions": "tsx scripts/gen-brain-versions.ts",
     "recovery:approve": "tsx scripts/recovery-approve.ts",
     "raw:backfill": "tsx scripts/raw-backfill.ts",
+    "raw:attribution-audit": "tsx scripts/raw-attribution-audit.ts",
     "raw:pages": "tsx scripts/raw-pages-backfill.ts",
     "raw:sizes": "tsx scripts/raw-pages-backfill.ts --sizes",
     "raw:encrypt": "tsx scripts/raw-encrypt-backfill.ts",

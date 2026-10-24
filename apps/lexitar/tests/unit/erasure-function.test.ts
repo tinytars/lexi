@@ -10,9 +10,11 @@ import { insertAccessEvent, listAccessEventsForSubject, listRawObjectsForAccount
 import { eraseAccount, chatKeyForVault, r2KeysForAccount } from "../../functions/_lib/erasure";
 import { onRequestPost as erase } from "../../functions/api/account/erase";
 import { onRequestPost as corpusWarm } from "../../functions/api/corpus-warm";
+import { onRequestPut as rawPut } from "../../functions/api/raw/[[path]]";
 import { generateAccountKeypair, generateDEK, wrapDEKForPublicKey } from "@tinytars/vault/crypto";
 import { useWorkerd } from "../support/miniflare";
 import { SESSION_SECRET, cookieFor } from "../support/session";
+import { hd1Blob } from "../support/blobs";
 
 const STORE = "dev";
 // Per test: fixtures reuse emails and assertions list the whole bucket.
@@ -185,6 +187,40 @@ describe("eraseAccount", () => {
     expect(report.unattributable).toBe(1);
     expect(report.r2Deleted).not.toContain(theirs);
     expect(await w.bucket.get(theirs)).not.toBeNull();
+  });
+
+  // W72 — the inverse of the case above, and the reason that one is not the whole story. A clinician
+  // holding a live grant writes on the PATIENT's behalf, so the row names the patient (`recordSubject`,
+  // functions/_lib/raw-owner.ts) and this erasure reaches it. The ROUTE is driven rather than
+  // `recordRawObject` called by hand, because whose record an object is is the route's decision: a test
+  // that writes the row itself asserts its own fixture and would have stayed green all through the
+  // defect. The case above keeps its own answer — a genuinely foreign object still counts and still is
+  // not deleted — and the two differ only in whether a live grant stands between the accounts.
+  it("deletes an upload a granted clinician made into this patient's namespace", async () => {
+    const p = await seedPatient("a@example.com", "alex");
+    const prov = await generateAccountKeypair();
+    const provId = crypto.randomUUID();
+    await createAccount(w.db, { id: provId, displayName: "Doc", email: "doc@example.com", providerKind: "primary" });
+    await putPublicKey(w.db, { accountId: provId, publicKeyJwk: prov.publicKeyJwk });
+    const e = await wrapDEKForPublicKey(await generateDEK(), prov.publicKeyJwk);
+    await putEnvelope(w.db, { vaultId: p.vaultId, principalAccountId: provId, wrappedDek: e.wrappedDEK, ephemeralPublicKeyJwk: e.ephemeralPublicKeyJwk, createdBy: p.id });
+    await createProviderLink(w.db, { ownerAccountId: p.id, providerAccountId: provId, role: "primary", status: "active", grantedBy: p.id, consentRef: "consent-alex" });
+
+    const uploaded = `${STORE}/raw/alex/clinician-upload.pdf`;
+    const res = await rawPut({
+      request: new Request("http://x/api/raw/alex/clinician-upload.pdf", { method: "PUT", headers: { cookie: await cookieFor(provId) }, body: hd1Blob() }),
+      env: env(),
+      params: { path: ["alex", "clinician-upload.pdf"] },
+    } as any);
+    expect(res.status).toBe(204);
+
+    const report = await eraseAccount(env(), p.id);
+    expect(report.unattributable).toBe(0);
+    expect(report.complete).toBe(true);
+    expect(report.r2Deleted).toContain(uploaded);
+    // And the whole bucket, because a report that names what it deleted while leaving a key behind is
+    // the worse of the two failures: the subject is told it is gone AND it is still there.
+    expect(await listKeys()).toEqual([]);
   });
 
   // W71 — the one namespace deliberately written to OUTLIVE a deletion, which is exactly why erasure
