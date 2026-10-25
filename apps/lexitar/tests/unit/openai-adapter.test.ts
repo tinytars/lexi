@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type Anthropic from "@anthropic-ai/sdk";
 import { openAIClient } from "../../functions/_lib/inference/openai";
+import { textDelta } from "../../src/lib/model-port";
 import { ModelHttpError, ModelUnsupportedError, classifyModelError } from "../../functions/_lib/model-errors";
 import type { OpenAIProvider } from "../../src/lib/model-config";
 import { startFakeOpenAI, type FakeOpenAI } from "../fixtures/fake-openai";
@@ -156,7 +157,8 @@ describe("openAIClient.messages.stream", () => {
     const types: string[] = [];
     for await (const ev of stream) {
       types.push(ev.type);
-      if (ev.type === "content_block_delta" && ev.delta.type === "text_delta") deltas.push(ev.delta.text);
+      const text = textDelta(ev);
+      if (text !== undefined) deltas.push(text);
     }
     expect(deltas).toEqual(["Hel", "lo"]);
     expect(types[0]).toBe("message_start");

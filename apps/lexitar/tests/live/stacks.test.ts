@@ -17,7 +17,7 @@ import "../../scripts/load-creds";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { runProbeCase } from "@pablotech/akesi/benchmarks/model-portability";
+import { runProbeCase } from "@promontory-studio/dokimasia/probe";
 import { probesFor } from "../../scripts/model-bench";
 import { modelFor } from "../../functions/_lib/inference/resolve";
 import { capsFor, parseInferenceConfig, type Feature } from "../../src/lib/model-config";

@@ -7,9 +7,6 @@
     "packages/*",
     "apps/*"
   ],
-  "overrides": {
-    "@anthropic-ai/sdk": "^0.91.1"
-  },
   "allowScripts": {
     "workerd@1.20260730.1": true,
     "workerd@1.20260915.1": true,

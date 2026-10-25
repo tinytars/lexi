@@ -1,6 +1,6 @@
 import { requireBearer } from "../_lib/guard";
 import { requireSession } from "../_lib/session";
-import { logRequest } from "../_lib/log";
+import { logRequest, tokenUsage } from "../_lib/log";
 import { auditor } from "../_lib/audit";
 import { inferenceErrorReply } from "../_lib/model-errors";
 import { buildUserMessage, SYSTEM_PROMPT, correctionSuffix } from "@pablotech/akesi/finding-generate";
@@ -8,6 +8,7 @@ import { streamWithAttachedModel, type AttachedEnv } from "../_lib/inference/att
 import { subjectOf } from "../_lib/inference/subject";
 import { findingRequestParams } from "@pablotech/akesi/finding-generate";
 import type { ObjectBucket } from "../_lib/object-bucket";
+import { textDelta } from "../../src/lib/model-port";
 
 // W15/3b.2 — provider-only web Finding refresh. Gated on PROVIDER_TOKEN (the distinct secret from
 // /api/provider-token). A Finding call runs minutes, so we STREAM Opus text to the browser
@@ -116,9 +117,10 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
           { signal: request.signal },
         );
         for await (const event of s) {
-          if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
-            chars += event.delta.text.length;
-            write(event.delta.text);
+          const text = textDelta(event);
+          if (text !== undefined) {
+            chars += text.length;
+            write(text);
           }
         }
         const final = await s.finalMessage(); // surfaces a terminal stream error (e.g. overloaded) into the catch
@@ -129,7 +131,7 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
           latencyMs: Date.now() - start,
           attempt,
           chars,
-          usage: { input: final.usage.input_tokens, output: final.usage.output_tokens },
+          usage: tokenUsage(final.usage),
         });
       } catch (e) {
         // A browser cancel/disconnect aborts request.signal → the SDK throws. Record it as an abort
