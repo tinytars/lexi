@@ -25,6 +25,37 @@ const scopedLabels = (posted: LeafBody[], node: string) =>
 
 const historyOf = (b: LeafBody, name: string) => (b.inputs?.treatmentHistory ?? []).filter((h) => h.name === name);
 
+// Wait for the BACKGROUND regen queue to go quiet before measuring a save's own post.
+//
+// corpus-lane.ts serializes every unprompted regen request through one chained promise — a lane of
+// one, deliberately, because each of those requests can hold tens of megabytes of corpus inside a
+// single Pages Function isolate. A fresh patient opens with every node stale, and each save fires a
+// sweep of the unowned nodes, so by the time a test reaches its last save there is a queue of other
+// people's work ahead of it and the lane drains at whatever rate the machine is loaded at. An
+// assertion that gives one post a fixed wall-clock budget is therefore racing the queue depth rather
+// than testing the app: this spec's last poll lost that race at 10 s once in CI and once in a local
+// full-suite run, and passed on the next run of the same commit both times.
+//
+// So: let the queue settle first — no new post for a second — and only then measure. That makes the
+// poll after it a measurement of one round trip, which is what it was written to assert.
+async function settleRegen(posted: readonly unknown[]) {
+  let seen = -1;
+  let stableSince = 0;
+  await expect
+    .poll(
+      () => {
+        if (posted.length !== seen) {
+          seen = posted.length;
+          stableSince = Date.now();
+          return false;
+        }
+        return Date.now() - stableSince >= 1_000;
+      },
+      { timeout: 45_000, intervals: [200] },
+    )
+    .toBe(true);
+}
+
 // The dose row belonging to one named medicine, rather than whichever row happens to be first.
 function doseRowOf(page: Page, name: string) {
   return page.locator(".med-group", { hasText: name }).locator(".med-table td.med-actions .btn", { hasText: "Edit" }).first();
@@ -383,6 +414,8 @@ test("Treatment (Planned bucket): re-extracting a unit change fires treatmentGro
   await page.locator(".tedit-actions .btn.primary", { hasText: "Save" }).click();
   await expect(page.locator(".unified-treatment .saved")).toBeVisible({ timeout: 10_000 });
   await expect.poll(groupPosts, { timeout: 10_000 }).toBe(1);
+
+  await settleRegen(posted);
 
   await doseRowOf(page, marker).click();
   await page.locator(".tedit .field", { hasText: "Reason" }).locator("input").fill("unrelated edit");
