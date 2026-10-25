@@ -347,11 +347,22 @@
         class:status-unknown={status === "unknown"}
       >
         {#if onToggle}
+          <!-- The chart's own words are part of this button's name. The figure inside is an
+               <svg role="img"> whose aria-label is chartLabel — the marker's latest value, its
+               status and its date — and a bare `aria-label` here REPLACED it for name computation,
+               so the one textual equivalent of the plot was announced nowhere and the button said
+               only which marker it expanded: a screen-reader user on this page heard "Expand
+               details for ApoB, button" and no reading. That is the defect this fixes, and it is
+               older than any engine — axe 4.13.0 passes this markup either way.
+               It does NOT clear axe 4.14.0's label-content-name-mismatch, and nothing written here
+               could: that rule reads the plot's own axis ticks ("Jan", "60.0") as this button's
+               visible text and asks the accessible name to contain them. tests/e2e/a11y.spec.ts
+               carries that measurement and the notch it cost. -->
           <button
             type="button"
             class="mc-figure-toggle"
             aria-expanded={expanded}
-            aria-label={expanded ? `Collapse details for ${caption ?? name}` : `Expand details for ${caption ?? name}`}
+            aria-label={`${expanded ? "Collapse" : "Expand"} details for ${caption ?? name} — ${chartLabel}`}
             onclick={() => onToggle?.()}
           >
             <figure>{@render chartSvg()}</figure>

@@ -22,6 +22,15 @@ export interface RequestLog {
   access?: "owner" | "granted" | "unclaimed" | "orphaned" | "denied";
 }
 
+// The port's token counts are as nullable as the wire makes them — @pablotech/akesi/model-client's
+// ModelUsage, where "an adapter that reports neither still fits" — and `usage` above is not nullable
+// at all. Same rule as latencyMs: an omitted count is honest, a 0 is a measurement that never
+// happened. So a reply that reported neither count logs no usage rather than a free call.
+export function tokenUsage(usage: { input_tokens?: number | null; output_tokens?: number | null }): RequestLog["usage"] {
+  const { input_tokens: input, output_tokens: output } = usage;
+  return typeof input === "number" && typeof output === "number" ? { input, output } : undefined;
+}
+
 export function logRequest(entry: RequestLog): void {
   console.log(JSON.stringify({ at: new Date().toISOString(), ...entry }));
 }

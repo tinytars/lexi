@@ -19,7 +19,8 @@
 // Function), the HTTP shell, usage accounting, and `factorsHash` — the two sides hash through
 // different modules on purpose (see refresh-range.ts's note on module-graph isolation), so this
 // returns the range unstamped and each caller stamps it.
-import type Anthropic from "@anthropic-ai/sdk";
+import type { ModelUsage } from "@pablotech/akesi/model-client";
+import type { ModelTurns } from "./model-port";
 import type { MessagesClient } from "@pablotech/akesi/model-client";
 import type { Client, PersonalizedRange } from "./types";
 import {
@@ -51,14 +52,14 @@ export interface RangeRequest {
   model: string;
   mode: "prod" | "dev";
   /** Called once per completed attempt, for cost accounting. */
-  onUsage?: (usage: Anthropic.Message["usage"]) => void;
+  onUsage?: (usage: ModelUsage) => void;
   /** Is this error worth another attempt? The Function classifies via its HTTP error taxonomy; the
    *  default covers the CLI, where a raw SDK error carries its own status. */
   isTransient?: (err: unknown) => boolean;
   /** The patient's own reports, prepended verbatim ahead of the question (CORPUS.md). Empty for the
    *  CLI, which has no R2 to read them from — and identical on every retry, which is what lets the
    *  three attempts share one cache entry instead of writing three. */
-  prefixTurns?: Anthropic.MessageParam[];
+  prefixTurns?: ModelTurns;
 }
 
 function defaultIsTransient(err: unknown): boolean {

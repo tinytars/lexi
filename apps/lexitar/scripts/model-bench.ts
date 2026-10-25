@@ -15,17 +15,19 @@ import "./load-creds";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
-  budget,
   documentProbe,
   extractProbe,
   findingProbe,
   rangesProbe,
-  runProbe,
   summarize,
   treatmentProbe,
-  type FeatureScore,
-  type Probe,
 } from "@pablotech/akesi/benchmarks/model-portability";
+// The domain-free half of the harness is @promontory-studio/dokimasia, which akesi 0.1.70 moved it
+// out to and now consumes as an optional peer: the probe loop, the budget and the scoring live
+// there, the probes that adapt a validator stay in akesi.
+import { budget } from "@promontory-studio/dokimasia/budget";
+import { runProbe, type Probe } from "@promontory-studio/dokimasia/probe";
+import type { FeatureScore } from "@promontory-studio/dokimasia/score";
 import type { ReportSource } from "@pablotech/akesi/report-extract";
 import { capsFor, modelId, parseInferenceConfig, INFERENCE, type Feature, type InferenceConfig } from "../src/lib/model-config";
 import { modelFor } from "../functions/_lib/inference/resolve";
@@ -108,11 +110,17 @@ export async function probesFor(features: Feature[], config: InferenceConfig): P
   return { probes, skipped, routes };
 }
 
+// A probe that ran no case has no rate, no mean and no median, and dokimasia declares those three
+// nullable for exactly that reason (score.ts:10-20): METHOD.md reserves zero for a feature that was
+// asked and FAILED, so printing 0 here would report a measurement that never happened. The dash is
+// already this table's word for absent — the rejection column uses it when nothing was rejected.
+const fig = (v: number | null, render: (n: number) => string): string => (v === null ? "—" : render(v));
+
 export function table(scores: FeatureScore[]): string {
   const rows = scores.map((s) => {
     const ci = `[${s.ci[0].toFixed(2)}, ${s.ci[1].toFixed(2)}]`;
     const top = s.rejections[0] ? `${s.rejections[0].bucket} (${s.rejections[0].count})` : "—";
-    return `| ${s.feature} | \`${s.model}\` | ${s.n} | ${s.passed}/${s.n} | ${ci} | ${(s.firstAttemptPassRate * 100).toFixed(0)}% | ${s.meanAttempts.toFixed(2)} | ${(s.medianMs / 1000).toFixed(1)} | ${top} |`;
+    return `| ${s.feature} | \`${s.model}\` | ${s.n} | ${s.passed}/${s.n} | ${ci} | ${fig(s.firstAttemptPassRate, (v) => `${(v * 100).toFixed(0)}%`)} | ${fig(s.meanAttempts, (v) => v.toFixed(2))} | ${fig(s.medianMs, (v) => (v / 1000).toFixed(1))} | ${top} |`;
   });
   return [
     "| feature | model | n | validated | 95% CI | first try | mean attempts | median s | commonest rejection |",

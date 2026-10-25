@@ -1,7 +1,9 @@
 // The Messages port spoken over an OpenAI-compatible /chat/completions endpoint (OpenAI, Ollama,
 // vLLM, LM Studio: only the base URL differs). Call cores keep building Anthropic-shaped requests;
 // this translates them out and the replies back, so nothing above it knows which provider ran.
-// Dropped on the way out: cache_control (OpenAI caches prompts on its own) and thinking.
+// Dropped on the way out: cache_control (OpenAI caches prompts on its own) and thinking. Sampling
+// is not translated because the Messages request has no sampling field to translate — temperature
+// and top_p left that API in SDK 1.0, and this adapter sends what a call core actually builds.
 import type Anthropic from "@anthropic-ai/sdk";
 import type { MessagesClient, MessagesStream } from "@pablotech/akesi/model-client";
 import type { OpenAIProvider } from "../../../src/lib/model-config";
@@ -129,8 +131,6 @@ export function toChatRequest(body: RequestBody, provider: OpenAIProvider, strea
     requireCap(provider, "jsonSchema", "structured JSON output");
     req.response_format = { type: "json_schema", json_schema: { name: "output", schema: format.schema, strict: false } };
   }
-  if (body.temperature !== undefined) req.temperature = body.temperature;
-  if (body.top_p !== undefined) req.top_p = body.top_p;
   if (body.stop_sequences?.length) req.stop = body.stop_sequences;
   if (stream) {
     req.stream = true;
