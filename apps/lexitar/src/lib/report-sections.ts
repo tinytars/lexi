@@ -117,7 +117,14 @@ export const AI_SECTIONS: SectionMeta[] = [
 // kind) was fully deprecated and removed — see git history for its shape if reviving it.
 export const DOCTOR_SECTIONS: SectionMeta[] = [
   { key: "treatment", label: SECTION_LABEL.treatment, icon: "💊", kind: "treatment", blurb: `Drugs, supplements, and behaviors on one timeline — planned, ongoing, or stopped — each with ${PRODUCT_NAME}'s take.` },
-  { key: "personalization", label: SECTION_LABEL.personalization, icon: "👤", kind: "personalization", blurb: `Your basic details — these personalize your healthy ranges and ${PRODUCT_NAME}'s read of your results. Each field persists as soon as you leave it.` },
+  // 2026-10-26 — these two blurbs said "your healthy ranges" and "your personal healthy range".
+  // `apps/BRANDING.md` §4 forbids exactly that: a range is a demographic reference, never a
+  // statement of what is healthy *for you*, which is a judgement only a physician makes. The
+  // computation is unchanged — `PersonalizedRange` still adjusts for age, gender, height and
+  // recorded conditions — so what moved is the claim and not the arithmetic. Found while retiring
+  // "decision support" from AboutOverlay.svelte, which has the reason that category of wording is
+  // an Ad Grant eligibility matter rather than a style one.
+  { key: "personalization", label: SECTION_LABEL.personalization, icon: "👤", kind: "personalization", blurb: `Your basic details — these adjust your reference ranges to your demographic context and shape ${PRODUCT_NAME}'s read of your results. Each field persists as soon as you leave it.` },
   { key: "allergies", label: SECTION_LABEL.allergies, icon: "⚠️", kind: "allergies", blurb: "Substances and drugs you're known to react to, so your care team can avoid them." },
   { key: "familyHistory", label: SECTION_LABEL.familyHistory, icon: "👪", kind: "familyHistory", blurb: "Conditions that run in your family, which can shape your own risk." },
 ];
@@ -125,7 +132,7 @@ export const DOCTOR_SECTIONS: SectionMeta[] = [
 // The Labs tab. Markers wall leads (folded in from the retired top-level tab), then Reports (the
 // imported source documents).
 export const LABS_SECTIONS: SectionMeta[] = [
-  { key: "markers", label: SECTION_LABEL.markers, icon: "📊", kind: "markers", blurb: "Your lab and measurement results over time, grouped by body system, each shown against your personal healthy range." },
+  { key: "markers", label: SECTION_LABEL.markers, icon: "📊", kind: "markers", blurb: "Your lab and measurement results over time, grouped by body system, each shown against a standard demographic reference range adjusted for your details." },
   { key: "healthReports", label: SECTION_LABEL.clinicalReports, icon: "📄", kind: "healthReports", blurb: `Your hospital reports, each with the doctor's diagnosis and a plain-language ${PRODUCT_NAME} summary of the details.` },
 ];
 

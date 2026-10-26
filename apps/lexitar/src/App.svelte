@@ -2043,7 +2043,11 @@
     @page {
       margin: 0.5in 0.5in 0.7in 0.5in;
       @bottom-left {
-        content: "LexiTar-Generated decision support, not a diagnosis. Discuss with a physician.";
+        /* "decision support" was the FDA's own term of art for the category LIABILITY.md argues this
+           tool sits outside of, and `apps/BRANDING.md` forbids the phrase on every LexiTar surface.
+           AboutOverlay.svelte carries the reason in full; this is the other place it was printed,
+           and a printed page is the copy that leaves the building. */
+        content: "LexiTar-generated health literacy summary, not a diagnosis. Discuss with a physician.";
         font-size: 7pt;
         color: #888;
         font-family: system-ui, -apple-system, sans-serif;
