@@ -164,7 +164,12 @@ test("the About link opens the report introduction overlay", async ({ page }) =>
   await page.getByRole("menuitem", { name: "About" }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
-  await expect(dialog).toContainText("decision-support system");
+  // Pins the positioning rather than the sentence: `apps/BRANDING.md` forbids "decision support"
+  // on every LexiTar surface, and this assertion used to require it. A test that echoes one phrase
+  // of copy only breaks when the copy is edited; these two break when the positioning regresses,
+  // which is the thing the Ad Grant's "education, not medicine" eligibility actually rests on.
+  await expect(dialog).toContainText("health literacy tool");
+  await expect(dialog).not.toContainText(/decision[ -]support/i);
   await page.getByRole("button", { name: "Close" }).click();
   await expect(dialog).toHaveCount(0);
 });
