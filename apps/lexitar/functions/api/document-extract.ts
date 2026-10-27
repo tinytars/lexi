@@ -5,7 +5,7 @@ import { logRequest } from "../_lib/log";
 import { modelErrorReply } from "../_lib/model-errors";
 import { modelFor } from "../_lib/inference/resolve";
 import { storeKey } from "../_lib/store";
-import { rawAccessFor, mayRead, type RawAccess } from "../_lib/raw-owner";
+import { rawAccessFor, mayRead, recordSubject, type RawAccess } from "../_lib/raw-owner";
 import { auditPrivilegedRead, sha8Of, AUDIT_UNAVAILABLE } from "../_lib/phi-audit";
 import { readDocument, DOCUMENT_READ_FAILURE, type DocumentReading, type StoredExtraction } from "@pablotech/akesi/document-read";
 import { validatePageImages } from "../_lib/page-images";
@@ -210,7 +210,7 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
   // W72 — the sidecar is extracted PLAINTEXT PHI, so it is erasable data in its own right and gets the
   // same ownership row the original does. Without it an erasure would delete the PDF and leave its
   // readable text behind, which is the worst of the two outcomes.
-  await recordRawObject(env.DB, sidecarKey, session.accountId);
+  await recordRawObject(env.DB, sidecarKey, recordSubject(access, session.accountId));
   // W8d: audit the write — id + size, never the content.
   return finish(200, { ...stored, cached: false }, { bytes: stored.chars, access: access.kind });
 }

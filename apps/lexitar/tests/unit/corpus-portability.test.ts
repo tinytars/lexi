@@ -8,6 +8,7 @@
 // under it, which is precisely the direction this has to hold.
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type Anthropic from "@anthropic-ai/sdk";
+import type { ModelTurns } from "../../src/lib/model-port";
 import { createAccount } from "../../functions/_lib/identity-accounts";
 import { recordRawObject } from "../../functions/_lib/identity-audit";
 import { openReportCorpus, CORPUS_ACK, CORPUS_PREAMBLE, type CorpusEnv } from "../../functions/_lib/inference/corpus";
@@ -34,7 +35,7 @@ const provider = (pdf: boolean): OpenAIProvider => ({
 const COMPLETION = { id: "c1", model: "m", choices: [{ message: { content: "ok" }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1 } };
 
 /** Two reports under one client, named so that R2 key order and attachment order can disagree. */
-async function twoReports(): Promise<Anthropic.MessageParam[]> {
+async function twoReports(): Promise<ModelTurns> {
   const who = crypto.randomUUID();
   await createAccount(w.db, { id: who, displayName: "alex", email: `alex-${who}@example.com` });
   for (const [file, body] of [["a-labs.pdf", "%PDF-1.4 labs"], ["b-scan.pdf", "%PDF-1.4 scan"]]) {
@@ -49,7 +50,7 @@ async function twoReports(): Promise<Anthropic.MessageParam[]> {
   return corpus.turns;
 }
 
-const send = (turns: Anthropic.MessageParam[], pdf: boolean) =>
+const send = (turns: ModelTurns, pdf: boolean) =>
   openAIClient(provider(pdf), undefined).messages.create({
     model: "m",
     max_tokens: 16,

@@ -27,14 +27,15 @@ import {
   CENSORED,
   MAX_ATTEMPTS,
   VERSIONS,
-  minimumDetectableWins,
   runCase,
   score,
-  signTest,
-  wilson,
-  withReplicates,
   type RetryOutcome,
 } from "@pablotech/akesi/benchmarks/retry-corrections";
+// The statistics are domain-free, so they are @promontory-studio/dokimasia's half of the harness
+// akesi 0.1.70 split out: the sign test, the Wilson interval, the detectable-wins floor and the
+// replicate expansion say nothing about a lab value. What stays in akesi is the case list and the
+// two strategies, which are about this domain's validator.
+import { minimumDetectableWins, signTest, wilson, withReplicates } from "@promontory-studio/dokimasia/stats";
 import { modelId, type Feature } from "../src/lib/model-config";
 import type { InferenceMode } from "../src/lib/types";
 import { modelFor } from "../functions/_lib/inference/resolve";

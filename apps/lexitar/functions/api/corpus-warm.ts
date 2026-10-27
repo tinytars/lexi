@@ -1,5 +1,5 @@
 import { requireSession } from "../_lib/session";
-import { logRequest } from "../_lib/log";
+import { logRequest, tokenUsage } from "../_lib/log";
 import { inferenceErrorReply } from "../_lib/model-errors";
 import { withAttachedModel, type AttachedEnv } from "../_lib/inference/attach";
 import { parseRawKeys } from "../../src/lib/raw-cipher";
@@ -88,7 +88,7 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
       });
       const u = message.usage as { cache_creation_input_tokens?: number; cache_read_input_tokens?: number };
       return finish(200, { warmed: true, written: u.cache_creation_input_tokens ?? 0, read: u.cache_read_input_tokens ?? 0 },
-        { usage: { input: message.usage.input_tokens, output: message.usage.output_tokens } });
+        { usage: tokenUsage(message.usage) });
     });
   } catch (err) {
     const { status, ...payload } = inferenceErrorReply(err, "corpus warm failed");

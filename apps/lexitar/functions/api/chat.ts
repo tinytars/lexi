@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { requireSession } from "../_lib/session";
-import { logRequest } from "../_lib/log";
+import { logRequest, tokenUsage } from "../_lib/log";
 import { inferenceErrorReply } from "../_lib/model-errors";
 import { withAttachedModel, type AttachedEnv } from "../_lib/inference/attach";
 import { parseRawKeys } from "../../src/lib/raw-cipher";
@@ -15,6 +15,7 @@ import { GET_MARKER_READINGS_TOOL } from "../../src/lib/chat-tools";
 // clinical instruction — treatment-date causality, unit labelling, "do not diagnose" — authored in a
 // route handler and invisible to the map whose whole argument is that a stale map is worse than none.
 import { chatSystemPrompt } from "../../src/lib/chat-prompt";
+import type { ModelTurns } from "../../src/lib/model-port";
 
 // AttachedEnv brings DB (which requireSession needs anyway, W71 — it reads
 // accounts.sessions_valid_from), VAULT and STORE_PREFIX: the report corpus is read here, server-side.
@@ -41,7 +42,7 @@ const MAX_BODY_BYTES = 8 * 1024 * 1024;
 // It does, however, READ PHI now: the patient's own reports are fetched from R2 here and prepended
 // as document blocks (CORPUS.md). "Stateless relay" stopped being true at that line — the route
 // still does not look inside what the browser sent, but it is no longer a pass-through.
-function validateMessages(raw: unknown): Anthropic.MessageParam[] | "document" | null {
+function validateMessages(raw: unknown): ModelTurns | "document" | null {
   if (!Array.isArray(raw) || raw.length === 0) return null;
   for (const m of raw) {
     if (!m || typeof m !== "object") return null;
@@ -56,7 +57,7 @@ function validateMessages(raw: unknown): Anthropic.MessageParam[] | "document" |
     // attachment path.
     if (Array.isArray(content) && content.some((b) => (b as { type?: unknown })?.type === "document")) return "document";
   }
-  return raw as Anthropic.MessageParam[];
+  return raw as ModelTurns;
 }
 
 export async function onRequestPost(context: { request: Request; env: Env }): Promise<Response> {
@@ -120,7 +121,7 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
         // is keyed on, and what stops round 2 from re-reading 20 MB at full price.
         messages: [...corpus.turns, ...messages],
       });
-      const usage = { usage: { input: message.usage.input_tokens, output: message.usage.output_tokens } };
+      const usage = { usage: tokenUsage(message.usage) };
 
       if (message.stop_reason === "tool_use") {
         const toolUses = message.content

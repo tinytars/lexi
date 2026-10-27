@@ -3,7 +3,7 @@ import { recordRawObject } from "../../_lib/identity-audit";
 import { requireSession } from "../../_lib/session";
 import { logRequest } from "../../_lib/log";
 import { storeKey } from "../../_lib/store";
-import { rawAccessFor, mayRead, mayWrite, type RawAccess } from "../../_lib/raw-owner";
+import { rawAccessFor, mayRead, mayWrite, recordSubject, type RawAccess } from "../../_lib/raw-owner";
 import { json } from "../../_lib/http";
 import type { ObjectBucket, ObjectConditional } from "../../_lib/object-bucket";
 
@@ -103,7 +103,7 @@ export async function onRequestPut(context: Ctx): Promise<Response> {
       // Before the overwrite and awaited, so a failure here fails the request with the original
       // blob still in place. Retention first is the whole reason this is safe to offer.
       await env.VAULT.put(kept, new Uint8Array(await existing.arrayBuffer()));
-      await recordRawObject(env.DB, kept, session.accountId);
+      await recordRawObject(env.DB, kept, recordSubject(access, session.accountId));
     }
   }
 
@@ -128,7 +128,7 @@ export async function onRequestPut(context: Ctx): Promise<Response> {
   const written = onlyIf ? await env.VAULT.put(r2Key(env, id), blob, { onlyIf }) : await env.VAULT.put(r2Key(env, id), blob);
   // W73 — claim the namespace on a successful write, so this client's chat, originals and extracted
   // text all answer to the same owner. INSERT OR IGNORE, so a re-save never reassigns it.
-  if (written) await recordRawObject(env.DB, r2Key(env, id), session.accountId);
+  if (written) await recordRawObject(env.DB, r2Key(env, id), recordSubject(access, session.accountId));
   if (!written) {
     // The blob moved under us. Hand back the CURRENT etag so the client resolves in one round trip.
     const current = await env.VAULT.get(r2Key(env, id));

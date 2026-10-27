@@ -48,7 +48,7 @@ right, but there is nothing to fix.
 | **5** | **Documentation** | **✅** | |
 | 5.1 | Developer and architecture docs | ✅ | `../../ARCHITECTURE.md`, `API.md`, `AUTH.md`, `VAULT.md`, `INFERENCE.md`, `CORPUS.md`, `MODELS.md`, `MEASUREMENT.md` |
 | 5.2 | Enough for a stranger to launch and run it | ✅ | `../../START-HERE.md` §B, clone to running in ten minutes |
-| 5.3 | User guide | ❌ | Nothing tells a patient how to use the product |
+| 5.3 | User guide | 🟡 | Four steps in the app's own About overlay (`src/lib/AboutOverlay.svelte`), added 2026-10-26 — bring the record in, see what changed, ask in your own words, walk in prepared. It is where a user already is rather than a document they would have to find, which is why it is 🟡 and not ❌; what an assessor would still ask for is below |
 | **6** | **Extracting data and content** | **✅** | |
 | 6.1 | Is non-PII data or content handled | ⚪ | Yes — reasoning prompts, the finding DAG, reference material |
 | 6.2 | Export/import in a non-proprietary format | ✅ | CSV and JSON export; PDF/XLSX import |
@@ -234,8 +234,14 @@ Developer and architecture docs are strong: `../../START-HERE.md` (a ten-minute 
 measured, on what hardware, and which claims are not proven.
 
 **Gaps**
-- **No end-user guide.** Nothing explains, for a patient, how to import a report, read a translation,
-  or share with a clinician. `START-HERE.md` §A explains what LexiTar is, not how to use it.
+- **The end-user guide is in the product, not in the documentation.** As of 2026-10-26 the About
+  overlay carries four plain-language steps covering import, reading a translation against a
+  reference range, asking in your own words, and printing an appointment sheet — so the bullet that
+  stood here ("nothing explains, for a patient, how to import a report") is no longer true. Two
+  things an assessor would still ask for: **sharing with a clinician is not covered** (the linked-
+  clinician flow is the one step with no user-facing explanation anywhere), and the steps live in a
+  Svelte component, so somebody evaluating the project from the repository alone reads the source
+  rather than a guide. `../../START-HERE.md` §A still explains what LexiTar is and not how to use it.
 - The self-hosting guide from Indicator 4.
 
 ## 6. Mechanism for extracting data and content — ✅

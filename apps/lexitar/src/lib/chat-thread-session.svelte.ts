@@ -77,6 +77,11 @@ export function createChatThreadSession(deps: ChatThreadSessionDeps): ChatThread
   let chatRenamingId = $state<string | null>(null);
   let chatRenameText = $state("");
   let chatLoadedForId = $state<string | null>(null);
+  // The DEK the conversation now in memory was decrypted out of storage under. Null until a load
+  // actually restores one, so a key that moves mid-load can never mistake the placeholder thread for
+  // a conversation worth writing back. Not `$state`: nothing renders from it, and a reactive read
+  // inside the hydrate effect would make the effect depend on the value it writes.
+  let chatOpenedWithKey: CryptoKey | null = null;
   let chatHydrated = $state(false);
   let chatSaveError = $state<string | null>(null);
   let chatUnreadable = $state(false);
@@ -86,11 +91,34 @@ export function createChatThreadSession(deps: ChatThreadSessionDeps): ChatThread
   function hydrate() {
     const id = deps.getSelectedClientId();
     const key = deps.getDek();
-    if (!id || !key || chatLoadedForId === id) return;
+    if (!id || !key) return;
+    if (chatLoadedForId === id) {
+      // A rotation replaced the DEK under a client this tab already has open — vault-principals'
+      // rotateVaultKey(), reached both from revoking an active support principal and from App's
+      // boot-time resume of a deferred rotation. It re-keys the vault blob and leaves the selection
+      // exactly where it was, and nothing in that path touches `chat-{id}.enc`, so the conversation
+      // stays encrypted under the key just discarded and THIS TAB holds the only plaintext copy left.
+      // Re-reading would merely prove the blob unopenable and latch chat-store's refusal to write
+      // over it; writing it back under the new key is what keeps it readable to the next session.
+      //
+      // `setAsideUnreadableHistory` stays the answer for a blob already stranded. This is the
+      // prevention, and the two do not overlap: a conversation that never came out of storage leaves
+      // the marker null and is not written anywhere.
+      if (chatOpenedWithKey && chatOpenedWithKey !== key) {
+        chatOpenedWithKey = key;
+        persistChatThreads();
+      }
+      return;
+    }
     chatLoadedForId = id;
+    chatOpenedWithKey = null;
     return store.loadThreads(id, key)
       .then((loaded) => {
-        chatThreads = loaded && loaded.length ? adoptThreads(loaded) : [newThread()];
+        const restored = loaded && loaded.length ? adoptThreads(loaded) : null;
+        chatThreads = restored ?? [newThread()];
+        // Only a conversation that came out of storage may be re-keyed back into it. A placeholder
+        // thread must never overwrite a blob this tab has not read.
+        if (restored) chatOpenedWithKey = key;
       })
       .catch((e) => {
         // Opening fresh is still right — a chat tab that will not open is worse than an empty one.

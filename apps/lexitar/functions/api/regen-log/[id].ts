@@ -3,7 +3,7 @@ import { recordRawObject } from "../../_lib/identity-audit";
 import { requireSession } from "../../_lib/session";
 import { logRequest } from "../../_lib/log";
 import { storeKey } from "../../_lib/store";
-import { rawAccessFor, mayRead, mayWrite, type RawAccess } from "../../_lib/raw-owner";
+import { rawAccessFor, mayRead, mayWrite, recordSubject, type RawAccess } from "../../_lib/raw-owner";
 import { json } from "../../_lib/http";
 import { listAllKeys, type ObjectBucket } from "../../_lib/object-bucket";
 
@@ -105,7 +105,7 @@ export async function onRequestPut(context: Ctx): Promise<Response> {
   await env.VAULT.put(key, blob);
   // Claim the namespace on a successful write, so this client's regen log, chat, originals and
   // extracted text all answer to the same owner. INSERT OR IGNORE, so a re-save never reassigns it.
-  await recordRawObject(env.DB, key, session.accountId);
+  await recordRawObject(env.DB, key, recordSubject(access, session.accountId));
 
   log(201, { bytes: blob.length, access: access.kind }); // id + size, never the bytes
   return json(201, { segment });

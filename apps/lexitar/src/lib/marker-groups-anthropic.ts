@@ -9,8 +9,8 @@
 // The differences that are real stay with the callers, as parameters: the Function passes an
 // AbortSignal and enqueues a `[[PASS]] n` chunk into its stream; the CLI records usage into its
 // accumulator. Everything else is one implementation.
-import type Anthropic from "@anthropic-ai/sdk";
-import type { MessagesClient } from "@pablotech/akesi/model-client";
+import type { MessagesClient, ModelUsage } from "@pablotech/akesi/model-client";
+import type { ModelTurns } from "./model-port";
 import type { Client } from "./types";
 import { SYSTEM_PROMPT, GROUPS_SCHEMA, contextBlock, type GroupsAIResponse } from "@pablotech/akesi/marker-groups-prompt";
 
@@ -26,10 +26,10 @@ export interface GroupingPassParams {
   leftover: boolean;
   signal?: AbortSignal;
   /** Called after each successful pass — usage accounting, and the Function's progress chunk. */
-  onPass?: (usage: Anthropic.Message["usage"]) => void;
+  onPass?: (usage: ModelUsage) => void;
   /** The patient's own reports, prepended verbatim ahead of the context block (CORPUS.md). Empty for
    *  the CLI. The same turns on every pass, so the sweep-up pass reads the cache the first wrote. */
-  prefixTurns?: Anthropic.MessageParam[];
+  prefixTurns?: ModelTurns;
 }
 
 export async function runGroupingPass(p: GroupingPassParams): Promise<{ group: string; markers: string[] }[]> {

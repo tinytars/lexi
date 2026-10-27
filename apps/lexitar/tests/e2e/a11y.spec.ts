@@ -43,10 +43,27 @@ const TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
 //     why the markers notch is 2 rather than the 3 first measured. This is the ratchet doing its job.
 //   • color-contrast ×30 — a palette question, not a markup one; it needs a design decision, not a
 //     unilateral change to brand colours.
+//   • label-content-name-mismatch ×7 — the one notch in this file that was ever RAISED, and the
+//     docblock above says that needs a reason in the same commit. This is it. The engine moved,
+//     not the app: axe-core 4.13.0 -> 4.14.0 arrived with the dependency bumps, and an A/B on one
+//     unchanged tree reads `markers: 1` (color-contrast ×48) under 4.13.0 against `markers: 2`
+//     (color-contrast ×41 + this ×7) under 4.14.0. Nothing this branch touches renders a marker:
+//     MarkerChart.svelte, marker-status.ts and this spec are all outside its diff.
+//     The seven nodes are the .mc-figure-toggle buttons, and the rule cannot be satisfied there.
+//     It asks a control's accessible name to contain its visible text (WCAG 2.5.3), and for a
+//     chart inside a button the visible text is the plot: a live DOM read of the first toggle
+//     returned role="presentation", aria-hidden="true", and the text nodes
+//     ["Jan","Apr","Jul","Oct","60.0","90.0","50.0","120"] — the axis ticks — with axe STILL
+//     reporting the mismatch, so aria-hidden does not get the figure out of the computation and
+//     no accessible name made of prose can contain tick marks. Two fixes were tried and measured:
+//     folding chartLabel into the button's name (still 7) and marking the inner svg presentational
+//     (still 7). The first is kept anyway, because it fixes a REAL defect this rule led us to —
+//     the bare aria-label replaced the svg's own, so the marker's value, status and date were
+//     announced nowhere — and MarkerChart.svelte carries that reasoning at the button.
 const BASELINE: Record<string, number> = {
   "sign-in": 0, // the login fix landed: was placeholder-only, now every control has a name
   notes: 1, // color-contrast ×1
-  markers: 1, // color-contrast ×30 only — select-name and nested-interactive are both fixed (3 -> 2 -> 1)
+  markers: 2, // color-contrast ×41 + label-content-name-mismatch ×7 (axe 4.14.0; see above)
   "open modal": 0, // the <dialog> migration is clean
   "open row menu": 1, // measured once the spec stopped timing out; was a guessed 3
 };

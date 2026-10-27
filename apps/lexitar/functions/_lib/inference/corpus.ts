@@ -15,6 +15,7 @@
 // an answer that reads exactly like a complete one. Every branch below that cannot attach everything
 // throws, and the routes turn that into a refusal naming the limit.
 import type Anthropic from "@anthropic-ai/sdk";
+import type { ModelTurns } from "../../../src/lib/model-port";
 import type { D1Database } from "../identity-types";
 import { listRawPdfsUnder } from "../identity-audit";
 import { mayRead, rawAccessFor, type NamespaceEnv } from "../raw-owner";
@@ -71,7 +72,7 @@ let inFlightBytes = 0;
 
 export interface Corpus {
   /** The two leading turns, or none at all when the client has no stored PDFs. */
-  turns: Anthropic.MessageParam[];
+  turns: ModelTurns;
   docCount: number;
   pageCount: number;
   byteCount: number;
