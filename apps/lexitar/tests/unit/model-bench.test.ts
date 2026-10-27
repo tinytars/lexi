@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { runProbe, summarize } from "@pablotech/akesi/benchmarks/model-portability";
+import { summarize } from "@pablotech/akesi/benchmarks/model-portability";
+import { runProbe } from "@promontory-studio/dokimasia/probe";
 import { probesFor, sourceFor, table } from "../../scripts/model-bench";
 import { FEATURES, type Caps, type InferenceConfig, type Provider } from "../../src/lib/model-config";
 import { modelFor } from "../../functions/_lib/inference/resolve";

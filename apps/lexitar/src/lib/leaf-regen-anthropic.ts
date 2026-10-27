@@ -7,6 +7,7 @@
 
 import type Anthropic from "@anthropic-ai/sdk";
 import type { MessagesClient } from "@pablotech/akesi/model-client";
+import type { ModelTurns } from "./model-port";
 import { LEAF_REGEN_SPECS, validateLeafResult } from "./leaf-regen-registry";
 import { BASE_SYSTEM_PROMPT } from "./leaf-regen-prompts";
 import { LEAF_REGEN_MAX_TOKENS } from "./leaf-regen-config";
@@ -85,7 +86,7 @@ export interface RunLeafRegenParams {
   /** The patient's own reports, prepended verbatim ahead of this node's inputs (CORPUS.md). Empty
    *  for the CLI backfill, which calls this in-process with no R2. Unchanged by the correction
    *  retry below, so the second attempt reads the cache entry the first one wrote. */
-  prefixTurns?: Anthropic.MessageParam[];
+  prefixTurns?: ModelTurns;
 }
 
 // Throws on an unknown node (caller's responsibility to pass a valid one) or on an Anthropic SDK
@@ -239,8 +240,11 @@ export async function runLeafRegen(params: RunLeafRegenParams): Promise<LeafRege
   let last: LeafRegenOutcome | undefined;
   for (let i = 0; i < 2; i++) {
     const message = await attemptOrRetry(i === 0 ? undefined : (last as { error: Error }).error.message.slice(0, 400));
-    usage.input += message.usage.input_tokens;
-    usage.output += message.usage.output_tokens;
+    // `?? 0` rather than an omission, because this is an accumulator and not a report: the port's
+    // counts are nullable (an adapter that reports neither still satisfies it) and a running sum has
+    // to stay a number. A provider that reports nothing therefore adds nothing, which is what it said.
+    usage.input += message.usage.input_tokens ?? 0;
+    usage.output += message.usage.output_tokens ?? 0;
 
     // W75 — a truncated answer is its own outcome, checked BEFORE the tool block.
     //

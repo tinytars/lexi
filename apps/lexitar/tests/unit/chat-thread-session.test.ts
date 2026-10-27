@@ -105,6 +105,67 @@ describe("hydrate", () => {
     await session.hydrate();
     expect(session.unreadable).toBe(false);
   });
+
+  // W72 — a rotation replaces the DEK under a client this tab already has open (vault-principals'
+  // rotateVaultKey), and the `$effect` wrapping hydrate re-runs with the same client id. Returning
+  // early there is what left the conversation encrypted under the discarded key.
+  //
+  // Whether it survives the round trip is chat-rekey-on-dek-change.test.ts's question, against real
+  // crypto and a fake server. What is pinned here is the DECISION, in the three directions it can be
+  // got wrong — and it is expressible against this fake at all only because `state.dek` is a bare
+  // placeholder object, so "a different key" is simply a second one.
+  describe("a DEK that changes under an already-open client", () => {
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    const stored = [{ id: "t9", title: "old", pinned: false, turns: [], seq: 9, lastActivityAt: 1 }];
+
+    /** The rotation itself: same client, a different key object, and hydrate called again. */
+    const rotate = async (session: { hydrate(): Promise<void> | undefined }, state: { dek: CryptoKey | null }) => {
+      state.dek = {} as CryptoKey;
+      session.hydrate();
+      vi.advanceTimersByTime(500);
+      await vi.runOnlyPendingTimersAsync();
+    };
+
+    it("writes the open conversation back rather than returning early", async () => {
+      chatStore.loadThreads.mockResolvedValue(stored);
+      const { state, session } = makeHarness();
+      await session.hydrate();
+
+      await rotate(session, state);
+
+      expect(chatStore.saveThreads).toHaveBeenCalledTimes(1);
+      // And it does not re-read: the stored blob is under the key just discarded, so a load would
+      // only prove it unopenable and latch the store's refusal to write over it.
+      expect(chatStore.loadThreads).toHaveBeenCalledTimes(1);
+    });
+
+    it("writes nothing when this tab never restored a stored conversation", async () => {
+      // A placeholder thread is not a conversation, and writing it would overwrite a blob this tab
+      // has not read — the one way a prevention could cost more than the fault it prevents.
+      chatStore.loadThreads.mockResolvedValue(null);
+      const { state, session } = makeHarness();
+      await session.hydrate();
+
+      await rotate(session, state);
+
+      expect(chatStore.saveThreads).not.toHaveBeenCalled();
+    });
+
+    it("writes nothing when the key has not actually changed", async () => {
+      chatStore.loadThreads.mockResolvedValue(stored);
+      const { session } = makeHarness();
+      await session.hydrate();
+
+      session.hydrate(); // the effect re-runs for an unrelated reason; the key is the same object
+      vi.advanceTimersByTime(500);
+      await vi.runOnlyPendingTimersAsync();
+
+      expect(chatStore.saveThreads).not.toHaveBeenCalled();
+      expect(chatStore.loadThreads).toHaveBeenCalledTimes(1);
+    });
+  });
 });
 
 describe("applyChatFallback", () => {

@@ -17,18 +17,18 @@
     "checkJs": true,
     "moduleDetection": "force",
 
-    // The root package.json pins @anthropic-ai/sdk via `overrides` to satisfy @pablotech/akesi's
-    // optional peer range, so npm installs a SECOND copy next to this workspace's own (newer)
-    // direct dependency. akesi only ever does `import type Anthropic` — there is no duplicate at
-    // runtime — but TS treats the two `Anthropic` classes as distinct nominal types (they carry
-    // `#private`), so every `proposeFromReport(client, …)` call failed to typecheck. Point both
-    // copies' importers at the one this app actually constructs and ships. The workspace-local
-    // copy is listed first and the hoisted one second, so a single identity wins whichever way npm
-    // decides to lay the two out.
-    "paths": {
-      "@anthropic-ai/sdk": ["./node_modules/@anthropic-ai/sdk", "../../node_modules/@anthropic-ai/sdk"],
-      "@anthropic-ai/sdk/*": ["./node_modules/@anthropic-ai/sdk/*", "../../node_modules/@anthropic-ai/sdk/*"]
-    }
+    // @promontory-studio/dokimasia ships its sources as .ts and imports them with the extension
+    // written out (score.ts:1-3). Consuming that is legal here because this config emits nothing.
+    // tsconfig.node.json has carried the same flag since W63.
+    //
+    // There is no `paths` block any more, and its absence is the fix rather than an omission. It
+    // deduplicated two copies of @anthropic-ai/sdk: the root package.json pinned the SDK via
+    // `overrides` to satisfy @pablotech/akesi's optional peer range, so npm laid down a second,
+    // older copy beside this workspace's own, and TS — which gives the two `Anthropic` classes
+    // distinct nominal identities, since they carry `#private` — rejected handing our client to
+    // akesi. akesi 0.1.70 declares no SDK peer at all, so the override went with it and there is
+    // one copy to point at.
+    "allowImportingTsExtensions": true
   },
   // W63 — functions/ (every Pages Function, i.e. all of prod's API surface) was checked by NOTHING:
   // not this config, not `build` (vite bundles src/ only), not vitest (transpile-only). It belongs
