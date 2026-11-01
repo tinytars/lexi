@@ -286,9 +286,50 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.RELEASE_PAT }}
           persist-credentials: true
+      # No npm token is stored anywhere, and none should be: this publish authenticates by
+      # exchanging the job's own OIDC identity for a registry credential that lives for the length of
+      # one job - npm's "trusted publishing", which is what the `id-token: write` permission above is
+      # for. The whole of the configuration is on npm's side, so there is nothing in this public
+      # repository's organization to leak and nothing to rotate, and npm's own restriction of tokens
+      # that bypass 2FA does not reach a credential nobody holds.
+      #
+      # IT BINDS TO THE REPOSITORY'S NUMERIC ID AND NOT TO ITS NAME, which is the whole reason this
+      # comment is here. npm validates a registration on its first successful publish and pins it to
+      # the repository's immutable identity; the name npm's own settings page displays goes on
+      # reading `tinytars/lexi` afterwards whatever happens to the repository behind it. The
+      # 18 October republish created a NEW repository and renamed the old one aside, so the pin
+      # followed the old one and the exchange here stopped being honoured - and npm reports that as
+      # ENEEDAUTH, which is indistinguishable from never having configured anything at all. That is
+      # how @tinytars/frame 0.1.58 was lost on 27 October (run 40571639081): the job packed the
+      # tarball, attempted no exchange, and died asking to be logged in. The repair is to DELETE the
+      # registration on npm and add it again - editing it does not re-pin - and nothing in this file
+      # can detect the stale state or recover from it.
+      #
+      # This is the same scar as both Cloudflare Pages projects in that republish, in a third system:
+      # a binding stored as a numeric id, silently invalidated by recreating the repository, while
+      # every name on every screen still reads correctly.
+      #
+      # `registry-url` is deliberately NOT set. npm's own example sets it, and the exchange does not
+      # need it: this job published 0.1.53 without it on 26 September - npm's attestation names the
+      # workflow and the commit - and the three sibling repositories that publish from this estate
+      # set it nowhere either. Setting it makes setup-node write an .npmrc whose `_authToken`
+      # expands to nothing, which is one more thing between a working exchange and the registry in
+      # return for nothing measured.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
+      # Fail by name rather than by symptom. The token exchange needs npm 11.5.1 or later, and
+      # `node-version: 24` resolves to whatever 24.x is current - so a Node release carrying an older
+      # npm would arrive here as an authentication error rather than as the version floor it is.
+      - name: Assert this npm can exchange an OIDC token
+        run: |
+          set -euo pipefail
+          v=$(npm --version)
+          echo "npm $v on $(node --version)"
+          printf '11.5.1\n%s\n' "$v" | sort -V -C || {
+            echo "::error::npm $v cannot exchange an OIDC token for a registry credential; trusted publishing needs 11.5.1 or later"
+            exit 1
+          }
       # The registry says what has shipped; packages/frame/package.json does not.
       #
       # Counting from the committed file meant writing the bump back to `main`, and `protect-main`
@@ -333,6 +374,9 @@ jobs:
       # frame-v0.1.54 through v0.1.57, cut 6-8 October - naming versions npm never received, because
       # `--provenance` refuses a private source repository and lexi was private for the re-key. Those
       # tags went with the 18 October republish; the ordering is what stops the next set.
+      # Trusted publishing generates provenance on its own, so the flag below is redundant and is
+      # kept explicit anyway: it is the half of it that REFUSES, and so the tripwire that would
+      # stop a publish if this repository were ever made private again.
       - name: Publish to npm
         working-directory: packages/frame
         run: npm publish --provenance --access public
