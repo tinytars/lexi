@@ -9,6 +9,24 @@ on:
   schedule:
     - cron: "0 9 * * *"
   workflow_dispatch:
+    inputs:
+      # The 24 h soak is the policy and the default below IS that policy - a scheduled run passes
+      # nothing and gets it. What this input adds is a route to depart from it that leaves a
+      # record: the number used is written into the run, beside who dispatched it and when, which
+      # a gate quietly edited to 0 would not be. The reusable workflow has accepted `soak-hours`
+      # since it was written; this repository had simply never wired it, so the only way to
+      # promote ahead of the window was to edit the gate, and the only way to know afterwards
+      # that someone had was to read the diff.
+      #
+      # Lowering it is a judgement about ONE promotion's contents, never a standing setting.
+      # It is defensible when `git diff origin/main..origin/dev` touches no code a user reaches -
+      # continuous-integration configuration, dependency bumps, a test - and the window would
+      # then be soaking a comment. It is not defensible for anything under `apps/lexitar/src`,
+      # `apps/lexitar/functions` or `packages/frame/src`, which is what the window exists for.
+      soak-hours:
+        description: Hours dev must have soaked. Leave at 24 unless the diff reaches no user.
+        type: string
+        default: "24"
 
 permissions:
   contents: write
@@ -42,6 +60,11 @@ jobs:
       app-key: ${{ secrets.AUTOPILOT_APP_KEY }}
     with:
       mode: ${{ vars.AUTOPILOT_PROMOTE || 'on' }}
+      # `github.event.inputs` and not `inputs`: the latter does not exist on a scheduled run, so
+      # reading it there yields nothing and `fromJSON` fails on the empty string. The fallback is
+      # what makes the schedule carry the policy. `fromJSON` is needed because a workflow_dispatch
+      # input cannot be declared `type: number` and the reusable workflow's is one.
+      soak-hours: ${{ fromJSON(github.event.inputs['soak-hours'] || '24') }}
       keep-paths: apps/lexitar/wrangler.jsonc
       report-repo: promontory-studio/plover-factory
       canary-label: ${{ needs.canary.outputs.label }}
