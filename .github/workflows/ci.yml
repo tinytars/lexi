@@ -286,9 +286,37 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.RELEASE_PAT }}
           persist-credentials: true
+      # No npm token is stored anywhere, by design: this publish authenticates by exchanging the
+      # job's own OIDC identity for a short-lived registry credential - npm's "trusted publishing",
+      # which is what the `id-token: write` permission above is for. So there is nothing in this
+      # public repository's organization to leak and nothing to rotate, and npm's own restriction of
+      # tokens that bypass 2FA does not reach a credential that lives for the length of one job.
+      #
+      # It has two halves and the publish fails if either is missing. HERE: `registry-url`, without
+      # which setup-node writes no .npmrc at all, npm falls back to looking for a token it has not
+      # been given, and the job dies with ENEEDAUTH - which is exactly how @tinytars/frame 0.1.58
+      # was lost on 27 October (run 40571639081), with `--provenance` requested and no credential to
+      # use it with. ON NPM: the package's Trusted Publisher must name this repository AND this
+      # workflow file - `tinytars/lexi` and `ci.yml` - because the registration is matched on the
+      # filename, so renaming this file revokes the publish rights with no other signal.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
+          registry-url: https://registry.npmjs.org
+          # A release build installs nothing, so a warm cache buys nothing and a stale one is a risk.
+          package-manager-cache: false
+      # Fail by name rather than by symptom. The token exchange needs npm 11.5.1 or later, and
+      # `node-version: 24` resolves to whatever 24.x is current - so a Node release carrying an older
+      # npm would arrive here as an authentication error rather than as the version floor it is.
+      - name: Assert this npm can exchange an OIDC token
+        run: |
+          set -euo pipefail
+          v=$(npm --version)
+          echo "npm $v on $(node --version)"
+          printf '11.5.1\n%s\n' "$v" | sort -V -C || {
+            echo "::error::npm $v cannot exchange an OIDC token for a registry credential; trusted publishing needs 11.5.1 or later"
+            exit 1
+          }
       # The registry says what has shipped; packages/frame/package.json does not.
       #
       # Counting from the committed file meant writing the bump back to `main`, and `protect-main`
@@ -333,6 +361,9 @@ jobs:
       # frame-v0.1.54 through v0.1.57, cut 6-8 October - naming versions npm never received, because
       # `--provenance` refuses a private source repository and lexi was private for the re-key. Those
       # tags went with the 18 October republish; the ordering is what stops the next set.
+      # Trusted publishing generates provenance on its own, so the flag below is redundant and is
+      # kept explicit anyway: it is the half of it that REFUSES, and so the tripwire that would
+      # stop a publish if this repository were ever made private again.
       - name: Publish to npm
         working-directory: packages/frame
         run: npm publish --provenance --access public
