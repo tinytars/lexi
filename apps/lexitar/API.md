@@ -470,7 +470,9 @@ Stream an **original imported file** (PDF/XLSX) for the Export tab's "Imported f
 `{STORE_PREFIX}/raw/{id}/{file}` — an HD1 v3 envelope under a per-file content key that exists only
 inside the patient's encrypted vault (`VAULT.md` §2a). The Function never decrypts; it hands back
 whatever is stored and the browser opens it, which is why the content-type below describes the
-**document** rather than the envelope. Both formats are accepted while the store migrates. The id is **lowercased**
+**document** rather than the envelope. `PUT` refuses an unsealed body with `415
+plaintext_refused` (`functions/api/raw/[[path]].ts:216-218`), and the pre-refusal backlog was sealed
+on 2026-11-02, so every object under this prefix in production is an envelope. The id is **lowercased**
 server-side — a no-op since G1 made client keys the lowercased account id, kept because a vault
 predating G1 can still carry a display-cased key.
 

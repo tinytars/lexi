@@ -49,11 +49,12 @@ on:
   workflow_dispatch:
     inputs:
       op:
-        description: "Operation (the only one that can run on a hosted runner — see apps/lexitar/docs/OPS-LOCAL.md for the rest)"
+        description: "Operation (the two that can run on a hosted runner — see apps/lexitar/docs/OPS-LOCAL.md for the rest)"
         required: true
         type: choice
         options:
           - orphan-sweep
+          - raw-seal-sweep
       preview:
         description: "No Anthropic call, no R2 write — print what the real run would do"
         required: true
@@ -136,14 +137,26 @@ jobs:
           note=""
           exception=""
 
-          # One arm, and still a `case`: an unknown op must fail loudly rather than run the only
-          # command this file has. A choice input constrains the form and not the API.
+          # An unknown op must fail loudly rather than run whichever command happens to be first.
+          # A choice input constrains the form and not the API.
           case "$OP" in
             orphan-sweep)
               # Store-wide, so there is no client to assert. A real run only dates orphans;
               # deleting them needs --delete in extra_args, deliberately.
               cmd="npx tsx scripts/orphan-sweep.ts"
               if ! $preview; then cmd="$cmd --record"; fi
+              ;;
+            raw-seal-sweep)
+              # The alarm, not the cure — and the reason it can be here at all is that it holds no
+              # key: classifying an object is its first four bytes, so it needs nothing the org
+              # private key would have to supply, which is what bars raw-encrypt-backfill from this
+              # file. It exits non-zero on cleartext an operator could seal, and the repair is a
+              # local command (apps/lexitar/docs/OPS-LOCAL.md).
+              cmd="npx tsx scripts/raw-seal-sweep.ts"
+              # No write flag exists, so `preview` has nothing to switch: both settings run the
+              # same command. Said out loud rather than quietly honoured, because a form offering a
+              # toggle that does nothing is how an operator learns to distrust the one that does.
+              exception="This op never writes. \`preview\` is inert for it — both settings read the store and report."
               ;;
             *) echo "unknown op: $OP — see apps/lexitar/docs/OPS-LOCAL.md, which has the twelve that run locally" >&2; exit 1 ;;
           esac

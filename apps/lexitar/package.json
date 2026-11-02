@@ -43,6 +43,8 @@
     "raw:pages": "tsx scripts/raw-pages-backfill.ts",
     "raw:sizes": "tsx scripts/raw-pages-backfill.ts --sizes",
     "raw:encrypt": "tsx scripts/raw-encrypt-backfill.ts",
+    "raw:seal-sweep": "tsx scripts/raw-seal-sweep.ts",
+    "raw:seal-verify": "tsx scripts/raw-seal-verify.ts",
     "corpus:measure": "tsx scripts/corpus-measure.ts",
     "record:export": "tsx scripts/record-export.ts",
     "support:provision": "tsx scripts/provision-support-account.ts",

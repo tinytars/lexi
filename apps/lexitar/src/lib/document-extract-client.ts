@@ -45,17 +45,26 @@ export function isExtractableDocument(a: Pick<Attachment, "name" | "mediaType">)
  */
 export async function extractDocument(clientId: string, a: Attachment, pageImages?: PageImage[]): Promise<StoredExtraction> {
   const rawKey = rawKeyFor(clientId, a.key);
+  // No key in this record's ring means the document is not sealed, and the relay now refuses to
+  // transcribe one (409 `unsealed_original`) rather than cache its text in the clear. Refusing here
+  // is the same refusal arriving one round trip earlier, with the difference that matters: it never
+  // looked like a server fault. `raw-seal-heal.ts` is what fixes it, on the next record open.
+  if (!rawKey) {
+    throw new AiError("this document must be sealed before it can be read", { errorCode: "unsealed_original" });
+  }
   const res = await withDeadline(DOCUMENT_EXTRACT_DEADLINE_MS, (signal) =>
     fetch("/api/document-extract", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       // The key the relay needs to open the stored document, and to seal the transcription it
-      // writes back beside it. Absent for a document stored before the sweep, which still reads.
+      // writes back beside it. Unconditional since 2026-11-02: it used to be omitted for a document
+      // stored before the sweep, and that omission is what made the relay write the transcription
+      // in cleartext.
       body: JSON.stringify({
         id: normalizeClientId(clientId),
         key: a.key,
         mediaType: a.mediaType,
-        ...(rawKey ? { rawKey } : {}),
+        rawKey,
         ...(pageImages ? { pageImages } : {}),
       }),
       signal,

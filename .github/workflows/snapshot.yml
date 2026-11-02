@@ -112,9 +112,31 @@ jobs:
         working-directory: apps/lexitar
         run: npm run vault:snapshot:check
 
+      # The only thing that watches this store for readable PHI, and it is here rather than in its
+      # own workflow because this job already holds what it needs: the token, both stores on the
+      # schedule, and a checkout standing in the right target. It holds NO org key, which is what
+      # makes it hostable at all — classifying an object is its first four bytes, so unlike
+      # raw-encrypt-backfill (the cure) it needs nothing that never reaches a runner.
+      #
+      # AFTER the snapshot and its check, deliberately: a store that has drifted back to cleartext
+      # still gets backed up before this job goes red, and the backup is what a repair would restore
+      # from. FAILING rather than reporting, for the reason the step above gives — a sweep whose
+      # result nobody reads is the vacuous pass. It goes red only on cleartext the operator lane can
+      # seal; an orphaned or recovery-revoked namespace is a line of output, because only the owner's
+      # own browser can seal those and a nightly cannot be right to demand it.
+      - name: No readable original in ${{ matrix.store }}
+        working-directory: apps/lexitar
+        run: npm run raw:seal-sweep
+
       - name: Note the independent check
         if: failure()
-        run: echo "Backup alarm for ${{ matrix.store }}. \`npm run vault:snapshot:check\` re-asks locally." >> "$GITHUB_STEP_SUMMARY"
+        run: |
+          {
+            echo "Alarm for ${{ matrix.store }}. Two steps here can raise it, and they are different problems:"
+            echo "- \`npm run vault:snapshot:check\` — no verified recent backup. Re-asks locally."
+            echo "- \`npm run raw:seal-sweep\` — an object in the store is not sealed. The repair is"
+            echo "  \`npm run raw:encrypt -- --confirm\`, which is local-only (apps/lexitar/docs/OPS-LOCAL.md)."
+          } >> "$GITHUB_STEP_SUMMARY"
 
   notify-failure:
     needs: [snapshot]
@@ -128,4 +150,4 @@ jobs:
       app-id: ${{ vars.AUTOPILOT_APP_ID }}
       assignee: pablo-tech
       title: Nightly vault snapshot failed
-      context: The vault backup did not complete. Its check step is the only alarm on backup integrity, and until this passes there is no verified recent snapshot.
+      context: The nightly vault job went red. Either the backup did not complete — its check step is the only alarm on backup integrity, and until it passes there is no verified recent snapshot — or the seal sweep found an object stored in the clear, which is readable patient data at rest and is repaired by a local operator command.

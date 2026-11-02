@@ -56,17 +56,29 @@ the user's own encrypted vault (`VAULT.md` §2a). The operator does not hold tha
 server-side view of a document's contents to run a classifier over, and adding one would mean
 holding the key — which is the property the product exists to have.
 
-Stated exactly, because it has been becoming true in stages:
+Stated exactly, because what the control actually proves is narrower than the sentence above:
 
-- **New uploads: unconditional.** The route refuses unsealed bytes outright
-  (`415 plaintext_refused`). Nothing readable can be written any more.
-- **Older uploads: draining.** Objects written before the sealing landed (2026-09-24) are still
-  stored readable. Two lanes empty that backlog — the owner's own browser seals what it opens
-  (`src/lib/raw-seal-heal.ts`), and an operator sweep seals the rest
-  (`scripts/raw-encrypt-backfill.ts`). Until both have run to zero on both stores, "the operator
-  cannot read an uploaded document" is true of new uploads and not yet true of every old one.
+- **New uploads.** The route refuses unsealed bytes outright (`415 plaintext_refused`), and so does
+  the transcription path, which answers `409 unsealed_original` before it would cache a document's
+  text in the clear. **What the route checks is the envelope's format, not that the body is
+  encrypted** — magic bytes, version byte, header length. It cannot check more, because the
+  deployment holds no key, which is the property the product exists to have. So the accurate claim
+  is that nothing *the operator can read* can be written through these lanes: the encryption itself
+  is the browser's work, under a key only the owner's vault holds, and the server's part is to
+  refuse anything that is not shaped like the result.
+- **Older uploads: drained in production, measured 2026-11-02.** All 35 originals written before the
+  sealing landed (2026-09-24) are sealed, and each was decrypted afterwards to prove the sealing had
+  not destroyed it (`DPGA.md` §9A). Two lanes emptied that backlog — the owner's own browser seals
+  what it opens (`src/lib/raw-seal-heal.ts`), and an operator sweep sealed the rest
+  (`scripts/raw-encrypt-backfill.ts`).
+- **What remains, and cannot be swept.** An object in an **orphaned** namespace, or one whose owner
+  revoked org recovery, is reachable by nobody but that owner's browser — deliberately, so its bytes
+  stay claimable. Production has none; the dev store has three transcription sidecars in exactly
+  that position. They are readable where they sit and nothing can be added to them.
 
-This section is updated when the sweep reports zero sealable objects, and not before.
+A nightly keyless sweep (`npm run raw:seal-sweep`, wired into `snapshot.yml`) classifies every object
+in both stores and fails the job on any cleartext an operator could seal, so this section is held to
+a measurement rather than updated by hand.
 
 What the operator *can* see: account ids, R2 object keys, sizes, page counts, timestamps, and the
 audit log. Not contents.

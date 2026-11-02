@@ -301,6 +301,15 @@ against this vault's ring — **the only lane that reaches an account which revo
 — `docs/OPS-LOCAL.md`, since it needs the org private key no runner has) does the same store-wide through the org recovery envelope, and refuses an orphaned
 namespace so its bytes stay claimable.
 
+**Both lanes have run to zero in production, measured 2026-11-02**: 35 originals, all 35 sealed, each
+one decrypted afterwards to prove the sealing had not destroyed it (`DPGA.md` §9A has both
+measurements and why two are needed). Sealing is a **salvage** — the bytes are encrypted at the same
+R2 key and the content key written into that owner's own vault, key first and read back before any
+ciphertext is written, so the patient goes on opening every document and the operator stops being
+able to. What the lanes structurally cannot reach is the orphaned namespace and the one whose owner
+revoked org recovery; production has neither, and a third control now says so nightly without being
+asked (`npm run raw:seal-sweep`, wired into `snapshot.yml`, keyless so it can run hosted).
+
 **The deployment still sees plaintext while its owner is using the record.** It must: it is the thing
 that base64s the document into the model request, and the browser hands it the ~12 KB key map per
 request (`CORPUS.md`). *Using* is wider than *asking* — the corpus is sent when a record is **opened**
@@ -480,9 +489,13 @@ along with the authorisation gap recorded in `API.md`):
 `env.VAULT.get(storeKey(env, "raw", id.toLowerCase(), file))` → streams whatever is stored, with a
 content-type describing the **document** rather than the envelope; `400` bad path, `404` miss,
 PHI-free log `{route:"/api/raw", status, id}`. It never decrypts — a caller that can read the bytes
-is a caller that holds the key (§2a). `PUT` accepts both formats while the store migrates and logs
-`sealed`, so the sweep's remaining work is readable off the logs rather than by listing a bucket of
-patient files; rejecting plaintext is a later, separate change.
+is a caller that holds the key (§2a). **`PUT` refuses an unsealed body** — `415
+plaintext_refused`, unconditionally, including on a namespace's first upload — and logs `envelope`,
+the version byte read back out of the bytes that are about to land. A number rather than the
+`sealed: true` that line used to carry: on the far side of the only refusal that can reach it, a
+boolean could take exactly one value, and a field that cannot disagree with its own code cannot
+report the day the code is wrong. On the refusal it also says which way the refusal went — `null`
+for a body that is no envelope, `2` for a vault blob offered as an original.
 
 Every AI route still attaches these documents server-side: the PDFs under `raw/{id}/` ride along with
 each inference about that person as `document` blocks ([`CORPUS.md`](CORPUS.md)), through the same

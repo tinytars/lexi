@@ -51,10 +51,12 @@ per-file AES-GCM-256 content key that exists only inside the account's own encry
 the point: infrastructure can serve, snapshot and back up the bytes without being able to read them,
 and §3 below is how a request that *is* allowed to read them obtains the key.
 
-Objects written before the seal are still stored as plaintext while the migration finishes — two
-lanes are sealing them and the route accepts both formats until a sweep reports none left
-(`VAULT.md` §2a). Nothing read the objects again after import until this feature; now every attached
-inference does.
+Objects written before the seal are sealed too, as of 2026-11-02: production's 35 pre-refusal
+originals carry their own content keys and each was decrypted afterwards to prove it (`DPGA.md`
+§9A). The route still accepts a stored plaintext body on the way *out* — `GET` streams what is
+there and never decrypts — which matters only for the owner-only classes a sweep deliberately
+cannot reach (`VAULT.md` §2a). Nothing read the objects again after import until this feature; now
+every attached inference does.
 
 **Authorisation runs inside the assembler, not in the routes.** `openReportCorpus`
 (`functions/_lib/inference/corpus.ts`) calls `rawAccessFor` itself before it lists anything. A

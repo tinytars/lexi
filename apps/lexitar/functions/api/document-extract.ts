@@ -154,13 +154,42 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
   if (!raw) {
     return finish(404, { error: "attachment not found", errorCode: "not_found" }, { errorCode: "not_found" });
   }
+  const stored = new Uint8Array(await raw.arrayBuffer());
+
+  // An UNSEALED original is refused here, before the model call that would transcribe it.
+  //
+  // This route's own header says the sidecar must be sealed under the same content key as the
+  // document it transcribes, because a full transcription lying in cleartext beside the ciphertext
+  // of its own source makes encrypting the source cosmetic. An unsealed original has no such key —
+  // which is exactly why the write below used to fall back to cleartext, making this route the one
+  // place in the product that still MINTED readable PHI, and making it do so on the ordinary act of
+  // a patient re-opening an old document. Sealing is the browser's job and `raw-seal-heal.ts`
+  // already offers it on record open; refusing is what sends the caller there instead of here.
+  //
+  // Before `openRaw` rather than after, and on the stored bytes rather than on a thrown error: an
+  // unsealed body is passed straight through by `openRaw` (it has to be, for a store holding both
+  // formats), so there is no exception to catch and the refusal has to be the explicit test.
+  if (!isSealed(stored)) {
+    return finish(
+      409,
+      { error: "this document must be sealed before it can be read", errorCode: "unsealed_original" },
+      { errorCode: "unsealed_original" },
+    );
+  }
+  // Decided here rather than left to the throw below, so the rest of this function holds a `rawKey`
+  // that is a string: the original is sealed, so a request without a key cannot proceed, and the
+  // status and code are the same ones the catch returned for this case before.
+  if (!rawKey) {
+    return finish(400, { error: "this document could not be opened", errorCode: "raw_key_missing" }, { errorCode: "raw_key_missing" });
+  }
+
   let bytes: Uint8Array;
   try {
-    bytes = await openRaw(new Uint8Array(await raw.arrayBuffer()), key, rawKey);
+    bytes = await openRaw(stored, key, rawKey);
   } catch (err) {
     if (!(err instanceof RawKeyError)) throw err;
-    // Classified, so _middleware.ts's catch-all never files this as a bug: the caller holds the key
-    // and simply did not send it.
+    // Classified, so _middleware.ts's catch-all never files this as a bug: the caller sent a key
+    // that does not open this document.
     return finish(400, { error: "this document could not be opened", errorCode: "raw_key_missing" }, { errorCode: "raw_key_missing" });
   }
 
@@ -199,20 +228,25 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
     return finish(status, { error, errorCode }, { errorCode });
   }
 
-  const stored: StoredExtraction = {
+  const extracted: StoredExtraction = {
     ...reading,
     at: new Date().toISOString(),
     chars: reading.text.length,
     ...(model ? { model } : {}),
   };
-  const sidecar = new TextEncoder().encode(JSON.stringify(stored));
-  await env.VAULT.put(sidecarKey, rawKey ? await sealRaw(sidecar, rawKey) : sidecar);
+  const sidecar = new TextEncoder().encode(JSON.stringify(extracted));
+  // Unconditionally sealed. The `rawKey ? … : sidecar` that stood here is the writer the sealing
+  // audit of 2026-11-02 found: it wrote a document's whole transcription in the clear whenever the
+  // browser sent no key, and the browser omitted the key precisely for the pre-refusal originals,
+  // so every re-open of a legacy document minted a fresh cleartext copy of its own clinical text.
+  // The refusals above are what make the ternary unnecessary rather than merely unused.
+  await env.VAULT.put(sidecarKey, await sealRaw(sidecar, rawKey));
   // W72 — the sidecar is extracted PLAINTEXT PHI, so it is erasable data in its own right and gets the
   // same ownership row the original does. Without it an erasure would delete the PDF and leave its
   // readable text behind, which is the worst of the two outcomes.
   await recordRawObject(env.DB, sidecarKey, recordSubject(access, session.accountId));
   // W8d: audit the write — id + size, never the content.
-  return finish(200, { ...stored, cached: false }, { bytes: stored.chars, access: access.kind });
+  return finish(200, { ...extracted, cached: false }, { bytes: extracted.chars, access: access.kind });
 }
 
 // GET /api/document-extract?id=&key= — the sidecar only, never a model call. This is what a leaf
