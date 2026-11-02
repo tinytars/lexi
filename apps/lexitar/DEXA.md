@@ -28,8 +28,10 @@ as blood (see `BLOOD.md §1`). What matters for body composition:
 - The range prompt is told to keep the response unit identical to the stored
   unit — important here because DEXA uses many distinct units (g, cm², kg/m²,
   dimensionless ratios).
-- `status.ts` classifies the latest reading ok/warn/alert against the range
-  exactly as for blood.
+- `currentZoneStatus` (`@pablotech/akesi/ranges`) classifies the latest reading
+  safe/warn/danger against the range's zones exactly as for blood, and
+  `src/lib/marker-status.ts` is what turns that into the words a screen reader
+  gets.
 
 ### Units / display (`src/lib/units.ts`)
 

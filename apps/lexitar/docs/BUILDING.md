@@ -1,7 +1,7 @@
 # Building LexiTar
 
 App-specific working rules for `apps/lexitar`. The repo-wide policy lives in the
-root `CLAUDE.md`; this file holds what is specific to the app.
+root `CONTRIBUTING.md`; this file holds what is specific to the app.
 
 ## Translate / regeneration
 

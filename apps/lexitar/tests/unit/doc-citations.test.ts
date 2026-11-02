@@ -106,11 +106,15 @@ function sweep(): Violation[] {
   return out.sort((a, b) => a.key.localeCompare(b.key));
 }
 
-// Every citation that does not resolve, with the reason it is tolerated. Two kinds, and they are
-// told apart by the reason rather than by a second list: an entry whose reason begins `Phase 2 —`
-// is a repair this phase did not reach and the next one owes; every other entry is permanent and
-// says why the citation is correct as written. Nothing is exempted by pattern — a document is never
-// skipped, only a citation named here one at a time.
+// Every citation that does not resolve, with the reason it is correct as written. One kind now:
+// there is no deferred-repair tier any more, so an entry here is a claim that the citation is right
+// and the checker is the one that cannot see it — which is a claim somebody can disagree with, and
+// that is the point of the reason being required. Nothing is exempted by pattern: a document is
+// never skipped, only a citation named here one at a time.
+//
+// It is held in both directions. The second test below asserts that every key still fails, so an
+// entry whose subject comes back — a script re-declared, a file restored — breaks the build rather
+// than sitting here silently excusing a citation that no longer needs it.
 const KNOWN: Record<string, string> = {
   // Deliberate references to something that is NOT in this repository, and could not be.
   ".claude/agents/health-dash-explorer.md | ingest.ts":
@@ -121,17 +125,23 @@ const KNOWN: Record<string, string> = {
   "apps/lexitar/MEASUREMENT.md | pilos/CONTRIBUTING.md": "pablo-tech/pilos, another repository",
   "apps/lexitar/VAULT.md | planning/lexi/remediate-published-key-material.md": "plans live in the context repository, never in the repository they plan for",
   "apps/lexitar/docs/adr/0001-rewrite-applied-migration-0002.md | planning/lexi/remediate-published-key-material.md": "as above",
+  "apps/lexitar/VAULT.md | npm run roster:rotate":
+    "the row's own finding: the rotation CLI stayed in plover-code, and saying so is the point of the sentence",
 
   // History: a document recording what was removed cannot be written without naming it.
   "apps/lexitar/BACKUP.md | tip-watch.yml": "names the workflow that was deleted; that is the record",
   "apps/lexitar/docs/BUILDING.md | .github/workflows/tip-watch.yml": "as above",
   "apps/lexitar/docs/E2E-HISTORY.md | middleware-ensure-req-body-drained.ts": "a history of deleted middleware, by name",
+  "apps/lexitar/AUTH.md | scripts/set-recovery-code.ts":
+    "the sentence says it no longer exists and when it stopped; naming it is what makes the record readable",
 
   // Notation, not a path or a script.
   ".claude/agents/health-dash-explorer.md | path:line": "how a citation is to be written, not a command",
   ".claude/agents/health-dash-implementer.md | file:line": "as above",
   "apps/lexitar/docs/BUILDING.md | file:line": "as above",
   "apps/lexitar/LINTING.md | bind:this": "a Svelte directive",
+  "apps/lexitar/VAULT.md | recovery:issue":
+    "a capability string in functions/_lib/capabilities.ts, shaped like a script name and run by nobody",
 
   // Runtime artifacts and credentials: generated or supplied at run time, tracked nowhere by design.
   "apps/lexitar/AUTH.md | org-key.json": "an operator artifact, never committed",
@@ -147,54 +157,6 @@ const KNOWN: Record<string, string> = {
   "apps/lexitar/VAULT.md | org-key.json": "as AUTH.md above",
   "apps/lexitar/VAULT.md | record.json": "as RECORD-EXPORT.md above",
   "apps/lexitar/VAULT.md | records/org-key.json": "as BACKUP.md above",
-
-  // Phase 2 — the sweep this phase's gate makes safe to defer. Each needs its real successor
-  // identified from the code, which for VAULT.md's eighteen is reading rather than renaming.
-  ".claude/agents/health-dash-explorer.md | finding-assemble.ts": "Phase 2 — moved into @pablotech/akesi",
-  ".claude/agents/health-dash-explorer.md | finding-generate.ts": "Phase 2 — moved into @pablotech/akesi",
-  ".claude/agents/health-dash-explorer.md | treatment-bucket.ts": "Phase 2 — moved into @pablotech/akesi",
-  ".claude/agents/health-dash-explorer.md | treatment-normalize.ts": "Phase 2 — moved into @pablotech/akesi",
-  "apps/lexitar/AUTH.md | _lib/guard.ts:31": "Phase 2 — mis-rooted; guard.ts exists elsewhere",
-  "apps/lexitar/AUTH.md | scripts/set-recovery-code.ts": "Phase 2 — deleted; find what issues a recovery code now",
-  "apps/lexitar/AUTH.md | vault:build": "Phase 2 — deleted script",
-  "apps/lexitar/AUTH.md | vault:verify": "Phase 2 — deleted script",
-  "apps/lexitar/BLOOD.md | ranges.ts:7": "Phase 2 — deleted; the staleness check moved",
-  "apps/lexitar/BLOOD.md | src/lib/ranges.ts": "Phase 2 — deleted",
-  "apps/lexitar/BLOOD.md | src/lib/status.ts": "Phase 2 — deleted",
-  "apps/lexitar/CREDENTIALS.md | vault:verify": "Phase 2 — deleted script",
-  "apps/lexitar/DEXA.md | status.ts": "Phase 2 — deleted",
-  "apps/lexitar/docs/BUILDING.md | CLAUDE.md": "Phase 2 — the root policy document is START-HERE.md",
-  "apps/lexitar/INGEST.md | src/lib/crypto.ts": "Phase 2 — deleted",
-  "apps/lexitar/INGEST.md | src/lib/imaging-catalog.ts": "Phase 2 — deleted",
-  "apps/lexitar/INGEST.md | src/lib/ingest-core.ts": "Phase 2 — deleted",
-  "apps/lexitar/INGEST.md | vault:verify": "Phase 2 — deleted script",
-  "apps/lexitar/LINTING.md | _migrate.ts": "Phase 2 — deleted",
-  "apps/lexitar/NARRATIVE.md | imaging-catalog.ts": "Phase 2 — deleted",
-  "apps/lexitar/NARRATIVE.md | scripts/report-merge.ts": "Phase 2 — now @pablotech/akesi/report-merge",
-  "apps/lexitar/NARRATIVE.md | src/lib/imaging-catalog.ts": "Phase 2 — deleted",
-  "apps/lexitar/NARRATIVE.md | src/lib/parsers/report.ts": "Phase 2 — mis-rooted; report.ts exists elsewhere",
-  "apps/lexitar/VAULT.md | functions/_lib/identity.ts:446": "Phase 2 — deleted",
-  "apps/lexitar/VAULT.md | npm run roster:rotate": "Phase 2 — deleted script",
-  "apps/lexitar/VAULT.md | npm run vault:build": "Phase 2 — deleted script",
-  "apps/lexitar/VAULT.md | npm run vault:verify": "Phase 2 — deleted script",
-  "apps/lexitar/VAULT.md | recovery:issue": "Phase 2 — deleted script",
-  "apps/lexitar/VAULT.md | scripts/migrate-accounts.ts": "Phase 2 — deleted",
-  "apps/lexitar/VAULT.md | scripts/processed-store.ts": "Phase 2 — deleted",
-  "apps/lexitar/VAULT.md | scripts/vault-build.ts": "Phase 2 — deleted",
-  "apps/lexitar/VAULT.md | scripts/vault-io.ts": "Phase 2 — deleted",
-  "apps/lexitar/VAULT.md | scripts/vault-verify.ts": "Phase 2 — deleted",
-  "apps/lexitar/VAULT.md | scripts/vault-watch.sh": "Phase 2 — deleted",
-  "apps/lexitar/VAULT.md | src/lib/auth-client.ts": "Phase 2 — deleted",
-  "apps/lexitar/VAULT.md | src/lib/crypto.ts": "Phase 2 — deleted",
-  "apps/lexitar/VAULT.md | src/lib/ExportTab.svelte": "Phase 2 — mis-rooted; ExportTab.svelte exists elsewhere",
-  "apps/lexitar/VAULT.md | src/lib/report-merge.ts": "Phase 2 — now @pablotech/akesi/report-merge",
-  "apps/lexitar/VAULT.md | src/lib/vault-sink.ts": "Phase 2 — deleted",
-  "apps/lexitar/VAULT.md | tests/unit/vault-integrity.test.ts": "Phase 2 — deleted",
-  "apps/lexitar/VAULT.md | vault:build": "Phase 2 — deleted script",
-  "apps/lexitar/VAULT.md | vault:verify": "Phase 2 — deleted script",
-  "apps/lexitar/VAULT.md | vault.json": "Phase 2 — the plaintext the deleted vault:build encrypted; goes with that prose",
-  "ARCHITECTURE.md | inference/openai.ts": "Phase 2 — mis-rooted; openai.ts exists elsewhere",
-  "ARCHITECTURE.md | vault:verify": "Phase 2 — deleted script",
 };
 
 describe("documented paths and commands", () => {

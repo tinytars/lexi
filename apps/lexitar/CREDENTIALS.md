@@ -82,8 +82,12 @@ credential store warns and passes, because that is the ordinary state of this tr
 - Node on `PATH`, and `NODE_EXTRA_CA_CERTS` readable if set at all (Node ≥18 throws at startup on an
   unreadable one, before any of this code runs, with an error naming neither TLS nor the variable)
 - `.dev.vars` present, and which stores hold `cloudflare.env` and `org-key.json`
-- zero-byte `records/**/vault.json` — which `vault:verify` reports as corrupted JSON on a file that
-  was fine a moment ago, and which `git checkout --` recovers because it is a committed fixture
+- zero-byte `records/**/vault.json` — which reads as corrupted JSON on a file that was fine a moment
+  ago, so the preflight names it rather than leaving the next command to report the symptom. It
+  cannot fire in a clean clone: the only tracked files under `records/` are
+  `records/public/_headers`, `records/public/favicon.svg` and
+  `records/public/assets/404.html`, and the check is kept for a working tree still carrying a vault from
+  before the plaintext-at-rest retirement (VAULT.md §1)
 - **every secret the code reads is provisioned on the environment you are pointed at.** The required
   set is derived, not listed: every `env.NAME` under `functions/` plus every `keyEnv` in
   `inference.config.json`, which is the only place the three model keys appear at all. Add

@@ -16,11 +16,18 @@ dump whole files or propose changes.
 ## Architecture you're mapping (orient fast, don't re-derive)
 
 - `src/lib/*.svelte` — the UI (persona bubbles, sectioned report tabs via `report-sections.ts` +
-  `ReportSections.svelte`, the `VaultEditor`).
-- `src/lib/*.ts` — pure, browser+Node-shared logic: types (`types.ts`), the Finding prompt/assembly
-  (`finding-generate.ts`, `finding-assemble.ts`), the dependency graph (`finding-dag.ts`), staleness
-  (`staleness.ts`, `factors-hash.ts`), parsers (`parse-raw.ts`, `parsers/*`), treatments
-  (`treatment-bucket.ts`, `treatment-normalize.ts`).
+  `ReportSections.svelte`, and the per-section record editors — `Notes.svelte`, `Family.svelte`,
+  `Allergies.svelte`, `Study.svelte`, `Personalization.svelte` — each writing back into the vault
+  state `src/App.svelte` holds).
+- `src/lib/*.ts` — pure, browser+Node-shared logic: types (`types.ts`), the dependency graph
+  (`finding-dag.ts`, generated — read its header before editing it), staleness (`staleness.ts`,
+  `factors-hash.ts`), parsers (`parse-raw.ts`, `parsers/*`), and this app's own layer over the
+  clinical reasoning (`finding-config.ts`, `finding-invariants.ts`, `leaf-regen-*.ts`).
+  **The Finding prompt/assembly and the treatment buckets are not in this repository** — they are
+  the external `@pablotech/akesi` package, imported by subpath (`@pablotech/akesi/finding-generate`,
+  `/finding-assemble`, `/treatment-bucket`, `/treatment-normalize`). Read them under
+  `node_modules/@pablotech/akesi/`; changing one is a release of `pablo-tech/pilos`, not an edit
+  here, so report it as a finding rather than proposing a diff.
 - `scripts/*.ts` — the Node CLI (`factors.ts`, `claude-*.ts`, `vault-sync.ts`, `raw-backfill.ts`,
   `recovery-approve.ts`). Node-only (`node:fs`, process). **Note: the pilot-account ingest CLI
   (`ingest.ts`, `vault-io.ts`, and everything else that reads `records/private/`) never moved here
@@ -37,8 +44,9 @@ dump whole files or propose changes.
 ## How to search (breadth, then pinpoint)
 
 - Start with `grep -rn` / glob across `src`, `scripts`, `functions`, `tests` for symbols, then open
-  only the narrow line ranges you need (offset/limit) — never whole large files (`finding-generate.ts`
-  is ~1500 lines).
+  only the narrow line ranges you need (offset/limit) — never whole large files (`src/App.svelte` is
+  ~2,100 lines and `src/lib/UnifiedTreatment.svelte` ~1,150; in the akesi package,
+  `finding-generate` is ~1,440).
 - The CLI (`scripts/`) and browser (`src/lib/`) often share a pure module in `src/lib/` — when you
   find one side, check the other imports the same source of truth.
 - Staleness/DAG: `finding-dag.ts` declares node inputs; `factors-hash.ts` `INPUT_SLICES` maps a node

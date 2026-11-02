@@ -83,15 +83,18 @@ else
         .dev.vars.example to .dev.vars. See CREDENTIALS.md."
 fi
 
-# VAULT.md:497 — a zero-byte vault.json reads as corrupted JSON ("Unexpected end of JSON input") on
-# a file that was fine a moment ago, and the only thing that writes it is vite.config.ts's dev-only
-# /__save-vault. Naming the file is the whole value; it is a committed fixture, so `git checkout --`
-# recovers it.
+# A zero-byte vault.json reads as corrupted JSON ("Unexpected end of JSON input") on a file that was
+# fine a moment ago, and naming the file is the whole value of the check. It cannot fire in this
+# repository today: nothing under records/ is tracked but _headers, favicon.svg and assets/404.html,
+# and vite.config.ts's dev-only /__save-vault writes records/public/data-{id}.enc rather than a
+# vault.json. It is kept for a working tree that still carries one from before the plaintext-at-rest
+# retirement (VAULT.md §1), where `git checkout --` would not recover it either.
 empty_vaults=$(find records -name vault.json -size 0 2>/dev/null)
 if [ -n "$empty_vaults" ]; then
-  bad "zero-byte vault fixture(s) — this is what \`vault:verify\` reports as corrupted JSON:"
+  bad "zero-byte vault file(s) — these will read as corrupted JSON to anything that opens them:"
   printf '        %s\n' $empty_vaults
-  printf '        recover with: git checkout -- %s\n' "$(printf '%s ' $empty_vaults)"
+  printf '        nothing here tracks one, so there is no committed copy to restore: delete it, or\n'
+  printf '        recover it from the vault-sync backup window (VAULT.md).\n'
 else
   ok "no zero-byte vault.json under records/"
 fi
