@@ -1,0 +1,26 @@
+name: provenance
+
+# What authorized this pull request. The body opens with a fenced `json` block naming the plan and
+# phase the work came from, or declaring that no phase did and saying what brought it into
+# existence. The form is the shared protocol's `doctrine/git.md`; the check is pedalion-ci's.
+#
+# Its own file rather than a job in `ci.yml`, because of `edited`. A body this check refuses is
+# fixed by editing the body, and `pull_request` does not carry `edited` by default — so in `ci.yml`
+# the author would have to push a commit they do not need to move a check about prose, while adding
+# `edited` there would re-run the whole suite every time somebody fixes a typo in a title.
+#
+# No job-level `if:` on applicability. A required check that reports SKIPPED blocks the merge
+# forever, so a bot is exempted inside the check by author type instead of by skipping the job —
+# which is also what keeps it out of the way of a dependency bump.
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+jobs:
+  provenance:
+    uses: promontory-studio/pedalion-ci/.github/workflows/provenance.yml@c9b494b5674aaac7465882629455531b8dc28898 # v1.4.0
+    with:
+      body: ${{ github.event.pull_request.body }}
+      pr-author: ${{ github.event.pull_request.user.login }}
+      pr-author-type: ${{ github.event.pull_request.user.type }}
