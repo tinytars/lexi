@@ -48,7 +48,7 @@ Every source — blood, DEXA, scale — emits the same `MarkerResult`
 
 ## Source detection — the extension splits PDFs off, content does the rest
 
-A `.pdf` is split off **by filename** at both entry points (`src/lib/import-flow.ts:184`,
+A `.pdf` is split off **by filename** at both entry points (`src/lib/import-flow.ts:183`,
 `scripts/commands/r2-ops.ts:112`) and goes to the LLM report path. Everything else reaches
 `parseRawFile` (`src/lib/parse-raw.ts:12`), where a spreadsheet is routed **by content**: a
 sheet neither sniffer recognizes throws rather than being parsed as a lab export on the
