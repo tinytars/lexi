@@ -9,13 +9,15 @@
 // established and a11y-static.test.ts argues for: the citations come out of the documents and the
 // resolution out of the tree, so a NEW violation trips it without anyone editing this file.
 //
-// Two things it deliberately does not do. It does not check `:line` suffixes — a line number goes
-// stale on an unrelated edit, and a gate demanding them teaches people to delete the citation
-// rather than fix it. And it does not exempt a file by pattern: every tolerated citation is named
-// one by one in KNOWN with its reason, which is narrower than exempting a document.
+// Two things it deliberately does not do. It does not ask whether line N is still the RIGHT line —
+// that goes stale on an unrelated edit, and a gate demanding it teaches people to delete the
+// citation rather than fix it. It does ask whether the file has N lines at all, in the third test
+// below, which no edit can make wrong. And it does not exempt a file by pattern: every tolerated
+// citation is named one by one in KNOWN with its reason, which is narrower than exempting a
+// document.
 import { describe, it, expect } from "vitest";
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -174,5 +176,36 @@ describe("documented paths and commands", () => {
   it("KNOWN names no citation that now resolves", () => {
     const live = new Set(violations.map((v) => v.key));
     expect(Object.keys(KNOWN).filter((k) => !live.has(k))).toEqual([]);
+  });
+
+  // The `:line` suffix, and the ONE question about it that no unrelated edit can turn stale: does
+  // the file have that many lines? The header above refuses to check that line N is still the right
+  // line, and that refusal stands -- it would fail on every edit above a citation and teach people
+  // to drop the suffix. This is the floor under it rather than an exception to it: a citation past
+  // the end of its file was wrong when it was written or wrong when the file shrank, is wrong under
+  // every subsequent edit, and lands the reader nowhere. Three were merged by the sweep that emptied
+  // KNOWN -- `src/lib/types.ts:121` in a 29-line file, `scripts/claude-finding.ts:888` in a 44-line
+  // one, and a range overshooting its handler's end -- all three naming code that had moved into
+  // `@pablotech/akesi`, which is what a dead line number usually means and what the path check alone
+  // cannot see.
+  it("every line-numbered citation points inside its file", () => {
+    const past: string[] = [];
+    for (const docRel of docs) {
+      for (const [, span] of readFileSync(join(ROOT, docRel), "utf8").matchAll(/`([^`\n]+)`/g)) {
+        const m = /^([A-Za-z0-9._@/-]+?):(\d+)(?:-(\d+))?$/.exec(span);
+        if (!m) continue;
+        const [, path, first, last] = m;
+        const hit = roots(docRel)
+          .map((r) => join(r, path))
+          .find((f) => existsSync(f) && statSync(f).isFile());
+        if (!hit) continue; // not a path into this repository; the tests above own that question
+        // Minus the empty string after a trailing newline, or `:97` of a 96-line file passes.
+        const body = readFileSync(hit, "utf8");
+        const lines = body.split("\n").length - (body.endsWith("\n") ? 1 : 0);
+        const want = Number(last ?? first);
+        if (want > lines) past.push(`${docRel} | ${span}  (the file has ${lines} lines)`);
+      }
+    }
+    expect(past).toEqual([]);
   });
 });
