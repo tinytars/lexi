@@ -17,10 +17,11 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { createHash } from "node:crypto";
-import { rename, rm } from "node:fs/promises";
+import { open, rename, rm } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { wranglerTarget } from "./target";
+import { isSealed } from "../src/lib/raw-cipher";
 
 const execFileAsync = promisify(execFile);
 
@@ -224,12 +225,35 @@ export async function pullVaultTo(id: string, destPath: string, store = resolveS
   }
 }
 
-// disk -> R2, one raw original. Used by the cutover migration and by ingest going forward
-// so /api/raw can serve it. The object lands under {store}/raw/{id}/ EXACTLY AS GIVEN: a sealed
-// original stays sealed and a plaintext one stays plaintext, so a migration cutover cannot
-// accidentally publish bytes the browser had already encrypted.
+// The envelope's header is the first HD1_HEADER_LEN bytes, so a file is classified from its head
+// and never read whole: `pushRaw` takes a PATH, and a cutover file is an entire patient document
+// that has no business in this process's memory to answer one question about its first four bytes.
+// It names the key's class rather than the key (see `keyRef` below) — this refusal can reach a CI
+// log, and the file name is the patient's.
+async function assertSealedFile(absPath: string, key: string): Promise<void> {
+  const fh = await open(absPath);
+  try {
+    const head = Buffer.alloc(32);
+    const { bytesRead } = await fh.read(head, 0, 32, 0);
+    if (!isSealed(head.subarray(0, bytesRead))) {
+      throw new Error(`refusing to push an UNSEALED original to ${keyRef(key)} — seal it first (npm run raw:encrypt)`);
+    }
+  } finally {
+    await fh.close();
+  }
+}
+
+// disk -> R2, one raw original. Used by the cutover migration and by ingest going forward so
+// /api/raw can serve it. The object lands under {store}/raw/{id}/ byte for byte — but ONLY if it is
+// already sealed. The header here used to say a plaintext original stays plaintext, which was the
+// cutover's own guarantee read the wrong way round: not publishing what the browser had encrypted
+// says nothing about publishing what it had not, and this function would have written readable PHI
+// into the live bucket on the first caller to hand it a file off disk. There is no caller today,
+// which is why this is an assertion and not a deletion: an absent writer is one nobody has written
+// yet, and a refused one is one nobody can.
 export async function pushRaw(store: string, id: string, file: string, absPath: string): Promise<void> {
   assertLiveWriteAllowed(`${store}/raw/${id.toLowerCase()}/${file}`);
+  await assertSealedFile(absPath, `${store}/raw/${id.toLowerCase()}/${file}`);
   const args = ["wrangler", "r2", "object", "put", r2RawRefFor(store, id, file), "--remote", "--file", absPath];
   try {
     await execFileAsync("npx", args, { cwd: resolve(here, "..") });
@@ -401,6 +425,23 @@ export async function getObject(bucket: string, key: string): Promise<Uint8Array
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`R2 get failed for ${bucket} ${keyRef(key)} (${res.status}): ${redactedBody(await res.text(), key)}`);
   return new Uint8Array(await res.arrayBuffer());
+}
+
+/**
+ * The first `bytes` of an object, or null on a genuine miss — the keyless half of a classification.
+ *
+ * A `Range` request is a request and not a guarantee: a server is free to ignore it and answer 200
+ * with the whole body, so this treats 206 and 200 the same and slices either one. That is the
+ * fallback the sweep is allowed to rely on rather than a condition to check for — what it costs
+ * when R2 declines the range is bandwidth, and `snapshot.yml` already streams every object through
+ * a hosted runner nightly, so it is no new exposure. What it must never do is read the whole object
+ * and call that the head: the slice is here so a caller cannot accidentally classify byte 33.
+ */
+export async function getObjectHead(bucket: string, key: string, bytes: number): Promise<Uint8Array | null> {
+  const res = await apiFetch(objectPath(bucket, key), { headers: { range: `bytes=0-${bytes - 1}` } });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`R2 head get failed for ${bucket} ${keyRef(key)} (${res.status}): ${redactedBody(await res.text(), key)}`);
+  return new Uint8Array(await res.arrayBuffer()).subarray(0, bytes);
 }
 
 export async function putObject(bucket: string, key: string, body: Uint8Array): Promise<void> {

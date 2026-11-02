@@ -6,11 +6,20 @@ later **range** and **interpret** stages then act on those readings (see
 `BLOOD.md` and `DEXA.md`, which now cover only range + interpret).
 
 ```
-  lab file ──▶ detect by ext ──▶ parser ──▶ MarkerResult[] ──▶ merge (dedup) ──▶ vault
- (.xlsx/.pdf)                  (per source)                   (marker|date)   data-<id>.enc
+  upload ──▶ hash + dedup ──▶ classify ──▶ parse ──▶ MarkerResult[] ──▶ fold ──▶ vault
+ (.xlsx/.pdf)   (by sha256)    (extension,   (per source)          (marker|date)   data-<id>.enc
+                                then content)
 ```
 
-Driven entirely by `scripts/ingest.ts` (`npm run ingest -- --client <id> …`).
+**Two entry points, one spine.** The browser's Import tab folds a file inline
+(`src/lib/ImportTab.svelte` → `classifyUpload`, `src/lib/import-flow.ts:173`); anything it
+cannot parse is stored raw and queued, then folded later by the CLI
+(`npm run r2-ops -- --process-pending --client <id>` → `opProcessPending`,
+`scripts/commands/r2-ops.ts:158`). Both route through the same `parseRawFile` and the same
+`foldSource`/`foldReport`, so a file folds identically whichever way it arrived.
+
+**There is no local-path ingest.** The CLI acts on what the browser has already uploaded to
+R2 and never reads a file from your disk.
 
 ---
 
@@ -37,29 +46,31 @@ Every source — blood, DEXA, scale — emits the same `MarkerResult`
 
 ---
 
-## Source detection — extension routes to a parser
+## Source detection — the extension splits PDFs off, content does the rest
 
-Routing is purely by file extension (`scripts/ingest.ts:386`); there is no
-content sniffing for PDFs.
+A `.pdf` is split off **by filename** at both entry points (`src/lib/import-flow.ts:183`,
+`scripts/commands/r2-ops.ts:112`) and goes to the LLM report path. Everything else reaches
+`parseRawFile` (`src/lib/parse-raw.ts:12`), where a spreadsheet is routed **by content**: a
+sheet neither sniffer recognizes throws rather than being parsed as a lab export on the
+assumption that it must be one.
 
-| Extension | Parser | Source label |
-|-----------|--------|--------------|
-| `.xlsx` / `.xls` | `parseHealthmatters` (`src/lib/parsers/healthmatters.ts`) | Blood labs |
-| `.xlsx` / `.xls` *(sheet looks like a scale export)* | `parseWeightApp` (`src/lib/parsers/weightapp.ts`) | Scale / InBody body-comp |
-| `.pdf` | `parseDexa` (`src/lib/parsers/dexa.ts`) | DEXA body-comp / bone density |
-| anything else | rejected (`ingest.ts:403`) | — |
+| Input | Decided by | Parser | Source label |
+|-------|-----------|--------|--------------|
+| `.pdf` | filename, before `parseRawFile` | LLM extraction → `foldReport` | per report (see `NARRATIVE.md`) |
+| `.xlsx` / `.xls`, sheet looks like a scale export | `isWeightAppSheet` (`src/lib/parsers/weightapp.ts:47`) | `parseWeightApp` | Scale / InBody body-comp |
+| `.xlsx` / `.xls`, sheet looks like a HealthMatters export | `isHealthmatters` (`src/lib/parsers/healthmatters.ts:87`) | `parseHealthmatters` | Blood labs |
+| `.xlsx` / `.xls`, neither | — | throws `unrecognized spreadsheet format` | queued, not guessed |
+| anything else | — | throws `unsupported file extension` | queued, not guessed |
 
-```
-npm run ingest -- --client Alex path/to/labs.xlsx     # blood
-npm run ingest -- --client Alex path/to/scale.xlsx    # InBody / scale
-npm run ingest -- --client Alex path/to/dexa.pdf      # DEXA
-```
+**A throw here is not a failure.** The caller catches it and stores the file as a **pending
+upload** (`src/lib/import-flow.ts:195`) — kept, hashed and listed, waiting for a parser that
+understands it — which is why the table has no "rejected" row.
 
-> A positional `.pdf` is assumed to be a **DEXA** report and goes to `parseDexa`.
-> **Narrative radiology PDFs** (e.g. MyChart "Test Details" CT/ultrasound reports)
-> are a different shape and take a separate, LLM-based path behind the
-> `--import-reports` flag — they do **not** flow through this extension routing.
-> See **`NARRATIVE.md`**.
+> **`parseDexa` is on no live path.** `src/lib/parse-raw.ts:23` still routes `.pdf` to it,
+> but both callers divert `.pdf` to the report path before `parseRawFile` is reached, so a
+> DEXA report is extracted today by the same LLM path as any other PDF. The section below
+> describes a parser that is still tested (`tests/unit/dexa-parser.test.ts`) and no longer
+> called.
 
 ---
 
@@ -128,10 +139,9 @@ in-between trend.
 
 ## Dedup and storage
 
-New readings merge into `client.results` keyed by `marker|date`
-(`mergeResults`, `scripts/ingest.ts`), so re-importing the same draw/scan is a
-no-op; a new date appends a fresh time point per marker. The merged list is
-sorted by marker then date.
+New readings fold into `client.results` keyed by `marker|date` — `applySourceReadings`, in
+the shared `@pablotech/akesi/report-merge`, called from `src/lib/import-flow.ts:118` — so
+re-importing the same draw/scan is a no-op; a new date appends a fresh time point per marker.
 
 ---
 
@@ -144,7 +154,7 @@ retained and tracked, sharing one mechanism (`scripts/sources-store.ts`):
   identical file is **detected and reported** (positional files skip re-parse
   unless `--force`; reports reuse their cached extraction — see `NARRATIVE.md`).
 - **The file is retained** under a **self-describing name**
-  (`storedName`, in `src/lib/ingest-core.ts`):
+  (`storedName`, in `@pablotech/akesi/ingest-core`):
   **`<date>-<type>-<subtype>-<sha8>.<ext>`** — e.g.
   `2021October15-imaging-coronary-13da11c4.pdf`,
   `2025September02-2026May19-blood-panel-<sha8>.xlsx`.
@@ -166,20 +176,19 @@ retained and tracked, sharing one mechanism (`scripts/sources-store.ts`):
   re-encounters by `marker|date` (stamps it with this file's `sourceId`) rather
   than duplicating — so feeding a cumulative lab export back-fills provenance on
   the prior history. The first file to introduce a reading owns it.
-- Positional files go through `ingestSourceFile`; report PDFs through
-  `importReportsFor`. `--migrate-sources` renames existing stored files to the
-  scheme above (`scripts/ingest.ts`).
+- Spreadsheets fold through `foldSource` (`src/lib/import-flow.ts:104`), report PDFs
+  through `foldReport` (`src/lib/import-flow.ts:46`). Both mint the same `storedName`, so
+  the raw's R2 key and its `SourceRecord` reconcile whichever route the file took. There is
+  no rename pass for files stored under an older scheme.
 
 ### Removing a source
 
 A source is one deletable unit: `{ raw file, processed artifact, SourceRecord, all
-derived data tagged with its sourceId }`. Remove it with:
+derived data tagged with its sourceId }`. It is removed from the **Reports** surface in the
+app (`src/lib/HealthReports.svelte:91`), which calls the raw DELETE route
+(`functions/api/raw/[[path]].ts:246`) to drop the R2 objects.
 
-```
-npm run ingest -- --client <id> --remove-source <sourceId|sha8-prefix|filename>
-```
-
-This runs the pure `removeSource()` (`src/lib/report-merge.ts`): it drops the
+Both ends run the same pure `removeSource()` (`@pablotech/akesi/report-merge`): it drops the
 `SourceRecord` and every `sourceId`-tagged reading/disease (incl. `fromComparison`
 placeholders and folded comorbidity codes), **keeps a reading a surviving source also
 supplies** (re-attributed — corroboration), and appends a PHI-free tombstone to
@@ -191,9 +200,15 @@ no duplicate tombstone). **Re-ingesting the same sha clears its tombstone.**
 - **Removed ≠ stale.** Removed data is *gone*; a removal also makes the Finding **stale**
   (its `inputsHash` no longer matches), which is a separate "needs regen" state — the
   deleted readings are not rendered as stale.
-- `vault:verify` enforces the **provenance invariant** (no dangling `sourceId`, no
-  tombstone/live collision, every source has its raw + processed files), so a bad delete
-  fails the pre-push gate.
+- The **provenance invariant** — no dangling `sourceId`, no tombstone that is also live, no
+  extracted treatment without the raw capture it claims — is computed by `provenanceIssues()` in
+  `@pablotech/akesi/ingest-core` and asserted over the cascade by
+  `tests/unit/remove-source.test.ts`, so a removal that would leave a dangling reference fails the
+  unit suite. There is no pre-push hook and no operator command that re-checks a live vault — the
+  invariant is held by a test over the code that does the removing, rather than by something
+  somebody has to remember to run. **The file half of it is checked by nobody**: that a source's
+  `raw/` and `processed/` objects are really there was always the caller's check, never this
+  `fs`-free function's, and the command that made it is gone.
 - The working tree, served `.enc`, and R2 are cleaned immediately. For a sensitive
   (wrong-patient) removal, see `AUTH.md` for account/data erasure.
 
@@ -204,7 +219,7 @@ construction (lab-export names; DEXA's fixed catalog), so their `marker|date`
 identity is reliable. The LLM-driven imaging path does not, which caused
 duplicate/orphan markers. The fix flowed **both ways**:
 - **blood/DEXA → imaging**: imaging adopted canonical naming
-  (`src/lib/imaging-catalog.ts`) + deterministic re-import (cached extraction).
+  (`@pablotech/akesi/imaging-catalog`) + deterministic re-import (cached extraction).
 - **imaging → blood/DEXA**: blood/DEXA adopted imaging's provenance — keep the
   source file, hash-dedup re-ingest, tag each reading with its `sourceId`.
 
@@ -215,52 +230,53 @@ duplicate/orphan markers. The fix flowed **both ways**:
 - **Inventory** (`client.results`) — every reading on file.
 - **Watchlist** (`client.watchlist`) — the subset the provider actively tracks;
   drives which markers get personalized ranges and the detailed Markers block in
-  the Finding. For a DEXA metric to be tracked/targeted it must be added here,
-  e.g. `--add-marker "Visceral adipose tissue mass"`.
+  the Finding. For a DEXA metric to be tracked/targeted it must be added here.
 - **Recommended** (`client.recommended`) — markers the AI Finding surfaced;
-  maintained automatically by `--refresh-finding`.
+  maintained by `npm run r2-ops -- --refresh-finding --client <id>`.
 
-Watchlist edits (also exposed via the `plover-health-mark` skill):
-
-```
---add-marker "<name>"       # add to watchlist (auto-ranges if data exists)
---remove-marker "<name>"    # remove from watchlist
-```
+Watchlist membership is edited in the app: the Pin/Unpin control on a marker
+(`src/lib/MarkerChart.svelte:38`), read back by the Markers tab
+(`src/lib/MarkersTab.svelte:208`).
 
 ---
 
 ## Clinical context (factors)
 
-The same CLI sets the patient context that the range and interpret stages
-consume, stored in `client.factors`:
-
-```
---add-disease "Date|Diagnostic"      --add-medication "Drug|Dose|Since"
---add-supplement "Drug|Dose|Since"   --add-condition "<name>"
---add-correlation "Date|Event"       --add-decision "Intervention|Purpose"
---add-plan "Action|Date"             --set-factor key=value
-```
+The patient context the range and interpret stages consume is stored in `client.factors`
+and edited in the app, not from a CLI — diagnoses, medications and supplements in
+`src/lib/Personalization.svelte`, allergies in `src/lib/Allergies.svelte`, family history in
+`src/lib/Family.svelte`, notes in `src/lib/Notes.svelte`.
 
 A `factorsHash` is recomputed on every change so the range/finding stages know
 when context changed (range staleness, finding `inputsHash`).
 
 ---
 
-## Encryption at rest (`src/lib/crypto.ts`)
+## Encryption at rest (`@tinytars/vault/crypto`)
 
-AES-GCM 256, key via PBKDF2-SHA256 (200k iterations), random salt + IV per write,
-`HD1` magic header. The served per-client vault `records/public/data-<id>.enc` uses the
-**lowercased client id** as its passphrase. The provider roster
-`records/roster.enc` uses the provider passphrase and holds **display names only** — no clinical or
-demographic data. It sits outside `records/public/` and is therefore never served (see `VAULT.md`). The served `.enc` is a **derived**
-artifact, and `vault:verify` guards it against drift (see `VAULT.md`).
+AES-GCM 256 under an `HD1` magic header, with the passphrase derivation —
+PBKDF2-SHA256, 200,000 iterations, 16-byte salt, 12-byte IV — shared from
+`@tinytars/vault/kdf`. **The envelope has two live versions and the one a vault
+uses is v2.** v1 derives the content key from a passphrase directly; v2 splits it,
+encrypting the payload under a random DEK and wrapping that DEK once per
+principal, which is what makes granting a clinician access a re-wrap rather than a
+re-encrypt (v3 is the same envelope carrying opaque bytes instead of JSON, for a
+raw uploaded file). `encryptVaultV2` / `decryptVaultV2` are the only way in or out
+of a vault blob; the lowercased-client-id passphrase this section documented until
+2026-11-01 belonged to v1 and no longer opens one.
+
+A vault blob is held in R2 and nothing encrypted is tracked in this repository
+(VAULT.md §1) — so there is no committed derived artifact here to guard against
+drift, and no command that guards one.
 
 ---
 
 ## Ingest gotchas
 
-- **PDF = DEXA, always.** Detection is purely by extension; don't feed a
-  non-DEXA PDF to ingest.
+- **A PDF is a report, not a DEXA.** Every `.pdf` goes to the LLM report path; the
+  positional DEXA parser is reached from nowhere (see above).
+- **A spreadsheet nobody recognizes is queued, not guessed.** `parseRawFile` throws and the
+  file becomes a pending upload rather than being parsed as a lab export.
 - **DEXA parsing is layout-coupled.** A new vendor/template needs the column
   x-offsets and label strings re-derived; the symptom of a mismatch is *missing*
   markers, not an error.

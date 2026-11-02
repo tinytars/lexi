@@ -13,7 +13,7 @@ runbook to set them. For the API itself see `API.md`.
 How auth works: `/api/chat` and `/api/raw` are gated by the `hd_session` cookie (`requireSession`),
 and `/api/raw` additionally authorises per record (`rawAccessFor`) — authenticated is not
 authorised. Only `PROVIDER_TOKEN` and `VAULT_TOKEN` still reach `requireBearer`
-(`_lib/guard.ts:31`). (Full detail in `API.md` → Authentication.)
+(`functions/_lib/guard.ts:31`). (Full detail in `API.md` → Authentication.)
 
 > **Deleted 2026-08-26: `CHAT_TOKEN`, `RAW_TOKEN`, `PROVIDER_UNLOCK_TOKEN`.** They were bearer
 > allowlists for routes that moved to session auth, and had been set on both Pages projects but read
@@ -63,7 +63,7 @@ copied from dev's even if that were wanted; each was provisioned from its own so
 
 **`CHAT_TOKEN`, `RAW_TOKEN` and `PROVIDER_UNLOCK_TOKEN` were deleted from both projects
 2026-08-26.** No Function read any of them — `/api/chat` and `/api/raw` moved to session auth, and
-only `PROVIDER_TOKEN` and `VAULT_TOKEN` still reach `requireBearer` (`_lib/guard.ts:31`). They had
+only `PROVIDER_TOKEN` and `VAULT_TOKEN` still reach `requireBearer` (`functions/_lib/guard.ts:31`). They had
 been kept provisioned so the two environments stayed diffable, which is a poor trade for a live
 credential with no owner. `check-env.sh` no longer allowlists them: if one is re-provisioned by
 hand it now warns as stale.
@@ -389,13 +389,15 @@ the bucket is seeded, and enable Logpush → R2 retention (see `API.md`).
 
 ## Adding a new user (client) — end-to-end
 
-The deploy-side steps that authorize a new patient. The CLI vault-creation is in README
-("Ingest CLI"); the parts that matter for auth/persistence:
+The deploy-side steps that authorize a new patient. The parts that matter for auth/persistence:
 
-1. **Create the vault** (CLI): `npm run ingest -- --init --client <Id> --display-name "<Name>"`,
-   then load their metrics/factors. This writes `records/public/data-<id>.enc` (lowercase id) and
-   refreshes `records/roster.enc`. The slice is encrypted with the lowercase id as its
-   passphrase — that id is what the user logs in with.
+1. **The account creates itself at sign-up.** Password sign-up
+   (`functions/api/auth/password/signup.ts:96`), passkey registration and Google sign-in all call
+   `createAccount` (`functions/_lib/identity-accounts.ts:9`), which writes the D1 `accounts` row
+   with the display name the user gave; a support account is provisioned instead with
+   `npm run support:provision`. The patient's vault object **self-seeds** into R2 on its first
+   `GET /api/vault/<id>` (`functions/api/vault/[id].ts:182`), so there is nothing to create by
+   hand and no vault-init command.
 2. **Regenerate the bearer allowlist** (now includes the new slice):
    `npm run allowlist` → copy the stdout line (the comma-joined per-client hashes).
 3. **Re-set `VAULT_TOKEN`** to the new value:
@@ -525,21 +527,27 @@ R2-encrypted vaults. Ops details:
   from `scripts/provision-e2e-patient.ts`. `0003` = support audit + `expires_at`. `0004` =
   `vaults.rotation_pending`. `0006` = `vaults.org_recovery_revoked_at`. **After adding a
   migration, run `d1:migrate:remote` at deploy** — this is a standing checklist item, easy to forget.
-- **Org-key decrypts are logged.** `vault:build`, `vault:verify`, `vault:restore`, and
-  `ingest --reconcile` each call `scripts/access-log.ts` (`recordOrgKeyUse` / `flushOrgKeyUses`) around
-  every org-key decrypt, batching one `phi_access_events` INSERT over `wrangler.sh d1 execute --remote`
-  when the script's `main` exits — so those four commands now need remote D1 access (the committed
-  token) even for otherwise-offline runs. A flush failure is a hard error by design (a silent audit
-  trail is the failure mode this closes). **`ORG_ACCESS_LOG=off`** is the documented escape hatch for
-  genuinely offline work — it drops the buffered uses instead of flushing them.
+- **Org-key decrypts are logged, at one chokepoint.** Every org-key decrypt in the tree goes through
+  `scripts/org-unwrap.ts`, which calls `scripts/access-log.ts` (`recordOrgKeyUse` /
+  `flushOrgKeyUses`) around it and batches one `phi_access_events` INSERT over
+  `wrangler.sh d1 execute --remote` when the script's `main` exits — so any command that opens a
+  vault with the org key (`npm run vault:restore`, `npm run vault:rekey`, `npm run r2-ops --
+  --reconcile`, `npm run raw:backfill`, and the rest) needs remote D1 access (the committed token)
+  even for an otherwise-offline run. **Which commands those are is deliberately not listed here**:
+  `tests/unit/org-key-chokepoint.test.ts` sweeps the `scripts/` tree and pins that
+  `loadOrgPrivateKey` is reached from `scripts/org-key.ts` and `scripts/org-unwrap.ts` and nowhere
+  else, so a new script cannot open the key unlogged and a list in this document could only go
+  stale. A flush failure is a hard error by design (a silent audit trail is the failure mode this
+  closes). **`ORG_ACCESS_LOG=off`** is the documented escape hatch for genuinely offline work — it
+  drops the buffered uses instead of flushing them.
 - **DEK rotation is client-side.** Support revoke/expiry re-keys the vault in the browser
   (`/api/vault/principals` → re-wrap targets, `/api/vault/rotate` → atomic envelope swap). Expiry (patient
   offline) sets `rotation_pending`; the patient's next login completes it. **`reconcile` now reads a
   vault's DEK from the D1 org-recovery envelope** (`scripts/org-d1.ts`, via this wrapper) so it tracks a
-  re-keyed R2 blob — it therefore needs remote D1 access (the committed token). `vault:verify` /
-  `vault:build` are unaffected by rotation itself (committed `records/public/*.enc` + `.dek.enc` only —
-  a prod re-key never touches them), but per the bullet above, both now need remote D1 access anyway to
-  log the org-key decrypt. Verify rotation deployed with a throwaway account (sign up → `/api/vault/rotate` →
+  re-keyed R2 blob — it therefore needs remote D1 access (the committed token). Nothing here reads a
+  committed encrypted record: this repository tracks three files under `records/` and none is a
+  vault (VAULT.md §1), so there is no offline copy for a rotation to leave behind.
+  Verify rotation deployed with a throwaway account (sign up → `/api/vault/rotate` →
   new DEK opens the blob, old DEK fails, fresh login unwraps the new DEK); **then purge it (below)**.
 - **Provisioning (out-of-band).** Support account: `scripts/provision-support-account.ts` → SQL →
   `npm run wrangler -- d1 execute health-identity-dev --remote --file …` (prod support agent =

@@ -7,12 +7,12 @@ import { onRequestGet as rawGet, onRequestPut as rawPut } from "../../functions/
 import { onRequestPost as rawMeasure } from "../../functions/api/raw/measure";
 import { useWorkerd } from "../support/miniflare";
 import { SESSION_SECRET, cookieFor } from "../support/session";
-import { hd1Blob } from "../support/blobs";
+import { sealedRawBlob } from "../support/blobs";
 
 const STORE = "dev";
 // Sealed, because the route refuses plaintext (DPG 9A.5); what is under test is the page count that
 // travels beside the bytes, not the bytes.
-const SEALED = hd1Blob();
+const SEALED = sealedRawBlob();
 const w = useWorkerd({ r2: true, perTest: true });
 const env = () => ({ DB: w.db, VAULT: w.bucket, SESSION_SECRET, STORE_PREFIX: STORE }) as any;
 

@@ -44,7 +44,7 @@ Thirty-five in source, forty-nine in tests, all fixed rather than suppressed —
 zero, with `--deny-warnings`, so the next one fails CI.
 
 Forty of the test findings were dead `readFileSync`/`fileURLToPath` imports left behind by an earlier
-`_migrate.ts` consolidation: real debt, invisible until something looked. Two were genuine defects
+consolidation of the test helpers: real debt, invisible until something looked. Two were genuine defects
 rather than tidiness:
 
 - `tests/e2e/chat-from-leaf.spec.ts` matched `/[🔗✓]+/` without the `u` flag. 🔗 is a surrogate pair,

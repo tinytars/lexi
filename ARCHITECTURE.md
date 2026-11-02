@@ -54,29 +54,34 @@ where a stolen session cookie could otherwise mint a permanent new credential �
 no password to challenge, the action proceeds but always emails a notification, which the code
 treats as the residual control, not a courtesy.
 
-## Ingest CLI (`scripts/`)
+## Ingest
 
-One shared pipeline for every marker source, run via `npm run ingest -- --client <id> ...`:
+One shared pipeline for every marker source, entered from the browser's Import tab or, for a file
+the browser could not parse and therefore queued, from the operator CLI
+(`npm run r2-ops -- --process-pending --client <id>`):
 
 ```
-lab file → detect by extension → per-source parser → MarkerResult[] → dedup merge → vault.json → .enc
+upload → hash + dedup → classify → per-source parser → MarkerResult[] → fold by marker|date → .enc
 ```
 
-Parsers are routed by file extension alone, never by content-sniffing (`src/lib/parsers/`):
-`.xlsx`/`.xls` goes to a blood-lab or scale/body-composition parser depending on sheet shape;
-`.pdf` goes to a DEXA parser that reads fixed `(x,y)` table coordinates via `pdfjs-dist` —
-deliberately brittle to template changes, not disguised as robust. A separate LLM-based path
-handles narrative radiology PDFs; it's a different code path from this deterministic
-extension-routing, not a fallback inside it.
+Classification is a filename test and then a content test, in that order (`src/lib/parse-raw.ts`).
+A `.pdf` is split off by name and goes to the LLM narrative-report path. A spreadsheet is routed by
+what is **in** the sheet — a scale/body-composition export or a blood-lab export — and one that
+matches neither is not guessed at: the parser throws, and the file is stored and queued rather than
+parsed into garbage. The deterministic DEXA parser, which reads fixed `(x,y)` table coordinates via
+`pdfjs-dist` and is deliberately brittle to template changes, is still in the tree and reached from
+no live path, every PDF now taking the report route.
 
 Every parser emits the same `MarkerResult { marker, group, source, date, value, unit, ref? }`
 shape, with units canonicalized at parse time so a value from one lab is comparable to another's.
 Every source file is content-hashed to a `sourceId`; raw bytes and a pre-fold extraction artifact
 are kept alongside the vault under a matching, self-describing filename, and every derived reading
 carries that `sourceId` back to its origin. Removing a source is a real operation
-(`src/lib/report-merge.ts`'s `removeSource()`), not a soft flag: it drops what only that source
+(`@pablotech/akesi/report-merge`'s `removeSource()`), not a soft flag: it drops what only that source
 contributed, re-attributes what a surviving source also supplies, and leaves a PHI-free tombstone
-behind — `vault:verify` enforces that no reading or tombstone ever points at a dropped source.
+behind. `provenanceIssues()` in the same module computes what a dangling `sourceId` would be, and
+`apps/lexitar/tests/unit/remove-source.test.ts` asserts the cascade leaves none — the invariant is
+held by a test over the cascade rather than by a command an operator has to remember to run.
 
 ## Svelte UI (`src/lib`)
 
@@ -157,7 +162,7 @@ The model gets the same treatment. Every call core takes an injected `MessagesCl
 `stream`), and nothing constructs a client except `functions/_lib/inference/resolve.ts`'s
 `modelFor(env, feature)`. That resolver reads `apps/lexitar/inference.config.json`, the one file
 naming each feature's provider, model and key env var. It returns either the Anthropic SDK or
-`inference/openai.ts`, an adapter that speaks the same port over any OpenAI-compatible
+`functions/_lib/inference/openai.ts`, an adapter that speaks the same port over any OpenAI-compatible
 `/chat/completions` endpoint (OpenAI, Ollama, vLLM, LM Studio). The adapter refuses input a model's
 declared `caps` can't take before sending anything — the app degrades by **refusing a feature with a
 422 the UI can act on**, never by silently sending a lesser payload, and the fix is routing that one
