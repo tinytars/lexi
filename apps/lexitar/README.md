@@ -42,27 +42,31 @@ Which model each AI feature uses, and which provider, is set in
 model through Ollama; [`INFERENCE.md`](INFERENCE.md) shows how. The file names env vars, never
 keys.
 
-## Ingest CLI
+## Ingest
 
-`scripts/ingest.ts` turns a lab file into vault content — full pipeline in [`INGEST.md`](INGEST.md),
-shape summarized in [`ARCHITECTURE.md`'s Ingest CLI section](../../ARCHITECTURE.md#ingest-cli-scripts).
-Run from this directory:
+A lab file becomes vault content in the browser: the **Import** tab hashes it, classifies it and
+folds the readings in. Full pipeline in [`INGEST.md`](INGEST.md), shape summarized in
+[`ARCHITECTURE.md`'s Ingest section](../../ARCHITECTURE.md#ingest). The watchlist and the patient's
+clinical context are edited in the app too — there is no CLI for either.
+
+What is left for an operator is the files the browser **could not** parse, which it stores raw and
+queues, plus the regenerations. Run from this directory:
 
 ```
-# Initialize a new vault for an account (one time)
-npm run ingest -- --init --client <id> --display-name "..."
+# Fold this account's queued uploads
+npm run r2-ops -- --process-pending --client <id>
 
-# Add marker history from a lab export
-npm run ingest -- ./labs.xlsx --client <id>
+# Same thing across every deployed vault
+npm run r2-ops -- --reconcile
 
-# Manage the watchlist (the markers surfaced most prominently)
-npm run ingest -- --client <id> --add-marker "Vitamin D"
-npm run ingest -- --client <id> --remove-marker "Ferritin"
+# Regenerate after an import (the Finding is never auto-refreshed)
+npm run r2-ops -- --refresh-finding --client <id>
 ```
 
-Ingest reads and writes the same D1/R2 store the deployed app does — see [`AUTH.md`](AUTH.md) for
-account/credential setup and [`VAULT.md`](VAULT.md) for the storage model. Raw source files are
-gitignored; never commit one, synthetic or real.
+`npm run r2-ops` with no arguments prints every op and option. It reads and writes the same D1/R2
+store the deployed app does, never a local path — see [`AUTH.md`](AUTH.md) for account/credential
+setup and [`VAULT.md`](VAULT.md) for the storage model. Raw source files are gitignored; never
+commit one, synthetic or real.
 
 ## Testing
 

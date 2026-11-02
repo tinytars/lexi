@@ -389,13 +389,15 @@ the bucket is seeded, and enable Logpush → R2 retention (see `API.md`).
 
 ## Adding a new user (client) — end-to-end
 
-The deploy-side steps that authorize a new patient. The CLI vault-creation is in README
-("Ingest CLI"); the parts that matter for auth/persistence:
+The deploy-side steps that authorize a new patient. The parts that matter for auth/persistence:
 
-1. **Create the vault** (CLI): `npm run ingest -- --init --client <Id> --display-name "<Name>"`,
-   then load their metrics/factors. This writes `records/public/data-<id>.enc` (lowercase id) and
-   refreshes `records/roster.enc`. The slice is encrypted with the lowercase id as its
-   passphrase — that id is what the user logs in with.
+1. **The account creates itself at sign-up.** Password sign-up
+   (`functions/api/auth/password/signup.ts:96`), passkey registration and Google sign-in all call
+   `createAccount` (`functions/_lib/identity-accounts.ts:9`), which writes the D1 `accounts` row
+   with the display name the user gave; a support account is provisioned instead with
+   `npm run support:provision`. The patient's vault object **self-seeds** into R2 on its first
+   `GET /api/vault/<id>` (`functions/api/vault/[id].ts:182`), so there is nothing to create by
+   hand and no vault-init command.
 2. **Regenerate the bearer allowlist** (now includes the new slice):
    `npm run allowlist` → copy the stdout line (the comma-joined per-client hashes).
 3. **Re-set `VAULT_TOKEN`** to the new value:

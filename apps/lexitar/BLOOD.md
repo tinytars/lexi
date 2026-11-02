@@ -63,16 +63,19 @@ Stored at `client.personalizedRanges[markerName]` in the vault.
 
 | Trigger | Path | Scope |
 |---------|------|-------|
-| `--refresh-ranges` | `refreshRangesFor` (`ingest.ts:482`) | watchlist + recommended (or `--marker <name>`, or `--all-markers`) |
-| `--add-marker` | `autoGenerateRangesForNewMarkers` (`ingest.ts:551`) | the newly added marker, **only if it has data** |
-| `--refresh-finding` | side effect (`ingest.ts:605`) | any marker the Finding newly recommends |
+| In the app, per marker | `fetchPersonalizedRange` (`src/lib/ranges-client.ts:22`) → `POST /api/refresh-range` (`functions/api/refresh-range.ts`) | the one marker the patient asked to refresh |
+| `npm run r2-ops -- --refresh-ranges` | `refreshRangesFor` (`scripts/commands/refresh.ts:144`) | watchlist + recommended (or `--marker <name>`, or `--all-markers`) |
+| `npm run r2-ops -- --refresh-finding` | side effect (`scripts/commands/refresh.ts:133`) | every tracked marker still without a range, including whatever the Finding newly recommends |
 
 **Staleness:** a marker is regenerated only if `--force`, or no range exists, or
 the stored range's `factorsHash` ≠ the client's current `factorsHash`
-(`ingest.ts:516`). Up-to-date ranges are skipped.
+(`scripts/commands/refresh.ts:181`). Up-to-date ranges are skipped, and the
+dry-run count is printed after that filter so it is the set that would be
+billed rather than the set asked for.
 
-**Cache warming:** the first marker runs serially to populate Claude's prompt
-cache; the rest run in parallel against the warm cache (`ingest.ts:541`).
+**Cache warming:** the first marker runs serially to populate the prompt cache;
+the rest run in parallel against the warm cache
+(`scripts/commands/refresh.ts:214`).
 
 ### How a range classifies a reading (`src/lib/status.ts`, `src/lib/ranges.ts`)
 
@@ -149,9 +152,14 @@ credited with a change.
 - Where useful timing depends on a plan step (a draw only meaningful once a drug
   is on board), make that relative timing explicit.
 
-### Generation mechanics (`claude-finding.ts:1227`, `ingest.ts:589`)
+### Generation mechanics (`scripts/claude-finding.ts:22`, `scripts/commands/refresh.ts:39`)
 
-- **On-demand only.** Skipped unless inputs changed (`inputsHash`) or `--force`.
+- **On-demand only.** `planFindingRefresh` (`scripts/factors.ts:58`) decides,
+  and skips unless the inputs hash changed or `--force` is given. The prompt,
+  the streaming call and the response→`ClientFinding` assembly are
+  `@pablotech/akesi/finding-generate` and `/finding-assemble`;
+  `scripts/claude-finding.ts` is the Node edge that supplies the model client
+  and stamps the hashes.
 - **prod** uses Opus with adaptive extended thinking and a 64k output ceiling;
   the large system prompt is sent with an ephemeral cache.
 - Output is JSON, `validate()`'d field by field (counts, no duplicate drugs,
