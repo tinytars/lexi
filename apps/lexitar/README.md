@@ -111,4 +111,4 @@ needs at all — the answer being none of them, for everything in the section ab
   reading a record someone else has approved you for, and what they see when you do.
 - [`docs/OPS-LOCAL.md`](docs/OPS-LOCAL.md) — the twelve vault operations that run on an operator's own
   computer rather than in continuous integration, and why each one has to.
-- [`CUTOVER.md`](CUTOVER.md), [`DPGA.md`](DPGA.md) — operational and governance detail.
+- [`CUTOVER.md`](CUTOVER.md), [`DPGA.md`](DPGA.md), [`LAWS.md`](LAWS.md) — operational and governance detail.
