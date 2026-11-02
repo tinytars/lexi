@@ -29,6 +29,7 @@ import { d1, q, D1 } from "./d1-remote";
 import { LIVE_BUCKET, getObjectHead, listObjects, resolveStore, keyRef, classifyKey, mapPool } from "./vault-sync";
 import { envelopeVersion } from "../src/lib/raw-cipher";
 import { ORG_ACCOUNT_ID } from "../functions/_lib/org";
+import { keyringOwner } from "./keyring-owner";
 import { isMain } from "./is-main";
 
 const STORE = resolveStore();
@@ -71,23 +72,43 @@ interface Counts {
  * principal still has an envelope on it. Resolved by PREFIX and oldest row first, the way
  * functions/_lib/raw-owner.ts and raw-cipher-cli.ts both resolve it, so an object with no row of its
  * own inherits its namespace's answer rather than counting as orphaned.
+ *
+ * It then applies scripts/keyring-owner.ts, exactly as the cure does, because an alarm that labels a
+ * finding with a different lane from the one the cure would take is worse than silent: it sends the
+ * operator to the browser for a file their own command could have sealed. The rule is shared as a
+ * pure function rather than copied, and this half supplies `openable` from the three D1 columns
+ * below while the cure supplies it by opening the vault — the one asymmetry the module's own header
+ * records, and the reason it is a parameter at all.
  */
 async function reachability(): Promise<Map<string, boolean>> {
-  const rows = await d1<{ r2_key: string; account_id: string | null; vault_id: string | null; revoked: string | null; envelopes: number }>(
-    `SELECT r.r2_key AS r2_key, r.account_id AS account_id, v.vault_id AS vault_id,
-            v.org_recovery_revoked_at AS revoked,
-            (SELECT COUNT(*) FROM vault_envelopes e WHERE e.vault_id = v.vault_id AND e.principal_account_id = ${q(ORG_ACCOUNT_ID)}) AS envelopes
-       FROM raw_objects r
-       LEFT JOIN vaults v ON v.owner_account_id = r.account_id
-      WHERE r.r2_key LIKE ${q(`${STORE}/raw/%`)} OR r.r2_key LIKE ${q(`${STORE}/text/%`)}
-      ORDER BY r.created_at, r.rowid`,
+  const rows = await d1<{ r2_key: string; account_id: string | null }>(
+    `SELECT r2_key, account_id FROM raw_objects
+      WHERE r2_key LIKE ${q(`${STORE}/raw/%`)} OR r2_key LIKE ${q(`${STORE}/text/%`)}
+      ORDER BY created_at, rowid`,
   );
-  const out = new Map<string, boolean>();
+  // Every account whose vault this estate's operator lane could open: a vault row, org recovery not
+  // revoked, and an envelope for the org principal. The same three conditions raw-cipher-cli.ts's
+  // `openableSet` reads, and the same three `openVaultFor` then applies one account at a time.
+  const openableRows = await d1<{ owner_account_id: string }>(
+    `SELECT v.owner_account_id FROM vaults v
+      WHERE v.org_recovery_revoked_at IS NULL
+        AND EXISTS (SELECT 1 FROM vault_envelopes e WHERE e.vault_id = v.vault_id AND e.principal_account_id = ${q(ORG_ACCOUNT_ID)})`,
+  );
+  const openable = new Set(openableRows.map((r) => r.owner_account_id));
+
+  const firstWriter = new Map<string, string | null>();
   for (const row of rows) {
     const slug = slugOf(row.r2_key);
-    // Oldest row first and `??=`, so the namespace's answer is the one its first row gives — the
+    // Oldest row first and `??`, so the namespace's answer is the one its first row gives — the
     // same tie-break the two resolvers above use, and not whichever row sorted last.
-    if (slug) out.set(slug, out.get(slug) ?? Boolean(row.account_id && row.vault_id && !row.revoked && row.envelopes > 0));
+    if (slug && !firstWriter.has(slug)) firstWriter.set(slug, row.account_id);
+  }
+  const out = new Map<string, boolean>();
+  for (const [slug, first] of firstWriter) {
+    const owner = keyringOwner(first, slug, (id) => openable.has(id));
+    // `keyringOwner` falls back to the first writer when neither account is openable, so the lane is
+    // decided by asking of the account it returned — never by the fact that it returned one.
+    out.set(slug, Boolean(owner && openable.has(owner)));
   }
   return out;
 }
