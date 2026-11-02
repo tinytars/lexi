@@ -6,9 +6,11 @@ asks for each indicator. Each indicator gets a verdict, the evidence behind it, 
 between it and "meets". The gaps are the input to a development plan. This doc is not a plan, a
 tracker, or a history: when LexiTar changes, rewrite the affected verdict to describe the new state.
 
-**Assessed against:** `dev` at `1d6d314`, and the live `tinytars.foundation/privacy` and `/terms` pages.
-`main` — what production runs — is thirty-five commits behind it and sets `REPORTS: "never"`, so where dev and
-production differ the verdict says which, rather than averaging them.
+**Assessed against:** `dev` at `7602d88`, and the live `tinytars.foundation/privacy` and `/terms` pages.
+`main` — what production runs — is two commits behind it, both of them CI-only, and sets `REPORTS: "never"`,
+so where dev and production differ the verdict says which, rather than averaging them. A SHA from before
+2026-10-18 resolves nowhere public — the repository was republished that day with no ancestry — so this stamp
+is re-measured on each pass rather than carried over.
 **Scope:** the software in this repo (`apps/lexitar`, `packages/frame`), the open packages it is
 built from (`@tinytars/vault`, `@pablotech/akesi`, `@pablotech/neuro`), and the finding-DAG content it
 reasons over (`tinytars/reasoning`). Users' health data is never part of the DPG.
@@ -53,7 +55,7 @@ right, but there is nothing to fix.
 | 6.1 | Is non-PII data or content handled | ⚪ | Yes — reasoning prompts, the finding DAG, reference material |
 | 6.2 | Export/import in a non-proprietary format | ✅ | CSV and JSON export; PDF/XLSX import |
 | **7** | **Privacy and applicable laws** | **❌** | |
-| 7.1 | Which laws it complies with | ❌ | No law named anywhere; GDPR, FTC HBNR, CCPA, MHMDA all plausibly apply |
+| 7.1 | Which laws it complies with | ❌ | No list of laws LexiTar claims adherence to. `LIABILITY.md` names the regimes that govern it — the FTC Rule, GDPR on cross-border use — which is an exposure analysis rather than the form's answer |
 | 7.2 | Evidence of adherence | ✅ | Policy and terms published and now true: what leaves this device, the recovery envelope, the enforced age limit, the reporting channel |
 | 7.3 | Processors disclosed | ✅ | Named in the policy, each with what it receives and what its terms actually cover — including where nothing has been negotiated |
 | 7.4 | Consent for special-category data | ❌ | No consent surface for the processing that needs one: the corpus sends whole documents to a model provider on nothing but the owner opening the record. Third-party access, which arrived on 2026-09-27, is the one flow that *does* carry a record of consent — per person, per window, revocable, with every read on the subject's own screen (`VAULT.md` §4b). That is the artefact this indicator asks for, built for one flow and absent from the one that matters most, so the verdict does not move |
@@ -66,7 +68,7 @@ right, but there is nothing to fix.
 | 9A.2 | Which types | ✅ | Identity, lab results, symptoms, treatments, notes, photos, chat |
 | 9A.3 | Vault confidentiality | ✅ | Client-side encryption, per-principal envelopes — and both command-line principals read *through* one of them, not around them. The third-party one (2026-09-27) gains no reach a browser lacks and less than one has: it cannot write the record it reads, and a stored credential no longer converts into account control, because recovery issuance now requires fresh re-authentication |
 | 9A.4 | Access control and audit | ✅ | One capability table, per-namespace ownership, and — since 2026-09-27 — every privileged read logged rather than only the discovery hop. The org key's audit became a mechanism the same day: one module turns that key into a decryption key and writes the row before it returns one, pinned by a build-failing sweep. The gap this row used to name is closed; a person's own reads are deliberately excluded, and §9A says why |
-| 9A.5 | Uploaded originals | ✅ | Sealed under per-file content keys held inside the vault, and a plaintext `PUT` is now refused outright (`415 plaintext_refused`). Deployment note: the dev store sweeps to zero sealable objects; production runs the pre-refusal build until `main` is promoted, and its read-only sweep on 2026-09-27 counted 35 objects still to seal |
+| 9A.5 | Uploaded originals | ✅ | Sealed under per-file content keys held inside the vault, and a plaintext `PUT` is now refused outright (`415 plaintext_refused`). Deployment note: the dev store sweeps to zero sealable objects; production now runs the refusal too, promoted 2026-11-01; its read-only sweep on 2026-09-27 counted 35 pre-refusal objects still to seal, not re-measured since |
 | 9A.6 | Transfer to third-party models | ✅ | Disclosed at the point of use, on demand and in the published policy: whole documents, on record open, about an hour of provider-side cache, no negotiated zero-retention arrangement |
 | 9A.7 | Erasure integrity | ✅ | The report states what deletion cannot reach, and the half that is enforceable — revocation killing the corpus keepalive — is pinned by a test rather than assumed. A record exported to a computer is named there too, and since 2026-09-27 names all three holders: the person, a tool holding their credential, and an account they approved — whose copy outlives the approval, which is the part a reader would otherwise assume away |
 | **9B** | **Inappropriate, misleading, illegal content** | **✅** | |
@@ -94,10 +96,11 @@ audited string at the point of use, on demand, and in a published policy rewritt
 became a two-step control in the product that reports what it could not attribute and what it cannot
 recall; the 16+ limit became a refusal in the browser rather than a sentence in the Terms; and a report
 about a wrong answer, illegal material or an abusive account now reaches a person, through a private
-tracker, against stated times. The two honest qualifications are stated where they belong rather than
-averaged away: production runs `main`, thirty-five commits behind, so the refusal and the disclosure are true
-of the software before they are true of the deployment; and documents uploaded before the sealing are
-still being converted where they sit, which is why `MODERATION.md` is staged rather than unconditional.
+tracker, against stated times. One honest qualification remains, stated where it belongs rather than
+averaged away: documents uploaded before the sealing are still being converted where they sit, which is why
+`MODERATION.md` is staged rather than unconditional. The other has closed — production was promoted on
+2026-10-22, 10-27 and 11-01, so the refusal and the disclosure are now true of the deployment and not only
+of the software.
 
 ---
 
@@ -270,10 +273,14 @@ does not have, and a reporting channel with stated response times. The indicator
 two questions that rewrite does not answer.
 
 **Gaps**
-- **No laws are identified (7.1).** The form asks for a list. The candidates LexiTar would have to show
-  adherence to: GDPR (EU users; health data is special-category), the FTC Health Breach Notification
-  Rule, CCPA/CPRA, Washington's My Health My Data Act, and ADA/WCAG for accessibility. None is cited
-  anywhere, in the policy or in this repo.
+- **No law is identified as one LexiTar adheres to (7.1).** The form asks for a list. The candidates: GDPR
+  (EU users; health data is special-category), the FTC Health Breach Notification Rule, CCPA/CPRA,
+  Washington's My Health My Data Act, and ADA/WCAG for accessibility. Two of them are already named in this
+  repo, and naming is not what the form asks for: `LIABILITY.md` §3 puts the FTC Rule as the regime
+  governing a US-only health-literacy app and GDPR as what cross-border use triggers, which is an exposure
+  analysis written to decide a product question. The published policy names HIPAA only to disclaim it, and
+  the Terms carry a governing-law clause; neither is an adherence claim against a named law. What is missing
+  is therefore not a mention but the list, and the evidence under each entry.
 - **No consent capture for special-category data (7.4).** GDPR Article 9 wants explicit consent for
   processing health data, and the flow that most needs one has none: the corpus sends whole documents to
   a model provider when a record is *opened*, and disclosure at the point of use is not consent — the
@@ -305,7 +312,7 @@ published claims are now true, not that a law has been named.
 - **Open standards:** WebAuthn/FIDO2 passkeys; W3C Web Crypto (AES-GCM-256, PBKDF2-SHA256, ECDH-ES
   P-256, HMAC-SHA256); OAuth 2.0 / OpenID Connect (Google sign-in); WCAG 2.1 AA, asserted by axe in
   `tests/e2e/a11y.spec.ts`; CSV and JSON for export.
-- **Best practices:** CI on every PR (`.github/workflows/ci.yml`) with ~315 unit and ~70 e2e files
+- **Best practices:** CI on every PR (`.github/workflows/ci.yml`) with 356 unit and 62 e2e files
   and enforced coverage (`coverage-thresholds.json`); CodeQL; Dependabot for npm and Actions; private
   vulnerability reporting (`../../SECURITY.md`); a code of conduct. One of those suites is evidence of a
   different kind: `tests/unit/org-key-chokepoint.test.ts` sweeps `scripts/` and fails the build when any
@@ -446,15 +453,15 @@ What's in place:
 
 **Gaps** — none against the software in this repo.
 
-**One deployment note, which is not a gap in the software.** Production runs `main`, thirty-five
-commits behind `dev`, so until that promotion it serves the pre-refusal build and sets `REPORTS: "never"` (no
-document leaves at all under that setting). A preview sweep on the dev store reports zero *sealable*
-plaintext. The production store's own preview sweep was run read-only on 2026-09-27 and is the honest
-number here: **35 objects would be sealed, none are sealed yet, 6 are missing, and no namespace is
-orphaned or unreachable.** Those 35 are readable where they sit until the sealing run is executed
-against production, which writes and is therefore the operator's; what the refusal already guarantees
-is that the count cannot grow once production runs this build. The residual classes the sweep
-deliberately leaves — orphaned namespaces, which `POST /api/raw/claim` must still be able to
+**One deployment note, which is not a gap in the software.** Production runs `main`, which since the
+2026-11-01 promotion carries the refusal, so the store cannot acquire a readable object in production either;
+it still sets `REPORTS: "never"` (no document leaves at all under that setting). A preview sweep on the dev
+store reports zero *sealable* plaintext. The production store's own preview sweep was run read-only on
+2026-09-27 and is the honest number here: **35 objects would be sealed, none are sealed yet, 6 are missing,
+and no namespace is orphaned or unreachable.** Those 35 predate the refusal and are readable where they sit
+until the sealing run is executed against production, which writes and is therefore the operator's. That
+figure has not been re-measured since, so it is a 2026-09-27 count rather than a current one. The
+residual classes the sweep deliberately leaves — orphaned namespaces, which `POST /api/raw/claim` must still be able to
 claim, and unreachable ones, which only their owner's browser can seal via `src/lib/raw-seal-heal.ts`
 — are drained by claim and by use rather than by an operator. Those objects are readable where they
 sit; none of them can be added to.
