@@ -79,7 +79,9 @@ are kept alongside the vault under a matching, self-describing filename, and eve
 carries that `sourceId` back to its origin. Removing a source is a real operation
 (`@pablotech/akesi/report-merge`'s `removeSource()`), not a soft flag: it drops what only that source
 contributed, re-attributes what a surviving source also supplies, and leaves a PHI-free tombstone
-behind — `vault:verify` enforces that no reading or tombstone ever points at a dropped source.
+behind. `provenanceIssues()` in the same module computes what a dangling `sourceId` would be, and
+`apps/lexitar/tests/unit/remove-source.test.ts` asserts the cascade leaves none — the invariant is
+held by a test over the cascade rather than by a command an operator has to remember to run.
 
 ## Svelte UI (`src/lib`)
 
@@ -160,7 +162,7 @@ The model gets the same treatment. Every call core takes an injected `MessagesCl
 `stream`), and nothing constructs a client except `functions/_lib/inference/resolve.ts`'s
 `modelFor(env, feature)`. That resolver reads `apps/lexitar/inference.config.json`, the one file
 naming each feature's provider, model and key env var. It returns either the Anthropic SDK or
-`inference/openai.ts`, an adapter that speaks the same port over any OpenAI-compatible
+`functions/_lib/inference/openai.ts`, an adapter that speaks the same port over any OpenAI-compatible
 `/chat/completions` endpoint (OpenAI, Ollama, vLLM, LM Studio). The adapter refuses input a model's
 declared `caps` can't take before sending anything — the app degrades by **refusing a feature with a
 422 the UI can act on**, never by silently sending a lesser payload, and the fix is routing that one

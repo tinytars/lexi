@@ -8,7 +8,7 @@ real npm dependency, not a monorepo shortcut. A PR touching session/auth control
 menu/popover primitives belongs in `packages/frame` — read its own
 [`CONTRIBUTING.md`](packages/frame/CONTRIBUTING.md) first, since the "read this before adding a
 sixth controller" rule lives there, not here. Everything else — the Svelte UI under
-`apps/lexitar/src`, the ingest CLI under `apps/lexitar/scripts`, the Cloudflare Pages Functions
+`apps/lexitar/src`, the operator CLI under `apps/lexitar/scripts`, the Cloudflare Pages Functions
 backend under `apps/lexitar/functions` — is this file's scope.
 
 ## This app carries no patient data, ever

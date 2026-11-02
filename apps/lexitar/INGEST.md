@@ -154,7 +154,7 @@ retained and tracked, sharing one mechanism (`scripts/sources-store.ts`):
   identical file is **detected and reported** (positional files skip re-parse
   unless `--force`; reports reuse their cached extraction — see `NARRATIVE.md`).
 - **The file is retained** under a **self-describing name**
-  (`storedName`, in `src/lib/ingest-core.ts`):
+  (`storedName`, in `@pablotech/akesi/ingest-core`):
   **`<date>-<type>-<subtype>-<sha8>.<ext>`** — e.g.
   `2021October15-imaging-coronary-13da11c4.pdf`,
   `2025September02-2026May19-blood-panel-<sha8>.xlsx`.
@@ -200,9 +200,15 @@ no duplicate tombstone). **Re-ingesting the same sha clears its tombstone.**
 - **Removed ≠ stale.** Removed data is *gone*; a removal also makes the Finding **stale**
   (its `inputsHash` no longer matches), which is a separate "needs regen" state — the
   deleted readings are not rendered as stale.
-- `vault:verify` enforces the **provenance invariant** (no dangling `sourceId`, no
-  tombstone/live collision, every source has its raw + processed files), so a bad delete
-  fails the pre-push gate.
+- The **provenance invariant** — no dangling `sourceId`, no tombstone that is also live, no
+  extracted treatment without the raw capture it claims — is computed by `provenanceIssues()` in
+  `@pablotech/akesi/ingest-core` and asserted over the cascade by
+  `tests/unit/remove-source.test.ts`, so a removal that would leave a dangling reference fails the
+  unit suite. There is no pre-push hook and no operator command that re-checks a live vault — the
+  invariant is held by a test over the code that does the removing, rather than by something
+  somebody has to remember to run. **The file half of it is checked by nobody**: that a source's
+  `raw/` and `processed/` objects are really there was always the caller's check, never this
+  `fs`-free function's, and the command that made it is gone.
 - The working tree, served `.enc`, and R2 are cleaned immediately. For a sensitive
   (wrong-patient) removal, see `AUTH.md` for account/data erasure.
 
@@ -213,7 +219,7 @@ construction (lab-export names; DEXA's fixed catalog), so their `marker|date`
 identity is reliable. The LLM-driven imaging path does not, which caused
 duplicate/orphan markers. The fix flowed **both ways**:
 - **blood/DEXA → imaging**: imaging adopted canonical naming
-  (`src/lib/imaging-catalog.ts`) + deterministic re-import (cached extraction).
+  (`@pablotech/akesi/imaging-catalog`) + deterministic re-import (cached extraction).
 - **imaging → blood/DEXA**: blood/DEXA adopted imaging's provenance — keep the
   source file, hash-dedup re-ingest, tag each reading with its `sourceId`.
 
@@ -246,14 +252,22 @@ when context changed (range staleness, finding `inputsHash`).
 
 ---
 
-## Encryption at rest (`src/lib/crypto.ts`)
+## Encryption at rest (`@tinytars/vault/crypto`)
 
-AES-GCM 256, key via PBKDF2-SHA256 (200k iterations), random salt + IV per write,
-`HD1` magic header. The served per-client vault `records/public/data-<id>.enc` uses the
-**lowercased client id** as its passphrase. The provider roster
-`records/roster.enc` uses the provider passphrase and holds **display names only** — no clinical or
-demographic data. It sits outside `records/public/` and is therefore never served (see `VAULT.md`). The served `.enc` is a **derived**
-artifact, and `vault:verify` guards it against drift (see `VAULT.md`).
+AES-GCM 256 under an `HD1` magic header, with the passphrase derivation —
+PBKDF2-SHA256, 200,000 iterations, 16-byte salt, 12-byte IV — shared from
+`@tinytars/vault/kdf`. **The envelope has two live versions and the one a vault
+uses is v2.** v1 derives the content key from a passphrase directly; v2 splits it,
+encrypting the payload under a random DEK and wrapping that DEK once per
+principal, which is what makes granting a clinician access a re-wrap rather than a
+re-encrypt (v3 is the same envelope carrying opaque bytes instead of JSON, for a
+raw uploaded file). `encryptVaultV2` / `decryptVaultV2` are the only way in or out
+of a vault blob; the lowercased-client-id passphrase this section documented until
+2026-11-01 belonged to v1 and no longer opens one.
+
+A vault blob is held in R2 and nothing encrypted is tracked in this repository
+(VAULT.md §1) — so there is no committed derived artifact here to guard against
+drift, and no command that guards one.
 
 ---
 

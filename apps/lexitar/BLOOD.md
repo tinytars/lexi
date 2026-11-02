@@ -77,16 +77,32 @@ billed rather than the set asked for.
 the rest run in parallel against the warm cache
 (`scripts/commands/refresh.ts:214`).
 
-### How a range classifies a reading (`src/lib/status.ts`, `src/lib/ranges.ts`)
+### How a range classifies a reading (`@pablotech/akesi/ranges`, `src/lib/marker-status.ts`)
 
-`resolveRange(marker, client)` is a dict lookup. `markerStatus()` then returns:
+`resolveRange(marker, client)` is a dict lookup. `computeZones()` turns that range
+into bounds — independently per side — and `currentZoneStatus(latestValue, range)`
+places the **latest** reading in one of them:
 
-- `ok` — no range/bounds, or latest reading within bounds;
-- `warn` — latest in range but some historical reading was out;
-- `alert` — latest reading out of bounds.
+- `safe` — within the personalized bounds (falling back to the general ones, then
+  to open-ended);
+- `warn` — outside the personalized bounds but inside the general ones. This zone
+  exists only on a side where the personalized bound is the stricter of the two;
+  where it is not, there is no gap and the reading goes straight to `danger`;
+- `danger` — outside the general bounds as well;
+- `unknown` — no reading on file, or no range.
 
-`isRangeStale()` (`ranges.ts:7`) flags a range whose `factorsHash` no longer
-matches the client — the UI uses this to mark a range as needing a refresh.
+**It reads the latest value alone.** The `markerStatus()` this section described
+until 2026-11-01 returned `ok`/`warn`/`alert` and read `warn` as "latest in range
+but some historical reading was out" — a trend signal, retired when ranges moved
+into `@pablotech/akesi`, and nothing computes it now. `statusWord()` in
+`src/lib/marker-status.ts` turns a zone into the words a screen reader gets
+(`out of range`, `watch`, `in range`), and `concernRank()` is the sort order:
+danger, warn, safe, unknown.
+
+A range carries the `factorsHash` of the client it was generated against, and a
+stale one is caught at regeneration rather than in the interface:
+`scripts/commands/refresh.ts:181` skips a marker whose stored hash still matches
+and regenerates the rest. Nothing in the UI marks a range as needing a refresh.
 
 ---
 
