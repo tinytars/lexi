@@ -210,7 +210,7 @@ client at signup. Four properties, all four load-bearing, and all four now shipp
    recovery key (`src/App.svelte:1615`, signup-mode copy), and the public site repeats the disclosure
    (`../tinytars/src/pages/health-literacy.astro:144-148`).
 3. **Revocable by the patient** — `deleteEnvelope` (`functions/_lib/identity-vault.ts:67`) is called by
-   `DELETE /api/vault/recovery-envelope` (`functions/api/vault/recovery-envelope.ts:81-99`), which also
+   `DELETE /api/vault/recovery-envelope` (`functions/api/vault/recovery-envelope.ts:73-96`), which also
    sets the durable `vaults.org_recovery_revoked_at` (migration `0006_org_recovery.sql`). UI: the
    Account modal's "Recovery key" block (`src/App.svelte:2014-2038`) states the consequence — *nobody
    can recover the record, including us* — in the confirm step before calling `doRevokeRecoveryKey()`
