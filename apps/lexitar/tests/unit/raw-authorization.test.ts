@@ -14,7 +14,7 @@ import { onRequestPut as chatPut, onRequestGet as chatGet } from "../../function
 import { generateAccountKeypair, generateDEK, wrapDEKForPublicKey } from "@tinytars/vault/crypto";
 import { useWorkerd } from "../support/miniflare";
 import { SESSION_SECRET, cookieFor } from "../support/session";
-import { hd1Blob } from "../support/blobs";
+import { hd1Blob, sealedRawBlob } from "../support/blobs";
 
 const STORE = "dev";
 // Fixtures reuse fixed client names ("alex", "legacy"), so each test needs its own namespace table.
@@ -73,7 +73,7 @@ const putBytes = async (who: string, slug: string, file: string, body: BodyInit)
   rawPut({ request: new Request(`http://x/api/raw/${slug}/${file}`, { method: "PUT", headers: await cookie(who), body }), env: env(), params: { path: [slug, file] } } as any);
 // Sealed, because every real upload is: the route refuses plaintext (DPG 9A.5), so an unsealed body
 // here would fail every authorization case on the wrong grounds.
-const putRaw = async (who: string, slug: string, file = "new.pdf") => putBytes(who, slug, file, hd1Blob());
+const putRaw = async (who: string, slug: string, file = "new.pdf") => putBytes(who, slug, file, sealedRawBlob());
 const deleteRaw = async (who: string, slug: string) =>
   rawDelete({ request: new Request(`http://x/api/raw/${slug}/report.pdf`, { method: "DELETE", headers: await cookie(who) }), env: env(), params: { path: [slug, "report.pdf"] } } as any);
 const getText = async (who: string, slug: string) =>

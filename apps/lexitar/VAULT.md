@@ -47,15 +47,22 @@ be shipped by forgetting.
 
 The four layers and how they relate:
 - **raw** — the source files exactly as imported (sha256 dedup; `SourceRecord.file` points here).
-- **processed** — `records/private/{id}/processed/{sha8}.json`, one **pre-fold** extraction per raw
-  source (lab parser rows / imaging `ImagingExtraction`). Durable, inspectable; replaces the old
-  gitignored `.cache/`. (`scripts/processed-store.ts`.)
-- **vault.json** — the consolidated plaintext vault (markers, factors, study, finding, ranges,
-  `sources[]`). **This is what the CLI reads and writes.** Markers/diseases are rebuildable from
-  processed; Finding/ranges are LLM-generated and persist here (exactly why plaintext-at-rest matters).
-- **served `.enc`** — a pure function of `vault.json`: `vault:build` encrypts plaintext → the served
-  ciphertext; `vault:verify` decrypts each `.enc` and asserts it equals its `vault.json` (drift guard,
-  in the pre-push gate + `tests/unit/vault-integrity.test.ts`).
+- **processed** — one **pre-fold** extraction per raw source (lab parser rows / imaging
+  `ImagingExtraction`), keyed in R2 at `{store}/processed/{id}/{sha8}.json` by `r2ProcessedKeyFor`
+  (`scripts/vault-sync.ts:56`). **Nothing in this repository writes one**, and the browser fold says
+  why at `src/lib/import-flow.ts:103`: processed is a regenerable derived cache and the readings
+  already carry their `sourceId`, so the disk-only writer went with the CLI. What is left is custody
+  of what earlier runs put there — the snapshot counts the class (`scripts/vault-snapshot.ts:127`), a
+  re-key moves the prefix (`scripts/commands/rekey.ts:33`), and `scripts/vault-orphan-blobs.ts`
+  sweeps it.
+- **the vault record** — the consolidated vault (markers, factors, study, finding, ranges,
+  `sources[]`). It exists as **ciphertext only**: the browser decrypts it, edits it and re-encrypts
+  it, and the one plaintext copy written anywhere is the dev-only mirror of §5. Markers/diseases are
+  rebuildable from processed; Finding/ranges are LLM-generated and persist in the record itself.
+- **served `.enc`** — the record under its own DEK, HD1-framed (§2). It is no longer *derived* from
+  anything: the build step that encrypted a plaintext file into it, and the drift guard that
+  decrypted it back and compared the two, were deleted with the CLI that owned them. §7 says what
+  this repository has in their place.
 
 **Plaintext at rest was the source of truth, under a premise this repository has never met.** The
 owner decision that sentence recorded — plaintext PHI committed, on the grounds that the repository
@@ -142,8 +149,10 @@ on disk, and what replaced it.
   inventory that says so. `ORG_KEY_PASSPHRASE` is the one of the four that is live.
 - **Account login (the app now):** accounts sign in with an email + password. The password is the
   KEK that unwraps the account's private key → the vault DEK, so it is held only by the account
-  holder. Login emails minted by `scripts/migrate-accounts.ts` were `{slug}@local.invalid`; change one
-  via `PATCH /api/account`.
+  holder. The accounts that predate signup carry `{slug}@local.invalid` emails, seeded by
+  `migrations/0002_seed_migrated_accounts.sql`; the script that minted them is gone, and that
+  migration was rewritten on 2026-10-06 to seed no credential for anyone. Change an email via
+  `PATCH /api/account`.
   - **Every vault now carries an org envelope by default (shipped).** An account that loses
     its password recovers via the org key unless the patient revoked it. What is not yet built is
     *user-triggered* recovery — a patient using a surviving credential (recovery code, passkey,
@@ -155,18 +164,25 @@ on disk, and what replaced it.
   key holding a recovery envelope on every migrated vault, committed to a repository that went
   public. `scripts/org-key.ts:28` has no in-repo fallback left, and the keypair that file published
   has been replaced. Under the v2 envelope model each vault is encrypted with a random DEK;
-  the DEK is wrapped to this org public key (the org-recovery envelope) so the CLI/ops pipeline
-  (`vault-build`/`reconcile`/`vault-verify`/`migrate`) can still unwrap it and keep this plaintext-truth
-  model working, while patients/providers hold their own keys. Losing this passphrase ⇒ the org can no
+  the DEK is wrapped to this org public key (the org-recovery envelope) so the operator pipeline can
+  still unwrap a vault whose holder is not at the terminal, while patients/providers hold their own
+  keys. It reaches the key through exactly one module — `scripts/org-unwrap.ts`, which
+  `tests/unit/org-key-chokepoint.test.ts` pins as the only route and which logs every use — and the
+  commands behind it are `npm run vault:restore`, `npm run vault:rekey`,
+  `npm run r2-ops -- --reconcile` and `npm run raw:encrypt`. Losing this passphrase ⇒ the org can no
   longer operate on migrated vaults — treat it like `<vault-passphrase>`.
   (A fuller inventory + safeguard of every out-of-repo secret/config is a planned follow-up.)
 
 **Names are labels, not identifiers (G1).** The client id — inside `vault.clients`, and as the slice
 filename, passphrase, directory and R2 key alike — is the **lowercased account id**, the same opaque
 value every signup has minted since `createFirstClient` shipped. The name survives only as
-`client.displayName` *inside* the ciphertext. The CLI still takes `--client Alex`: `resolveClientId`
-(`scripts/vault-io.ts`) folds a display name to its id once, at the boundary, so no runbook changed.
-The lowercasing in `/api/raw` and the Export download is now a no-op, kept for a vault predating G1.
+`client.displayName` *inside* the ciphertext. **The CLI no longer takes `--client Alex`**, and this
+paragraph said it did: the boundary that folded a display name to its id went with the CLI that
+owned it, so `--client` is the opaque vault id and nothing in this repository resolves a name to one
+(`scripts/r2-ops-args.ts:55`). What survives is narrower and is a different question — once a vault
+is open, `resolveClientKey` (`scripts/vault-ops.ts:33`) picks the client *inside* it, falling back to
+the sole one and refusing to guess among several. The lowercasing in `/api/raw` and the Export
+download is now a no-op, kept for a vault predating G1 (`src/lib/client-id.ts`).
 See `project_provider_roster_model`.
 
 ## 2. Encryption boundary (the core invariant)
@@ -183,8 +199,9 @@ client at signup. Four properties, all four load-bearing, and all four now shipp
    prove a backup opens for a vault nobody but the holder can decrypt. **Mint at signup, all three
    paths:** `functions/api/auth/password/signup.ts:143-149`, `functions/api/auth/passkey/register/verify.ts:158-164`,
    `functions/_lib/google.ts:131-133,155-161` (Google wraps server-side — it already generates the DEK
-   there). Client-side crypto for the two browser paths: `src/lib/auth-client.ts` `signupPassword` /
-   `signupPasskey` fetch `GET /api/vault/org-key` and wrap the DEK to it before posting. **Backfill for
+   there). Client-side crypto for the two browser paths: `@tinytars/vault/auth-client`'s
+   `signupPassword` / `signupPasskey`, called from `src/App.svelte:820-821` through
+   `src/lib/auth-flow.ts`, fetch `GET /api/vault/org-key` and wrap the DEK to it before posting. **Backfill for
    accounts that predate this or missed it at signup:** `src/App.svelte:510` `ensureOrgRecoveryEnvelope()`,
    called from `enterAccount` (`:529`) right after `openOwnVault` — best-effort, never blocks or fails
    an unlock.
@@ -192,8 +209,8 @@ client at signup. Four properties, all four load-bearing, and all four now shipp
    lock screen now says the record is encrypted end-to-end *and* that LexiTar holds a removable
    recovery key (`src/App.svelte:1615`, signup-mode copy), and the public site repeats the disclosure
    (`../tinytars/src/pages/health-literacy.astro:144-148`).
-3. **Revocable by the patient** — `deleteEnvelope` (`functions/_lib/identity.ts:446`) is called by
-   `DELETE /api/vault/recovery-envelope` (`functions/api/vault/recovery-envelope.ts:81-99`), which also
+3. **Revocable by the patient** — `deleteEnvelope` (`functions/_lib/identity-vault.ts:67`) is called by
+   `DELETE /api/vault/recovery-envelope` (`functions/api/vault/recovery-envelope.ts:73-96`), which also
    sets the durable `vaults.org_recovery_revoked_at` (migration `0006_org_recovery.sql`). UI: the
    Account modal's "Recovery key" block (`src/App.svelte:2014-2038`) states the consequence — *nobody
    can recover the record, including us* — in the confirm step before calling `doRevokeRecoveryKey()`
@@ -239,7 +256,8 @@ re-key on exit), and it made a PHI migration runner unbuildable: a migration mus
 What is unchanged: the server still never decrypts **in the request path**, never sees a password, a
 KEK or a DEK, and moves only sealed blobs. The org key is an out-of-band operator credential
 (`ORG_KEY_PASSPHRASE`, a local credentials file), not something the Functions hold.
-`src/lib/crypto.ts`: AES-GCM-256, key from **PBKDF2-SHA256, 200k iterations**; blob layout is `"HD1"`
+`@tinytars/vault/crypto`: AES-GCM-256, key from **PBKDF2-SHA256, 200k iterations**
+(`@tinytars/vault/kdf`); blob layout is `"HD1"`
 magic (`0x48 0x44 0x31`) + version + 16-byte salt + 12-byte IV + ciphertext. The Functions only ever
 move **already-encrypted HD1 blobs** — the vault under its DEK, each raw original under its own
 content key (§2a) — never a key.
@@ -283,6 +301,15 @@ against this vault's ring — **the only lane that reaches an account which revo
 — `docs/OPS-LOCAL.md`, since it needs the org private key no runner has) does the same store-wide through the org recovery envelope, and refuses an orphaned
 namespace so its bytes stay claimable.
 
+**Both lanes have run to zero in production, measured 2026-11-02**: 35 originals, all 35 sealed, each
+one decrypted afterwards to prove the sealing had not destroyed it (`DPGA.md` §9A has both
+measurements and why two are needed). Sealing is a **salvage** — the bytes are encrypted at the same
+R2 key and the content key written into that owner's own vault, key first and read back before any
+ciphertext is written, so the patient goes on opening every document and the operator stops being
+able to. What the lanes structurally cannot reach is the orphaned namespace and the one whose owner
+revoked org recovery; production has neither, and a third control now says so nightly without being
+asked (`npm run raw:seal-sweep`, wired into `snapshot.yml`, keyless so it can run hosted).
+
 **The deployment still sees plaintext while its owner is using the record.** It must: it is the thing
 that base64s the document into the model request, and the browser hands it the ~12 KB key map per
 request (`CORPUS.md`). *Using* is wider than *asking* — the corpus is sent when a record is **opened**
@@ -293,7 +320,7 @@ snapshot, the backup bucket — and the end of any standing operator ability to 
 ## 3. Bearer auth (no secret in the bundle)
 
 The browser proves "I can already unlock this vault" without sending the passphrase:
-`deriveBearerToken(pass) = base64url(SHA-256(pass))` (`src/lib/crypto.ts`). The server holds an
+`deriveBearerToken(pass) = base64url(SHA-256(pass))` (`@tinytars/vault/crypto`). The server holds an
 **allowlist** of those hashes as Pages secrets and constant-time compares (`functions/_lib/guard.ts`):
 
 - `CHAT_TOKEN` — **deleted 2026-08-26**; `POST /api/chat` is gated by `hd_session`.
@@ -421,19 +448,28 @@ the wrong person as the one whose record was read (`tests/unit/raw-owner-subject
 
 ## 5. Write path — the `VaultSink` abstraction
 
-Editing re-encrypts in the browser and hands the blob to a `VaultSink` (`src/lib/vault-sink.ts`).
-Selection is **build-time** (`vaultSink = import.meta.env.DEV ? localSink : r2Sink`):
+Editing re-encrypts in the browser and hands the blob to a `VaultSink`
+(`@tinytars/vault/vault-sink`). Selection is **build-time**
+(`vaultSink = import.meta.env.DEV ? localSink : r2Sink`), and every write this app makes goes through
+one funnel: `saveRecord` at `src/App.svelte:160`, which nothing below it calls past.
 
 ```
-Edit -> Save -> saveVault(vault, id, pass, vaultSink, bearer)
-  ├─ dev   localSink:  POST /__save-vault?id={id}   (Vite middleware → records/public/data-{id}.enc
-  │                                                   AND decrypts → records/private/{id}/vault.json)
+Edit -> Save -> saveVaultV2(vault, id, dek, vaultSink)
+  ├─ dev   localSink:  POST /__save-vault?id={id}   (Vite middleware → records/public/data-{id}.enc,
+  │                                                   then best-effort → records/private/{id}/vault.json)
   └─ prod  r2Sink:     PUT  /api/vault/{id}          (bearer-guarded → R2)
 ```
 
+**The passphrase is no longer in that call, and the DEK is.** A v2 record is encrypted with a random
+DEK wrapped per principal (§2), so the sink is handed the key rather than something to derive one
+from — which is also what lets a conflicting write be seen rather than silently won: the sinks carry
+the object's ETag (`rememberVaultEtag`, `VaultConflictError`) instead of re-deriving and overwriting.
+
 The deployed app is **read-write**: unlock → Edit → Save persists to R2 from a phone. Markers stay
-read-only (ingestion owns them). The dev save keeps the plaintext `vault.json` in sync so a dev web-edit
-can't drift from the served `.enc`.
+read-only (ingestion owns them). The dev-only plaintext the middleware drops under
+`records/private/` is a convenience for reading back what you just saved — **gitignored, untracked,
+written by nothing else and read back by nothing at all** (`.gitignore:55`, `vite.config.ts`). It is
+not a fixture, and no gate compares it to the served ciphertext.
 
 ## 6. The Pages Functions
 
@@ -453,9 +489,13 @@ along with the authorisation gap recorded in `API.md`):
 `env.VAULT.get(storeKey(env, "raw", id.toLowerCase(), file))` → streams whatever is stored, with a
 content-type describing the **document** rather than the envelope; `400` bad path, `404` miss,
 PHI-free log `{route:"/api/raw", status, id}`. It never decrypts — a caller that can read the bytes
-is a caller that holds the key (§2a). `PUT` accepts both formats while the store migrates and logs
-`sealed`, so the sweep's remaining work is readable off the logs rather than by listing a bucket of
-patient files; rejecting plaintext is a later, separate change.
+is a caller that holds the key (§2a). **`PUT` refuses an unsealed body** — `415
+plaintext_refused`, unconditionally, including on a namespace's first upload — and logs `envelope`,
+the version byte read back out of the bytes that are about to land. A number rather than the
+`sealed: true` that line used to carry: on the far side of the only refusal that can reach it, a
+boolean could take exactly one value, and a field that cannot disagree with its own code cannot
+report the day the code is wrong. On the refusal it also says which way the refusal went — `null`
+for a body that is no envelope, `2` for a vault blob offered as an original.
 
 Every AI route still attaches these documents server-side: the PDFs under `raw/{id}/` ride along with
 each inference about that person as `document` blocks ([`CORPUS.md`](CORPUS.md)), through the same
@@ -470,7 +510,7 @@ re-encrypted vault, then `DELETE`s the raw object.
 
 Contracts + curl examples: `API.md`.
 
-## 7. R2 layout (store-prefixed) + CLI sync + build/verify
+## 7. R2 layout (store-prefixed) + what reaches it
 
 **Today all deploys share one bucket** (the `health-dashboard` dev deploy, any branch preview), so every
 R2 key is namespaced by a **store prefix** — never a flat key. (This is the *current* mechanism; the
@@ -488,37 +528,39 @@ health-vault/
   a future prod branch = `"prod"`). The key-builder **`functions/_lib/store.ts` `storeKey`** throws on
   an empty prefix (a missing one would silently merge two deploys' keys). `scripts/vault-sync.ts`
   `resolveStore` mirrors it CLI-side.
-- **CLI sync** (`scripts/vault-sync.ts`): `pull(id, store)` before a load, `push(id, store)`
-  after a write; a raw `--import` also `pushRaw`s the originals to `{store}/raw/{id}/`. Shells to
-  `wrangler r2 object get/put --remote` with the machine's ambient `CLOUDFLARE_API_TOKEN`. `--no-sync`
-  for offline. Without it, a CLI regen from a stale slice would clobber a phone edit.
-- **build/verify**: `npm run vault:build` encrypts plaintext → served `.enc`;
-  `npm run vault:verify` decrypts each `.enc` and deep-equals its `vault.json` — in the pre-push gate.
+- **R2 access** (`scripts/vault-sync.ts`): the key builders every operator script shares, the
+  object-level `listObjects`/`getObject`/`putObject`/`deleteObject` over the REST API, and the
+  **live-write guard** — `assertLiveWriteAllowed` refuses a write to a deployed vault from anywhere
+  but the sanctioned workflow, and `tests/unit/live-write-guard.test.ts` pins that refusal rather
+  than trusting it.
+  **Its disk-sync half is no longer driven by anything.** `pull`/`push`/`pushRaw`/`pullVaultTo` still
+  move a ciphertext slice between R2 and the gitignored `records/public/` copy by shelling to
+  `wrangler r2 object get/put --remote` with the machine's ambient `CLOUDFLARE_API_TOKEN`, and the
+  only callers left are that guard test: the operator ops pull, mutate in memory and push again
+  through `scripts/vault-ops.ts`, with no on-disk slice in between. The `--no-sync` offline switch
+  this bullet used to promise is parsed by nothing — it survives only inside one of `pull`'s error
+  strings — and so is the `--import` it named.
+- **build/verify — there is neither, and there is nothing left for them to do.** The record is
+  written once, as ciphertext, by the sink of §5: no plaintext file is encrypted into the served
+  `.enc`, and no second copy exists to deep-equal it against. The two commands this bullet named,
+  the drift check behind them and the pre-push gate that ran it all went with the CLI that owned
+  them — the repository's `.githooks/` holds a `pre-commit` and nothing else, so **no git hook here
+  opens a vault at all**. What stands in their place is narrower and is already stated above: the
+  sink carries an ETag, so a concurrent write is refused rather than silently won (§5), and
+  `npm run vault:snapshot:check` catches a backup that has gone stale (`BACKUP.md`).
 
-  **If `vault:verify` fails with `Unexpected end of JSON input`** on a `vault.json` that was fine a
-  moment ago (not a hand-edit, not a `vault:build` you ran): that's an empty (0-byte) file, not
-  corrupted JSON — `npm run doctor` (`scripts/check-env.sh`) checks for exactly this, fast, and
-  names the file. `git checkout -- records/private/{id}/vault.json` recovers it (it's a committed
-  fixture). The only code that writes this file is `vite.config.ts`'s dev-only `/__save-vault`
-  middleware (§ below), which writes atomically (temp file + rename) so a killed/crashed
-  write can no longer leave it partial — if it happens again anyway, the likely trigger is **another
-  `npm run dev` running against this same checkout** (a second terminal, a second agent session, or a
-  stray browser tab still POSTing to `/__save-vault`) racing with whatever else touched the file.
+  The zero-byte-plaintext corruption those commands kept catching — and the watcher written to
+  catch it in the act — belong to the `health-dash-web` checkout they were debugged in, where a
+  plaintext record was tracked. Nothing here tracks one, so there is no committed fixture to lose
+  and none for `git checkout --` to bring back. `npm run doctor` (`scripts/check-env.sh`) still
+  carries the probe, and its own comment now records why it cannot fire in this repository.
 
-  **Update:** the atomic-write fix above did *not* stop it — corruption was reproduced twice more
-  afterward, with no `vite`/`wrangler`/`node` process running at inspection time, so the `/__save-vault`
-  race is likely not the whole story. `scripts/vault-watch.sh` polls the fixtures and, the instant one
-  drops in size, captures `lsof`/`ps`/`tmutil`/`log show` evidence to `.vault-watch/` (gitignored)
-  before self-healing via `git checkout` — run it (`bash scripts/vault-watch.sh &`) if you're actively
-  investigating a live occurrence. Read-only forensics so far point loosely at Time Machine/Spotlight
-  (`backupd`/`mds`/`mdworker` unusually active in the corruption window; not confirmed).
+**Reconciliation:** R2 (under `{store}`) is authoritative, and it is the **only** copy — there is no
+repo-side plaintext to reconcile against it and no pull command that would refresh one. A web edit
+writes its own deployment's `{store}` and nothing else, and the two never converge (§8).
 
-**Reconciliation:** R2 (under `{store}`) is authoritative for the running app; `records/private/` is the
-durable, inspectable repo copy for that branch. A web edit writes only its deployment's `{store}`; the
-branch's repo plaintext goes stale until the next `vault:sync pull`.
-
-**Backups:** because of that staleness, `records/private/` is *not* a user backup — a beta user's
-vault exists only in R2. A nightly snapshot copies every `{store}/…` object plus a full D1 export into
+**Backups:** a user's vault therefore exists **only in R2**, which is what makes the nightly snapshot
+the whole of the safety net rather than a second line of it. It copies every `{store}/…` object plus a full D1 export into
 the separate `health-vault-backup` bucket, and a restore drill re-opens every vault from that snapshot
 alone. Runbook, layout, retention and the missed-run alarm: **`BACKUP.md`**.
 
@@ -569,23 +611,34 @@ API returns `secret_text` masked), so presence and shape are all it can prove; s
 
 Every derived datum is **source-attributable**: `SourceRecord.id` === each derived entry's `sourceId`
 (`MarkerResult.sourceId`, disease/comorbidity `sourceId`, `fromComparison` rows). No `SourceRecord`
-without its `raw/` + `processed/` files. The pure `removeSource(client, sourceId, surviving?)`
-(`src/lib/report-merge.ts`, re-exported from `ingest-core`) drops the record + every `sourceId`-tagged
+without its `raw/` object — and, for what earlier runs left behind, its `processed/` artifact (§1:
+nothing here writes one). The pure `removeSource(client, sourceId, surviving?)`
+(`@pablotech/akesi/report-merge`, re-exported from `ingest-core`) drops the record + every `sourceId`-tagged
 datum, re-applies surviving sources' processed rows so a **corroborated** reading is kept (re-attributed),
 and appends a PHI-free `removedSources[]` tombstone `{sourceId, sha8, kind, removedAt}`. Idempotent
 (absent source → no-op; no duplicate tombstone). **Re-ingesting the same sha clears its tombstone**
 (`upsertSourceRecord`).
 
-CLI: `npm run ingest -- --client X --remove-source <id|sha8-prefix|filename>` — deletes the raw +
-processed files, re-derives `vault.json`→`.enc`, deletes the R2 `{store}/raw|processed` objects, prints
-the git-history note. **"Removed" (gone — e.g. wrong-patient) is distinct from "stale"** (valid data
+Removal is driven from the app's **Reports** surface (`src/lib/HealthReports.svelte:91`), which runs
+the same pure fold against a clone and persists it; the raw DELETE route
+(`functions/api/raw/[[path]].ts:246`) deletes the R2 `{store}/raw|processed` objects and PUTs the
+re-encrypted vault. There is no operator command for it: the person who can decrypt the vault is the
+only one who can remove a source from it.
+
+**"Removed" (gone — e.g. wrong-patient) is distinct from "stale"** (valid data
 whose Finding needs regen): a removal makes the Finding stale on its own (its `inputsHash` no longer
 matches), but the deleted data is gone, not flagged.
 
-`vault:verify` runs a per-client **provenance check** (`provenanceIssues`): fails the pre-push gate on a
-dangling `sourceId`, a tombstone that collides with a live source, or a `SourceRecord` missing its raw /
-processed file. Full-history expunge of a mis-ingested (wrong-patient) file needs a `git filter-repo`
-purge.
+That invariant has a checker and **no longer has anything that runs it over a live vault.**
+`provenanceIssues` (`@pablotech/akesi/report-merge`, re-exported from `ingest-core`) reports a
+derived datum whose `sourceId` no live source answers for, a tombstone that is also live, and a
+treatment claiming a photo or pasted-text extraction with no raw capture on file; what calls it is
+`tests/unit/remove-source.test.ts`, against fixtures. The command that used to run it per client on
+every push is gone with the CLI and there is no pre-push hook to run one — so the invariant is
+pinned where the fold is written and unchecked where the records are. The file-existence half was
+never in this function anyway (it is `fs`-free by design and says so); that was the caller's check,
+and the caller is what went.
+Full-history expunge of a mis-ingested (wrong-patient) file needs a `git filter-repo` purge.
 
 > **Key loss is only harmless for the pilot records committed here.** For an account created through the
 > app, the browser holds the key and losing it is real; "recover from the plaintext at rest" does not
@@ -595,22 +648,22 @@ purge.
 
 | Concern | File |
 |---|---|
-| Crypto + bearer derivation | `src/lib/crypto.ts` |
+| Crypto + bearer derivation | `@tinytars/vault/crypto`, `@tinytars/vault/kdf` |
 | Read/unlock + editing surface | `src/App.svelte` |
-| VaultSink (local/R2 selection) | `src/lib/vault-sink.ts` |
+| VaultSink (local/R2 selection) + ETag conflict | `@tinytars/vault/vault-sink` |
 | Vault Function (GET/PUT, store-prefixed) | `functions/api/vault/[id].ts` |
 | Raw Function (GET/DELETE, session-gated) | `functions/api/raw/[[path]].ts` |
-| Source removal cascade + provenance | `src/lib/report-merge.ts` (`removeSource`, `provenanceIssues`) |
+| Source removal cascade + provenance | `@pablotech/akesi/report-merge` (`removeSource`, `provenanceIssues`) |
 | Account recovery (locked-out user) | `AUTH.md` |
 | R2 key builder (store prefix) | `functions/_lib/store.ts` |
 | Bearer guard / PHI-free log | `functions/_lib/guard.ts`, `functions/_lib/log.ts` |
 | Chat Function | `functions/api/chat.ts` |
-| CLI ingest / regen | `scripts/ingest.ts` |
-| Processed-store / raw parser | `scripts/processed-store.ts`, `scripts/parse-source.ts` |
-| CLI ↔ R2 sync (store-aware, raw) + R2 REST bulk access | `scripts/vault-sync.ts` |
+| Operator ops (fold pending / regen) | `scripts/r2-ops-cli.ts`, `scripts/commands/r2-ops.ts` |
+| Browser fold (hash → classify → fold) | `src/lib/ImportTab.svelte`, `src/lib/import-flow.ts` |
+| Raw parser (bytes → markers) | `src/lib/parse-raw.ts` |
+| R2 access: key builders, REST bulk, live-write guard | `scripts/vault-sync.ts` |
 | Backups: snapshot / restore drill / freshness alarm | `BACKUP.md`, `scripts/vault-snapshot.ts`, `scripts/vault-restore.ts`, `scripts/vault-snapshot-check.ts` |
-| Plaintext → served encrypt / drift verify | `scripts/vault-build.ts`, `scripts/vault-verify.ts` |
 | Bearer allowlist generator | `scripts/chat-allowlist.ts` |
-| Export tab "Imported files" download | `src/lib/ExportTab.svelte` |
+| Export tab "Imported files" download | `packages/frame/ExportTab.svelte`, `src/lib/export.ts` |
 | Secrets / deploy / add-a-user runbook | `AUTH.md` |
 | Endpoint contracts | `API.md` |

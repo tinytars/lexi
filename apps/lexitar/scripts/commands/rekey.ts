@@ -9,7 +9,8 @@
 // Copy → verify → delete, one object at a time. R2 has no server-side rename, and a move that
 // deletes before proving the copy landed is a data-loss bug rather than a slow one.
 
-import { listObjects, getObject, putObject, deleteObject, LIVE_BUCKET, mapPool } from "../vault-sync";
+import { listObjects, getObject, putObject, deleteObject, LIVE_BUCKET, mapPool, classifyKey, keyRef } from "../vault-sync";
+import { isSealed } from "../../src/lib/raw-cipher";
 
 // R2 REST is per-object; serial is minutes for a pilot vault, unbounded parallel gets rate-limited.
 const CONCURRENCY = 8;
@@ -92,6 +93,16 @@ export async function rekeyClient(
   await mapPool(plan, CONCURRENCY, async ([from, to]) => {
     const body = await getObject(LIVE_BUCKET, from);
     if (!body) throw new Error(`rekey: "${from}" vanished between listing and copy — re-run`);
+    // A raw original and an extraction sidecar are sealed, so one that is not is a pre-refusal
+    // object this copy would carry forward — a second readable copy of the same PHI, under a new id
+    // and with today's date on it. The move stops instead, with the old key untouched and nothing
+    // deleted, and `npm run raw:encrypt` is what unblocks it. Scoped to those two classes because
+    // the other four are not raw-cipher envelopes at all: a vault blob is HD1 version 2, and a
+    // `processed/` artifact is plain JSON by design.
+    const cls = classifyKey(store, from);
+    if ((cls === "raw" || cls === "text") && !isSealed(body)) {
+      throw new Error(`rekey: ${keyRef(from)} is not sealed — refusing to copy cleartext PHI onto a new id`);
+    }
     await putObject(LIVE_BUCKET, to, body);
     const landed = await getObject(LIVE_BUCKET, to);
     if (!landed || landed.byteLength !== body.byteLength) {

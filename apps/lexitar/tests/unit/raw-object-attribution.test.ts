@@ -27,7 +27,13 @@ import { onRequestPost as extractPost } from "../../functions/api/document-extra
 import { generateAccountKeypair, generateDEK, wrapDEKForPublicKey } from "@tinytars/vault/crypto";
 import { useWorkerd } from "../support/miniflare";
 import { SESSION_SECRET, cookieFor } from "../support/session";
-import { hd1Blob } from "../support/blobs";
+import { hd1Blob, sealedRawBlob } from "../support/blobs";
+import { sealRaw } from "../../src/lib/raw-cipher";
+import { bytesToBase64 } from "../../src/lib/base64";
+
+// The one content key every sealed fixture here is under. A real per-file key, so `openRaw` does
+// real work; one value rather than one per test, because nothing in this file is about key scope.
+const FIXTURE_KEY = bytesToBase64(new Uint8Array(32).fill(7));
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const STORE = "dev";
@@ -64,7 +70,7 @@ async function pair() {
 
   // The patient's own first write, so the namespace is CLAIMED and by them.
   const seed = `${STORE}/raw/${SLUG}/seed.pdf`;
-  await w.bucket.put(seed, hd1Blob());
+  await w.bucket.put(seed, sealedRawBlob());
   await recordRawObject(w.db, seed, patientId);
   expect(await rawAccessFor(w.db, env(), clinicianId, SLUG)).toMatchObject({ kind: "granted", subjectAccountId: patientId });
   return { patientId, clinicianId };
@@ -82,7 +88,7 @@ async function soleKeyUnder(prefix: string): Promise<string> {
 }
 
 const uploadRaw = async (who: string, file: string) =>
-  rawPut({ request: new Request(`http://x/api/raw/${SLUG}/${file}`, { method: "PUT", headers: await cookie(who), body: hd1Blob() }), env: env(), params: { path: [SLUG, file] } } as never);
+  rawPut({ request: new Request(`http://x/api/raw/${SLUG}/${file}`, { method: "PUT", headers: await cookie(who), body: sealedRawBlob() }), env: env(), params: { path: [SLUG, file] } } as never);
 const saveChat = async (who: string, extra: Record<string, string> = {}) =>
   chatPut({ request: new Request(`http://x/api/chat-history/${SLUG}`, { method: "PUT", headers: { ...(await cookie(who)), ...extra }, body: hd1Blob(48) }), env: env(), params: { id: SLUG } } as never);
 const appendRegen = async (who: string) =>
@@ -94,7 +100,7 @@ const readText = async (who: string, file: string) =>
     request: new Request("http://x/api/document-extract", {
       method: "POST",
       headers: { ...(await cookie(who)), "content-type": "application/json" },
-      body: JSON.stringify({ id: SLUG, key: file }),
+      body: JSON.stringify({ id: SLUG, key: file, rawKey: FIXTURE_KEY }),
     }),
     env: env(),
   } as never);
@@ -131,7 +137,10 @@ describe("a granted clinician's write is recorded against the PATIENT", () => {
     const { patientId, clinicianId } = await pair();
     // A `.txt` takes the route's no-model path (document-extract.ts:170), so this reaches the
     // attribution write with no stubbed SDK and no billable call.
-    await w.bucket.put(`${STORE}/raw/${SLUG}/note.txt`, "ferritin 18 ng/mL");
+    // Sealed, and the key travels with the request: since the sealing sweep the route refuses an
+    // unsealed original with 409 `unsealed_original` before it would cache its text in the clear
+    // (document-extract.ts), so a plaintext fixture here would test the refusal and not attribution.
+    await w.bucket.put(`${STORE}/raw/${SLUG}/note.txt`, await sealRaw(new TextEncoder().encode("ferritin 18 ng/mL"), FIXTURE_KEY));
     expect((await readText(clinicianId, "note.txt")).status).toBe(200);
     expect(await attributedTo(`${STORE}/text/${SLUG}/note.txt.json`)).toBe(patientId);
   });

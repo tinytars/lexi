@@ -1,13 +1,14 @@
 # The vault operations that run on your own computer
 
-Twelve of the thirteen operations this application has cannot run in continuous integration, and as
+Thirteen of the fifteen operations this application has cannot run in continuous integration, and as
 of 2026-10-19 the dispatch form no longer offers them. This document is where they went. It is the
 runbook: what each one does, the command, and what a real run cannot be undone from.
 
 They are here rather than in the workflow for two reasons, and the second is the one that mattered.
 
 **None of them can work on a hosted runner.** Every operation under `npm run r2-ops`, plus
-`raw-backfill`, `raw-pages-backfill`, `raw-encrypt-backfill` and `recovery-approve`, reaches
+`raw-backfill`, `raw-pages-backfill`, `raw-encrypt-backfill`, `raw-seal-verify` and
+`recovery-approve`, reaches
 `scripts/org-unwrap.ts`, so each needs the organisation's **private** key. That key file never
 arrives: `scripts/org-key.ts:33` resolves `ORG_KEY_PATH` or a credential store's `org-key.json` and
 has no in-repo fallback, and no workflow sets either. A dispatch therefore failed on the key, every
@@ -36,9 +37,18 @@ export LEXI_CREDENTIALS_DIR=~/PabloTech/lexi-keys
 `apps/lexitar/CREDENTIALS.md`. Run everything below from `apps/lexitar`, and nothing below is a
 dispatch — these are commands you type.
 
-**`--dry-run` is the contract every one of them honours**: no Anthropic call, no R2 write. Run it
-first. Where a real run is irreversible outside the nightly snapshot window, the table says so, and
-there `npm run vault:snapshot:check` being green is the precondition, not a formality.
+**Every one of them reports before it writes, and the flag that asks for the report is spelled two
+ways.** The `r2-ops` family takes `--dry-run`; the store-wide scripts — `raw-backfill`,
+`raw-pages-backfill`, `raw-encrypt-backfill` — have no such flag and are report-only *by default*,
+writing only when given `--confirm`. The contract is the same either way: no Anthropic call, no R2
+write. The table's own Command column is what to type for the report, so read it rather than adding
+a flag to it. (This paragraph claimed `--dry-run` was universal until 2026-11-02, which was false of
+four of the commands below and would have been read as "I asked for a dry run" by anyone who passed
+it to one of them — an unknown flag they ignore. `raw-seal-sweep` and `raw-seal-verify` write
+nothing at all and so have neither.)
+
+Where a real run is irreversible outside the nightly snapshot window, the table says so, and there
+`npm run vault:snapshot:check` being green is the precondition, not a formality.
 
 **A real run also needs `PLOVER_ALLOW_LOCAL_VAULT_WRITE=1`**, and the acknowledgement is the point
 of it rather than an obstacle. `assertLiveWriteAllowed` (`scripts/vault-sync.ts:158`) refuses a
@@ -58,7 +68,7 @@ acknowledgement into an ambient one, which is the whole thing the guard is for.
 
 `<client>` is a vault id (`alex`), never an email, except where the table says otherwise.
 
-| Operation | Command (add `--dry-run` first) | A real run |
+| Operation | Command (as written, this is the report) | A real run |
 |---|---|---|
 | refresh-finding | `npm run r2-ops -- --refresh-finding --client <client>` | Billed Anthropic call; rewrites the finding. `--force` regenerates even when the plan says nothing changed |
 | refresh-ranges | `npm run r2-ops -- --refresh-ranges --client <client> --marker <name>` — or `--all-markers` for every marker with readings | Billed; rewrites ranges. `--force` as above |
@@ -71,14 +81,30 @@ acknowledgement into an ambient one, which is the whole thing the guard is for.
 | raw-backfill | `npx tsx scripts/raw-backfill.ts --confirm` | Store-wide against D1, not per-client |
 | raw-pages-backfill | `npx tsx scripts/raw-pages-backfill.ts --confirm` | Store-wide. Reads every PDF in the store to count its pages, so it is the slowest of these, and the dry run reads them all too. **`--purge-unreadable` DELETES the PDFs no parser can open** — irreversible outside the snapshot window |
 | raw-encrypt-backfill | `npx tsx scripts/raw-encrypt-backfill.ts --confirm` | Store-wide. **Overwrites patient objects in place** with their sealed form; the nightly snapshot is the only undo. The dry run's counts are the migration's remaining work |
+| raw-seal-verify | `npm run raw:seal-verify` | **Never writes.** Opens every raw original and extraction sidecar in the store and checks the plaintext against its own file type. This is the half `raw-seal-sweep` cannot do: that one measures the envelope's shape, and an object sealed under a key nobody holds has exactly the shape of one sealed correctly. Each object may cost an org-key unwrap, so a run writes `phi_access_events` rows |
 | recovery-approve | `npm run recovery:approve -- --email <account email> --confirm` | The one command here that takes an email rather than a vault id, which is why it could not stay on a public form |
 
-## orphan-sweep is the one that stayed
+## The two that stayed, and why detection is not one of the thirteen
 
-`orphan-sweep` does not reach the organisation's key, so it runs on a hosted runner and is the only
-remaining choice in `.github/workflows/ops.yml`. Locally it is
-`npx tsx scripts/orphan-sweep.ts --record`; a real run only *dates* orphans, and deleting them needs
-`--delete`, which is deliberately not a form input in either place.
+`orphan-sweep` does not reach the organisation's key, so it runs on a hosted runner and is a choice
+in `.github/workflows/ops.yml`. Locally it is `npx tsx scripts/orphan-sweep.ts --record`; a real run
+only *dates* orphans, and deleting them needs `--delete`, which is deliberately not a form input in
+either place.
+
+`raw-seal-sweep` is the second, added 2026-11-02, and it is there because **classifying an object
+needs no key**: a sealed body announces itself in its first four bytes, so the question "is anything
+in this store readable" can be asked by a runner holding nothing. That is the whole reason it is a
+separate command from `raw-encrypt-backfill` above, which answers the same question and then repairs
+it — and which needs the private key, and therefore could never watch anything. For as long as
+detection and repair were one command, nothing watched the store at all.
+
+So the division to keep is: **the alarm runs hosted and the cure runs here.** `npm run raw:seal-sweep`
+is dispatchable in `ops.yml` and runs as a failing step on `snapshot.yml`'s nightly job against both
+stores; it exits non-zero on cleartext the operator lane could seal, and reports — without failing —
+an orphaned or recovery-revoked namespace, which only the owner's own browser can seal
+(`src/lib/raw-seal-heal.ts`). When it goes red, the repair is
+`PLOVER_ALLOW_LOCAL_VAULT_WRITE=1 npx tsx scripts/raw-encrypt-backfill.ts --confirm`, typed here,
+followed by `npm run raw:seal-verify` to prove what it wrote still opens.
 
 ## If one of these should run in CI again
 

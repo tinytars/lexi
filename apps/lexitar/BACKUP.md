@@ -31,7 +31,7 @@ d1/health-identity-dev.sql    full D1 export — the authoritative restore artif
 d1/health-identity-dev.json   the same rows as JSON (BLOBs hex-encoded) — what the drill reads
 r2/{store}/data-{id}.enc      vault ciphertext, object for object
 r2/{store}/chat-{id}.enc      chat history
-r2/{store}/raw/{id}/{file}    original uploads — PLAINTEXT PHI
+r2/{store}/raw/{id}/{file}    original uploads — sealed since 2026-11-02 (see Residue below)
 logs.ndjson                   the audit trail, one line per event object
 manifest.json                 every key, size and sha256 + the D1 row counts
 ```
@@ -152,7 +152,15 @@ laptop.
 - A snapshot takes ~7.5 minutes, almost all of it fetching audit-log objects one at a time. The
   Cloudflare API rate limit (~1200 requests / 5 min, account-wide) is why `scripts/vault-sync.ts`
   throttles to 3 requests/second; `CF_API_RPS` overrides it for a one-off catch-up.
-- Snapshots copy bodies byte for byte, so once a store is sealed they hold no plaintext PHI — the
-  `raw/` originals arrive as ciphertext under keys that live only inside the vault blobs
+- Snapshots copy bodies byte for byte, so now that production is sealed they hold no plaintext PHI —
+  the `raw/` originals arrive as ciphertext under keys that live only inside the vault blobs
   (`VAULT.md` §2a). They still hold the **wrapped DEKs**, so the backup bucket remains exactly as
   sensitive as the live one: whoever can open a vault there can open its originals too.
+- **Residue: the snapshots taken before 2026-11-02 hold the pre-seal plaintext, and are not purged
+  early.** Copying byte for byte cuts both ways — a snapshot taken while an object was readable
+  holds it readable for as long as that snapshot is retained. With `--keep 30` the nightly prune
+  ages the last of that lineage out by roughly **2026-12-02**, at which point no copy of those
+  bytes exists anywhere in readable form. They are deliberately left to expire rather than deleted,
+  because an in-place overwrite has no other undo: the `2026-11-02T08-05-35Z` snapshot is the only
+  thing that could restore an object the sealing run damaged, which is also why the run was
+  confirmed by decrypting all 35 afterwards rather than by trusting the write.

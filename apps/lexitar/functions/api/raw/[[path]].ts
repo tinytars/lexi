@@ -9,7 +9,7 @@ import { auditPrivilegedRead, sha8Of, AUDIT_UNAVAILABLE } from "../../_lib/phi-a
 import { json } from "../../_lib/http";
 import type { ObjectBucket } from "../../_lib/object-bucket";
 import { MAX_PAGE_COUNT, isPageCount, isPdfFile } from "../../_lib/raw-files";
-import { isSealed } from "../../../src/lib/raw-cipher";
+import { envelopeVersion, isSealed } from "../../../src/lib/raw-cipher";
 
 // W13d — GET /api/raw/{id}/{file}: stream an original raw source (PDF/XLSX) from R2.
 //
@@ -178,7 +178,7 @@ export async function onRequestPut(context: Ctx): Promise<Response> {
   const segs = params.path ?? [];
   const id = segs[0];
   const file = segs.slice(1).join("/");
-  const log = (status: number, extra: { errorCode?: string; bytes?: number; access?: RawAccess["kind"]; sealed?: boolean } = {}) =>
+  const log = (status: number, extra: { errorCode?: string; bytes?: number; access?: RawAccess["kind"]; envelope?: number | null } = {}) =>
     logRequest({ route: ROUTE, status, latencyMs: Date.now() - start, id, ...extra });
 
   const session = await requireSession(request, env);
@@ -214,7 +214,7 @@ export async function onRequestPut(context: Ctx): Promise<Response> {
   // `unclaimed` because that is every patient's FIRST upload (raw-owner.ts), so scoping the refusal
   // to proven owners would refuse exactly the new patients it must not.
   if (!isSealed(bytes)) {
-    log(415, { errorCode: "plaintext_refused", bytes: bytes.length, access: access.kind, sealed: false });
+    log(415, { errorCode: "plaintext_refused", bytes: bytes.length, access: access.kind, envelope: envelopeVersion(bytes) });
     return json(415, { error: "raw sources must be sealed before upload", errorCode: "plaintext_refused" });
   }
 
@@ -234,10 +234,13 @@ export async function onRequestPut(context: Ctx): Promise<Response> {
   // W77 — `pages` rides along because pdf.js does not run on Workers, so this request is the only
   // moment the page count is known server-side without a second round trip for the bytes.
   await recordRawObject(env.DB, key, recordSubject(access, session.accountId), { ...(pages !== undefined && { pages }), bytes: bytes.length });
-  // W8d: audit the write — id + size, never the bytes. `sealed` is now always true here (the refusal
-  // above is the only way past), and stays in the record so a log that ever shows false is read as
-  // the contradiction it would be.
-  log(204, { bytes: bytes.length, access: access.kind, sealed: true });
+  // W8d: audit the write — id + size, never the bytes. `envelope` is the version byte READ BACK out
+  // of the body that is about to land, and it replaced a `sealed: true` that the refusal above made
+  // a tautology: on this line the only value a boolean could take was the one the code had already
+  // decided. A number measured from the bytes can disagree with the code, which is the whole reason
+  // an audit record exists; on the 415 above it also says WHICH way the refusal went, `null` for a
+  // body that is no envelope and `2` for a vault blob offered as an original.
+  log(204, { bytes: bytes.length, access: access.kind, envelope: envelopeVersion(bytes) });
   return new Response(null, { status: 204 });
 }
 
