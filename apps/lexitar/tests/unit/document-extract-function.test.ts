@@ -37,6 +37,15 @@ function ownedDb() {
 }
 
 
+// Every fixture original is SEALED, and that is the route's precondition rather than this file's
+// taste: since the sealing sweep an unsealed original is refused (409 `unsealed_original`) before
+// anything is read or billed, so a test seeding plaintext into R2 would be asserting against a store
+// shape the product no longer accepts. The refusal has its own test, below, where it is the subject.
+const FIXTURE_KEY = bytesToBase64(new Uint8Array(32).fill(7));
+const PDF_BYTES = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x37]);
+const sealedPdf = (): Promise<Uint8Array> => sealRaw(PDF_BYTES, FIXTURE_KEY);
+const sealedText = (text: string): Promise<Uint8Array> => sealRaw(new TextEncoder().encode(text), FIXTURE_KEY);
+
 const READING = {
   documentKind: "Radiology report",
   isMedicalReport: true,
@@ -80,7 +89,7 @@ async function call(
     request: new Request("http://local/api/document-extract", {
       method: "POST",
       headers,
-      body: JSON.stringify(opts.body ?? { id: "alex", key: "ab12cd34-report.pdf", mediaType: "application/pdf" }),
+      body: JSON.stringify(opts.body ?? { id: "alex", key: "ab12cd34-report.pdf", mediaType: "application/pdf", rawKey: FIXTURE_KEY }),
     }),
     env,
   });
@@ -129,7 +138,7 @@ describe("/api/document-extract guards", () => {
 
 describe("/api/document-extract reading", () => {
   it("reads a PDF once and stores the text as a sidecar", async () => {
-    const env = makeEnv({ "test/raw/alex/ab12cd34-report.pdf": new Uint8Array([0x25, 0x50, 0x44, 0x46]) });
+    const env = makeEnv({ "test/raw/alex/ab12cd34-report.pdf": await sealedPdf() });
     const res = await call(env, { auth: "valid" });
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -141,7 +150,7 @@ describe("/api/document-extract reading", () => {
   });
 
   it("sends the PDF as a native document block, not as text", async () => {
-    const env = makeEnv({ "test/raw/alex/ab12cd34-report.pdf": new Uint8Array([0x25, 0x50, 0x44, 0x46]) });
+    const env = makeEnv({ "test/raw/alex/ab12cd34-report.pdf": await sealedPdf() });
     await call(env, { auth: "valid" });
     const content = create.mock.calls[0][0].messages[0].content;
     expect(Array.isArray(content)).toBe(true);
@@ -150,9 +159,9 @@ describe("/api/document-extract reading", () => {
   });
 
   it("relays the caller's rendered pages instead of the blob, for a model that can see but not take a PDF", async () => {
-    const env = makeEnv({ "test/raw/alex/ab12cd34-report.pdf": new Uint8Array([0x25, 0x50, 0x44, 0x46]) });
+    const env = makeEnv({ "test/raw/alex/ab12cd34-report.pdf": await sealedPdf() });
     const pageImages = [{ base64: "AAA", mediaType: "image/jpeg" }, { base64: "BBB", mediaType: "image/jpeg" }];
-    const res = await call(env, { auth: "valid", body: { id: "alex", key: "ab12cd34-report.pdf", mediaType: "application/pdf", pageImages } });
+    const res = await call(env, { auth: "valid", body: { id: "alex", key: "ab12cd34-report.pdf", mediaType: "application/pdf", rawKey: FIXTURE_KEY, pageImages } });
     expect(res.status).toBe(200);
     const content = create.mock.calls[0][0].messages[0].content;
     expect(content.filter((b: { type: string }) => b.type === "image").map((b: { source: { data: string } }) => b.source.data)).toEqual(["AAA", "BBB"]);
@@ -160,15 +169,15 @@ describe("/api/document-extract reading", () => {
   });
 
   it("413s an oversized body that carries no pages — only rendered pages buy the larger ceiling", async () => {
-    const env = makeEnv({ "test/raw/alex/ab12cd34-report.pdf": new Uint8Array([0x25]) });
-    const res = await call(env, { auth: "valid", body: { id: "alex", key: "ab12cd34-report.pdf", note: "x".repeat(8 * 1024) } });
+    const env = makeEnv({ "test/raw/alex/ab12cd34-report.pdf": await sealedPdf() });
+    const res = await call(env, { auth: "valid", body: { id: "alex", key: "ab12cd34-report.pdf", rawKey: FIXTURE_KEY, note: "x".repeat(8 * 1024) } });
     expect(res.status).toBe(413);
     expect((await res.json()).errorCode).toBe("too_large");
     expect(create).not.toHaveBeenCalled();
   });
 
   it("serves a second request for the same content key from the sidecar, with NO model call", async () => {
-    const env = makeEnv({ "test/raw/alex/ab12cd34-report.pdf": new Uint8Array([0x25, 0x50, 0x44, 0x46]) });
+    const env = makeEnv({ "test/raw/alex/ab12cd34-report.pdf": await sealedPdf() });
     await call(env, { auth: "valid" });
     create.mockClear();
     const res = await call(env, { auth: "valid" });
@@ -178,8 +187,8 @@ describe("/api/document-extract reading", () => {
   });
 
   it("reads a .txt attachment with no model call at all", async () => {
-    const env = makeEnv({ "test/raw/alex/ab12-notes.txt": "protocol: 2.5mg weekly" });
-    const res = await call(env, { auth: "valid", body: { id: "alex", key: "ab12-notes.txt", mediaType: "text/plain" } });
+    const env = makeEnv({ "test/raw/alex/ab12-notes.txt": await sealedText("protocol: 2.5mg weekly") });
+    const res = await call(env, { auth: "valid", body: { id: "alex", key: "ab12-notes.txt", mediaType: "text/plain", rawKey: FIXTURE_KEY } });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.text).toBe("protocol: 2.5mg weekly");
@@ -193,7 +202,7 @@ describe("/api/document-extract reading", () => {
       stop_reason: "end_turn",
       usage: {},
     });
-    const env = makeEnv({ "test/raw/alex/ab12cd34-report.pdf": new Uint8Array([0x25]) });
+    const env = makeEnv({ "test/raw/alex/ab12cd34-report.pdf": await sealedPdf() });
     const res = await call(env, { auth: "valid" });
     expect(res.status).toBe(422);
     expect((await res.json()).errorCode).toBe("invalid_extraction");
@@ -202,7 +211,7 @@ describe("/api/document-extract reading", () => {
   it("maps a credit exhaustion to 402, not to 422", async () => {
     // The shape classifyModelError actually reads: status 400 + a "credit balance" message.
     create.mockRejectedValueOnce({ status: 400, type: "invalid_request_error", message: "Your credit balance is too low" });
-    const env = makeEnv({ "test/raw/alex/ab12cd34-report.pdf": new Uint8Array([0x25]) });
+    const env = makeEnv({ "test/raw/alex/ab12cd34-report.pdf": await sealedPdf() });
     const res = await call(env, { auth: "valid" });
     expect(res.status).toBe(402);
     expect((await res.json()).errorCode).toBe("insufficient_credit");
@@ -225,7 +234,7 @@ describe("GET /api/document-extract", () => {
   });
 
   it("404s a document that has never been extracted, instead of extracting it as a side effect", async () => {
-    const env = makeEnv({ "test/raw/alex/ab12-x.pdf": new Uint8Array([0x25]) });
+    const env = makeEnv({ "test/raw/alex/ab12-x.pdf": await sealedPdf() });
     expect((await get(env, "id=alex&key=ab12-x.pdf")).status).toBe(404);
     expect(create).not.toHaveBeenCalled();
   });
@@ -306,6 +315,21 @@ describe("/api/document-extract on a sealed store", () => {
     expect(res.status).toBe(400);
     expect((await res.json()).errorCode).toBe("raw_key_missing");
     expect(create).not.toHaveBeenCalled();
+  });
+
+  // The writer the sealing audit of 2026-11-02 found. It wrote the document's whole transcription in
+  // the clear whenever the browser sent no key, and the browser omitted the key precisely for the
+  // pre-refusal originals — so every re-open of a legacy document minted a fresh cleartext copy of
+  // its own clinical text, under a `prod/text/` key dated today.
+  it("refuses an UNSEALED original with a 409 and writes no sidecar at all", async () => {
+    const env = makeEnv({ [RAW]: PDF });
+
+    const res = await call(env, { auth: "valid", body: withKey(newKey()) });
+
+    expect(res.status).toBe(409);
+    expect((await res.json()).errorCode).toBe("unsealed_original");
+    expect(create).not.toHaveBeenCalled();
+    expect(env._store.has(SIDECAR)).toBe(false);
   });
 
   // A key in a query string is a key in a log, so the GET route holds none and hands the bytes back

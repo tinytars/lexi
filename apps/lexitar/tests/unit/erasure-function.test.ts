@@ -14,7 +14,7 @@ import { onRequestPut as rawPut } from "../../functions/api/raw/[[path]]";
 import { generateAccountKeypair, generateDEK, wrapDEKForPublicKey } from "@tinytars/vault/crypto";
 import { useWorkerd } from "../support/miniflare";
 import { SESSION_SECRET, cookieFor } from "../support/session";
-import { hd1Blob } from "../support/blobs";
+import { sealedRawBlob } from "../support/blobs";
 
 const STORE = "dev";
 // Per test: fixtures reuse emails and assertions list the whole bucket.
@@ -208,7 +208,7 @@ describe("eraseAccount", () => {
 
     const uploaded = `${STORE}/raw/alex/clinician-upload.pdf`;
     const res = await rawPut({
-      request: new Request("http://x/api/raw/alex/clinician-upload.pdf", { method: "PUT", headers: { cookie: await cookieFor(provId) }, body: hd1Blob() }),
+      request: new Request("http://x/api/raw/alex/clinician-upload.pdf", { method: "PUT", headers: { cookie: await cookieFor(provId) }, body: sealedRawBlob() }),
       env: env(),
       params: { path: ["alex", "clinician-upload.pdf"] },
     } as any);

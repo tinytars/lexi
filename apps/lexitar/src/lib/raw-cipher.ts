@@ -23,6 +23,9 @@ export type RawKeyMap = Record<string, string>;
 const MAX_KEYS = 200;
 const BASE64_KEY = /^[A-Za-z0-9+/]{43}=$/; // 32 raw bytes
 
+/** Where the version byte sits: straight after the three magic bytes `HD1`. */
+const MAGIC_LEN = 3;
+
 /** The caller supplied no key for a sealed object, or one that does not open it. */
 export class RawKeyError extends Error {
   readonly file: string;
@@ -58,6 +61,10 @@ export async function importRawKey(base64: string): Promise<CryptoKey> {
  * does not say which file leaves the browser nothing to heal.
  */
 export async function openRaw(stored: Uint8Array, file: string, key: string | undefined): Promise<Uint8Array> {
+  // `isHD1` and not `isSealed`, deliberately: the question here is "is this an envelope at all",
+  // which is wider than "is this a well-formed raw original". A v2 blob offered as an original has
+  // the magic, so it must be made to decrypt and fail — passing it through would hand a caller a
+  // vault's ciphertext labelled as the plaintext of their document.
   if (!isHD1(stored)) return stored;
   if (!key) throw new RawKeyError(file, "missing");
   try {
@@ -72,5 +79,35 @@ export async function sealRaw(plain: Uint8Array, key: string): Promise<Uint8Arra
   return encryptBytes(plain, await importRawKey(key));
 }
 
-/** Whether these stored bytes are sealed — the one question a route asks without holding a key. */
-export { isHD1 as isSealed };
+// The HD1 version byte a sealed ORIGINAL carries. The envelope is shared with the vault blob, which
+// carries 2 and a UTF-8 JSON payload; a raw original is 3, opaque bytes, which is what `sealRaw`
+// writes via `encryptBytes`. The package does not export the constant, so it is mirrored here and
+// raw-cipher.test.ts pins it against a real `sealRaw` output — a package that renumbered its
+// versions would fail that test rather than silently classify every object as cleartext.
+const HD1_VERSION_BYTES = 3;
+
+/**
+ * Whether these stored bytes are sealed — the one question a route asks without holding a key.
+ *
+ * This is a FORMAT check and not a proof of encryption, and the distinction is load-bearing: the
+ * deployment holds no key, so it can measure the envelope's shape and nothing more. A body that
+ * carries the magic, the right version and the header length passes, whatever is behind it. What
+ * the strictness buys is that a plaintext file whose first three bytes happen to read `HD1` no
+ * longer passes on the magic alone, and that a vault blob offered as an original is refused.
+ */
+export function isSealed(stored: Uint8Array): boolean {
+  return envelopeVersion(stored) === HD1_VERSION_BYTES;
+}
+
+/**
+ * The HD1 envelope's version byte, or null for bytes that are not an envelope at all.
+ *
+ * Exported so an audit record can carry what was MEASURED rather than what the code above it
+ * asserts. `sealed: true` logged on the far side of the only refusal that can reach that line is a
+ * tautology, and a field that cannot disagree with its own code cannot report the day the code is
+ * wrong. A version here is also the one diagnostic that distinguishes the two ways `isSealed` says
+ * no: `null` is a body that is not an envelope, `2` is a vault blob offered as an original.
+ */
+export function envelopeVersion(stored: Uint8Array): number | null {
+  return isHD1(stored) ? (stored[MAGIC_LEN] ?? null) : null;
+}

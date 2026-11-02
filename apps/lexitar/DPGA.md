@@ -68,7 +68,7 @@ right, but there is nothing to fix.
 | 9A.2 | Which types | ✅ | Identity, lab results, symptoms, treatments, notes, photos, chat |
 | 9A.3 | Vault confidentiality | ✅ | Client-side encryption, per-principal envelopes — and both command-line principals read *through* one of them, not around them. The third-party one (2026-09-27) gains no reach a browser lacks and less than one has: it cannot write the record it reads, and a stored credential no longer converts into account control, because recovery issuance now requires fresh re-authentication |
 | 9A.4 | Access control and audit | ✅ | One capability table, per-namespace ownership, and — since 2026-09-27 — every privileged read logged rather than only the discovery hop. The org key's audit became a mechanism the same day: one module turns that key into a decryption key and writes the row before it returns one, pinned by a build-failing sweep. The gap this row used to name is closed; a person's own reads are deliberately excluded, and §9A says why |
-| 9A.5 | Uploaded originals | ✅ | Sealed under per-file content keys held inside the vault, and a plaintext `PUT` is now refused outright (`415 plaintext_refused`). Deployment note: the dev store sweeps to zero sealable objects; production now runs the refusal too, promoted 2026-11-01; its read-only sweep on 2026-09-27 counted 35 pre-refusal objects still to seal, not re-measured since |
+| 9A.5 | Uploaded originals | ✅ | Sealed under per-file content keys held inside the vault, and a plaintext `PUT` is now refused outright (`415 plaintext_refused`). Measured 2026-11-02: production's 35 pre-refusal originals are all 35 sealed, 0 cleartext, with 6 `raw_objects` rows holding no object; 34 of the 35 open to their own file magic and the 35th is a JPEG uploaded under a `.png` name before the sweep, 0 unopenable. A nightly keyless sweep now classifies every object in both stores and fails the job on any cleartext an operator could seal |
 | 9A.6 | Transfer to third-party models | ✅ | Disclosed at the point of use, on demand and in the published policy: whole documents, on record open, about an hour of provider-side cache, no negotiated zero-retention arrangement |
 | 9A.7 | Erasure integrity | ✅ | The report states what deletion cannot reach, and the half that is enforceable — revocation killing the corpus keepalive — is pinned by a test rather than assumed. A record exported to a computer is named there too, and since 2026-09-27 names all three holders: the person, a tool holding their credential, and an account they approved — whose copy outlives the approval, which is the part a reader would otherwise assume away |
 | **9B** | **Inappropriate, misleading, illegal content** | **✅** | |
@@ -96,11 +96,14 @@ audited string at the point of use, on demand, and in a published policy rewritt
 became a two-step control in the product that reports what it could not attribute and what it cannot
 recall; the 16+ limit became a refusal in the browser rather than a sentence in the Terms; and a report
 about a wrong answer, illegal material or an abusive account now reaches a person, through a private
-tracker, against stated times. One honest qualification remains, stated where it belongs rather than
-averaged away: documents uploaded before the sealing are still being converted where they sit, which is why
-`MODERATION.md` is staged rather than unconditional. The other has closed — production was promoted on
-2026-10-22, 10-27 and 11-01, so the refusal and the disclosure are now true of the deployment and not only
-of the software.
+tracker, against stated times. Both qualifications this paragraph used to carry
+have closed. Production was promoted on 2026-10-22, 10-27 and 11-01, so the refusal and the disclosure
+are true of the deployment and not only of the software; and on 2026-11-02 the pre-sealing backlog was
+sealed in place — every one of production's 35 originals now carries its own content key inside its
+owner's vault, and each was opened afterwards to prove the encryption had not destroyed it. What
+replaces them is narrower and is a limit rather than a backlog: the refusal checks the envelope's
+**format**, because the deployment holds no key and so cannot prove any body is encrypted.
+`MODERATION.md` states that limit rather than claiming past it.
 
 ---
 
@@ -340,7 +343,7 @@ What's in place:
   mechanisms. A document and its transcription sidecar share one key, and the key is written to the
   vault before the ciphertext is uploaded, so a crash cannot orphan a file.
 - **A plaintext upload is now refused rather than logged.** `PUT /api/raw/…` answers an unsealed body
-  with `415 plaintext_refused` (`functions/api/raw/[[path]].ts:188-189`), unconditionally — including on
+  with `415 plaintext_refused` (`functions/api/raw/[[path]].ts:216-218`), unconditionally — including on
   a namespace's first upload, which is the case a narrower rule would have broken — so the store cannot
   acquire new readable objects. `GET` is untouched; it streams what is stored and never decrypts.
 - The deployment therefore holds no standing key for those files: the browser of the person using the
@@ -453,18 +456,41 @@ What's in place:
 
 **Gaps** — none against the software in this repo.
 
-**One deployment note, which is not a gap in the software.** Production runs `main`, which since the
-2026-11-01 promotion carries the refusal, so the store cannot acquire a readable object in production either;
-it still sets `REPORTS: "never"` (no document leaves at all under that setting). A preview sweep on the dev
-store reports zero *sealable* plaintext. The production store's own preview sweep was run read-only on
-2026-09-27 and is the honest number here: **35 objects would be sealed, none are sealed yet, 6 are missing,
-and no namespace is orphaned or unreachable.** Those 35 predate the refusal and are readable where they sit
-until the sealing run is executed against production, which writes and is therefore the operator's. That
-figure has not been re-measured since, so it is a 2026-09-27 count rather than a current one. The
-residual classes the sweep deliberately leaves — orphaned namespaces, which `POST /api/raw/claim` must still be able to
-claim, and unreachable ones, which only their owner's browser can seal via `src/lib/raw-seal-heal.ts`
-— are drained by claim and by use rather than by an operator. Those objects are readable where they
-sit; none of them can be added to.
+**The backlog is sealed, measured 2026-11-02.** Production runs `main`, which since the 2026-11-01
+promotion carries the refusal, so the store cannot acquire a readable object; it still sets
+`REPORTS: "never"` (no document leaves at all under that setting). The 35 pre-refusal originals were
+sealed in place on 2026-11-02 and the result was confirmed twice, because the two confirmations prove
+different things. **Format:** a keyless sweep classifies **35 sealed, 0 cleartext, 6 `raw_objects` rows
+with no object, 0 objects with no row, 0 orphaned or unreachable namespaces** — which is also what an
+*unopenable* object would report, since the deployment holds no key. **Openability:** reading all 35
+back through the org key and decrypting them gives **34 that open to their own file magic, 1 mislabelled,
+0 unrecognised, 0 unopenable**. The one mislabelled object is a JPEG stored under a `.png` name; its
+pre-seal snapshot body is byte-identical to the live object, so it was sealed by its owner's browser in
+September and the mislabelling is an ordinary upload rather than damage.
+
+Sealing is a **salvage and not a purge**: each object's bytes were encrypted at the same R2 key and the
+per-file content key written into **that owner's own vault**, key first and read back before any
+ciphertext was written, so the patient goes on opening every document and the operator no longer can.
+Nothing was deleted, moved or renamed.
+
+The dev store is measured and deliberately not written to, because it carries 103 mis-attributed
+`raw_objects` rows whose repair is an open decision and sealing in place would freeze that attribution
+under a content key. Its keyless sweep of 2026-11-02 reads **236 objects classified, 159 sealed, 3
+cleartext `text/` sidecars, 74 rows with no object, 0 objects with no row**. All three cleartext
+sidecars sit in a namespace **no operator can reach** — orphaned, or with org recovery revoked — so they
+are the owner-only class below rather than work anybody has left undone, and they are also the evidence
+that the transcription writer now closed did fire in dev before it was closed.
+
+The residual classes the operator lane deliberately leaves — orphaned namespaces, which
+`POST /api/raw/claim` must still be able to claim, and unreachable ones, which only their owner's browser
+can seal via `src/lib/raw-seal-heal.ts` — are drained by claim and by use rather than by an operator.
+Those objects are readable where they sit; none of them can be added to. Both classes are empty in
+production and are what the three dev sidecars are.
+
+**A nightly sweep now says so without being asked.** `snapshot.yml` runs `raw:seal-sweep` against both
+stores after the backup, and the job goes red on any cleartext an operator could seal. It needs no key —
+classification is the envelope's magic and version byte — which is why the alarm can run on a hosted
+runner while the cure stays local (`docs/OPS-LOCAL.md`).
 
 ## 9B. Inappropriate, misleading and illegal content — ✅
 
