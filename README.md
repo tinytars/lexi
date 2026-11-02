@@ -55,15 +55,18 @@ as a diagnosis, a recommendation, or clinical decision support.
 @tinytars/frame      session/auth controllers + screens (packages/frame, this repo)
    |
    v
-apps/lexitar         Svelte UI + Cloudflare Pages Functions + a local ingest CLI (this repo)
+apps/lexitar         Svelte UI + Cloudflare Pages Functions + an operator CLI (this repo)
 ```
 
 `apps/lexitar` is the app: a Svelte single-page UI, a Cloudflare Pages Functions backend, and a
-Node ingest CLI, built on two published packages this same repo also maintains. Full design in
+Node operator CLI over the same R2/D1 store, built on two published packages this same repo also
+maintains. Full design in
 [`ARCHITECTURE.md`](ARCHITECTURE.md); the shape at a glance:
 
-- **Ingest** — a CLI pipeline that turns a lab PDF or spreadsheet into structured, unit-canonicalized
-  marker data, with every reading traced back to the source file it came from. [Detail](ARCHITECTURE.md#ingest-cli-scripts).
+- **Ingest** — the pipeline that turns a lab PDF or spreadsheet into structured, unit-canonicalized
+  marker data, with every reading traced back to the source file it came from. It runs in the
+  browser, on an upload; the CLI folds what the browser could not read.
+  [Detail](ARCHITECTURE.md#ingest).
 - **The Finding DAG** — the derived-reasoning layer: a staleness-tracked graph of AI-generated
   content (translated markers, personalized reference ranges, treatment reasoning) that knows when
   its own inputs have changed and needs regenerating, rather than silently going stale.

@@ -2,7 +2,7 @@ import * as XLSX from "xlsx";
 
 // W69 — a synthetic HealthMatters-shaped lab workbook, built in memory.
 //
-// `parse-source.test.ts` and `import-flow.test.ts` used to read a real 12-year blood panel out of
+// `parse-raw.test.ts` and `import-flow.test.ts` used to read a real 12-year blood panel out of
 // `records/private/alex/raw/`. Neither is testing that patient: they are testing the xlsx parser and
 // the classify/dedup/fold spine, and the file is incidental to both. Reading it pinned two otherwise
 // clean tests to plaintext PHI, and through them the whole unit suite to a machine that has it.
@@ -30,7 +30,7 @@ const SECTIONS: Section[] = [
     group: "Lipid Panel",
     dates: ["2021-03-11", "2022-04-19", "2023-05-27", "2024-06-14", "2025-07-22", "2026-01-30"],
     markers: [
-      // "Cholesterol" must appear — parse-source asserts a known analyte survives the round trip.
+      // "Cholesterol" must appear — parse-raw asserts a known analyte survives the round trip.
       ["Total Cholesterol", "mg/dL", "125-200", 178],
       ["LDL Cholesterol", "mg/dL", "<100", 96],
       ["HDL Cholesterol", "mg/dL", ">40", 58],

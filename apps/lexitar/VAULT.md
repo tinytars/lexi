@@ -576,9 +576,13 @@ and appends a PHI-free `removedSources[]` tombstone `{sourceId, sha8, kind, remo
 (absent source → no-op; no duplicate tombstone). **Re-ingesting the same sha clears its tombstone**
 (`upsertSourceRecord`).
 
-CLI: `npm run ingest -- --client X --remove-source <id|sha8-prefix|filename>` — deletes the raw +
-processed files, re-derives `vault.json`→`.enc`, deletes the R2 `{store}/raw|processed` objects, prints
-the git-history note. **"Removed" (gone — e.g. wrong-patient) is distinct from "stale"** (valid data
+Removal is driven from the app's **Reports** surface (`src/lib/HealthReports.svelte:91`), which runs
+the same pure fold against a clone and persists it; the raw DELETE route
+(`functions/api/raw/[[path]].ts:246`) deletes the R2 `{store}/raw|processed` objects and PUTs the
+re-encrypted vault. There is no operator command for it: the person who can decrypt the vault is the
+only one who can remove a source from it.
+
+**"Removed" (gone — e.g. wrong-patient) is distinct from "stale"** (valid data
 whose Finding needs regen): a removal makes the Finding stale on its own (its `inputsHash` no longer
 matches), but the deleted data is gone, not flagged.
 
@@ -605,8 +609,9 @@ purge.
 | R2 key builder (store prefix) | `functions/_lib/store.ts` |
 | Bearer guard / PHI-free log | `functions/_lib/guard.ts`, `functions/_lib/log.ts` |
 | Chat Function | `functions/api/chat.ts` |
-| CLI ingest / regen | `scripts/ingest.ts` |
-| Processed-store / raw parser | `scripts/processed-store.ts`, `scripts/parse-source.ts` |
+| Operator ops (fold pending / regen) | `scripts/r2-ops-cli.ts`, `scripts/commands/r2-ops.ts` |
+| Browser fold (hash → classify → fold) | `src/lib/ImportTab.svelte`, `src/lib/import-flow.ts` |
+| Raw parser (bytes → markers) | `src/lib/parse-raw.ts` |
 | CLI ↔ R2 sync (store-aware, raw) + R2 REST bulk access | `scripts/vault-sync.ts` |
 | Backups: snapshot / restore drill / freshness alarm | `BACKUP.md`, `scripts/vault-snapshot.ts`, `scripts/vault-restore.ts`, `scripts/vault-snapshot-check.ts` |
 | Plaintext → served encrypt / drift verify | `scripts/vault-build.ts`, `scripts/vault-verify.ts` |

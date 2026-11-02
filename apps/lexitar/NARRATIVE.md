@@ -128,7 +128,7 @@ The imported data lands exactly where the Finding's logic already looks
   can be recommended/requisitioned like any marker.
 
 Regenerate on demand after an import (the Finding is never auto-refreshed):
-`npm run ingest -- --client <id> --refresh-finding`.
+`npm run r2-ops -- --refresh-finding --client <id>`.
 
 ---
 
