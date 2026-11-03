@@ -5,10 +5,11 @@ LexiTar is operated by the Tiny Tars Foundation, a Nevada nonprofit corporation 
 under each entry names the mechanism in the software that bears on that law and a file a reader can
 open to check the mechanism is really there.
 
-Five regimes are named below. Two of them are named in order to be **disclaimed** — the Health
-Insurance Portability and Accountability Act and the Food and Drug Administration's device rules —
-because a health product that stays silent about those two leaves a reader to guess, and the guess is
-usually wrong in the product's favour. One entry is a **standard adhered to** rather than a law
+Seven regimes are named below. Four of them are named in order to be **disclaimed** — the Health
+Insurance Portability and Accountability Act, the Food and Drug Administration's device rules,
+Washington's My Health My Data Act and California's Consumer Privacy Act — because a health product
+that stays silent about those leaves a reader to guess, and the guess is usually wrong in the
+product's favour. One entry is a **standard adhered to** rather than a law
 claimed. **Nothing else is claimed.** No regime outside the United States is claimed, and no
 certification, seal, audit or third-party attestation is held for any of them.
 
@@ -159,6 +160,51 @@ defects already fixed, in the places they were fixed, without needing a browser.
 **The Americans with Disabilities Act and Section 508 are not claimed**, and neither is WCAG
 conformance at any level.
 
+## 7. Two state regimes — named, and not claimed
+
+Washington's My Health My Data Act and California's Consumer Privacy Act are the two state statutes a
+reader of a consumer health product asks about next. Neither is claimed, and they are named for the
+reason §4 and §5 are: silence invites the reader to conclude that nobody looked.
+
+**Washington's My Health My Data Act (RCW 19.373) does not reach the service, on the Foundation's
+determination.** The Act binds a "regulated entity", which it defines as any legal entity that
+conducts business in Washington, or produces or provides products or services targeted to consumers
+in Washington, and that determines the purpose and means of collecting, processing, sharing or
+selling consumer health data. It carries its own consent requirements and, unusually among US
+privacy statutes, a private right of action. **It does not exempt nonprofits.** There is no
+for-profit limitation in that definition — the carve-outs are for government agencies, tribal nations
+and their contractors — so charitable status is not the answer here and is not offered as one. The
+answer turns on the reach test alone, and the Foundation has determined that the Act does not reach
+this service.
+
+**Two limits on that entry, both stated rather than smoothed over.** The determination and the
+reasoning behind it are **held outside this repository**, so what this document records is that the
+determination was made, not an argument a reader can check here — the same honest shape §5 has, where
+the FDA argument is a reading of published guidance and no agency has ruled on it. And the reach test
+is a fact about operations rather than a property of the software, so it can change without a line of
+code changing: targeting the service, its outreach, or a partnership at consumers in Washington, or
+establishing a business presence in that state, puts the question back. Any of those is the
+condition that reverses this entry, and a reader who knows one of them has happened should read the
+entry as stale rather than as current.
+
+**California's CCPA/CPRA does not reach the service either, and that answer is in the statute's own
+text.** The Act binds a "business", defined at Cal. Civ. Code §1798.140(d)(1) as a legal entity "that
+is organized or operated for the profit or financial benefit of its shareholders or other owners".
+The Tiny Tars Foundation is a Nevada nonprofit corporation and a 501(c)(3) public charity (§1), with
+no shareholders and no owners to operate for the benefit of, so it is not a business within that
+definition. The second half of §1798.140(d) is the limit worth naming: an entity that controls or is
+controlled by such a business, shares common branding with it and receives consumers' personal
+information from it is itself a business whatever its own form. Those three conditions are
+conjunctive, and the Foundation shares branding and users' personal information with no for-profit
+entity. Naming that limb rather than resting on tax status alone is the point of this entry, because
+tax status is what makes the question look easier than it is. It would change if the service were
+ever operated by, or shared its branding and its users' data with, a for-profit affiliate.
+
+**Neither entry takes credit for a mechanism built for another reason.** The disclosure basis, the
+notice rendered unconditionally on every screen, and the tests that fail the build if that notice is
+weakened are §2's, and they are there because the FTC's Rule and the Foundation's own published
+policy require them. A statute that is not claimed is not partly met.
+
 ## What this does not claim
 
 - **No non-US regime.** LexiTar is operated from the United States by a Nevada charity, and no
@@ -174,6 +220,9 @@ conformance at any level.
   evidence offered in this document is source code a reader can open and tests that fail the build;
   that is all it is.
 - **No verified age.** §3's floor is a self-declaration at year granularity.
+- **No state privacy compliance.** Neither Washington's My Health My Data Act nor California's
+  CCPA/CPRA is claimed as met or as complied with. §7 states that neither reaches the service, and
+  the Washington half of it rests on a determination whose reasoning is not in this repository.
 - **Nothing here is legal advice**, and none of it displaces the Foundation's published privacy
   policy and terms, which are what a user agrees to.
 
@@ -185,8 +234,10 @@ conformance at any level.
 - HIPAA, 45 CFR Parts 160 and 164 — <https://www.ecfr.gov/current/title-45/subtitle-A/subchapter-C>
 - Nevada Revised Statutes Chapter 82 (nonprofit corporations) — <https://www.leg.state.nv.us/nrs/nrs-082.html>
 - Nevada Revised Statutes Chapter 76 (state business licence) — <https://www.leg.state.nv.us/nrs/nrs-076.html>
+- Washington My Health My Data Act, RCW 19.373 — <https://app.leg.wa.gov/RCW/default.aspx?cite=19.373>
+- California Consumer Privacy Act as amended, Cal. Civ. Code §1798.140 — <https://leginfo.legislature.ca.gov/faces/codes_displaySection.xhtml?lawCode=CIV&sectionNum=1798.140>
 - Web Content Accessibility Guidelines 2.1 — <https://www.w3.org/TR/WCAG21/>
 
-Read 2026-11-02.
+Read 2026-11-02, except the two state statutes, read 2026-11-03.
 
 The self-assessment that cites this document is `DPGA.md`; indicator 7 is where it is used.

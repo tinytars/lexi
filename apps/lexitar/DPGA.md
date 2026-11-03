@@ -65,10 +65,10 @@ right, but there is nothing to fix.
 | 6.1 | Is non-PII data or content handled | ⚪ | Yes — reasoning prompts, the finding DAG, reference material |
 | 6.2 | Export/import in a non-proprietary format | ✅ | CSV and JSON export; PDF/XLSX import |
 | **7** | **Privacy and applicable laws** | **✅** | |
-| 7.1 | Which laws it complies with | ✅ | `LAWS.md`, added 2026-11-03: five regimes named — Nevada's NRS Chapter 82 for the entity, the FTC Health Breach Notification Rule (16 CFR Part 318), COPPA, and HIPAA and the FDA device rules named in order to be **disclaimed** — plus WCAG 2.1 AA carried as a standard adhered to rather than a law claimed. Each entry names the mechanism in the software and a file a reader can open to check it is really there. No regime outside the United States is claimed (`LAWS.md:162-166`) |
+| 7.1 | Which laws it complies with | ✅ | `LAWS.md`, added 2026-11-03: seven regimes named — Nevada's NRS Chapter 82 for the entity, the FTC Health Breach Notification Rule (16 CFR Part 318), COPPA, and four named in order to be **disclaimed**: HIPAA, the FDA device rules, and (added 2026-11-03) Washington's My Health My Data Act and California's CCPA/CPRA — plus WCAG 2.1 AA carried as a standard adhered to rather than a law claimed. Each entry names the mechanism in the software and a file a reader can open to check it is really there. No regime outside the United States is claimed (`LAWS.md:208-212`) |
 | 7.2 | Evidence of adherence | ✅ | Policy and terms published and now true: what leaves this device, the recovery envelope, the enforced age limit, the reporting channel |
 | 7.3 | Processors disclosed | ✅ | Named in the policy, each with what it receives and what its terms actually cover — including where nothing has been negotiated |
-| 7.4 | Consent for the model-provider send (**this project's own step, not a form question**) | 🟡 | The basis is **authorized disclosure** under the FTC Rule rather than consent, and `LAWS.md:70-84` states it: the processing is named by category of recipient in the published policy, in the root `../../SECURITY.md` processor table, and in-app at `src/lib/Disclaimer.svelte:10`, which `src/App.svelte:1246` renders unconditionally on every screen rather than behind a link. That there is no per-patient switch is a **recorded decision with its reason** (`src/lib/brand.ts:42-50`, mechanism at `CORPUS.md:366-394`), and `tests/unit/brand.test.ts:57-60` fails the build if the text is ever edited to promise the user a switch only the operator has. 🟡 rather than ✅ because an assessor in the health domain may still ask for an affirmative gate the patient holds, which is exactly what "partly meets" means. Third-party access (2026-09-27) does carry a per-person, time-boxed, revocable, audited consent record (`VAULT.md` §4b) — a different flow, and it does not close this one |
+| 7.4 | Consent for the model-provider send (**this project's own step, not a form question**) | 🟡 | The basis is **authorized disclosure** under the FTC Rule rather than consent, and `LAWS.md:71-85` states it: the processing is named by category of recipient in the published policy, in the root `../../SECURITY.md` processor table, and in-app at `src/lib/Disclaimer.svelte:10`, which `src/App.svelte:1246` renders unconditionally on every screen rather than behind a link. That there is no per-patient switch is a **recorded decision with its reason** (`src/lib/brand.ts:42-50`, mechanism at `CORPUS.md:366-394`), and `tests/unit/brand.test.ts:57-60` fails the build if the text is ever edited to promise the user a switch only the operator has. 🟡 rather than ✅ because an assessor in the health domain may still ask for an affirmative gate the patient holds, which is exactly what "partly meets" means. Third-party access (2026-09-27) does carry a per-person, time-boxed, revocable, audited consent record (`VAULT.md` §4b) — a different flow, and it does not close this one |
 | 7.5 | Deletion available to the user | ✅ | Two-step self-service erase in the account panel, reporting honestly what it could not attribute |
 | **8** | **Standards and best practices** | **✅** | |
 | 8.1 | Open standards, with evidence | ✅ | WebAuthn, Web Crypto, OAuth2/OIDC, WCAG 2.1 AA via axe in e2e |
@@ -301,7 +301,7 @@ claimed, which is the half of an adherence statement that is usually missing.
 - **The model-provider send rests on authorized disclosure rather than on an affirmative gate.** The
   corpus sends whole documents to the company operating the language model when a record is *opened*,
   and there is no per-patient switch for it. That is a recorded decision with its reason at
-  `src/lib/brand.ts:42-50`, the mechanism is `CORPUS.md:366-394`, and `LAWS.md:70-84` states the basis
+  `src/lib/brand.ts:42-50`, the mechanism is `CORPUS.md:366-394`, and `LAWS.md:71-85` states the basis
   and names what holds it. Four facts a notice of this kind usually softens are stated plainly in the
   in-app text and pinned verbatim by `tests/unit/brand.test.ts:49-55` — the documents go when a record
   is opened rather than when a question is asked, whole documents rather than summaries, a copy
@@ -327,20 +327,30 @@ claimed, which is the half of an adherence statement that is usually missing.
   test suite, so the remaining work is a consent surface for the corpus rather than a consent mechanism
   from scratch.
 
-- **Two US state regimes are candidates and are named in no document.** `LAWS.md` names five
-  regimes, and **Washington's My Health My Data Act** is not among them — a statute written for
-  "consumer health data", carrying a private right of action and its own consent requirements, and
-  the one on this list that most plainly reaches a health-literacy product. **CCPA/CPRA** is the
-  weaker candidate and is named here for completeness: it binds a "business" operated for profit,
-  which a 501(c)(3) is not, so the likely answer is that it does not apply — but "likely" is the
-  word, and no document says it. This is a question about whether the list is complete rather than
-  a defect in the answer to 7.1, which is why the row above is ✅: the form asks a project to name
-  the law it operates under, and it has. Deciding either regime is a legal-scope call wanting its
-  own pass over `LAWS.md`, not a re-score.
+- **Both US state regimes are now named and decided, and one of the two answers cannot be checked
+  from this repository.** `LAWS.md` §7 names Washington's My Health My Data Act and California's
+  CCPA/CPRA and claims neither. California's answer is in the statute's own text — it binds an entity
+  "organized or operated for the profit or financial benefit of its shareholders or other owners"
+  (Cal. Civ. Code §1798.140(d)(1)), which a 501(c)(3) with no shareholders and no owners is not — and
+  §7 names the control-and-common-branding limb of that definition rather than resting on tax status
+  alone, so an assessor can verify it from the citation. Washington's cannot be verified that way.
+  **MHMD does not exempt nonprofits**: its "regulated entity" is any legal entity that conducts
+  business in Washington or produces products or services targeted to consumers in Washington and
+  determines the purpose and means of processing consumer health data, and the carve-outs are for
+  government bodies, tribal nations and their contractors alone. Charitable status is therefore not
+  the answer, and §7 does not offer it as one. What the entry rests on is the Foundation's
+  determination that the reach test is not met, and the reasoning behind that determination is
+  **held outside this repository** — so what a reader of `LAWS.md` can check is that the
+  determination was made, not that it was right. That is the gap, and it is narrower than the one
+  this bullet carried on 2026-11-03: the question then was whether the list was complete, and the
+  list is complete now. The reach test is also a fact about operations rather than a property of the
+  software, so it can go stale without a line of code changing; `LAWS.md:180-188` states both limits
+  and names the conditions that reverse the entry.
 
 Two notes, then, and neither is the ❌ this section carried until 2026-11-03. Naming the law did not
-narrow the first, and nothing here claims it did; the second is work this assessment is recording
-rather than closing.
+narrow the first, and nothing here claims it did; the second is no longer that the list is
+incomplete, which it was when this section was first written, but that one of its two state answers
+rests on a determination this repository does not carry the reasoning for.
 
 ## 8. Adherence to standards and best practices — ✅
 
