@@ -136,11 +136,24 @@ refuses when `STORE_PREFIX` and the checkout's `wrangler.jsonc` disagree, so pro
 asked from a `main` checkout.) That second, independent path is unchanged by the move and is the
 reason a missed red job is not a silent failure.
 
-**This is flagged as a decision rather than fixed.** It changed character when the self-hosted CI
-runner was retired from this same Mac: the laptop is no longer part of any other pipeline, so
-nothing else in the project notices when it is off, and the only scheduled backup this project has
-now runs on a machine whose lid closing is a normal event. The alarm still fires — into the same
-laptop.
+**What the move to a hosted schedule cost, measured rather than assumed.** The workflow landed
+`disabled_manually` and nothing noticed for two weeks. Between the last verified snapshot and the
+next there were **14 days 12 hours 43 minutes** (2026-10-19T08:53:33Z → 2026-11-02T21:37:07Z) and
+**14 missed 03:15 UTC firings**, the first on 2026-10-20 and the last on 2026-11-02. Those nights
+had **no backup of any kind** — not a hosted one, and not a by-hand one either: the script above is
+a path that is *kept* rather than *armed*, so an unarmed hosted schedule left nothing at all, and
+that is the shape of the failure to watch for rather than the lid it replaced. Re-enabled and both
+stores verified on 2026-11-02: prod run `41592974427` and dev run `41529985366`, each ending
+`✓ backup fresh` with 30 snapshots retained. The 36-hour check above is what would have surfaced
+it in the ordinary dev loop and did not — a threshold that would have tripped on night two means
+nothing ran `npm run doctor` against either store in those fourteen days, which is the residual
+weakness and it is a human one.
+
+**The next thing to fail is the timeout, not the schedule.** The dev leg took **30m01s** on
+2026-11-02 against **27m30s** fourteen days earlier — **+151 s** — putting it at exactly **50.0%**
+of `snapshot.yml`'s `timeout-minutes: 60`. The growth is in the store rather than in the job, so
+the cap is what to raise or shard *before* it is reached; a timed-out snapshot is a red job, which
+is loud, but it is also a night with no snapshot. Worth re-measuring on each restore drill.
 
 ## Notes
 

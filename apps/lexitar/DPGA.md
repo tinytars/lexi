@@ -6,9 +6,15 @@ asks for each indicator. Each indicator gets a verdict, the evidence behind it, 
 between it and "meets". The gaps are the input to a development plan. This doc is not a plan, a
 tracker, or a history: when LexiTar changes, rewrite the affected verdict to describe the new state.
 
-**Assessed against:** `dev` at `7602d88`, and the live `tinytars.foundation/privacy` and `/terms` pages.
-`main` — what production runs — is two commits behind it, both of them CI-only, and sets `REPORTS: "never"`,
-so where dev and production differ the verdict says which, rather than averaging them. A SHA from before
+**Assessed against:** `dev` at `7156bb8`, and the live `tinytars.foundation/privacy` and `/terms` pages
+(measured 2026-11-03). `main` — what production runs — is not behind `dev` but **diverged** from it: ten
+commits on `main` that `dev` lacks, and on `dev` three commits `main` lacks (`336c2e3`, `1040bd4`,
+`f1a6ada` — 12 files, 437 insertions, including `LAWS.md`, `keyring-owner.ts` with its unit test, four
+`raw-*` scripts and `wrangler.jsonc`). Part of that divergence is permanent by design: `main` sets
+`STORE_PREFIX: "prod"` and `REPORTS: "never"` where `dev` sets `"dev"` and `"always"` — this branch's
+`wrangler.jsonc:23`, and `main`'s own copy, which `promote.yml`'s keep-paths preserves across every
+promotion rather than overwriting. That is what keeps the dev site off the production stores.
+So where dev and production differ the verdict says which, rather than averaging them. A SHA from before
 2026-10-18 resolves nowhere public — the repository was republished that day with no ancestry — so this stamp
 is re-measured on each pass rather than carried over.
 **Scope:** the software in this repo (`apps/lexitar`, `packages/frame`), the open packages it is
@@ -20,8 +26,12 @@ reasons over (`tinytars/reasoning`). Users' health data is never part of the DPG
 
 ## Compliance dashboard
 
-Every question the application form asks, and where LexiTar stands on it today.
-**⚪** marks a question that describes the solution rather than scoring it — the answer still has to be
+Every question the application form asks, and where LexiTar stands on it today — **plus, under some
+indicators, a step this project enumerates for itself** that the form does not ask as a question. Both
+kinds have always been in this table and are numbered alike; which kind a row is, is stated in the row
+rather than inferable from its number. The pattern is the `(form section, unscored)` label at the
+bottom.
+**⚪** marks a row that describes the solution rather than scoring it — the answer still has to be
 right, but there is nothing to fix.
 
 | # | What the form asks | Light | Where LexiTar stands |
@@ -54,11 +64,11 @@ right, but there is nothing to fix.
 | **6** | **Extracting data and content** | **✅** | |
 | 6.1 | Is non-PII data or content handled | ⚪ | Yes — reasoning prompts, the finding DAG, reference material |
 | 6.2 | Export/import in a non-proprietary format | ✅ | CSV and JSON export; PDF/XLSX import |
-| **7** | **Privacy and applicable laws** | **❌** | |
-| 7.1 | Which laws it complies with | ❌ | No list of laws LexiTar claims adherence to. `LIABILITY.md` names the regimes that govern it — the FTC Rule, GDPR on cross-border use — which is an exposure analysis rather than the form's answer |
+| **7** | **Privacy and applicable laws** | **✅** | |
+| 7.1 | Which laws it complies with | ✅ | `LAWS.md`, added 2026-11-03: five regimes named — Nevada's NRS Chapter 82 for the entity, the FTC Health Breach Notification Rule (16 CFR Part 318), COPPA, and HIPAA and the FDA device rules named in order to be **disclaimed** — plus WCAG 2.1 AA carried as a standard adhered to rather than a law claimed. Each entry names the mechanism in the software and a file a reader can open to check it is really there. No regime outside the United States is claimed (`LAWS.md:162-166`) |
 | 7.2 | Evidence of adherence | ✅ | Policy and terms published and now true: what leaves this device, the recovery envelope, the enforced age limit, the reporting channel |
 | 7.3 | Processors disclosed | ✅ | Named in the policy, each with what it receives and what its terms actually cover — including where nothing has been negotiated |
-| 7.4 | Consent for special-category data | ❌ | No consent surface for the processing that needs one: the corpus sends whole documents to a model provider on nothing but the owner opening the record. Third-party access, which arrived on 2026-09-27, is the one flow that *does* carry a record of consent — per person, per window, revocable, with every read on the subject's own screen (`VAULT.md` §4b). That is the artefact this indicator asks for, built for one flow and absent from the one that matters most, so the verdict does not move |
+| 7.4 | Consent for the model-provider send (**this project's own step, not a form question**) | 🟡 | The basis is **authorized disclosure** under the FTC Rule rather than consent, and `LAWS.md:70-84` states it: the processing is named by category of recipient in the published policy, in the root `../../SECURITY.md` processor table, and in-app at `src/lib/Disclaimer.svelte:10`, which `src/App.svelte:1246` renders unconditionally on every screen rather than behind a link. That there is no per-patient switch is a **recorded decision with its reason** (`src/lib/brand.ts:42-50`, mechanism at `CORPUS.md:366-394`), and `tests/unit/brand.test.ts:57-60` fails the build if the text is ever edited to promise the user a switch only the operator has. 🟡 rather than ✅ because an assessor in the health domain may still ask for an affirmative gate the patient holds, which is exactly what "partly meets" means. Third-party access (2026-09-27) does carry a per-person, time-boxed, revocable, audited consent record (`VAULT.md` §4b) — a different flow, and it does not close this one |
 | 7.5 | Deletion available to the user | ✅ | Two-step self-service erase in the account panel, reporting honestly what it could not attribute |
 | **8** | **Standards and best practices** | **✅** | |
 | 8.1 | Open standards, with evidence | ✅ | WebAuthn, Web Crypto, OAuth2/OIDC, WCAG 2.1 AA via axe in e2e |
@@ -84,10 +94,13 @@ right, but there is nothing to fix.
 | 9C.3 | Safety of underage users | ✅ | 16+ refused in the browser at signup, on Skip and on later edit; `accounts.age_attested_at` records that the check passed, never a date of birth. Year-granular self-declaration, and the docs say so rather than implying verified age |
 | **—** | **Scale** (form section, unscored) | **⚪** | Live at `literacy.tinytars.foundation`; **English only**, against an audience defined partly by limited English |
 
-**Verdict: one indicator short of submittable.** Section 9 is green throughout — 9A, 9B and 9C — and
-indicator 7 is now the only outright failure, on the two questions a document cannot answer: no law is
-named anywhere, and there is no consent surface for special-category health data. The missing end-user
-guide is smaller but real. Everything else passes, or passes with a note.
+**Verdict: submittable on all nine indicators.** Nothing in this assessment reads ❌. Section 9 is
+green throughout — 9A, 9B and 9C — and indicator 7, the last outright failure, closed on 2026-11-03:
+`LAWS.md` names the law and the mechanism under each entry, and the model-provider send is stated on the
+basis it actually runs on. **Two notes remain, and both are 🟡 rather than failures**: the end-user
+guide is four steps in the app's own About overlay rather than a document a reviewer can read first
+(5.3), and the corpus send rests on authorized disclosure rather than on an affirmative gate the
+patient holds (7.4). Everything else passes, or passes with a note.
 
 Section 9 turned green on product work, not on wording. Between 2026-09-24 and 2026-09-27: uploaded
 originals are sealed under per-file content keys inside the vault and an unsealed upload is refused
@@ -262,7 +275,7 @@ finding DAG in `tinytars/reasoning`, under CC BY-SA 4.0.
 
 **Gaps** — none.
 
-## 7. Adherence to privacy and applicable laws — ❌
+## 7. Adherence to privacy and applicable laws — ✅
 
 **The form asks:** the list of laws LexiTar complies with, and links (privacy policy, terms) that
 demonstrate it.
@@ -272,41 +285,62 @@ A privacy policy (`tinytars.foundation/privacy`) and terms (`/terms`) are publis
 ships: what leaves the browser and to whom, the Foundation-openable recovery envelope that is there
 until the patient removes it, each processor by name with what its terms actually cover — including
 where nothing has been negotiated — the enforced age limit, self-service deletion and the reach it
-does not have, and a reporting channel with stated response times. The indicator still fails, on the
-two questions that rewrite does not answer.
+does not have, and a reporting channel with stated response times. What that rewrite did not do is
+answer the form's own first question, and `LAWS.md` is what answers it: **the law LexiTar operates
+under is named**, regime by regime, each with the mechanism in the software that bears on it and a file
+a reader can open. Nevada's NRS Chapter 82 for the entity; the FTC Health Breach Notification Rule as
+the privacy regime governing a US health product outside HIPAA; COPPA, out of reach by the enforced 16+
+floor and said so rather than ignored; HIPAA and the FDA's device rules named in order to be
+**disclaimed**, because a health product that stays silent about those two leaves a reader to guess and
+the guess runs in the product's favour; and WCAG 2.1 AA as a standard adhered to rather than a law
+claimed. **No regime outside the United States is claimed**, and no certification, seal, audit or
+attestation is held for any of them — `LAWS.md`'s own closing section is the list of what is *not*
+claimed, which is the half of an adherence statement that is usually missing.
 
 **Gaps**
-- **No law is identified as one LexiTar adheres to (7.1).** The form asks for a list. The candidates: GDPR
-  (EU users; health data is special-category), the FTC Health Breach Notification Rule, CCPA/CPRA,
-  Washington's My Health My Data Act, and ADA/WCAG for accessibility. Two of them are already named in this
-  repo, and naming is not what the form asks for: `LIABILITY.md` §3 puts the FTC Rule as the regime
-  governing a US-only health-literacy app and GDPR as what cross-border use triggers, which is an exposure
-  analysis written to decide a product question. The published policy names HIPAA only to disclaim it, and
-  the Terms carry a governing-law clause; neither is an adherence claim against a named law. What is missing
-  is therefore not a mention but the list, and the evidence under each entry.
-- **No consent capture for special-category data (7.4).** GDPR Article 9 wants explicit consent for
-  processing health data, and the flow that most needs one has none: the corpus sends whole documents to
-  a model provider when a record is *opened*, and disclosure at the point of use is not consent — the
-  `REPORTS` switch is the operator's, not the patient's.
+- **The model-provider send rests on authorized disclosure rather than on an affirmative gate.** The
+  corpus sends whole documents to the company operating the language model when a record is *opened*,
+  and there is no per-patient switch for it. That is a recorded decision with its reason at
+  `src/lib/brand.ts:42-50`, the mechanism is `CORPUS.md:366-394`, and `LAWS.md:70-84` states the basis
+  and names what holds it. Four facts a notice of this kind usually softens are stated plainly in the
+  in-app text and pinned verbatim by `tests/unit/brand.test.ts:49-55` — the documents go when a record
+  is opened rather than when a question is asked, whole documents rather than summaries, a copy
+  persists in the provider's cache for about an hour, and there is no negotiated zero-retention
+  agreement — and `tests/unit/brand.test.ts:57-60` fails the build if that text is ever edited to
+  promise the user a switch only the operator has. Whether the send happens at all is the operator's
+  `REPORTS` setting, which production runs off.
 
-  What changed on 2026-09-27 is that the estate now contains a working example of the artefact this
-  indicator asks for, in a different flow. Third-party command-line access is consented per person and
-  per window: the patient approves a named principal from their own unlocked session, choosing the
-  duration; the approval is stamped with a consent reference and an expiry, is revocable by them at any
-  time, is emailed to them on approval and on first use, and every read it performs appears on their own
-  access screen with them as the subject (`VAULT.md` §4b). Read-only is enforced rather than assumed, and
-  the credential cannot convert into account control.
+  What remains open is a product question rather than a legal one: an affirmative gate the patient
+  holds. The estate already contains a working example of the artefact, in a different flow.
+  Third-party command-line access is consented per person and per window: the patient approves a named
+  principal from their own unlocked session, choosing the duration; the approval is stamped with a
+  consent reference and an expiry, is revocable by them at any time, is emailed to them on approval and
+  on first use, and every read it performs appears on their own access screen with them as the subject
+  (`VAULT.md` §4b). Read-only is enforced rather than assumed, and the credential cannot convert into
+  account control.
 
-  **That does not move this verdict, and must not be written as though it does.** Consent for one
+  **That does not close this one, and must not be written as though it does.** Consent for one
   disclosure path is not consent for the processing the product does on every record open, and an
-  assessor asking "where is Article 9 consent for sending documents to a model provider" gets the same
-  answer as before: nowhere. What it changes is the cost of closing the gap — the mechanism for a
-  per-person, time-boxed, revocable, audited consent record now exists in this codebase and has a test
-  suite, so the remaining work is a consent surface for the corpus rather than a consent mechanism from
-  scratch.
+  assessor asking for a patient-held gate on the corpus flow gets the same answer as before: there
+  isn't one, by decision. What the third-party work changes is the cost of building one — the mechanism
+  for a per-person, time-boxed, revocable, audited consent record exists in this codebase and has a
+  test suite, so the remaining work is a consent surface for the corpus rather than a consent mechanism
+  from scratch.
 
-Neither is in this milestone's scope, and neither has been narrowed by it: what changed is that the
-published claims are now true, not that a law has been named.
+- **Two US state regimes are candidates and are named in no document.** `LAWS.md` names five
+  regimes, and **Washington's My Health My Data Act** is not among them — a statute written for
+  "consumer health data", carrying a private right of action and its own consent requirements, and
+  the one on this list that most plainly reaches a health-literacy product. **CCPA/CPRA** is the
+  weaker candidate and is named here for completeness: it binds a "business" operated for profit,
+  which a 501(c)(3) is not, so the likely answer is that it does not apply — but "likely" is the
+  word, and no document says it. This is a question about whether the list is complete rather than
+  a defect in the answer to 7.1, which is why the row above is ✅: the form asks a project to name
+  the law it operates under, and it has. Deciding either regime is a legal-scope call wanting its
+  own pass over `LAWS.md`, not a re-score.
+
+Two notes, then, and neither is the ❌ this section carried until 2026-11-03. Naming the law did not
+narrow the first, and nothing here claims it did; the second is work this assessment is recording
+rather than closing.
 
 ## 8. Adherence to standards and best practices — ✅
 
@@ -315,8 +349,8 @@ published claims are now true, not that a law has been named.
 - **Open standards:** WebAuthn/FIDO2 passkeys; W3C Web Crypto (AES-GCM-256, PBKDF2-SHA256, ECDH-ES
   P-256, HMAC-SHA256); OAuth 2.0 / OpenID Connect (Google sign-in); WCAG 2.1 AA, asserted by axe in
   `tests/e2e/a11y.spec.ts`; CSV and JSON for export.
-- **Best practices:** CI on every PR (`.github/workflows/ci.yml`) with 356 unit and 62 e2e files
-  and enforced coverage (`coverage-thresholds.json`); CodeQL; Dependabot for npm and Actions; private
+- **Best practices:** CI on every PR (`.github/workflows/ci.yml`) with 351 unit and 62 e2e files
+  (measured 2026-11-03) and enforced coverage (`coverage-thresholds.json`); CodeQL; Dependabot for npm and Actions; private
   vulnerability reporting (`../../SECURITY.md`); a code of conduct. One of those suites is evidence of a
   different kind: `tests/unit/org-key-chokepoint.test.ts` sweeps `scripts/` and fails the build when any
   file other than the single audited module opens the operator's org key — an assessor can run that
