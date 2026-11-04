@@ -192,7 +192,14 @@
     const r2id = session.r2Id;
     const key64 = session.dek;
     vault = next;
-    if (!(await vaultSave.push(async () => void (await saveRecord(next, r2id, key64))))) throw new Error("the content key could not be saved");
+    if (!(await vaultSave.push(async () => void (await saveRecord(next, r2id, key64))))) {
+      // The reason, not the symptom. putRaw refuses the upload when this throws — the key has to be
+      // durable before its ciphertext exists — so this message is the whole of what the patient is
+      // told about a file that did not arrive, and "the content key could not be saved" named
+      // neither the cause nor the remedy. The commonest cause by far is a record open in a second
+      // tab or on a phone, which the dialog behind this one can clear in a click.
+      throw new Error(vaultSave.lastFailure ?? "the content key could not be saved");
+    }
   }
 
   // Content keys recorded OUT OF BAND, adopted without a reload.

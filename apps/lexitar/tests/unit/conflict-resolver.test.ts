@@ -70,13 +70,35 @@ describe("resolveConflictKeepMine", () => {
     expect(state.conflict).toBeNull();
   });
 
-  it("skips the re-fetch when the conflict already carries a serverEtag", async () => {
+  it("re-reads the stored blob EVEN WITH a serverEtag, so the other side's content keys survive", async () => {
+    // It used to skip the read when the refusal handed back a token, which is what made this button
+    // destroy content keys: the write is whole-vault, so the keys the other device minted went with
+    // the edits this button is meant to overwrite. Measured once in production, unrecoverably.
     const { resolver, fetchVaultBlob, saveVault } = makeHarness({
       getConflict: () => new VaultConflictError("etag-123"),
     });
     await resolver.resolveConflictKeepMine();
-    expect(fetchVaultBlob).not.toHaveBeenCalled();
+    expect(fetchVaultBlob).toHaveBeenCalledTimes(1);
     expect(saveVault).toHaveBeenCalledTimes(1);
+  });
+
+  it("writes the stored blob's content keys back, keeping its own on a collision", async () => {
+    const mine: Vault = { clients: {}, rawKeys: { c1: { "mine.jpg": "key-mine", "both.jpg": "key-ours" } } } as Vault;
+    const stored = { clients: {}, rawKeys: { c1: { "theirs.jpg": "key-theirs", "both.jpg": "key-stored" } } } as unknown as Vault;
+    let written: Vault | undefined;
+    const { resolver, state } = makeHarness({
+      getVault: () => mine,
+      decryptVault: vi.fn(async () => stored),
+      saveVault: async (v) => { written = v; },
+    });
+    await resolver.resolveConflictKeepMine();
+    expect(written?.rawKeys?.c1).toEqual({
+      "mine.jpg": "key-mine",
+      "theirs.jpg": "key-theirs",
+      "both.jpg": "key-ours", // this copy wins a collision; a key is append-only per file either way
+    });
+    // and the merge is adopted in memory, or the next whole-vault save would drop them again
+    expect(state.vault?.rawKeys?.c1["theirs.jpg"]).toBe("key-theirs");
   });
 
   it("clears resolving even when the save throws", async () => {
@@ -127,15 +149,39 @@ describe("resolveConflictTakeTheirs", () => {
     expect(decryptVault).not.toHaveBeenCalled();
   });
 
-  it("fetches, decrypts, replaces the vault, and clears the conflict", async () => {
+  it("fetches, decrypts, takes the stored record, and clears the conflict", async () => {
     const decrypted = { clients: { fresh: {} } } as unknown as Vault;
     const { resolver, state, fetchVaultBlob } = makeHarness({
       decryptVault: vi.fn(async () => decrypted),
     });
     await resolver.resolveConflictTakeTheirs();
     expect(fetchVaultBlob).toHaveBeenCalledTimes(1);
-    expect(state.vault).toBe(decrypted);
+    expect(state.vault?.clients).toEqual({ fresh: {} });
     expect(state.conflict).toBeNull();
+  });
+
+  it("keeps the content keys this tab minted, whose ciphertext is already uploaded", async () => {
+    // Discarding this tab's EDITS is what the patient chose. Discarding a key it minted is not: the
+    // bytes are in R2 already and the key is the only thing that can ever open them.
+    const mine: Vault = { clients: {}, rawKeys: { c1: { "just-uploaded.jpg": "key-mine" } } } as Vault;
+    const theirs = { clients: { fresh: {} }, rawKeys: { c1: { "older.jpg": "key-theirs" } } } as unknown as Vault;
+    const { resolver, state } = makeHarness({
+      getVault: () => mine,
+      decryptVault: vi.fn(async () => theirs),
+    });
+    await resolver.resolveConflictTakeTheirs();
+    expect(state.vault?.clients).toEqual({ fresh: {} }); // their edits won, as chosen
+    expect(state.vault?.rawKeys?.c1).toEqual({ "just-uploaded.jpg": "key-mine", "older.jpg": "key-theirs" });
+  });
+
+  it("takes the stored record when this tab has no vault at all", async () => {
+    const theirs = { clients: { fresh: {} } } as unknown as Vault;
+    const { resolver, state } = makeHarness({
+      getVault: () => null,
+      decryptVault: vi.fn(async () => theirs),
+    });
+    await resolver.resolveConflictTakeTheirs();
+    expect(state.vault).toBe(theirs);
   });
 
   it("clears resolving even when decrypt throws", async () => {

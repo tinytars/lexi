@@ -120,3 +120,44 @@ describe("everything else about a refused save is unchanged", () => {
     expect(written).toEqual(["after-conflict"]);
   });
 });
+
+// A caller that AWAITS a push cannot proceed without it, and `false` alone tells it nothing it can
+// pass on. recordRawKey is that caller: the content key must be durable before the ciphertext exists,
+// so when the save is refused the upload is refused too — and the thrown message is the whole of what
+// the patient is told about a file that did not arrive. It used to read "the content key could not be
+// saved", naming neither the cause nor the remedy while the cause sat on screen in the dialog behind
+// it. `lastFailure` carries the reason WITHOUT latching `error`, so the retry stays disarmed.
+describe("the reason survives for a caller awaiting durability", () => {
+  it("records a conflict's reason without arming the banner or the retry", async () => {
+    const vs = createVaultSave();
+    vs.push(() => Promise.reject(conflict()));
+    await flush();
+
+    expect(vs.lastFailure).toBe(new VaultConflictError("x").message);
+    expect(vs.error).toBeNull();
+    expect(vs.canRetry).toBe(false);
+    expect(reported).toEqual([]);
+  });
+
+  it("records a genuine failure's reason too, alongside the banner", async () => {
+    const vs = createVaultSave();
+    vs.push(() => Promise.reject(new Error("record too large")));
+    await flush();
+
+    expect(vs.lastFailure).toBe("record too large");
+    expect(vs.error).toBe("record too large");
+  });
+
+  it("is null before anything has failed, and cleared by a success", async () => {
+    const vs = createVaultSave();
+    expect(vs.lastFailure).toBeNull();
+
+    vs.push(() => Promise.reject(conflict()));
+    await flush();
+    expect(vs.lastFailure).not.toBeNull();
+
+    vs.push(() => Promise.resolve());
+    await flush();
+    expect(vs.lastFailure).toBeNull();
+  });
+});
