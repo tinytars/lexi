@@ -3,6 +3,7 @@
   import Modal from "./Modal.svelte";
   import { openPdf, type PdfDoc } from "./pdf-render";
   import { resolveAttachmentUrl, type AttachmentUrl } from "./attachment-url.svelte";
+  import { isAttachmentMissing } from "./missing-attachments.svelte";
 
   // The in-app viewer every attachment click opens (AttachmentStrip.svelte) instead
   // of a bare new-tab link. Images render directly; PDFs render page-by-page onto a <canvas> via
@@ -19,6 +20,10 @@
   let { attachments, index = $bindable(), clientId, attachmentUrl, onClose }: Props = $props();
 
   let current = $derived(attachments[index]);
+  // The strip shows the symbol; this is where it is named. Said before any fetch is attempted,
+  // because the reason a fetch is about to fail is already known and "Couldn't open this" is the
+  // wrong sentence for a file that is not there to open.
+  let missing = $derived(!!current && isAttachmentMissing(current.key));
   let isImage = $derived(current?.mediaType.startsWith("image/") ?? false);
   let isPdf = $derived(current?.mediaType === "application/pdf");
   // One resolution serves the image, the download link and the PDF open: all three want the bytes
@@ -77,7 +82,9 @@
       {#if attachments.length > 1}
         <button type="button" class="viewer-nav prev" disabled={index === 0} onclick={() => go(-1)} aria-label="Previous attachment">‹</button>
       {/if}
-      {#if url.error && !isPdf}
+      {#if missing}
+        <p class="viewer-error">This file is missing from storage — the record names it, but the store has no record of it, so nothing can open it. Attaching it again is the only way back.</p>
+      {:else if url.error && !isPdf}
         <p class="viewer-error">{url.error}</p>
       {:else if isImage && current && url.current}
         <img class="viewer-image" src={url.current} alt={current.name} />

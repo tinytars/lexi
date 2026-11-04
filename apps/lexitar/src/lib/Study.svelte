@@ -240,7 +240,7 @@
     <div class="study-editbar"><SaveStatus {saved} /></div>
     <SaveStatus error={saveError} />
     <SaveStatus error={attachError} />
-    <SaveStatus error={tr.translateError} />
+    <SaveStatus error={tr.translateError} notice={tr.translateNotice} />
 
     {#each filteredEntries as { e, i } (e)}{@render entryRow(e, i)}{/each}
   {:else if pairs.length === 0}

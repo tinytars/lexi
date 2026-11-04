@@ -45,7 +45,17 @@ export const LEAF_REGEN_NODES = [
  */
 export const UNOWNED_LEAF_NODES = ["treatmentGroups", "aiOnPlan"] as const;
 
-export type RegenStatus = { status: "filled" | "empty" | "skipped" | "failed"; error?: string; errorCode?: string };
+export type RegenStatus = {
+  status: "filled" | "empty" | "skipped" | "failed";
+  error?: string;
+  errorCode?: string;
+  /**
+   * How many of the record's attachments the request could not read, so a "filled" above answers
+   * less than the record holds. Carried only where it is true of what was persisted — a result
+   * nobody kept has nothing to qualify.
+   */
+  unavailableAttachments?: number;
+};
 
 export interface LeafRegenQueueDeps {
   /** The client this queue is about, read fresh on every call — never captured. */
@@ -174,7 +184,11 @@ export function createLeafRegenQueue(deps: LeafRegenQueueDeps): LeafRegenQueue {
       const pending = await (deps.fetchLeafRegen ?? fetchLeafRegen)(c, key, targetLabels, id);
       if (!pending) return { status: "empty" };
       const persisted = await deps.persist(pending, id);
-      return { status: persisted ? "filled" : "skipped" };
+      if (!persisted) return { status: "skipped" };
+      return {
+        status: "filled",
+        ...(pending.unavailableAttachments ? { unavailableAttachments: pending.unavailableAttachments } : {}),
+      };
     } catch (e) {
       lastSig[key] = ""; // let the next edit retry; the existing value stays visible meanwhile
       // describeAiError, not e.message: the relay's machine-readable errorCode is what decides the

@@ -20,6 +20,14 @@
 //     browser's own sweep (src/lib/raw-seal-heal.ts) is the only lane for those, which is the setting
 //     working rather than a gap.
 //
+// WHOSE VAULT IT ASKS FOR is scripts/keyring-owner.ts's question and not quite the first writer's:
+// five routes record the CALLER on a `raw_objects` row rather than the subject, so a namespace whose
+// oldest row names an account with no openable vault would be refused as one of the two above while
+// the patient's own ring holds every key. Measured on dev, where that mis-attribution left 3
+// cleartext sidecars refused as "orphaned, or org recovery revoked" under a namespace that is
+// neither. Both refusals survive the fallback — an orphan has no first writer at all, and a revoked
+// account is never what `openableSet` admits.
+//
 // THE KEY IS SAVED BEFORE THE CIPHERTEXT EXISTS, and the vault is read back to prove it landed. A
 // sealed object whose key was never saved is unopenable, and because the corpus reads every
 // `raw_objects` row under a namespace, one of them refuses that patient's every question — a loss no
@@ -32,7 +40,7 @@
 import "./load-creds";
 import { d1, q, D1 } from "./d1-remote";
 import { LIVE_BUCKET, assertLiveWriteAllowed, getObject, putObject, resolveStore } from "./vault-sync";
-import { openVaultFor, ownerOf, parseRawKey } from "./raw-cipher-cli";
+import { keyringOwnerOf, openVaultFor, parseRawKey } from "./raw-cipher-cli";
 import { flushOrgKeyUses } from "./access-log";
 import { encryptVaultV2, decryptVaultV2 } from "@tinytars/vault/crypto";
 import { isSealed, sealRaw } from "../src/lib/raw-cipher";
@@ -87,7 +95,7 @@ async function saveAndVerify(open: { vault: Vault; dek: CryptoKey; r2Key: string
 }
 
 async function sweepNamespace(slug: string, keys: string[], confirm: boolean, counts: Counts, say: (line: string) => void): Promise<void> {
-  const owner = await ownerOf(STORE, slug);
+  const owner = await keyringOwnerOf(STORE, slug);
   if (!owner) {
     counts.orphaned += 1;
     say(`  ~ ${slug}: orphaned — left plaintext so it stays claimable (raw/claim.ts)`);

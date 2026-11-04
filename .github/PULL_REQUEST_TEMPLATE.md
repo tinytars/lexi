@@ -1,3 +1,10 @@
+<!-- What authorized this work. Replace the block below: either the plan and phase it came
+     from, or - if no phase did - the null form with a reason. `provenance` checks it. -->
+
+```json
+{ "plan": null, "phase": null, "reason": "<a dependency bump / a failing check / asked for directly>" }
+```
+
 ## What changed and why
 
 ## Checklist
@@ -10,3 +17,4 @@
 - [ ] If this adds meaningful new controller logic, added a first test for it (see
       `CONTRIBUTING.md`'s Style section — this package currently has none).
 - [ ] `npm run typecheck --workspace packages/frame` passes locally.
+- [ ] The declaration above says what authorized this, with the placeholder replaced.

@@ -234,7 +234,7 @@
   </div>
   <SaveStatus error={saveError} />
   <SaveStatus error={attachError} />
-  <SaveStatus error={tr.translateError} />
+  <SaveStatus error={tr.translateError} notice={tr.translateNotice} />
 
   <section class="fh-block" id="family-history-list">
     {#if sortedFamily.length === 0}

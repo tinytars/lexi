@@ -39,6 +39,23 @@ for the primitive itself.
   `src/lib/parsers`) rather than introducing a new pattern for the same kind of problem — see
   [`ARCHITECTURE.md`](ARCHITECTURE.md) for the shape as it stands.
 
+## Say what authorized the work
+
+**The pull request body opens with a fenced `json` block**, and `provenance` checks that it does.
+The template is pre-filled with the form for a change no plan authorized — a dependency bump, a
+failing check, something asked for directly — which is the form an outside contribution wants:
+
+```json
+{ "plan": null, "phase": null, "reason": "why this exists" }
+```
+
+A change that *did* come from a phase of a plan names it instead, with the plan path, the phase, the
+commit it rewinds to, and that phase's verify, undo and door rows. A diff says what changed and
+never what asked for it, and the branch that would have said is deleted at the merge — so the body
+is the only place the answer survives, and an absent one is a defect rather than an ambiguity.
+
+Fix a refusal by editing the body. The check re-runs on an edit, so it costs no commit.
+
 ## Inbound contributions: sign off, don't sign a CLA
 
 **Every commit needs a `Signed-off-by` line, and nothing else.** `git commit -s` appends it from your

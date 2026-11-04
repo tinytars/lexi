@@ -26,6 +26,7 @@ import { openRaw, isSealed } from "../src/lib/raw-cipher";
 import { ORG_ACCOUNT_ID } from "../functions/_lib/org";
 import type { Vault } from "../src/lib/types";
 import { keyRange } from "../functions/_lib/key-range";
+import { keyringOwner } from "./keyring-owner";
 
 /** `{store}/raw/{slug}/{file}`, or the `{store}/text/{slug}/{file}.json` sidecar sealed under the
  *  SAME content key as the document it transcribes — so both resolve to one lookup. */
@@ -48,6 +49,10 @@ export interface OpenVault {
 // unwrap and one vault fetch per patient rather than one per file.
 const ownerBySlug = new Map<string, string | null>();
 const vaultByAccount = new Map<string, OpenVault | null>();
+// Every account this lane could open a vault for, read once per run. It answers `keyringOwner`'s
+// `openable` WITHOUT opening anything, which is what keeps the fallback from costing an org-key
+// unwrap per namespace just to find out that the first writer was fine.
+let openableAccounts: Set<string> | null = null;
 
 export async function ownerOf(store: string, slug: string): Promise<string | null> {
   const hit = ownerBySlug.get(slug);
@@ -68,6 +73,32 @@ export async function ownerOf(store: string, slug: string): Promise<string | nul
   const owner = row?.account_id ?? null;
   ownerBySlug.set(slug, owner);
   return owner;
+}
+
+/**
+ * Every account with a vault this lane can open: a vault row, org recovery not revoked, and an
+ * envelope for the org principal — the same three conditions `openVaultFor` applies below, minus the
+ * blob being present, which only a fetch can answer and which fails closed anyway.
+ */
+async function openableSet(): Promise<Set<string>> {
+  if (openableAccounts) return openableAccounts;
+  const rows = await d1<{ owner_account_id: string }>(
+    `SELECT v.owner_account_id FROM vaults v
+      WHERE v.org_recovery_revoked_at IS NULL
+        AND EXISTS (SELECT 1 FROM vault_envelopes e WHERE e.vault_id = v.vault_id AND e.principal_account_id = ${q(ORG_ACCOUNT_ID)})`,
+  );
+  openableAccounts = new Set(rows.map((r) => r.owner_account_id));
+  return openableAccounts;
+}
+
+/**
+ * The account whose key ring holds this namespace's content keys — the first writer, or, where that
+ * row is one of the mis-attributed ones and names an account with no openable vault, the account the
+ * slug itself names. scripts/keyring-owner.ts carries the rule and why both refusals survive it.
+ */
+export async function keyringOwnerOf(store: string, slug: string): Promise<string | null> {
+  const openable = await openableSet();
+  return keyringOwner(await ownerOf(store, slug), slug, (id) => openable.has(id));
 }
 
 /**
@@ -120,7 +151,7 @@ async function keyringFor(store: string, accountId: string): Promise<Record<stri
 export async function contentKeyFor(r2Key: string, store = resolveStore()): Promise<string | undefined> {
   const parsed = parseRawKey(r2Key);
   if (!parsed) return undefined;
-  const owner = await ownerOf(store, parsed.slug);
+  const owner = await keyringOwnerOf(store, parsed.slug);
   if (!owner) return undefined;
   return (await keyringFor(store, owner))[parsed.slug]?.[parsed.file];
 }

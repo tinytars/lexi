@@ -31,7 +31,7 @@
   import { aiAvailability } from "./lib/ai-availability.svelte";
   import { reportCaughtError } from "./lib/error-reporter";
   import { dagNode } from "./lib/finding-dag";
-  import { tick } from "svelte";
+  import { tick, untrack } from "svelte";
   import { TABS, DEFAULT_TAB, type Tab, type SidebarNavRow } from "./lib/nav";
   import { bootFromLocation } from "./lib/boot-location";
   import { parseHash, toHash, SECTION_TAB, type Permalink } from "./lib/permalink";
@@ -66,6 +66,9 @@
   import { reclaimOrphans } from "./lib/orphan-claim";
   import { setRawKeyring, clearRawKeyring, setRawKeySink, setRawKeyRefresh, withRawKey, withStoredRawKeys } from "./lib/vault-raw-keys";
   import { revokeAttachmentBlobs } from "./lib/attachment-store";
+  import { attachmentKeysOf } from "./lib/attachment-keys";
+  import { reconcileAttachments } from "./lib/attachment-reconcile";
+  import { setMissingAttachments, clearMissingAttachments } from "@tinytars/frame/missing-attachments.svelte";
   import { putRaw } from "./lib/attachment-store";
   import { healRawPageCounts } from "./lib/raw-pages-heal";
   import { healRawSealing } from "./lib/raw-seal-heal";
@@ -192,7 +195,14 @@
     const r2id = session.r2Id;
     const key64 = session.dek;
     vault = next;
-    if (!(await vaultSave.push(async () => void (await saveRecord(next, r2id, key64))))) throw new Error("the content key could not be saved");
+    if (!(await vaultSave.push(async () => void (await saveRecord(next, r2id, key64))))) {
+      // The reason, not the symptom. putRaw refuses the upload when this throws — the key has to be
+      // durable before its ciphertext exists — so this message is the whole of what the patient is
+      // told about a file that did not arrive, and "the content key could not be saved" named
+      // neither the cause nor the remedy. The commonest cause by far is a record open in a second
+      // tab or on a phone, which the dialog behind this one can clear in a click.
+      throw new Error(vaultSave.lastFailure ?? "the content key could not be saved");
+    }
   }
 
   // Content keys recorded OUT OF BAND, adopted without a reload.
@@ -770,6 +780,60 @@
         .catch(() => undefined)
         .then(() => healRawPageCounts(id));
     }
+  });
+
+  // Which attachment keys the record names, as one string — the reconcile's trigger.
+  //
+  // Not `currentClient`: editing a note's text cannot change whether its attachment exists, and an
+  // effect on the record would re-list the namespace on every keystroke. The key SET is the only
+  // thing that can change the answer, so attaching or removing a file re-asks and nothing else
+  // does. Sorted, so the same set in a different order is the same signature.
+  let attachmentKeySig = $derived(
+    currentClient
+      ? attachmentKeysOf(currentClient)
+          .map((a) => a.key)
+          .sort()
+          .join("|")
+      : "",
+  );
+
+  // A record may name attachments whose bytes are not there — an upload refused before its PUT
+  // leaves the reference behind, and the next successful save of any unrelated edit makes it
+  // durable (attachment-reconcile.ts). Until this ran, the only trace was a 404 per key in the
+  // console and a document chip that looked fine. REPORTS ONLY: it marks the chips, and what to do
+  // about a file that is gone is the reader's decision.
+  // Which namespace the marks on screen belong to, so a client switch drops them before the new
+  // one's listing arrives. Without it the previous record's answer stays marked against whatever is
+  // now on screen — a stale warning on a healthy record, which is the one way this teaches its
+  // reader to ignore it.
+  let reconciledFor: string | null = null;
+
+  $effect(() => {
+    const id = selectedClientId;
+    const sig = attachmentKeySig;
+    if (id !== reconciledFor) {
+      clearMissingAttachments();
+      reconciledFor = id;
+    }
+    if (!id || !sig) {
+      clearMissingAttachments();
+      return;
+    }
+    // untrack: the reconcile needs the whole record to enumerate labels, and READING it here would
+    // make this effect depend on it — reinstating the per-keystroke listing the signature above
+    // exists to avoid.
+    const client = untrack(() => currentClient);
+    if (!client) return;
+    let live = true;
+    void reconcileAttachments(id, client)
+      .then((r) => {
+        // A listing that could not be read means "unknown", not "all present" — see Reconciliation.
+        if (live && r.listed) setMissingAttachments(r.missing.map((m) => m.key));
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
   });
 
   $effect(() => {

@@ -4,7 +4,8 @@
 // factory state, since App's markup reads it directly for the disabled/"working…" UI).
 
 import type { Vault } from "./types";
-import { VaultConflictError, rememberVaultEtag } from "@tinytars/vault/vault-sink";
+import { withStoredRawKeys } from "./vault-raw-keys";
+import { VaultConflictError } from "@tinytars/vault/vault-sink";
 
 export interface ConflictResolverDeps {
   getVault: () => Vault | null;
@@ -40,10 +41,26 @@ export function createConflictResolver(deps: ConflictResolverDeps): ConflictReso
     if (!vault || !dek || !r2Id || deps.getResolving()) return;
     deps.setResolving(true);
     try {
-      const conflict = deps.getConflict();
-      rememberVaultEtag(r2Id, conflict?.serverEtag ?? null);
-      if (!conflict?.serverEtag) await deps.fetchVaultBlob(r2Id); // no token handed back: re-read for one
-      await deps.saveVault(vault, r2Id, dek);
+      // The stored blob is read on EVERY resolution, not only when the refusal handed back no version
+      // token. Overwriting the other side's edits is what this button promises; overwriting its CONTENT
+      // KEYS is not, and a whole-vault write does both unless the keys are merged back in first.
+      //
+      // Measured in production 2026-11-04: an image uploaded from one device at 8:03 AM PT is in R2 at
+      // 115,902 bytes with no key in the vault, because the other device resolved a conflict from an
+      // in-memory vault minted before that key existed. The ciphertext is in R2, which has no
+      // conflict control of its own, so it survived the write that discarded the only means of opening
+      // it — and no snapshot predating the key can give it back. That file cannot be opened by anyone,
+      // ever.
+      //
+      // The merge is safe in both directions, for the reason withStoredRawKeys states: a content key is
+      // append-only per file (attachment-store.ts reuses one rather than replacing it), so this copy
+      // wins for a file it just minted and the stored blob wins for one it has never seen. Re-reading
+      // also re-arms If-Match on the version actually being overwritten, which is the one the patient
+      // is choosing to replace at the moment they click.
+      const stored = await deps.decryptVault(await deps.fetchVaultBlob(r2Id), dek);
+      const merged = withStoredRawKeys(vault, stored.rawKeys);
+      deps.setVault(merged);
+      await deps.saveVault(merged, r2Id, dek);
       deps.setConflict(null);
     } catch (e) {
       if (e instanceof VaultConflictError) deps.setConflict(e);
@@ -59,7 +76,12 @@ export function createConflictResolver(deps: ConflictResolverDeps): ConflictReso
     deps.setResolving(true);
     try {
       const blob = await deps.fetchVaultBlob(r2Id);
-      deps.setVault(await deps.decryptVault(blob, dek));
+      const theirs = await deps.decryptVault(blob, dek);
+      // Discarding this tab's EDITS must not discard the content keys it minted. Those keys are not an
+      // edit the patient is choosing between: their ciphertext is already uploaded, and the key is the
+      // only thing that can ever open it. Dropping one here strands bytes nobody can read.
+      const mine = deps.getVault();
+      deps.setVault(mine ? withStoredRawKeys(theirs, mine.rawKeys) : theirs);
       deps.setConflict(null);
     } finally {
       deps.setResolving(false);

@@ -57,6 +57,7 @@
     "./LoginScreen.svelte": "./LoginScreen.svelte",
     "./menu-items": "./menu-items.ts",
     "./menu-registry.svelte": "./menu-registry.svelte.ts",
+    "./missing-attachments.svelte": "./missing-attachments.svelte.ts",
     "./Modal.svelte": "./Modal.svelte",
     "./ModalActions.svelte": "./ModalActions.svelte",
     "./Onboarding.svelte": "./Onboarding.svelte",

@@ -222,7 +222,7 @@
   </div>
   <SaveStatus error={saveError} />
   <SaveStatus error={attachError} />
-  <SaveStatus error={tr.translateError} />
+  <SaveStatus error={tr.translateError} notice={tr.translateNotice} />
 
   <section class="az-block" id="allergies-list">
     {#if sortedAllergies.length === 0}

@@ -380,6 +380,17 @@ to every patient is the failure mode a flag like this always has.
 It is deliberately **not per-feature**. A per-feature flag would let a deployer make chat
 partially-informed, which is the thing this change exists to end.
 
+It is deliberately **not per-patient** either, and that is the harder half of the same decision.
+A per-patient switch reads as the respectful option, and for this product it is not: the documents
+are what make the answers worth having, so a patient who declines gets a confidently-worded,
+half-informed answer about their own medical record — which is worse than an informed one and
+indistinguishable from it on screen. The alternative chosen is **disclosure instead of a switch**,
+in full and at the point of use rather than in a policy page: `src/lib/brand.ts:42-50` carries the
+decision and the four facts it refuses to soften, `src/lib/Disclaimer.svelte:10` is where a user
+reads them, and `tests/unit/brand.test.ts:57-60` fails the build if that text is ever edited to
+offer a switch only the operator has. What a user controls instead is which documents exist in the
+record at all, and whether to use the feature. `LAWS.md` §2 states the legal basis this rests on.
+
 It lives in `wrangler.jsonc` rather than `inference.config.json` because that file is already the
 deliberately branch-divergent per-environment one, preserved across promotions by `promote.yml`'s
 `keep-paths` — so dev can run `"always"` while production stays `"never"`, with no new mechanism.
