@@ -1,6 +1,7 @@
 <script lang="ts">
   import { tick } from "svelte";
   import { describeAiError } from "./ai-error";
+  import { describeUnavailableAttachments } from "./leaf-translate.svelte";
   import { assessmentFor } from "@pablotech/akesi/treatment-bucket";
   import { formatIngredient, hasProductData } from "@pablotech/akesi/treatment-product";
   import { computeConclusion, isConclusion, conclusionMessage, formatIngredientTotal } from "./treatment-conclusion";
@@ -58,7 +59,7 @@
     // M66 P7 — fires right after a treatment Add/Save: treatmentAssessment for an ongoing/past-bucket
     // save, aiOnPlan for a planned-bucket save (bucket derived from dates, same as the row's own logic),
     // so the shell kicks off the matching background regen immediately.
-    onTriggerRegen?: (key: string, targetLabels?: string[], force?: boolean) => Promise<{ status: "filled" | "empty" | "skipped" | "failed"; error?: string }>;
+    onTriggerRegen?: (key: string, targetLabels?: string[], force?: boolean) => Promise<{ status: "filled" | "empty" | "skipped" | "failed"; error?: string; unavailableAttachments?: number }>;
     saved?: boolean;
     saveError?: string | null;
     // M70/Phase 0 — plumbing only; wired to a "Chat" button in a later phase.
@@ -258,12 +259,25 @@
   // page-level error line (what this used to be) is off-screen for any row below the fold, which is
   // why a failing Translate read as "the button does nothing".
   let translateErrorId = $state<string | null>(null);
+  // The assessment above is the measured case: production computed one twice with four of the
+  // patient's documents left out and said so only in a console line. Keyed per row exactly as the
+  // error is, for the same reason — a page-level line is off-screen for any card below the fold.
+  // Separate from translateError because this result SUCCEEDED and is on screen; calling it an
+  // error would send the reader looking for a retry, and re-running skips the same files again.
+  let translateNotice = $state<string | null>(null);
+  let translateNoticeId = $state<string | null>(null);
   async function doTranslate(t: TreatmentItem) {
     translatingId = t.id;
     translateError = null;
     translateErrorId = t.id;
+    translateNotice = null;
+    translateNoticeId = null;
     try {
       const r = await onTriggerRegen?.("treatmentAssessment", [t.name], true);
+      if (r?.unavailableAttachments) {
+        translateNotice = describeUnavailableAttachments(r.unavailableAttachments);
+        translateNoticeId = t.id;
+      }
       if (r?.status === "failed") translateError = r.error ?? "Couldn't translate.";
       else if (r?.status === "empty") translateError = "Nothing to translate yet.";
       // "skipped" is normally a no-op worth no comment (the client switched mid-flight), but the
@@ -483,7 +497,14 @@
     if (rowId) translatingId = rowId;
     void pending
       ?.then((r) => {
-        if (r?.status !== "failed" || !rowId) return;
+        if (!rowId) return;
+        // The auto-trigger is the path the production incident came through — nobody clicked
+        // anything, so this is the only place the gap can be said.
+        if (r?.unavailableAttachments) {
+          translateNotice = describeUnavailableAttachments(r.unavailableAttachments);
+          translateNoticeId = rowId;
+        }
+        if (r?.status !== "failed") return;
         translateError = r.error ?? "Couldn't update the assessment.";
         translateErrorId = rowId;
       })
@@ -848,6 +869,7 @@
             <p class="leaf-row-empty">No {PRODUCT_NAME} assessment — regenerate the Translation.</p>
           {/if}
           {#if translateErrorId === g.rows[0].id && translateError}<p class="translate-error">{translateError}</p>{/if}
+          {#if translateNoticeId === g.rows[0].id && translateNotice}<p class="translate-notice">{translateNotice}</p>{/if}
         {/snippet}
         <LeafCard title={medTitle} items={groupActions(g)} pinned={!!g.rows[0].pinned} onTogglePin={() => togglePinMedicine(g)}>
           <div class="med-turns">
@@ -1059,6 +1081,8 @@
      off-screen for any row below the fold, which read as "the button does nothing". */
   .translate-note { margin: 0.3rem 0 0; font-size: 0.8rem; color: var(--muted); font-style: italic; }
   .translate-error { margin: 0.3rem 0 0; font-size: 0.8rem; color: var(--alert); }
+  /* Muted, not --alert: the assessment is usable, it just answers less than the record holds. */
+  .translate-notice { margin: 0.3rem 0 0; font-size: 0.8rem; color: var(--muted); }
 
   /* Phone — five columns cannot honestly fit 375px: squeezing them either forces a sideways scroll
      or crushes the action buttons to one letter per line. So below 560px the table stops behaving

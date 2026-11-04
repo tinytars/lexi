@@ -4,6 +4,7 @@
   import AttachmentThumb from "./AttachmentThumb.svelte";
   import type { AttachmentUrl } from "./attachment-url.svelte";
   import { uniqueByKey } from "./attachments";
+  import { isAttachmentMissing } from "./missing-attachments.svelte";
 
   // The one shared display for a leaf's attachments[]: a row of small thumbnail chips (image
   // preview, or a document glyph for anything else), each opening the in-app viewer
@@ -25,7 +26,10 @@
 
   let openIndex = $state<number | null>(null);
 
+  // The absence comes first because it outranks every other thing a chip can say: a document that
+  // was read, and whose text has been going into answers ever since, is no longer there to read.
   function chipTitle(a: Attachment): string {
+    if (isAttachmentMissing(a.key)) return `${a.name} — missing: the store has no record of this file, so nothing can open it`;
     if (a.extracted?.error) return `${a.name} — couldn't be read: ${a.extracted.error}`;
     if (a.extracted?.kind) return `${a.name} — read as ${a.extracted.kind}`;
     return a.name;
@@ -37,7 +41,12 @@
     {#each attachments as a, i (a.key)}
       <div class="attachment-chip">
         <button type="button" class="attachment-link" onclick={() => (openIndex = i)} title={chipTitle(a)}>
-          {#if a.mediaType.startsWith("image/")}
+          {#if isAttachmentMissing(a.key)}
+            <!-- Checked before the media type, because this is the one state both kinds share and
+                 neither can show for itself: a thumbnail would fetch and fail to the same symbol a
+                 slow connection shows, and a document glyph would say nothing at all. -->
+            <span class="attachment-gone" aria-hidden="true">⚠</span>
+          {:else if a.mediaType.startsWith("image/")}
             <AttachmentThumb {clientId} fileKey={a.key} {attachmentUrl} />
           {:else}
             <span class="attachment-glyph" aria-hidden="true">📄</span>
@@ -47,7 +56,9 @@
              one that failed contributes nothing at all. That difference is invisible without a
              mark, and a silently-ignored document is exactly the failure this milestone set out
              to end. -->
-        {#if a.extracted?.error}
+        {#if isAttachmentMissing(a.key)}
+          <span class="attachment-badge failed" title={chipTitle(a)}>!</span>
+        {:else if a.extracted?.error}
           <span class="attachment-badge failed" title="Couldn't read this document: {a.extracted.error}">!</span>
         {:else if a.extracted && a.extracted.chars > 0}
           <span class="attachment-badge read" title="Read — {a.extracted.chars.toLocaleString()} characters available to {productName}">✓</span>
@@ -73,6 +84,12 @@
   }
   .attachment-link:hover { border-color: var(--accent); }
   .attachment-glyph { font-size: 1.4rem; }
+  /* Mirrors AttachmentThumb's own .failed, which is the same symbol for a neighbouring reason —
+     there it is one chip's image that would not load, here it is the file itself being absent. */
+  .attachment-gone {
+    width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
+    color: var(--alert); font-size: 0.9rem;
+  }
   .attachment-remove {
     position: absolute; top: -6px; right: -6px; width: 18px; height: 18px; border-radius: 50%;
     border: 1px solid var(--border); background: white; color: var(--muted); font-size: 0.65rem;

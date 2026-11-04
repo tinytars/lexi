@@ -252,7 +252,7 @@
     </div>
     <SaveStatus error={saveError} />
     <SaveStatus error={attachError} />
-    <SaveStatus error={tr.translateError} />
+    <SaveStatus error={tr.translateError} notice={tr.translateNotice} />
   {/if}
   {#if notes.length === 0}
     <p class="leaf-empty">No notes yet{#if canEdit} — add one from the sidebar{/if}.</p>
