@@ -32,6 +32,21 @@ export interface PendingLeafRegen {
   // the node fresh even though its content still answers the OLDER state — masking the drift instead
   // of leaving it stale for the next trigger/sweep to pick up.
   inputHash: string;
+  /**
+   * How many of this node's attachments could not be fetched, so the result below answers LESS than
+   * the record holds.
+   *
+   * Carried rather than only logged. It was a console.warn and nothing else, and what that bought
+   * in production was an assessment computed twice without four of the patient's documents, shown
+   * as though it were complete — which is worse than an error, because an error is something a
+   * reader can see. Absent when nothing was skipped, so a caller branches on its presence.
+   *
+   * WHICH files are missing is not this number's job and deliberately not guessed from it: a fetch
+   * rejects on a flaky network as readily as on a file that is gone, and marking the wrong one
+   * absent would be the worse lie. attachment-reconcile.ts answers that, authoritatively, from the
+   * store's own listing.
+   */
+  unavailableAttachments?: number;
 }
 
 // Returns null when the node's context is empty (nothing to regenerate) — the caller leaves the
@@ -65,6 +80,7 @@ export async function fetchLeafRegen(
   // `clientId` (the lowercase R2/raw key, distinct from `client.displayName`) — omitted entirely
   // when absent, same as any other regen call from a context without a selected client.
   let images: { mediaType: string; base64: string }[] | undefined;
+  let unavailable = 0;
   if (clientId) {
     const attachments = visionAttachmentsFor(node, context, MAX_VISION_ATTACHMENTS);
     if (attachments.length > 0) {
@@ -78,8 +94,11 @@ export async function fetchLeafRegen(
         attachments.map(async (a) => ({ mediaType: a.mediaType, base64: await fetchAttachmentBase64(clientId, a.key) })),
       );
       const usable = settled.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
-      if (usable.length < attachments.length) {
-        console.warn(`leaf-regen(${node}): ${attachments.length - usable.length} attachment(s) unavailable — continuing without them`);
+      unavailable = attachments.length - usable.length;
+      if (unavailable > 0) {
+        // Kept alongside the count that now travels: the console line is what an operator reading a
+        // tail sees, and the count is what the person looking at the result is owed.
+        console.warn(`leaf-regen(${node}): ${unavailable} attachment(s) unavailable — continuing without them`);
       }
       images = usable.length > 0 ? usable : undefined;
     }
@@ -157,6 +176,10 @@ export async function fetchLeafRegen(
     validated: validateLeafResult(node, resp.result, context, sendTargetLabels ? targetLabels : undefined),
     targetIds: targetLabels,
     inputHash,
+    // Images only. A DOCUMENT the pipeline could not read is already recorded on the attachment
+    // itself as `extracted.error` and has been marked in the strip since it was introduced; an
+    // image carries no such field, which is why this count has to exist at all.
+    ...(unavailable > 0 ? { unavailableAttachments: unavailable } : {}),
   };
 }
 

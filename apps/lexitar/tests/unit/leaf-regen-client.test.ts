@@ -131,18 +131,30 @@ describe("vision attachments", () => {
       return "AAAA";
     });
     vi.mocked(fetch).mockResolvedValue(json(200, { result: { items: [] } }));
-    await fetchLeafRegen(clientWithPhotoTreatment(), "treatmentAssessment", undefined, "alex");
+    const pending = await fetchLeafRegen(clientWithPhotoTreatment(), "treatmentAssessment", undefined, "alex");
     expect(fetch).toHaveBeenCalledTimes(1);
     const sent = JSON.parse((vi.mocked(fetch).mock.calls[0][1] as RequestInit).body as string);
     expect(sent.images).toEqual([{ mediaType: "image/jpeg", base64: "AAAA" }]);
+    // Degrading to text is right; doing it silently is what production did. The count is the only
+    // way anything on screen can say the assessment answers less than the record holds.
+    expect(pending?.unavailableAttachments).toBe(1);
   });
 
   it("sends no images at all when every attachment fails, rather than failing the regen", async () => {
     fetchAttachmentBase64.mockRejectedValue(new Error("404"));
     vi.mocked(fetch).mockResolvedValue(json(200, { result: { items: [] } }));
-    await fetchLeafRegen(clientWithPhotoTreatment(), "treatmentAssessment", undefined, "alex");
+    const pending = await fetchLeafRegen(clientWithPhotoTreatment(), "treatmentAssessment", undefined, "alex");
     const sent = JSON.parse((vi.mocked(fetch).mock.calls[0][1] as RequestInit).body as string);
     expect(sent.images).toBeUndefined();
+    expect(pending?.unavailableAttachments).toBe(2);
+  });
+
+  it("leaves the count absent when every attachment was read", async () => {
+    // Absent rather than 0, so a caller branches on presence and a healthy record carries no notice.
+    fetchAttachmentBase64.mockResolvedValue("AAAA");
+    vi.mocked(fetch).mockResolvedValue(json(200, { result: { items: [] } }));
+    const pending = await fetchLeafRegen(clientWithPhotoTreatment(), "treatmentAssessment", undefined, "alex");
+    expect(pending?.unavailableAttachments).toBeUndefined();
   });
 });
 

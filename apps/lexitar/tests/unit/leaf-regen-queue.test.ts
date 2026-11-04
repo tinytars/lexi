@@ -390,3 +390,36 @@ describe("the probe gate: an out-of-credit provider is not swept", () => {
     expect(fetchLeafRegen).toHaveBeenCalledTimes(1);
   });
 });
+
+// Production computed a treatment assessment twice without four of the patient's documents and said
+// so only in a console line. The count has to reach the caller for anything on screen to be able to
+// say it, and this is the hop where it would be quietly dropped.
+describe("a result that answers less than the record holds says so", () => {
+  it("carries the skipped-attachment count through to the caller", async () => {
+    const { q } = await makeQueue({
+      fetchLeafRegen: vi.fn<typeof FetchLeafRegen>(async () => ({
+        ...regenerated(),
+        unavailableAttachments: 4,
+      })),
+    });
+    expect(await q.trigger("noteResults")).toMatchObject({ status: "filled", unavailableAttachments: 4 });
+  });
+
+  it("says nothing when every attachment was read", async () => {
+    const { q } = await makeQueue();
+    expect(await q.trigger("noteResults")).toEqual({ status: "filled" });
+  });
+
+  it("does not qualify a result nobody kept", async () => {
+    // A persist that declined means the client moved on mid-flight and this answer is not on screen;
+    // a notice about files it skipped would be about nothing the reader can see.
+    const { q } = await makeQueue({
+      persist: vi.fn(async () => false),
+      fetchLeafRegen: vi.fn<typeof FetchLeafRegen>(async () => ({
+        ...regenerated(),
+        unavailableAttachments: 4,
+      })),
+    });
+    expect(await q.trigger("noteResults")).toEqual({ status: "skipped" });
+  });
+});
