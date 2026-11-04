@@ -12,6 +12,7 @@
 // The write closure is passed per push rather than injected once: the vault, its key and its R2 id are
 // the host's, and each queued write must carry the snapshot it was made for.
 
+import { VaultConflictError } from "@tinytars/vault/vault-sink";
 import { reportCaughtError } from "./error-reporter";
 
 export interface VaultSave {
@@ -83,6 +84,18 @@ export function createVaultSave(report: (err: Error) => void = reportCaughtError
           return true;
         })
         .catch((e) => {
+          // A REFUSED write is not a failed one, and the two must not share this branch. The sink
+          // throws a typed conflict when the blob moved under us, and its conflict hook has already
+          // put App's blocking resolve-or-discard dialog on screen — the only thing that can clear
+          // the condition, since only the patient can say which side wins.
+          //
+          // Latching it here did two wrong things. It filed an expected outcome with the error
+          // reporter, one issue per concurrent-edit event. And it armed the sidebar's
+          // "save failed — retry ↻", which replays the newest closure against an UNCHANGED version
+          // token: it can only be refused again — and once the patient has resolved by discarding
+          // this tab's edits, that closure still holds exactly the snapshot they discarded, so the
+          // retry writes it back over the version they chose to keep.
+          if (e instanceof VaultConflictError) return false;
           error = (e as Error).message;
           // Writes are optimistic, so the UI already shows the edit as applied: to the user a failed
           // PUT looks like a success until the data is missing on some later load. The banner is the
