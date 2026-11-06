@@ -8,7 +8,7 @@
 // Nothing here changed. It moved.
 
 import type { Client, TreatmentItem } from "./types";
-import { treatmentLeaf, medicineNameLeaf } from "./sidebar-leaf-mappers";
+import { medicineNameLeaf } from "./sidebar-leaf-mappers";
 import type { SidebarLeafRow } from "@tinytars/frame/sidebar-rows";
 import { ALL_GROUP_LABEL } from "./sidebar-labels";
 import { treatmentsOf } from "@pablotech/akesi/treatment-normalize";
@@ -107,23 +107,29 @@ export function partitionGroupsByBucket<G extends { rows: Pick<TreatmentItem, "s
 export function treatmentSidebarBuckets(client: Client, today: string): TreatmentSidebarBucket[] {
   const all = treatmentsOf(client);
   const named = groupByName(all, today);
-  const byBucket = partitionByBucket(all, today);
+  const byBucket = partitionGroupsByBucket(named, today);
+  // Alphabetical within a bucket. groupByName's own order is newest-start-bucket first, then name,
+  // and that primary key is a different question from groupBucket's — so inside one bucket it would
+  // scatter a drug whose newest row is planned above one whose newest row is current, for no reason
+  // a reader of a single bucket's list could see. All's row keeps groupByName's order untouched.
+  const leaves = (groups: typeof named) =>
+    sortPinnedFirst([...groups].sort((a, b) => a.name.localeCompare(b.name)).map(medicineNameLeaf));
   return [
     { key: "medicine", label: ALL_GROUP_LABEL, count: named.length, title: "Full dose/timeframe history per drug.", children: sortPinnedFirst(named.map(medicineNameLeaf)) },
-    { key: "ongoing", label: "Ongoing", count: byBucket.ongoing.length, title: "Currently being taken.", children: sortPinnedFirst(byBucket.ongoing.map(treatmentLeaf)) },
+    { key: "ongoing", label: "Ongoing", count: byBucket.ongoing.length, title: "Currently being taken.", children: leaves(byBucket.ongoing) },
     {
       key: "planned",
       label: "Planned",
       count: byBucket.planned.length,
       title: "Not started yet — a future start date.",
-      children: sortPinnedFirst(byBucket.planned.map(treatmentLeaf)),
+      children: leaves(byBucket.planned),
     },
     {
       key: "past",
       label: "Past",
       count: byBucket.past.length,
       title: "Discontinued — kept for history, still commented on for context.",
-      children: sortPinnedFirst(byBucket.past.map(treatmentLeaf)),
+      children: leaves(byBucket.past),
     },
   ];
 }
