@@ -10,6 +10,7 @@ import { convertForDisplay, displayScaleFor, type UnitSystem } from "./units";
 import { treatmentsOf } from "@pablotech/akesi/treatment-normalize";
 import { bucketOf, collapseByName, groupByName, todayISODate, formatDose } from "@pablotech/akesi/treatment-bucket";
 import { dailyTotalsByName, type IngredientTotal } from "./treatment-conclusion";
+import { groupBucket } from "./treatment-sidebar";
 import type { ReferenceKind } from "./reference-resolver";
 
 export interface MarkerCatalogEntry {
@@ -124,13 +125,23 @@ export function buildChatContext(client: Client, system: UnitSystem = "imperial"
     patient: { name: client.displayName, age: ageYears(client.dob), gender: client.gender },
     diseases: diseases(f?.diseases),
     treatments: collapseByName(rawTreatments).map((t) => {
-      const row: ChatContext["treatments"][number] = { name: t.name, start: t.start, bucket: bucketOf(t, today) };
+      const key = t.name.trim().toLowerCase();
+      const group = groupByKey.get(key);
+      // The DRUG's bucket, not this collapsed item's (2026-11-06). collapseByName takes the
+      // earliest start and carries an end only if the newest-start row has one, so a drug whose
+      // morning row was left open while its evening row was closed out was handed to the model as
+      // "past" while it was being taken, and one taken years ago and scheduled to resume as
+      // "ongoing". The join is total — both this map and groupByKey key on
+      // name.trim().toLowerCase() — so the fallback is unreachable rather than a second rule.
+      const row: ChatContext["treatments"][number] = {
+        name: t.name,
+        start: t.start,
+        bucket: group ? groupBucket(group.rows, today) : bucketOf(t, today),
+      };
       const dose = formatDose(t);
       if (dose) row.dose = dose;
       if (t.kind) row.kind = t.kind;
       if (t.end) row.end = t.end;
-      const key = t.name.trim().toLowerCase();
-      const group = groupByKey.get(key);
       if (group) {
         const ongoingRows = group.rows.filter((r) => bucketOf(r, today) === "ongoing");
         // Only break out by timing when every ongoing row is genuinely concurrent (each carries its

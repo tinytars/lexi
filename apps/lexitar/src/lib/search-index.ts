@@ -22,7 +22,8 @@ import { sortPinnedFirst } from "./pin-sort";
 import { flatMarkers } from "./marker-grid";
 import { buildMarkerRatios } from "./marker-ratios";
 import { treatmentsOf } from "@pablotech/akesi/treatment-normalize";
-import { collapseByName, bucketOf, todayISODate, formatDose } from "@pablotech/akesi/treatment-bucket";
+import { collapseByName, groupByName, bucketOf, todayISODate, formatDose } from "@pablotech/akesi/treatment-bucket";
+import { groupBucket } from "./treatment-sidebar";
 import { buildHypothesisGroups } from "./treatment-groups";
 import { buildStudyPairs } from "./study-pairs";
 import { buildNotePairs } from "./note-pairs";
@@ -207,10 +208,20 @@ export function markerSearchLeaves(client: Client): SearchableLeaf[] {
 // bucketed by today, matching on name/dose/kind/bucket. One leaf per collapsed treatment across
 // all buckets so a search hit reverse-matches to the same collapsed name UnifiedTreatment's own
 // pendingAnchor effect looks up (treatmentAnchor(t.name) on the COLLAPSED item).
+//
+// "Mirrors UnifiedTreatment's own matcher" is what obliged the 2026-11-06 change: the bucket here
+// was the collapsed item's, and the card's is now the DRUG's (groupBucket over all of its rows), so
+// the sentence above had stopped being true. A search result said "past" for a drug whose morning
+// row was left open while its evening row was closed out, and the bucket is in `searchText` too —
+// so typing "past" matched a drug being taken and typing "ongoing" did not.
 export function treatmentSearchLeaves(client: Client): SearchableLeaf[] {
   const today = todayISODate();
-  return collapseByName(treatmentsOf(client)).map((t) => {
-    const bucket = bucketOf(t, today);
+  const all = treatmentsOf(client);
+  // The join is total: collapseByName and groupByName key on the identical
+  // name.trim().toLowerCase(), so every collapsed item has a group and the fallback is unreachable.
+  const bucketByName = new Map(groupByName(all, today).map((g) => [g.name.trim().toLowerCase(), groupBucket(g.rows, today)]));
+  return collapseByName(all).map((t) => {
+    const bucket = bucketByName.get(t.name.trim().toLowerCase()) ?? bucketOf(t, today);
     const { label, anchor } = treatmentLeaf(t);
     return {
       section: "treatment",
