@@ -74,7 +74,7 @@ jobs:
   notify-failure:
     needs: [hosted]
     if: always() && github.event_name != 'pull_request' && contains(needs.*.result, 'failure')
-    uses: promontory-studio/pedalion-ci/.github/workflows/notify-failure.yml@6c2d307ada45c3202c2c395b2ac46056c47a40bf # v1.3.0
+    uses: promontory-studio/pedalion-ci/.github/workflows/notify-failure.yml@c9b494b5674aaac7465882629455531b8dc28898 # v1.4.0
     # `secrets: inherit` does not cross owners, so every secret is named.
     secrets:
       app-key: ${{ secrets.AUTOPILOT_APP_KEY }}
