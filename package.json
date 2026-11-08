@@ -8,7 +8,7 @@
     "apps/*"
   ],
   "devDependencies": {
-    "@vitest/coverage-v8": "^5.0.1"
+    "@vitest/coverage-v8": "^5.1.0"
   },
   "allowScripts": {
     "workerd@1.20260730.1": true,
