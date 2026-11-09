@@ -17,7 +17,7 @@
   import { standardLeafActions, buildNoteAttachment } from "./leaf-actions";
   import TurnCard from "./TurnCard.svelte";
   import AttachmentStrip from "@tinytars/frame/AttachmentStrip.svelte";
-  import { appendAttachments, attachmentUrl } from "./attachment-store";
+  import { appendAttachments, attachmentUrl, attachmentThumbUrl as thumbUrl } from "./attachment-store";
   import DictateButton from "@tinytars/frame/DictateButton.svelte";
   import { sortPinnedFirst } from "./pin-sort";
   import { PRODUCT_NAME } from "./brand";
@@ -248,7 +248,7 @@
             <span class="field"><HeadingAnchor anchor={anchors[i]} label="Copy link to this family history entry">{f.relation || "Untitled"}</HeadingAnchor></span>
             <span class="field">{f.condition || "No condition noted."}</span>
           </FormGrid>
-          <AttachmentStrip attachments={f.attachments ?? []} {clientId} {attachmentUrl} productName={PRODUCT_NAME} />
+          <AttachmentStrip attachments={f.attachments ?? []} {clientId} {attachmentUrl} {thumbUrl} productName={PRODUCT_NAME} />
         {/snippet}
         {#snippet aiTurn()}<p class="fh-text">{result}</p>{/snippet}
         <TurnCard

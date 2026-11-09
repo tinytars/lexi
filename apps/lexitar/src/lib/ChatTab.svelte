@@ -18,7 +18,7 @@
   // MAX_ATTACHMENTS, not MAX_VISION_ATTACHMENTS: that cap is about how many IMAGES one request may
   // carry to a vision model. A document rides as text and a plain attachment costs nothing at all,
   // so capping a chat attach at four was the image tier leaking into a surface that isn't one.
-  import { MAX_ATTACHMENTS, appendAttachments, fetchAttachmentBase64, attachFiles, attachmentUrl } from "./attachment-store";
+  import { MAX_ATTACHMENTS, appendAttachments, fetchAttachmentBase64, attachFiles, attachmentUrl, attachmentThumbUrl as thumbUrl } from "./attachment-store";
   import { documentTextsFor, needTranscription } from "./document-extract-client";
   import { documentsPromptBlock } from "@pablotech/akesi/document-read";
   import { DEFAULT_ATTACH_ACCEPT } from "@tinytars/frame/attach-controller";
@@ -478,7 +478,7 @@
             <ReferenceCard reference={row.turn.reference} {onNavigate} />
           {:else}
             {#if row.turn.text}<span class="turn-text">{row.turn.text}</span>{/if}
-            <AttachmentStrip attachments={row.turn.attachments ?? []} {clientId} {attachmentUrl} productName={PRODUCT_NAME} />
+            <AttachmentStrip attachments={row.turn.attachments ?? []} {clientId} {attachmentUrl} {thumbUrl} productName={PRODUCT_NAME} />
           {/if}
         {/snippet}
         {@const shown = row.reply ? shownReply(row.reply, !!showOriginal[row.turnIdx]) : null}
@@ -542,6 +542,7 @@
         attachments={pendingAttachments}
         {clientId}
         {attachmentUrl}
+        {thumbUrl}
         productName={PRODUCT_NAME}
         onRemove={(a) => (pendingAttachments = pendingAttachments.filter((x) => x.key !== a.key))}
       />

@@ -3,12 +3,18 @@
 
   // One chip's image. Its own component because the URL resolves asynchronously and an {#each} body
   // has nowhere to keep per-item state.
+  //
+  // `thumbUrl` is OPTIONAL because this package is domain-neutral: a host with no derivative to
+  // offer must keep working unchanged, and one that has both wants them pointed at different
+  // surfaces — the chip at the small copy, the viewer at the picture. A host that passes neither
+  // gets exactly what it got before.
   interface Props {
     clientId: string;
     fileKey: string;
     attachmentUrl: AttachmentUrl;
+    thumbUrl?: AttachmentUrl;
   }
-  let { clientId, fileKey, attachmentUrl }: Props = $props();
+  let { clientId, fileKey, attachmentUrl, thumbUrl }: Props = $props();
 
   let rootEl: HTMLSpanElement | undefined;
   let visible = $state(false);
@@ -35,7 +41,7 @@
     return () => obs.disconnect();
   });
 
-  const src = resolveAttachmentUrl(() => ({ url: attachmentUrl, clientId, key: visible ? fileKey : null }));
+  const src = resolveAttachmentUrl(() => ({ url: thumbUrl ?? attachmentUrl, clientId, key: visible ? fileKey : null }));
 </script>
 
 <!-- The observed element, which the three arms below cannot supply between them: this component
