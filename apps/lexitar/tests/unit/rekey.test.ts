@@ -17,6 +17,7 @@ describe("namespacePairs", () => {
       ["dev/regen-log/alex/", "dev/regen-log/0b8c/"],
       ["dev/raw/alex/", "dev/raw/0b8c/"],
       ["dev/text/alex/", "dev/text/0b8c/"],
+      ["dev/thumb/alex/", "dev/thumb/0b8c/"],
       ["dev/processed/alex/", "dev/processed/0b8c/"],
     ]);
   });
