@@ -260,7 +260,7 @@ jobs:
     # a push to `dev` and a human landing a branch there uses the admin bypass. plover-code's copy
     # runs on pushes and reports "nothing to check" instead; this one has not been changed to match.
     if: github.event_name == 'pull_request'
-    uses: promontory-studio/pedalion-ci/.github/workflows/guard.yml@6c2d307ada45c3202c2c395b2ac46056c47a40bf # v1.3.0
+    uses: promontory-studio/pedalion-ci/.github/workflows/guard.yml@c9b494b5674aaac7465882629455531b8dc28898 # v1.4.0
     with:
       base-ref: ${{ github.base_ref }}
       head-sha: ${{ github.event.pull_request.head.sha }}
@@ -419,7 +419,7 @@ jobs:
   notify-failure:
     needs: [test, lexitar, lexitar-image, credentials, autopilot-guard, release, pages-deploy]
     if: always() && github.event_name == 'push' && contains(needs.*.result, 'failure')
-    uses: promontory-studio/pedalion-ci/.github/workflows/notify-failure.yml@6c2d307ada45c3202c2c395b2ac46056c47a40bf # v1.3.0
+    uses: promontory-studio/pedalion-ci/.github/workflows/notify-failure.yml@c9b494b5674aaac7465882629455531b8dc28898 # v1.4.0
     # `secrets: inherit` does not cross owners, so every secret is named.
     secrets:
       app-key: ${{ secrets.AUTOPILOT_APP_KEY }}
