@@ -162,13 +162,14 @@ describe("treatmentSidebarBuckets", () => {
     } as unknown as Client;
     const rows = treatmentSidebarBuckets(client, today);
     for (const r of rows) expect(r.children).toHaveLength(r.count);
-    // Uncollapsed, so Ongoing/Planned/Past children keep the raw array's insertion order
-    // (matches editModel, which doesn't sort by name either) rather than collapseByName's
-    // alphabetical sort. All is the one exception (M108/M109): grouped by name, ordered
-    // Planned/Ongoing/Past by each drug's own bucket, alphabetical within a bucket.
+    // Every row is one leaf per drug since 2026-11-06, so Ongoing/Planned/Past are alphabetical
+    // within themselves — a reader of one bucket's list has no way to see groupByName's primary
+    // key, which asks a different question (the newest-start row's bucket) from the one the
+    // bucket a drug is in answers. All keeps groupByName's order (M108/M109): ordered
+    // Planned/Ongoing/Past by each drug's newest-start row, alphabetical within that.
     expect(rows.map((r) => r.children!.map((c) => c.label))).toEqual([
       ["10k steps/day", "Rosuvastatin", "Tirzepatide", "Metformin"],
-      ["Tirzepatide", "Rosuvastatin"],
+      ["Rosuvastatin", "Tirzepatide"],
       ["10k steps/day"],
       ["Metformin"],
     ]);
@@ -229,15 +230,20 @@ describe("treatmentSidebarBuckets", () => {
     expect(medicine.children!.map((c) => c.label)).toEqual(["Glycine", "Micronized DHEA"]);
   });
 
-  it("counts each titration step in its own bucket, uncollapsed (regression: collapsing by name masked a superseded past step behind a still-open one)", () => {
+  // Reversed 2026-11-06. This test asserted the defect as intended behaviour: it required Past to
+  // count the superseded step of a drug being taken today, which is how Glycine rendered a card
+  // under "Discontinued" while its current dose was open. A bucket now holds drugs, not dose
+  // periods, so a drug with any ongoing step is ongoing and appears nowhere else — and the
+  // superseded step is not lost, it is on that drug's own card.
+  it("counts each drug once, in the single bucket its whole history resolves to", () => {
     const client = {
       factors: {
         treatments: [
-          // Superseded step: ended, but the drug's latest step (below) is still open — a collapsed
-          // representative would read this whole drug as "ongoing" and hide this step from Past.
+          // Superseded step: ended, while the drug's latest step (below) is still open. The drug is
+          // being taken, so it is Ongoing and is not also in Past.
           { id: "1", name: "Glycine", kind: "supplement", start: "2025-11-30", end: "2026-03-31" },
           { id: "2", name: "Glycine", kind: "supplement", start: "2026-04-30" },
-          // A drug with no open step at all — every step is individually past.
+          // A drug with no open step at all — every step is past, so the drug is Past.
           { id: "3", name: "Micronized DHEA", kind: "supplement", start: "2026-04-30", end: "2026-05-31" },
         ],
       },
@@ -245,9 +251,12 @@ describe("treatmentSidebarBuckets", () => {
     const rows = treatmentSidebarBuckets(client, "2026-08-16");
     const byKey = Object.fromEntries(rows.map((r) => [r.key, r]));
     expect(byKey.ongoing.count).toBe(1);
-    expect(byKey.ongoing.children!.map((c) => c.key)).toEqual(["2"]);
-    expect(byKey.past.count).toBe(2);
-    expect(byKey.past.children!.map((c) => c.key)).toEqual(["1", "3"]);
+    expect(byKey.ongoing.children!.map((c) => c.label)).toEqual(["Glycine"]);
+    expect(byKey.planned.count).toBe(0);
+    expect(byKey.past.count).toBe(1);
+    expect(byKey.past.children!.map((c) => c.label)).toEqual(["Micronized DHEA"]);
+    // Invariant I1 on the fixture that used to break it: 1 + 0 + 2 did not equal 2.
+    expect(byKey.ongoing.count + byKey.planned.count + byKey.past.count).toBe(byKey.medicine.count);
   });
 });
 

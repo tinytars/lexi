@@ -16,8 +16,9 @@
   import { treatmentsOf } from "@pablotech/akesi/treatment-normalize";
   import { foldLegacyTreatments, treatmentEditDraft } from "./treatment-legacy-fold";
   import { createDraftSync, createPersistNow } from "./draft-sync.svelte";
-  import { bucketOf, todayISODate, BUCKET_LABEL, groupByName, dateGaps, formatDose, type NamedTreatmentGroup } from "@pablotech/akesi/treatment-bucket";
-  import { resolveTreatmentView, editView, readView, bucketForAnchor, treatmentModalLabel } from "./treatment-view-model";
+  import { bucketOf, todayISODate, BUCKET_LABEL, groupByName, formatDose, type Bucket, type NamedTreatmentGroup } from "@pablotech/akesi/treatment-bucket";
+  import { resolveTreatmentView, editView, readView, groupBucketForAnchor, groupDisplay, treatmentModalLabel } from "./treatment-view-model";
+  import { groupBucket } from "./treatment-sidebar";
   import { formatDay, isCompleteDate } from "@pablotech/akesi/dates";
   import Modal from "@tinytars/frame/Modal.svelte";
   import Button from "@tinytars/frame/Button.svelte";
@@ -108,8 +109,30 @@
 
   // One lookup for every bucket — see assessmentFor. A drug can hold three assessments now, one per
   // phase, so the Past card no longer renders the text written about the current dose.
-  function assessmentOf(t: TreatmentItem): string | undefined {
-    return assessmentFor(client.finding, t.name, bucketOf(t, today), undefined, t.id)?.assessment;
+  //
+  // 2026-11-06 — the phase is the DRUG's bucket (groupBucket), because the card is the drug. Every
+  // row in that phase is tried, not just one: the model emits one entry per (drug, phase) carrying
+  // the id of whichever row it assessed, and assessmentFor's name fallback deliberately refuses an
+  // entry id-keyed to a different row — so guessing one representative of a three-row ongoing phase
+  // silently found nothing. The drug's OTHER phases are generated and stored and shown nowhere,
+  // which is this change's known gap, recorded at finding-invariants.ts.
+  function assessmentOfGroup(g: NamedTreatmentGroup, phase: Bucket): string | undefined {
+    for (const r of g.rows) {
+      if (bucketOf(r, today) !== phase) continue;
+      const hit = assessmentFor(client.finding, r.name, phase, undefined, r.id)?.assessment;
+      if (hit) return hit;
+    }
+    return undefined;
+  }
+  // Name/Reason/Kind are medicine-level and fanned across every sibling row on save
+  // (treatment-save.ts), but a row added afterwards through "+ Add entry" can still lack them —
+  // so the card reads the first row that has one rather than assuming rows[0] does.
+  function firstDefined<T>(rows: TreatmentItem[], pick: (r: TreatmentItem) => T | undefined): T | undefined {
+    for (const r of rows) {
+      const v = pick(r);
+      if (v) return v;
+    }
+    return undefined;
   }
 
   // M66 — a row always reads as a bubble (✎ Edit / ⌕ show-only); Edit opens the shared Add/Edit
@@ -317,20 +340,21 @@
       }),
     ];
   }
-  // Pin on a medicine flags its representative row, and All's group list sorts pinned-first —
-  // the same "pinned floats to the top of this list" behavior Pin has in every other leaf.
+  // Pin on a medicine flags one of its rows, and the group list sorts pinned-first — the same
+  // "pinned floats to the top of this list" behavior Pin has in every other leaf. The card reads
+  // pinned as "any dose period of this drug is pinned", matching the sidebar's own leaf, so
+  // unpinning has to clear the row actually carrying the flag: toggling rows[0] blindly left the
+  // card pinned and the control dead whenever a different dose period held it.
   function togglePinMedicine(g: NamedTreatmentGroup) {
-    togglePinTreatment(g.rows[0]);
+    togglePinTreatment(g.rows.find((r) => r.pinned) ?? g.rows[0]);
   }
 
-  // A long titration (Tirzepatide runs to 11 dose periods) buries every other medicine below it, so
-  // a group shows its most recent few and offers the rest behind one tick. Keyed by drug name, not
-  // index, so the flag follows the medicine as groups re-sort (pinned-first, bucket order).
-  const MEDICINE_PREVIEW_ROWS = 3;
+  // Which drugs' cards are expanded. Keyed by drug name, not index, so the flag follows the
+  // medicine as groups re-sort (pinned-first, bucket order) — and, since 2026-11-06, as the view
+  // changes: one boolean per drug means expanding in Ongoing and switching to All keeps the drug
+  // open. What a card shows collapsed and what the toggle says is groupDisplay's, which is view-
+  // aware where this is not.
   let expandedGroups = $state<Record<string, boolean>>({});
-  function shownRows(g: NamedTreatmentGroup): TreatmentItem[] {
-    return expandedGroups[g.name] ? g.rows : g.rows.slice(0, MEDICINE_PREVIEW_ROWS);
-  }
 
   // M66 — Delete is a direct row action (confirm()-gated in deleteTreatment itself), matching the
   // Family/Allergies/Hypothesis/Notes/Reports pattern, not gated behind opening Edit.
@@ -342,7 +366,6 @@
   function deleteTreatment(t: TreatmentItem, i: number) {
     if (!confirm(deleteTreatmentPrompt(t, draft?.factors?.treatments ?? []))) return;
     draft!.factors!.treatments!.splice(i, 1);
-    keepGroupOnNextAnchor = true;
     persistNow((payload) => payload.factors!.treatments!.splice(i, 1), treatmentAnchor(t.name?.trim() || "this treatment"));
   }
   // M71 P6 — standalone Pin toggle per treatment, same scoped-persist shape as deleteTreatment
@@ -405,34 +428,30 @@
     }
   });
   // M76/Phase 3 — a deep-linked treatment anchor whose owning bucket isn't the currently active one
-  // would otherwise never mount under single-bucket rendering. Reverse-match it against the full
-  // unfiltered, collapsed-by-name set (not editModel/model's bucket/filter-narrowed rows), resolve
-  // its bucket with the same bucketOf used everywhere else, switch to it, then let the caller clear
-  // pendingAnchor. No index needed — bucketOf is a pure function of one item.
+  // would otherwise never mount under single-bucket rendering. Reverse-match it against every drug
+  // (not the active view's groups, which by definition exclude it), resolve the DRUG's bucket, and
+  // switch to it, then let the caller clear pendingAnchor.
   //
-  // M103 — this also fires after every Save (onSaved passes the saved row's anchor through, see
-  // App.svelte's navigate()), which is why editing from Medicine used to bounce you to whichever
-  // temporal bucket the row now falls in: Medicine isn't a bucket, so it was never a candidate here
-  // and always lost the reassignment. Medicine already shows every row regardless of date, so there's
-  // nothing to reverse-match — skip the reassignment and stay put.
-  // A SAVE also routes through here (persistNow -> onSaved -> navigate -> pendingAnchor), and the
-  // reassignment below is wrong for that case: it resolves the bucket of the medicine's
-  // representative row, so saving an edit while viewing Past threw you into Ongoing whenever that
-  // drug also had a current dose period. Editing should leave you where you were looking; only a
-  // real navigation (a sidebar link to a drug) should move the view to that drug's bucket.
-  let keepGroupOnNextAnchor = $state(false);
+  // M103 — Medicine isn't a bucket and already shows every drug, so there is nothing to
+  // reverse-match: skip the reassignment and stay put.
+  //
+  // 2026-11-06 — a SAVE routes through here too (persistNow -> onSaved -> navigate ->
+  // pendingAnchor), and it used to need suppressing (`keepGroupOnNextAnchor`): the reassignment
+  // read the bucket of the medicine's representative ROW, so saving an edit while viewing Past
+  // threw you into Ongoing whenever that drug also had a current dose period. Under a partition
+  // that cannot happen — the resolved bucket either equals the view, making this a no-op, or the
+  // edit genuinely moved the drug out of it, in which case following the card is the correct
+  // answer and staying put would leave you facing a view the thing you just edited has left (with
+  // flashAnchor retrying eight times against an element that is not there). So the flag is retired
+  // rather than kept. The draft, not `client`: a save's anchor arrives before the client has caught
+  // up, and asking it would resolve the bucket the drug was in before the edit.
   $effect(() => {
     if (!pendingAnchor) return;
-    if (keepGroupOnNextAnchor) {
-      keepGroupOnNextAnchor = false;
-      onConsumeAnchor?.();
-      return;
-    }
     if (activeGroup === "medicine") {
       onConsumeAnchor?.();
       return;
     }
-    const bucket = bucketForAnchor(client, pendingAnchor, today);
+    const bucket = groupBucketForAnchor(draft?.factors?.treatments ?? [], pendingAnchor, today);
     if (bucket) {
       activeGroup = bucket;
       onConsumeAnchor?.();
@@ -541,7 +560,6 @@
     // M57 — persists immediately; draft gets the same write so the row shows without waiting on the
     // resync round trip (which skipNextResync deliberately skips).
     applyTreatmentSave(draft!, plan);
-    keepGroupOnNextAnchor = true;
     persistNow((payload) => applyTreatmentSave(payload, plan), treatmentAnchor(plan.name));
     // treatmentAssessment is keyed by the raw treatment name (leaf-regen.ts's SCOPE OVERRIDE matches
     // it against the model's dose-annotated label) and answers per (drug, phase), so no bucket branch.
@@ -725,11 +743,17 @@
 {/snippet}
 
 
-{#snippet medicineCard(g: NamedTreatmentGroup, showBadge: boolean)}
-  {@const gaps = dateGaps(g.rows)}
-  {@const shown = shownRows(g)}
-  {@const planned = bucketOf(g.rows[0], today) === "planned"}
-  {@const assessment = assessmentOf(g.rows[0])}
+<!-- `bucket` is the view's own bucket, or null in All. The drug is in it by construction (the view
+     model partitions GROUPS now), so it decides only which of the drug's dose periods show
+     collapsed and whether the badge is worth drawing — not which drug this is. -->
+{#snippet medicineCard(g: NamedTreatmentGroup, bucket: Bucket | null)}
+  {@const groupB = groupBucket(g.rows, today)}
+  {@const display = groupDisplay(g, bucket, today, !!expandedGroups[g.name])}
+  {@const assessment = assessmentOfGroup(g, groupB)}
+  <!-- The product facts (maker, label photo, ingredients, suggested dosing) are the DRUG's, and a
+       dose row added by hand carries none of them — so the whole Extracted block and its empty-state
+       gate read one row chosen for having them, rather than whichever row happens to sort first. -->
+  {@const prod = g.rows.find((r) => hasProductData(r)) ?? g.rows[0]}
       <div class="med-group">
         <!-- Bespoke, not TurnCard (see TurnCard.svelte:10-21's own invariant): four sequential
              turns, not one patient beside one AI, so there is no natural pairing into TurnCard's
@@ -738,21 +762,28 @@
         {#snippet medTitle()}
           <span class="ct-title-row">
             <span class="ct-drug"><HeadingAnchor anchor={treatmentAnchor(g.name)} label="Copy link to this drug">{g.name}</HeadingAnchor></span>
-            {#if showBadge}<span class="bucket bucket--{bucketOf(g.rows[0], today)}">{BUCKET_LABEL[bucketOf(g.rows[0], today)]}</span>{/if}
-            {#if g.rows[0].kind}<span class="med-kind">{g.rows[0].kind}</span>{/if}
+            {#if bucket === null}<span class="bucket bucket--{groupB}">{BUCKET_LABEL[groupB]}</span>{/if}
+            {#if firstDefined(g.rows, (r) => r.kind)}<span class="med-kind">{firstDefined(g.rows, (r) => r.kind)}</span>{/if}
           </span>
         {/snippet}
         {#snippet medPatient()}
-            {#if g.rows[0].reason}<p class="med-reason">{g.rows[0].reason}</p>{/if}
+            {#if firstDefined(g.rows, (r) => r.reason)}<p class="med-reason">{firstDefined(g.rows, (r) => r.reason)}</p>{/if}
             <div class="med-table-wrap">
               <table class="med-table">
                 <thead>
                   <tr><th>Start</th><th>End</th><th>Dose</th><th>Timing</th><th></th></tr>
                 </thead>
                 <tbody>
-                  {#each shown as t, idx (t.id)}
-                    <tr>
-                      <td data-label="Start">{t.start ? formatDay(t.start) : "—"}</td>
+                  {#each display.rows as d, j (d.row.id)}
+                    {@const t = d.row}
+                    <!-- An out-of-bucket row is history the active view does not claim — greyed and
+                         carrying its own bucket pill, so it reads as context rather than as a dose
+                         period this view is asserting. -->
+                    <tr class:med-out={d.outOfBucket}>
+                      <td data-label="Start">
+                        {#if d.outOfBucket}<span class="bucket bucket--{bucketOf(t, today)}">{BUCKET_LABEL[bucketOf(t, today)]}</span>{/if}
+                        {t.start ? formatDay(t.start) : "—"}
+                      </td>
                       <td data-label="End">{t.end ? formatDay(t.end) : "ongoing"}</td>
                       <td data-label="Dose">{formatDose(t) || "—"}</td>
                       <td data-label="Timing">{t.timingPeriod || "—"}</td>
@@ -764,12 +795,15 @@
                         </div>
                       </td>
                     </tr>
-                    <!-- The flag describes the boundary with the NEXT row, so it only makes
-                         sense while that row is on screen — suppressed at the collapsed edge. -->
-                    {#if idx < shown.length - 1}
-                      {#if gaps[idx] === "gap"}
+                    <!-- The flag describes the boundary between two ADJACENT dose periods of the
+                         drug, so it renders only where the next row on screen is also the next row
+                         in the drug's own history. That one test covers all three ways the pair can
+                         come apart: the collapsed edge, a hidden out-of-bucket row between them,
+                         and the end of history. -->
+                    {#if display.rows[j + 1]?.i === d.i + 1}
+                      {#if display.gaps[d.i] === "gap"}
                         <tr class="med-flag med-gap"><td colspan="5">⚠ gap in coverage before the entry below</td></tr>
-                      {:else if gaps[idx] === "overlap"}
+                      {:else if display.gaps[d.i] === "overlap"}
                         <tr class="med-flag med-overlap"><td colspan="5">⚠ overlaps with the entry below</td></tr>
                       {/if}
                     {/if}
@@ -778,12 +812,12 @@
               </table>
             </div>
             <div class="med-foot">
-              {#if g.rows.length > MEDICINE_PREVIEW_ROWS}
+              {#if display.showToggle}
                 <Button
                   class="med-more"
                   aria-expanded={!!expandedGroups[g.name]}
                   onclick={() => (expandedGroups[g.name] = !expandedGroups[g.name])}
-                >{expandedGroups[g.name] ? "⌃ Show fewer" : `⌄ Show all ${g.rows.length}`}</Button>
+                >{display.toggleLabel}</Button>
               {/if}
               <Button class="med-add" onclick={() => addTreatmentForName(g.name)}>+ Add entry</Button>
             </div>
@@ -793,7 +827,7 @@
              own commentary on the treatment in the patient's context) — raw facts, then how it's
              being taken, then the math on those facts, then the interpretation of all three. -->
         {#snippet medExtracted()}
-          {@const t = g.rows[0]}
+          {@const t = prod}
           {#if t.maker}<p class="med-maker">{t.maker}</p>{/if}
           {#if t.description}<p class="med-desc">{t.description}</p>{/if}
           {#if t.ingredients?.length}
@@ -838,7 +872,7 @@
                separate turn from Extracted above: that is a transcription of the label, this is a
                computed conclusion about what the patient is actually taking. -->
           {@const ongoingRows = g.rows.filter((r) => bucketOf(r, today) === "ongoing")}
-          {@const conclusion = computeConclusion(ongoingRows, g.rows[0].administration, g.rows[0].ingredients)}
+          {@const conclusion = computeConclusion(ongoingRows, prod.administration, prod.ingredients)}
           {#if isConclusion(conclusion) && conclusion.ingredientTotals.length}
             <PersonaBubble persona="assistant" label={`${PRODUCT_NAME} · Daily total`}>
               <ul class="ing-list">
@@ -871,10 +905,10 @@
           {#if translateErrorId === g.rows[0].id && translateError}<p class="translate-error">{translateError}</p>{/if}
           {#if translateNoticeId === g.rows[0].id && translateNotice}<p class="translate-notice">{translateNotice}</p>{/if}
         {/snippet}
-        <LeafCard title={medTitle} items={groupActions(g)} pinned={!!g.rows[0].pinned} onTogglePin={() => togglePinMedicine(g)}>
+        <LeafCard title={medTitle} items={groupActions(g)} pinned={g.rows.some((r) => r.pinned)} onTogglePin={() => togglePinMedicine(g)}>
           <div class="med-turns">
             <div class="rg-col leaf-side">
-              {#if hasProductData(g.rows[0])}
+              {#if hasProductData(prod)}
                 <PersonaBubble persona="assistant" label={`${PRODUCT_NAME} · Extracted`}>{@render medExtracted()}</PersonaBubble>
               {:else}
                 <p class="leaf-row-empty">No {PRODUCT_NAME} product data extracted — use Identify to read it from a label.</p>
@@ -900,12 +934,13 @@
     <SaveStatus error={saveError} />
     <SaveStatus error={attachError} />
     <!-- One Patient/LexiTar exchange per medicine, in every view. The Patient side is that drug's
-         dose history as a table; LexiTar responds once, to the whole of it. Each bucket feeds the
-         SAME card the rows that pass its own date filter, and LexiTar now answers per (drug, phase)
-         through one node — so the views differ only in which rows they hold and whether the bucket
-         badge is worth showing (inside a single-bucket view every card would carry the same one). -->
+         dose history as a table; LexiTar responds once, to the whole of it. Since 2026-11-06 a view
+         selects DRUGS, not dose periods, and every card carries its drug's complete history whether
+         or not it is all on screen — so the views differ in which drugs they hold, which rows those
+         cards open on, and whether the bucket badge is worth showing (inside a single-bucket view
+         every card would carry the same one). -->
     {#if editViewModel.groups.length > 0}
-      {#each editViewModel.groups as g (g.name)}{@render medicineCard(g, editViewModel.badge)}{/each}
+      {#each editViewModel.groups as g (g.name)}{@render medicineCard(g, editViewModel.bucket)}{/each}
     {:else if (draft?.factors?.treatments?.length ?? 0) > 0}
       <p class="ct-empty">No {editViewModel.label}treatments yet for {client.displayName} — add one from the sidebar.</p>
     {/if}
@@ -1055,6 +1090,11 @@
      16px and let the buttons spill ~170px past it. */
   .med-table th:last-child, .med-table td.med-actions { width: 1%; }
   .med-actbar { display: flex; gap: 0.3rem; }
+  /* History the active view does not claim: shown, greyed, and labelled with its own bucket pill.
+     Deliberately --muted (which .bucket--past's own foreground already uses) rather than a band
+     colour — .med-gap and .med-overlap signal problems, and a dose period simply belonging to
+     another phase of the same drug is not one. */
+  tr.med-out td { color: var(--muted); }
   .med-flag td { font-size: 0.74rem; font-weight: 600; padding: 0.2rem 0.5rem; white-space: normal; }
   .med-gap td { background: var(--warn-band); color: var(--warn); }
   .med-overlap td { background: var(--alert-band); color: var(--alert); }

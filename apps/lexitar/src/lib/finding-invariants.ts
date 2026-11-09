@@ -135,6 +135,19 @@ export function assembledFindingViolations(client: Client): string[] {
   // assessmentFor, not a set lookup: an entry is matched per phase with a legacy no-phase fallback and
   // dose-insensitive name matching, and reimplementing that comparison here is how the backfill's own
   // predicate came to disagree with the section it fills.
+  //
+  // UNENFORCED BY DESIGN, recorded 2026-11-06 rather than left to read as coverage (see
+  // ~/.claude/protocol/doctrine/as-built.md): this loop is per ROW and so per phase, and the section
+  // renders ONE commentary per drug — the drug's own phase, which is groupBucket's priority fold over
+  // all of its rows. So a drug mid-titration legitimately holds a past-phase assessment and an
+  // ongoing-phase one, this rule requires both to exist, and only the ongoing one is ever displayed.
+  // The other is generated, stored intact, and shown nowhere.
+  //
+  // That is a display gap, not a data defect, and the rule stays row-level deliberately: weakening it
+  // to the drug's own phase would stop asking for the assessment of a dose period that is still on
+  // the card and still read back when the card is expanded. The follow-up is one commentary bubble
+  // per phase present, rendered when a card is expanded, which changes what the commentary says
+  // rather than what the filters do — out of scope here, and the owner's call.
   const today = todayISODate();
   for (const t of treatmentsOf(client)) {
     const phase = bucketOf(t, today);
