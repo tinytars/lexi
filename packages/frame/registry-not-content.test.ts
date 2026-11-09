@@ -44,6 +44,29 @@ const CLAIM = "isAttachmentMissing";
 /** A component tag (`<Capitalised`) or a media element — the things a claim must not replace. */
 const CONTENT = /<[A-Z]|<img\b|<canvas\b|<video\b/;
 
+/**
+ * `<!-- … -->` regions removed by scanning rather than by a replace.
+ *
+ * A single pass of `.replace(/<!--[\\s\\S]*?-->/g, "")` is what CodeQL calls incomplete
+ * multi-character sanitization, and it is right even here: an unterminated opener survives the
+ * replace and goes on to be matched for content. Nothing is sanitized in this file — the input is
+ * a committed source file and the output is only ever handed to a regex test — but a scan is
+ * shorter to justify than an exemption, and it is the stricter reading: text after an opener with
+ * no closer is treated as comment and dropped.
+ */
+function withoutComments(text: string): string {
+  let out = "";
+  let i = 0;
+  for (;;) {
+    const open = text.indexOf("<!--", i);
+    if (open < 0) return out + text.slice(i);
+    out += text.slice(i, open);
+    const close = text.indexOf("-->", open + 4);
+    if (close < 0) return out;
+    i = close + 3;
+  }
+}
+
 /** The predicate, plus any `$derived` whose own initializer names it. One level, for the reason above. */
 function claimTokens(src: string): string[] {
   const names = [CLAIM];
@@ -74,7 +97,7 @@ function sweep(src: string, label: string): Sweep {
     // reported line number still points at the condition as written.
     let body = "";
     for (let j = i + 1; j < lines.length && !/^[ \t]*\{\/if\}/.test(lines[j]); j++) body += lines[j] + "\n";
-    if (CONTENT.test(body.replace(/<!--[\s\S]*?-->/g, ""))) {
+    if (CONTENT.test(withoutComments(body))) {
       offenders.push(`${label}:${i + 1} — ${lines[i].trim()}`);
     }
   }
