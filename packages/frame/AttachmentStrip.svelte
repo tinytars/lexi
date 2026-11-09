@@ -26,10 +26,12 @@
 
   let openIndex = $state<number | null>(null);
 
-  // The absence comes first because it outranks every other thing a chip can say: a document that
-  // was read, and whose text has been going into answers ever since, is no longer there to read.
+  // The listing's claim comes first because it outranks every other thing a chip can say: a
+  // document that was read, and whose text has been going into answers ever since, may no longer be
+  // there to read. Said as what the index holds rather than as a verdict — it records objects, it
+  // began recording part-way through this app's life, and a key it omits can still have bytes.
   function chipTitle(a: Attachment): string {
-    if (isAttachmentMissing(a.key)) return `${a.name} — missing: the store has no record of this file, so nothing can open it`;
+    if (isAttachmentMissing(a.key)) return `${a.name} — not in the store's file index; it may fail to open, and attaching it again is the way back`;
     if (a.extracted?.error) return `${a.name} — couldn't be read: ${a.extracted.error}`;
     if (a.extracted?.kind) return `${a.name} — read as ${a.extracted.kind}`;
     return a.name;
@@ -41,12 +43,14 @@
     {#each attachments as a, i (a.key)}
       <div class="attachment-chip">
         <button type="button" class="attachment-link" onclick={() => (openIndex = i)} title={chipTitle(a)}>
-          {#if isAttachmentMissing(a.key)}
-            <!-- Checked before the media type, because this is the one state both kinds share and
-                 neither can show for itself: a thumbnail would fetch and fail to the same symbol a
-                 slow connection shows, and a document glyph would say nothing at all. -->
-            <span class="attachment-gone" aria-hidden="true">⚠</span>
-          {:else if a.mediaType.startsWith("image/")}
+          <!-- The listing's claim is deliberately NOT checked here. It answers from the object rows
+               the host has recorded, which began part-way through this app's life, so a key it omits
+               may have perfectly readable bytes — and standing a symbol in the content's place
+               guarantees nothing is ever fetched, which makes the claim unfalsifiable by the one
+               thing that could measure it. An image that really is gone fails its own fetch and
+               AttachmentThumb renders its own warning then; the claim annotates instead, in the
+               title above and the badge below. -->
+          {#if a.mediaType.startsWith("image/")}
             <AttachmentThumb {clientId} fileKey={a.key} {attachmentUrl} />
           {:else}
             <span class="attachment-glyph" aria-hidden="true">📄</span>
@@ -55,7 +59,9 @@
         <!-- A document that was read contributes its text to whatever the assistant answers next;
              one that failed contributes nothing at all. That difference is invisible without a
              mark, and a silently-ignored document is exactly the failure this milestone set out
-             to end. -->
+             to end. The first arm may therefore mark a chip whose thumbnail loaded perfectly well.
+             That is correct: it reports what the index says, which is the whole of what the claim
+             is allowed to do. -->
         {#if isAttachmentMissing(a.key)}
           <span class="attachment-badge failed" title={chipTitle(a)}>!</span>
         {:else if a.extracted?.error}
@@ -84,12 +90,6 @@
   }
   .attachment-link:hover { border-color: var(--accent); }
   .attachment-glyph { font-size: 1.4rem; }
-  /* Mirrors AttachmentThumb's own .failed, which is the same symbol for a neighbouring reason —
-     there it is one chip's image that would not load, here it is the file itself being absent. */
-  .attachment-gone {
-    width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
-    color: var(--alert); font-size: 0.9rem;
-  }
   .attachment-remove {
     position: absolute; top: -6px; right: -6px; width: 18px; height: 18px; border-radius: 50%;
     border: 1px solid var(--border); background: white; color: var(--muted); font-size: 0.65rem;
