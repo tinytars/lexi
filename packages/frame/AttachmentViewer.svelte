@@ -20,10 +20,11 @@
   let { attachments, index = $bindable(), clientId, attachmentUrl, onClose }: Props = $props();
 
   let current = $derived(attachments[index]);
-  // The strip shows the symbol; this is where it is named. Said before any fetch is attempted,
-  // because the reason a fetch is about to fail is already known and "Couldn't open this" is the
-  // wrong sentence for a file that is not there to open.
-  let missing = $derived(!!current && isAttachmentMissing(current.key));
+  // What the host's listing SAID, which is not what the store did: it answers from recorded object
+  // rows, not from the bucket, and those rows began part-way through this app's life. The claim
+  // therefore never pre-empts the fetch — it only picks better prose for a failure the fetch has
+  // already taken (bodyError, below).
+  let claimedMissing = $derived(!!current && isAttachmentMissing(current.key));
   let isImage = $derived(current?.mediaType.startsWith("image/") ?? false);
   let isPdf = $derived(current?.mediaType === "application/pdf");
   // One resolution serves the image, the download link and the PDF open: all three want the bytes
@@ -43,6 +44,15 @@
   let pdfPage = $state(1);
   let pdfError = $state<string | null>(null);
   let canvasEl = $state<HTMLCanvasElement | undefined>();
+
+  // "Nothing can open it" is said only where a fetch has actually failed to bring anything back, and
+  // only about the FETCH. `url.error` is the bytes not arriving. `pdfError` on its own is bytes that
+  // ARRIVED and would not parse — a file that is present, however the listing answered, so the
+  // listing's wording must not be borrowed for it. Declared here rather than beside claimedMissing
+  // because a $derived reads its dependencies directly, and pdfError is only declared just above.
+  const MISSING_NOTE =
+    "This file is missing from storage — the record names it, but the store has no record of it, so nothing can open it. Attaching it again is the only way back.";
+  let bodyError = $derived(url.error && claimedMissing ? MISSING_NOTE : (url.error ?? pdfError ?? null));
 
   $effect(() => {
     pdfDoc = null;
@@ -71,6 +81,9 @@
   <div class="viewer">
     <div class="viewer-head">
       <span class="viewer-name">{current?.name}</span>
+      <!-- Gated on the bytes and never on the claim: url.current exists only because the fetch
+           returned, and withdrawing a working download on the authority of an index known to
+           under-report is the error this file was fixing. -->
       {#if url.current}
         <a class="viewer-download" href={url.current} download={current?.name} target="_blank" rel="noopener">⤓ Download</a>
       {:else}
@@ -82,20 +95,21 @@
       {#if attachments.length > 1}
         <button type="button" class="viewer-nav prev" disabled={index === 0} onclick={() => go(-1)} aria-label="Previous attachment">‹</button>
       {/if}
-      {#if missing}
-        <p class="viewer-error">This file is missing from storage — the record names it, but the store has no record of it, so nothing can open it. Attaching it again is the only way back.</p>
-      {:else if url.error && !isPdf}
-        <p class="viewer-error">{url.error}</p>
+      {#if bodyError}
+        <p class="viewer-error">{bodyError}</p>
       {:else if isImage && current && url.current}
         <img class="viewer-image" src={url.current} alt={current.name} />
       {:else if isPdf}
-        {#if pdfError}
-          <p class="viewer-error">{pdfError}</p>
-        {:else if !pdfDoc}
+        {#if !pdfDoc}
           <p class="viewer-loading">Loading PDF…</p>
         {:else}
           <canvas bind:this={canvasEl}></canvas>
         {/if}
+      {:else if isImage}
+        <!-- An image whose bytes are still in flight. Said as waiting, because the arm below is a
+             verdict and this is the same mistake in miniature: it used to read "no preview
+             available" for a file that previews a tick later, beside a struck-through Download. -->
+        <p class="viewer-loading">Loading…</p>
       {:else}
         <p class="viewer-unsupported">No preview available for this file — use Download.</p>
       {/if}
