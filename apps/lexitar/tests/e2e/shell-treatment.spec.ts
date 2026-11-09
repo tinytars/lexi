@@ -4,6 +4,7 @@ import { openLeafMenu } from "./_leaf-menu";
 import { clickNav } from "./_nav";
 import { watchFlashes, expectFlashed } from "./_flash";
 import { gotoTreatmentBucket, identifyTreatmentByText, addOngoingTreatment, editFirstDoseEntry } from "./_shell";
+import type { Page } from "@playwright/test";
 
 // The Treatment section's own views and editing — the unified temporal buckets, the Add/Edit modal,
 // which bucket survives a reload, the two extractors (From text, From photos), and what the dose
@@ -101,45 +102,63 @@ test("Treatment: after Add/Save the page scrolls to and flashes the new item (M6
   await expect(page.locator(".unified-treatment .saved")).toBeVisible({ timeout: 10_000 });
 });
 
-// Editing must leave you where you were looking. The post-save anchor resolves the bucket of the
-// medicine's REPRESENTATIVE row, so saving from Past threw you into Ongoing whenever that drug also
-// had a current dose period — the reassignment belongs to navigation, not to saving. The medicine
-// therefore needs BOTH a past and an ongoing row, or the assertion passes without the fix.
-test("Treatment: saving an edit from the Past view stays in Past, even when the drug is also ongoing", async ({ page }) => {
+// A second (or third) dose period of a drug that already exists — repeated names are how a titration
+// is recorded, so these group under the one card by name. `addOngoingTreatment` covers the open-ended
+// case; this covers a closed one and a future-dated one, which four tests below need.
+async function addDosePeriod(page: Page, name: string, start: string, end?: string) {
+  await page.getByTitle("Add treatment").click();
+  await identifyTreatmentByText(page, { name, kind: "drug" });
+  await page.locator(".tedit .field", { hasText: /^Amount/ }).locator("input").fill("1");
+  await page.locator(".tedit-daterow .field", { hasText: "Start" }).locator("input").fill(start);
+  if (end) await page.locator(".tedit-daterow .field", { hasText: "End" }).locator("input").fill(end);
+  await page.locator(".tedit-actions .btn.primary", { hasText: "Save" }).click();
+  await expect(page.locator(".unified-treatment .saved")).toBeVisible({ timeout: 10_000 });
+}
+
+// Editing must leave you where you were looking — and after the filters became per-drug, where you
+// were looking is a filter the drug IS in. The old version of this test ("saving an edit from the Past
+// view stays in Past, even when the drug is also ongoing") pinned the workaround for the defect: a
+// drug sat in Past and in Ongoing at once, the post-save anchor resolved one representative dose row,
+// and a save from Past threw you into Ongoing. Under a partition that premise cannot be built, and a
+// "stays put" assertion can no longer fail. What can fail is the other half of the same guarantee: an
+// edit that MOVES the drug to another filter has to take the view with it, or you are left facing a
+// list the thing you just edited is absent from.
+test("Treatment: ending the only ongoing dose period follows the card from Ongoing to Past", async ({ page }) => {
   page.on("dialog", (d) => d.accept());
   await openSyntheticAsProvider(page);
   await clickNav(page, "Treatment");
 
-  const marker = `M-past-stay ${Date.now()}`;
+  const marker = `M-follow-to-past ${Date.now()}`;
   await addOngoingTreatment(page, marker);
-  // A second, already-finished dose period of the same drug — groups with the first by name.
-  await page.getByTitle("Add treatment").click();
-  await identifyTreatmentByText(page, { name: marker, kind: "drug" });
-  await page.locator(".tedit-daterow .field", { hasText: "Start" }).locator("input").fill("2019-01-01");
-  await page.locator(".tedit-daterow .field", { hasText: "End" }).locator("input").fill("2019-06-01");
-  await page.locator(".tedit-actions .btn.primary", { hasText: "Save" }).click();
-  await expect(page.locator(".unified-treatment .saved")).toBeVisible({ timeout: 10_000 });
 
-  await gotoTreatmentBucket(page, "Past");
+  await gotoTreatmentBucket(page, "Ongoing");
   const group = page.locator(".med-group", { hasText: marker });
-  await group.locator(".med-table td.med-actions .btn", { hasText: "Edit" }).first().click();
-  await page.locator(".tedit .field", { hasText: "Amount" }).locator("input").fill(String(Date.now() % 100000));
   const anchorId = await group.locator(".permalink-heading").first().getAttribute("id");
+  await group.locator(".med-table td.med-actions .btn", { hasText: "Edit" }).first().click();
+  // Closing out its one and only dose period: the drug has no current and no future period left, so
+  // groupBucket moves it from ongoing to past.
+  await page.locator(".tedit-daterow .field", { hasText: "End" }).locator("input").fill("2021-06-01");
   await watchFlashes(page);
   await page.locator(".tedit-actions .btn.primary", { hasText: "Save" }).click();
   await expect(page.locator(".unified-treatment .saved")).toBeVisible({ timeout: 10_000 });
 
-  // The post-save anchor flash is the last step of the navigation that used to jump to Ongoing.
+  // The anchor flash is the last step of the navigation, and the card it lands on is in Past.
   await expectFlashed(page, anchorId);
   await expect(page.locator(".sidebar .group-list .sub-item.active")).toHaveText(/Past/);
+  await expect(page.locator(".med-group", { hasText: marker })).toBeVisible();
 });
 
 // M-reason-in-dose-editor — Reason moved out of the medicine-scope form into the entry/dose editor,
 // but stays a medicine-level fact by convention: saving it from one dose row's entry-scope edit must
 // fan out to every sibling row of the same drug, exactly like Name/Kind/product fields already fan
-// out from the medicine-scope form. Editing it on the Past row and then reading it back off the
-// Ongoing row (a genuinely different row, in a different bucket) is what proves the fan-out actually
-// happened, rather than just the one row that was edited.
+// out from the medicine-scope form.
+//
+// The original read it back off the same drug's card in a DIFFERENT bucket, which a partition makes
+// impossible — and worse, it would now pass without the fan-out: one card carries all of the drug's
+// rows and `.med-reason` answers from whichever row has one. So the read-back goes through the thing
+// that is still per-row: expand the Ongoing card, edit Reason on the greyed past row, then open the
+// ONGOING row's own entry editor and find it pre-filled. Same proof, a genuinely different physical
+// row, and it fails if the fan-out is removed.
 test("Treatment: setting Reason on one dose row fans it out to sibling rows of the same drug (M-reason-in-dose-editor)", async ({ page }) => {
   page.on("dialog", (d) => d.accept());
   await openSyntheticAsProvider(page);
@@ -147,23 +166,87 @@ test("Treatment: setting Reason on one dose row fans it out to sibling rows of t
 
   const marker = `M-reason-fanout ${Date.now()}`;
   await addOngoingTreatment(page, marker);
-  // A second, already-finished dose period of the same drug — groups with the first by name.
-  await page.getByTitle("Add treatment").click();
-  await identifyTreatmentByText(page, { name: marker, kind: "drug" });
-  await page.locator(".tedit-daterow .field", { hasText: "Start" }).locator("input").fill("2019-01-01");
-  await page.locator(".tedit-daterow .field", { hasText: "End" }).locator("input").fill("2019-06-01");
-  await page.locator(".tedit-actions .btn.primary", { hasText: "Save" }).click();
-  await expect(page.locator(".unified-treatment .saved")).toBeVisible({ timeout: 10_000 });
+  await addDosePeriod(page, marker, "2019-01-01", "2019-06-01");
 
   const reason = `joint pain, fanout check ${Date.now()}`;
-  await gotoTreatmentBucket(page, "Past");
-  const pastGroup = page.locator(".med-group", { hasText: marker });
-  await pastGroup.locator(".med-table td.med-actions .btn", { hasText: "Edit" }).first().click();
+  await gotoTreatmentBucket(page, "Ongoing");
+  const group = page.locator(".med-group", { hasText: marker });
+  // The past dose period is not in this view's bucket, so it is behind the toggle.
+  await group.locator(".med-more").click();
+  const pastRow = group.locator(".med-table tbody tr.med-out");
+  await expect(pastRow).toHaveCount(1);
+  await pastRow.locator("td.med-actions .btn", { hasText: "Edit" }).click();
   await page.locator(".tedit .field", { hasText: "Reason" }).locator("input").fill(reason);
   await page.locator(".tedit-actions .btn.primary", { hasText: "Save" }).click();
   await expect(page.locator(".unified-treatment .saved")).toBeVisible({ timeout: 10_000 });
 
-  // Read it back off the Ongoing row — a different physical row than the one just edited.
+  // Read it back off the ongoing row's own editor — the row that was NOT edited.
+  await page
+    .locator(".med-group", { hasText: marker })
+    .locator(".med-table tbody tr:not(.med-out):not(.med-flag) td.med-actions .btn", { hasText: "Edit" })
+    .first()
+    .click();
+  await expect(page.locator(".tedit .field", { hasText: "Reason" }).locator("input")).toHaveValue(reason);
+});
+
+// Invariant I1 in the browser: the three temporal filters partition the drugs, so a titrated drug —
+// a past dose period, a current one and a scheduled increase, all under one name — is in exactly one
+// of them. Before this it was in all three at once: Past because a step had ended, Planned because a
+// step was scheduled, Ongoing because it is being taken. All stays the unfiltered list (I2), so the
+// same drug is there too, with every one of its dose periods on the card.
+test("Treatment: a titrated drug is in exactly one temporal filter, and in All with its whole history", async ({ page }) => {
+  page.on("dialog", (d) => d.accept());
+  await openSyntheticAsProvider(page);
+  await clickNav(page, "Treatment");
+
+  const marker = `M-one-bucket ${Date.now()}`;
+  await addOngoingTreatment(page, marker); // a current dose period
+  await addDosePeriod(page, marker, "2019-01-01", "2019-06-01"); // a finished one
+  await addDosePeriod(page, marker, "2099-01-01"); // a scheduled increase
+
+  const card = page.locator(".med-group", { hasText: marker });
   await gotoTreatmentBucket(page, "Ongoing");
-  await expect(page.locator(".med-group", { hasText: marker })).toContainText(reason);
+  await expect(card).toHaveCount(1);
+  await gotoTreatmentBucket(page, "Planned");
+  await expect(card).toHaveCount(0);
+  await gotoTreatmentBucket(page, "Past");
+  await expect(card).toHaveCount(0);
+
+  await gotoTreatmentBucket(page, "All");
+  await expect(card).toHaveCount(1);
+  // All three dose periods, no toggle needed — the drug's whole history, which is what makes the
+  // three filters a partition OF All rather than a fourth bucket beside it.
+  await expect(card.locator(".med-table tbody tr:not(.med-flag)")).toHaveCount(3);
+  await expect(card).toContainText("2019");
+  await expect(card).toContainText("2099");
+});
+
+// The other half of the same change: a filter no longer truncates a drug's timeline. Its own dose
+// periods show collapsed, and one click reveals the rest, marked as history rather than hidden —
+// which is what the old Ongoing view had no way to show at all.
+test("Treatment: expanding an Ongoing card reveals its past dose period, greyed and pilled", async ({ page }) => {
+  page.on("dialog", (d) => d.accept());
+  await openSyntheticAsProvider(page);
+  await clickNav(page, "Treatment");
+
+  const marker = `M-show-history ${Date.now()}`;
+  await addOngoingTreatment(page, marker);
+  await addDosePeriod(page, marker, "2019-01-01", "2019-06-01");
+
+  await gotoTreatmentBucket(page, "Ongoing");
+  const card = page.locator(".med-group", { hasText: marker });
+  // Collapsed: this bucket's one row, and a toggle counting the drug's total.
+  await expect(card.locator(".med-table tbody tr:not(.med-flag)")).toHaveCount(1);
+  await expect(card.locator(".med-table tbody tr.med-out")).toHaveCount(0);
+  const toggle = card.locator(".med-more");
+  await expect(toggle).toHaveText(/Show full history \(2\)/);
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+
+  await toggle.click();
+  const pastRow = card.locator(".med-table tbody tr.med-out");
+  await expect(pastRow).toHaveCount(1);
+  await expect(pastRow.locator(".bucket.bucket--past")).toBeVisible();
+  await expect(pastRow).toContainText("2019");
+  await expect(toggle).toHaveText(/Show fewer/);
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
 });
