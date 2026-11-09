@@ -1,19 +1,22 @@
 # The vault operations that run on your own computer
 
-Thirteen of the fifteen operations this application has cannot run in continuous integration, and as
+Sixteen of the eighteen operations this application has cannot run in continuous integration, and as
 of 2026-10-19 the dispatch form no longer offers them. This document is where they went. It is the
 runbook: what each one does, the command, and what a real run cannot be undone from.
 
 They are here rather than in the workflow for two reasons, and the second is the one that mattered.
 
 **None of them can work on a hosted runner.** Every operation under `npm run r2-ops`, plus
-`raw-backfill`, `raw-pages-backfill`, `raw-encrypt-backfill`, `raw-seal-verify` and
-`recovery-approve`, reaches
-`scripts/org-unwrap.ts`, so each needs the organisation's **private** key. That key file never
-arrives: `scripts/org-key.ts:33` resolves `ORG_KEY_PATH` or a credential store's `org-key.json` and
-has no in-repo fallback, and no workflow sets either. A dispatch therefore failed on the key, every
-time, after installing the repository and billing the minutes. `ORG_KEY_PASSPHRASE` being in Actions
-secrets did not change that — a passphrase opens nothing without the key it decrypts.
+`raw-backfill`, `raw-pages-backfill`, `raw-encrypt-backfill`, `raw-seal-verify`, both halves of
+`raw-copy` and `recovery-approve`, reaches `scripts/org-unwrap.ts`, so each needs the organisation's
+**private** key. That key file never arrives: `scripts/org-key.ts:33` resolves `ORG_KEY_PATH` or a
+credential store's `org-key.json` and has no in-repo fallback, and no workflow sets either. A
+dispatch therefore failed on the key, every time, after installing the repository and billing the
+minutes. `ORG_KEY_PASSPHRASE` being in Actions secrets did not change that — a passphrase opens
+nothing without the key it decrypts.
+
+`raw-copy-purge` is the one that is local for a different reason: what it deletes is plaintext that
+exists on this workstation and nowhere else, so there is nothing on a runner for it to act on.
 
 Putting the private key in Actions secrets would fix it and is **declined**: it would give every
 workflow-dispatch a recovery envelope into every vault, which is the capability the October 2026
@@ -24,8 +27,8 @@ inputs and its run page are readable by anyone. `client` took an account id — 
 `recovery-approve` it took *the patient's own email address* — while `reason` took free text that
 the composite action echoed into the run summary. A run page naming who an operation was run for is
 a disclosure whether or not the operation then failed on a missing key, and twelve of the thirteen
-could only fail. Both inputs are gone, and with them the per-client concurrency key that spelled an
-account id into a group name.
+the form offered could only fail. Both inputs are gone, and with them the per-client concurrency
+key that spelled an account id into a group name.
 
 ## Before any of these
 
@@ -82,9 +85,22 @@ acknowledgement into an ambient one, which is the whole thing the guard is for.
 | raw-pages-backfill | `npx tsx scripts/raw-pages-backfill.ts --confirm` | Store-wide. Reads every PDF in the store to count its pages, so it is the slowest of these, and the dry run reads them all too. **`--purge-unreadable` DELETES the PDFs no parser can open** — irreversible outside the snapshot window |
 | raw-encrypt-backfill | `npx tsx scripts/raw-encrypt-backfill.ts --confirm` | Store-wide. **Overwrites patient objects in place** with their sealed form; the nightly snapshot is the only undo. The dry run's counts are the migration's remaining work |
 | raw-seal-verify | `npm run raw:seal-verify` | **Never writes.** Opens every raw original and extraction sidecar in the store and checks the plaintext against its own file type. This is the half `raw-seal-sweep` cannot do: that one measures the envelope's shape, and an object sealed under a key nobody holds has exactly the shape of one sealed correctly. Each object may cost an org-key unwrap, so a run writes `phi_access_events` rows |
+| raw-copy-export | `npm run raw:copy-export` | **Never writes to any store**, and refuses any store but `dev` as the source (`LEXI_COPY_SOURCE_STORE` overrides). It leaves **readable patient images on this workstation** under `$XDG_STATE_HOME/lexitar/exports` at 0700/0600, which is not a side effect but the mechanism — see the paragraph under this table. Each object costs an org-key unwrap, so a run writes `phi_access_events` rows |
+| raw-copy-import | `npm run raw:copy-import -- <staging dir>`, then the same with `--confirm` and `PLOVER_ALLOW_LOCAL_VAULT_WRITE=1` | Copies only what **this** store's records name and this bucket does not hold, and records the `raw_objects` row for each. Nothing is ever overwritten: an attachment key is content-addressed, so a file already present is already the right bytes. A present object whose row never landed is recorded and not re-copied, which is what makes a failed run resumable. Images only. The dry run is the report, and its counts are what `--confirm` would do |
+| raw-copy-purge | `npm run raw:copy-purge` | Deletes every staging directory in the export root, the record exports included — `record-export`'s own `--purge` under a second name, because one sweep is the only kind that cannot leave the other's plaintext behind. Run it the moment the import reports clean |
 | recovery-approve | `npm run recovery:approve -- --email <account email> --confirm` | The one command here that takes an email rather than a vault id, which is why it could not stay on a public form |
 
-## The two that stayed, and why detection is not one of the thirteen
+`raw-copy-export` and `raw-copy-import` are one operation in two commands, and the split is
+structural rather than stylistic: `scripts/target.ts` resolves the bucket and the database once at
+module load, so **one process is one store** and a cross-store copy cannot be one process. Nor can
+it be a byte copy — a per-file content key lives inside the owning vault, so the source's ciphertext
+decrypts under nothing the target holds. The copy therefore unseals on one side and re-seals on the
+other, and plaintext exists on this workstation in between. Each half runs from a checkout bound to
+its own store (`apps/lexitar/wrangler.jsonc` differs between `dev` and `main`, or the three
+`VAULT_BUCKET` / `D1_DATABASE` / `STORE_PREFIX` overrides set together), and `raw-copy-purge` is
+part of the operation rather than tidying after it.
+
+## The two that stayed, and why detection is not one of the sixteen
 
 `orphan-sweep` does not reach the organisation's key, so it runs on a hosted runner and is a choice
 in `.github/workflows/ops.yml`. Locally it is `npx tsx scripts/orphan-sweep.ts --record`; a real run
