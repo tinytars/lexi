@@ -1,7 +1,15 @@
 // M54/5 — client-side downscale/recompress for treatment photo intake, so a phone-camera
 // original (often several MB) doesn't ride the /api/treatment-image-infer relay uncompressed.
+//
+// `Blob` and not `File`, because the second caller does not have one: attachment-blob.ts resizes
+// bytes it has just decrypted out of the store, and there is no name or modified time to invent for
+// them. `createImageBitmap` takes any ImageBitmapSource and `File extends Blob`, so every existing
+// call site type-checks unchanged — including the one that reaches this through a dependency slot
+// declared as `(file: File) => …`, parameters being contravariant. No second resize function: the
+// thumbnail is this one called with a smaller `maxDim`, and the `Math.min(1, …)` below means a
+// picture already under that edge is re-encoded rather than stretched.
 export async function compressImage(
-  file: File,
+  file: Blob,
   maxDim = 1024,
   quality = 0.7,
 ): Promise<{ bytes: Uint8Array; mediaType: "image/jpeg" }> {

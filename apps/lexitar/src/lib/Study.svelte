@@ -7,7 +7,7 @@
   import { standardLeafActions, buildNoteAttachment } from "./leaf-actions";
   import TurnCard from "./TurnCard.svelte";
   import AttachmentStrip from "@tinytars/frame/AttachmentStrip.svelte";
-  import { appendAttachments, attachmentUrl } from "./attachment-store";
+  import { appendAttachments, attachmentUrl, attachmentThumbUrl as thumbUrl } from "./attachment-store";
   import DictateButton from "@tinytars/frame/DictateButton.svelte";
   import PendingGrouping from "./PendingGrouping.svelte";
   import HeadingAnchor from "./HeadingAnchor.svelte";
@@ -220,7 +220,7 @@
        close over `e` from the enclosing snippet's own scope. -->
   {#snippet patientTurn()}
     {#if e.detail}<p class="sr-text">{e.detail}</p>{/if}
-    <AttachmentStrip attachments={e.attachments ?? []} {clientId} {attachmentUrl} productName={PRODUCT_NAME} />
+    <AttachmentStrip attachments={e.attachments ?? []} {clientId} {attachmentUrl} {thumbUrl} productName={PRODUCT_NAME} />
   {/snippet}
   {#snippet aiTurn()}<p class="sr-text">{result}</p>{/snippet}
   <TurnCard

@@ -17,7 +17,7 @@
   import { standardLeafActions, buildNoteAttachment } from "./leaf-actions";
   import TurnCard from "./TurnCard.svelte";
   import AttachmentStrip from "@tinytars/frame/AttachmentStrip.svelte";
-  import { appendAttachments, attachmentUrl } from "./attachment-store";
+  import { appendAttachments, attachmentUrl, attachmentThumbUrl as thumbUrl } from "./attachment-store";
   import DictateButton from "@tinytars/frame/DictateButton.svelte";
   import { sortPinnedFirst } from "./pin-sort";
   import { PRODUCT_NAME } from "./brand";
@@ -240,7 +240,7 @@
             <span class="field">{a.severity || "—"}</span>
             <span class="field">{a.dateNoted || "No date"}</span>
           </FormGrid>
-          <AttachmentStrip attachments={a.attachments ?? []} {clientId} {attachmentUrl} productName={PRODUCT_NAME} />
+          <AttachmentStrip attachments={a.attachments ?? []} {clientId} {attachmentUrl} {thumbUrl} productName={PRODUCT_NAME} />
         {/snippet}
         {#snippet aiTurn()}<p class="az-text">{result}</p>{/snippet}
         <TurnCard
