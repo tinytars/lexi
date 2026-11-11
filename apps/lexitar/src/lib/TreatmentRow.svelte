@@ -4,7 +4,7 @@
   import { groupBucket, partitionGroupsByBucket } from "./treatment-sidebar";
   import { treatmentsOf } from "@pablotech/akesi/treatment-normalize";
   import { planActionSystems } from "./treatment-groups";
-  import { attachmentsOf, attachmentUrl } from "./attachment-store";
+  import { attachmentsOf, attachmentUrl, attachmentThumbUrl as thumbUrl } from "./attachment-store";
 
   export interface Row { name: string; dose?: string; meta?: string; assessment?: string; group?: string; attachments: Attachment[]; bucket: Bucket }
 
@@ -124,7 +124,7 @@
     {#if showBucket}<span class="bucket bucket--{r.bucket}">{BUCKET_LABEL[r.bucket]}</span>{/if}
   </div>
   {#if r.dose}<p class="ct-dose">{r.dose}</p>{/if}
-  <AttachmentStrip attachments={r.attachments} {clientId} {attachmentUrl} productName={PRODUCT_NAME} />
+  <AttachmentStrip attachments={r.attachments} {clientId} {attachmentUrl} {thumbUrl} productName={PRODUCT_NAME} />
 {/snippet}
 
 {#snippet aiTurn()}<p class="ct-assess">{r.assessment}</p>{/snippet}

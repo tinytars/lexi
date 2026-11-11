@@ -87,6 +87,11 @@ export async function uploadAttachment(clientId: string, bytes: Uint8Array, key:
 // caller passes this straight to AttachmentStrip/AttachmentViewer, which resolve it.
 export { attachmentBlobUrl as attachmentUrl, fetchAttachmentBytes, revokeAttachmentBlobs } from "./attachment-blob";
 
+// The chip's own artefact, beside the original rather than instead of it: a strip hands its thumb
+// the small copy and its viewer the full picture, which is why both come through this module and
+// neither replaces the other. A host that passes only `attachmentUrl` keeps working unchanged.
+export { attachmentThumbUrl } from "./attachment-blob";
+
 // W46 Phase 6 — chat vision needs an attachment's bytes back as base64 for an Anthropic `image`
 // content block (functions/api/chat.ts). Unlike treatment-image-client.ts's inference relay
 // (which base64s bytes already in hand, pre-upload), a chat attachment is uploaded once at Attach

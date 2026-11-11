@@ -20,7 +20,7 @@
   import { PRODUCT_NAME } from "./brand";
   import ReferenceCard from "./ReferenceCard.svelte";
   import AttachmentStrip from "@tinytars/frame/AttachmentStrip.svelte";
-  import { appendAttachments, attachmentUrl } from "./attachment-store";
+  import { appendAttachments, attachmentUrl, attachmentThumbUrl as thumbUrl } from "./attachment-store";
   import DictateButton from "@tinytars/frame/DictateButton.svelte";
 
   // M63 — a flat, reorderable list of free-text notes (one text box per entry, no title/date).
@@ -228,7 +228,7 @@
   {#snippet patientTurn()}
     <p class="note-text">{n.text}</p>
     {#if n.attachment}<ReferenceCard reference={n.attachment} {onNavigate} />{/if}
-    <AttachmentStrip attachments={n.attachments ?? []} {clientId} {attachmentUrl} productName={PRODUCT_NAME} />
+    <AttachmentStrip attachments={n.attachments ?? []} {clientId} {attachmentUrl} {thumbUrl} productName={PRODUCT_NAME} />
   {/snippet}
   {#snippet aiTurn()}<p class="note-text">{result}</p>{/snippet}
   <!-- No title: a note has no short hand-picked label to head the card with (same reason NoteRow

@@ -31,6 +31,7 @@ export function namespacePairs(store: string, oldId: string, newId: string): [st
     [`${store}/regen-log/${o}/`, `${store}/regen-log/${n}/`],
     [`${store}/raw/${o}/`, `${store}/raw/${n}/`],
     [`${store}/text/${o}/`, `${store}/text/${n}/`],
+    [`${store}/thumb/${o}/`, `${store}/thumb/${n}/`],
     [`${store}/processed/${o}/`, `${store}/processed/${n}/`],
   ];
 }
