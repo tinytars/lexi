@@ -125,6 +125,12 @@ const KNOWN: Record<string, string> = {
   ".claude/agents/health-dash-gatekeeper.md | gate.yml": "another repository's workflow, named as a topology this one deliberately lacks",
   "apps/lexitar/MEASUREMENT.md | METHOD.md": "dokimasia-rk's document, linked by URL rather than cited as a local path",
   "apps/lexitar/MEASUREMENT.md | pilos/CONTRIBUTING.md": "pablo-tech/pilos, another repository",
+  "AGENTS.md | infra/retrieval/CONTRACT.md":
+    "the retrieval contract this repository's routing layer satisfies; it lives in the private context repository, where every repository's copy would otherwise drift from it",
+  "HEADINGS.md | infra/retrieval/gen_headings.py":
+    "the generator that writes HEADINGS.md, in the context repository — the projection says what produced it so a reader does not hand-edit it",
+  "HEADINGS.md | verify-retrieval.sh":
+    "that generator's checker, beside it in the context repository and named for the same reason",
   "apps/lexitar/VAULT.md | planning/lexi/remediate-published-key-material.md": "plans live in the context repository, never in the repository they plan for",
   "apps/lexitar/docs/adr/0001-rewrite-applied-migration-0002.md | planning/lexi/remediate-published-key-material.md": "as above",
   "apps/lexitar/VAULT.md | npm run roster:rotate":
