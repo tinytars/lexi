@@ -1,0 +1,30 @@
+# What this repository declares to the retrieval layer.
+# The contract is `plover-context`'s `infra/retrieval/CONTRACT.md`.
+
+# `entry` is left at its default, `AGENTS.md`, and that file is new with this layer.
+# The two documents a route would otherwise have gone in are both nearly full: `README.md`
+# is 8,951 B and `START-HERE.md` 8,676 B against the contract's 12,000 B ceiling, and a
+# routing section with an alias table is 3,000 B or more, so either one would have been
+# carried to the edge of the ceiling by the thing meant to keep it readable. `AGENTS.md`
+# is also the honest name for it: a route is read by whatever is answering a question,
+# where `README.md` is read by a person deciding whether to care and `START-HERE.md` by
+# one who has decided and wants to run it. `pablo-tech/principia` carries one publicly
+# for the same reason.
+
+scope = [!.]*.md
+# Every tracked markdown document except those under a dot-directory. What that drops is
+# three subagent definitions in `.claude/agents/` and two GitHub templates in `.github/`:
+# configuration read by the tool that dispatches it, not documents a question is answered
+# from. `*` crosses `/` in this matcher, so the one glob covers `apps/` and `packages/`
+# and the leading `[!.]` is what excludes the rest.
+
+quote = line
+# A matched line may be returned. This repository is public, holds no credential and holds
+# no patient record: every vault here is ciphertext the operator cannot read, and the one
+# fixture that looks like an identity -- `apps/lexitar/tests/fixtures/synthetic-patient.ts`
+# -- is synthetic with a password that is public by design, which `START-HERE.md` sends a
+# reader to on purpose. What a line does carry is a measured figure or a stated limit, and
+# in this corpus those are the answer rather than an incidental: SDG.md's targets,
+# MEASUREMENT.md's scores, DPGA.md's indicator-by-indicator verdicts, and
+# ARCHITECTURE.md's narrow claim about the vault boundary, which is the one sentence a
+# reader is most likely to round up if they are handed a heading instead of the line.
