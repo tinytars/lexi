@@ -8,8 +8,15 @@
 // "nothing can open it" directly above its own live Download link.
 //
 // So: the claim annotates (badge, title), and the absence sentence waits for a fetch that failed.
-// The last two cases pass already and are here so the over-correction — deleting the claim outright
-// — cannot pass as a fix.
+// Cases 3 and 4 passed before any of this was written and are here so the over-correction —
+// deleting the claim outright — cannot pass as a fix.
+//
+// And the failure the sentence waits for is not only a round trip: `resolveAttachmentUrl` reports a
+// decrypt with no key through the same `error`, so a file the store HOLDS can fail while the listing
+// happens to be claiming it absent. Nothing on screen could tell those two apart, and their remedies
+// are opposites — re-attach the file, or seal it against a key the ring is missing — which is what
+// the last case pins: the note is allowed to name the absence, and must carry the fetch's own reason
+// with it.
 import { afterEach, expect, it } from "vitest";
 import { flushSync } from "svelte";
 import { render } from "../support/mount";
@@ -28,6 +35,12 @@ const serves: AttachmentUrl = async (_clientId, key) => (asked.push(key), "blob:
 const refuses: AttachmentUrl = async (_clientId, key) => {
   asked.push(key);
   throw new Error("fetching the attachment failed (404)");
+};
+// The other half of what `url.error` spans: bytes that arrived and would not open. The message is
+// the one attachment-blob.ts raises when the vault's ring has no content key for the file.
+const keyless: AttachmentUrl = async (_clientId, key) => {
+  asked.push(key);
+  throw new Error(`no content key for "front.jpg"`);
 };
 
 /** The stub resolves a microtask later; one macrotask turn is strictly past that. */
@@ -75,6 +88,9 @@ it("names the absence once the fetch has failed and the listing agrees", async (
   await settle();
 
   expect(el.textContent).toContain("missing from storage");
+  // The reason travels with the note rather than being replaced by it: the wording is a reading of
+  // the failure, and a reading that hides what it read cannot be checked against anything.
+  expect(el.textContent).toContain("fetching the attachment failed (404)");
   expect(el.querySelector("a.viewer-download")).toBeNull();
   expect(el.querySelector(".viewer-download.is-disabled")).not.toBeNull();
 });
@@ -85,4 +101,16 @@ it("shows the fetch's own reason for a failure the listing never predicted", asy
 
   expect(el.textContent).toContain("fetching the attachment failed (404)");
   expect(el.textContent).not.toContain("missing from storage");
+});
+
+it("keeps a content-key failure legible under the listing's absence wording", async () => {
+  setMissingAttachments([GONE]);
+  const el = viewer(keyless);
+  await settle();
+
+  // The claim is the listing's and the viewer may still report it — it has no way to know better.
+  expect(el.textContent).toContain("missing from storage");
+  // But a file whose key is missing is PRESENT, and this is the only thing on screen that says so.
+  // Without it the one remedy offered — attach it again — is the wrong one, stated with confidence.
+  expect(el.textContent).toContain(`no content key for "front.jpg"`);
 });

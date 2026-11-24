@@ -28,10 +28,11 @@ import type { Vault } from "../src/lib/types";
 import { keyRange } from "../functions/_lib/key-range";
 import { keyringOwner } from "./keyring-owner";
 
-/** `{store}/raw/{slug}/{file}`, or the `{store}/text/{slug}/{file}.json` sidecar sealed under the
- *  SAME content key as the document it transcribes — so both resolve to one lookup. */
+/** `{store}/raw/{slug}/{file}`, or one of the two derivatives sealed under the SAME content key as
+ *  the document they come from — the `{store}/text/{slug}/{file}.json` transcription sidecar and the
+ *  `{store}/thumb/{slug}/{file}` chip thumbnail — so all three resolve to one lookup. */
 export function parseRawKey(r2Key: string): { slug: string; file: string } | null {
-  const m = /^[^/]+\/(raw|text)\/([^/]+)\/(.+)$/.exec(r2Key);
+  const m = /^[^/]+\/(raw|text|thumb)\/([^/]+)\/(.+)$/.exec(r2Key);
   if (!m) return null;
   const [, kind, slug, tail] = m;
   return { slug, file: kind === "text" ? tail.replace(/\.json$/, "") : tail };

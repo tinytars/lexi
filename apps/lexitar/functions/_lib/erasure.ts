@@ -118,8 +118,17 @@ export async function r2KeysForAccount(env: ErasureEnv, accountId: string): Prom
  * keeps a segment another account claimed from letting an erasure report `complete`. It is the first
  * namespace here the subject's browser never reads back, which is precisely why it needs naming: a log
  * with no reader would survive an erasure with nothing breaking loudly enough to notice.
+ *
+ * `thumb/` is the chip-sized copy of an attachment, `thumb/{clientKey}/{file}`, sealed under the
+ * original's own content key. It is the first namespace here that is a pure DERIVATIVE — nothing is
+ * lost by deleting it and the browser regenerates one on sight — and that is exactly why it is the
+ * easiest to leave out and the worst to: it is a legible picture of a patient's body, and an erasure
+ * that deleted every original and left the thumbnails behind would have destroyed the evidence that
+ * anything was missed while keeping the part a person could recognise. Each one is recorded in
+ * `raw_objects` by the route that writes it, so the key-driven pass deletes it; the prefix entry is
+ * again only what keeps a copy another account claimed from letting an erasure report `complete`.
  */
-const NAMESPACED_PREFIXES = ["raw", "text", "orphaned-chat", "regen-log"];
+const NAMESPACED_PREFIXES = ["raw", "text", "thumb", "orphaned-chat", "regen-log"];
 
 /**
  * The namespace segments this account's PHI occupies, under every prefix above.

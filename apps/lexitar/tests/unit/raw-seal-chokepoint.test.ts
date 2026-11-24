@@ -70,6 +70,13 @@ describe("every module that writes an object into a bucket is named here", () =>
       // Seals the pre-refusal residue in place. It is the one writer whose whole purpose is to turn a
       // plaintext original into a sealed one, so it writes `await sealRaw(...)` by construction.
       "scripts/raw-encrypt-backfill.ts",
+      // Copies one client's originals and their transcriptions from one store into another, which
+      // cannot be a byte copy: a content key lives inside the owning vault, so one store's ciphertext
+      // opens under nothing the other holds. So like the backfill above it is handed plaintext
+      // deliberately — unsealed on one side, re-sealed into the target's own ring on the other
+      // (`:143`, `:147`) — plus the vault blob that carries that ring (`:59`). It seals by
+      // construction rather than refusing, which is what the assertion below holds it to.
+      "scripts/raw-copy-import.ts",
       // Moves every namespace of one client to a new id. Byte-for-byte, so it refuses to carry an
       // unsealed `raw/` or `text/` body onto a new key rather than minting a second readable copy.
       "scripts/commands/rekey.ts",
@@ -131,6 +138,19 @@ describe("every writer that can reach a raw-family key refuses cleartext", () =>
     const src = sourceOf("scripts/raw-encrypt-backfill.ts");
     expect(src).toContain("await sealRaw(plain, minted[file])");
     expect(src.match(/putObject\(LIVE_BUCKET, r2Key/g)).toHaveLength(1);
+  });
+
+  // The second writer handed plaintext deliberately, and the reason it cannot refuse instead is the
+  // one above's: it exists to re-seal. So the assertion is on the writes rather than on a refusal —
+  // two raw-family keys, both through sealRaw, and no third shape anywhere in the file.
+  it("the cross-store importer writes nothing it did not seal", () => {
+    const src = sourceOf("scripts/raw-copy-import.ts");
+    expect(src).toContain("await sealRaw(plain, minted[e.file])");
+    expect(src).toContain("await sealRaw(side, minted[e.file])");
+    const writes = [...src.matchAll(/putObject\(LIVE_BUCKET,([^;]*);/g)].map((m) => m[1]);
+    expect(writes).toHaveLength(3);
+    // The third is the vault blob, sealed by encryptVaultV2 rather than by sealRaw.
+    expect(writes.filter((w) => /sealRaw|encryptVaultV2/.test(w))).toHaveLength(3);
   });
 
   // The restore drill's control, since it is the one writer allowed to put plaintext into the live

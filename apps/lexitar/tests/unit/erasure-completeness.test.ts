@@ -58,7 +58,11 @@ describe("every R2 key class the app writes is one erasure has an answer for", (
   // so the key-driven pass deletes them; naming the prefix is what counts the ones another account
   // claimed. Nothing in the app reads this log back, so an omission here would not break anything
   // loudly — it would only make an erasure's `complete: true` wrong, quietly.
-  const ERASED_DIRS = ["raw", "text", "orphaned-chat", "regen-log"];
+  // The fifth is `thumb/{clientKey}/{file}`, the chip-sized copy of an attachment, and it is the one
+  // whose omission would have been hardest to notice: nothing reads it back except a 56-pixel chip
+  // that silently falls back to the original on a 404, so an erasure leaving it behind would have
+  // destroyed the evidence anything was missed while keeping the part a person could recognise.
+  const ERASED_DIRS = ["raw", "text", "thumb", "orphaned-chat", "regen-log"];
   const EXCLUDED_DIRS: Record<string, string> = {
     // Request logs: route, status, latency, an id. Not the subject's content, and deleting them would
     // destroy the operational record of every OTHER request in the same window.

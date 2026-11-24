@@ -59,6 +59,30 @@ describe("eraseAccount", () => {
     expect(report.r2Deleted).toContain(p.textKey);
   });
 
+  // A thumbnail is a recognisable picture of a clinical photograph, so an erasure that left it
+  // behind would have destroyed the evidence anything was missed while keeping the part a person
+  // could identify. The two halves are independent and each has its own case here: the row is what
+  // gets the key DELETED (erasure.ts:185 iterates the rows), and the prefix entry is what stops a
+  // report reading complete over an object nothing in D1 attributes.
+  it("deletes a thumbnail recorded beside its original", async () => {
+    const p = await seedPatient("a@example.com", "alex");
+    const thumbKey = `${STORE}/thumb/alex/report.pdf`;
+    await w.bucket.put(thumbKey, "SMALL JPEG");
+    await recordRawObject(w.db, thumbKey, p.id);
+    const report = await eraseAccount(env(), p.id);
+    expect(await listKeys()).toEqual([]);
+    expect(report.complete).toBe(true);
+    expect(report.r2Deleted).toContain(thumbKey);
+  });
+
+  it("reports an unattributed thumbnail rather than reporting complete over it", async () => {
+    const p = await seedPatient("a@example.com", "alex");
+    await w.bucket.put(`${STORE}/thumb/alex/old.jpg`, "SMALL JPEG");
+    const report = await eraseAccount(env(), p.id);
+    expect(report.complete).toBe(false);
+    expect(report.unattributable).toBe(1);
+  });
+
   it("does not touch another account's objects or rows", async () => {
     const mine = await seedPatient("a@example.com", "alex");
     const theirs = await seedPatient("b@example.com", "blair");

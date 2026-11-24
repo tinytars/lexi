@@ -483,7 +483,7 @@ export async function bucketExists(bucket: string): Promise<boolean> {
 // `null` means "a key shape this tool has never been taught about" — the snapshot treats that
 // as a hard error rather than skipping it, so a new key class added to storeKey() elsewhere
 // cannot silently fall out of the backup.
-export type KeyClass = "vault" | "chat" | "regenLog" | "raw" | "processed" | "text" | "logs";
+export type KeyClass = "vault" | "chat" | "regenLog" | "raw" | "processed" | "text" | "thumb" | "logs";
 
 export function classifyKey(store: string, key: string): KeyClass | null {
   if (!key.startsWith(`${store}/`)) return null;
@@ -509,6 +509,14 @@ export function classifyKey(store: string, key: string): KeyClass | null {
   // It is a CACHE, but it is derived from plaintext PHI and lives in the vault bucket, so it is
   // backed up like everything else rather than skipped.
   if (/^text\/.+/.test(rest)) return "text";
+  // The chip thumbnail, written per image attachment by the raw route's `?thumb=1` arm. The sidecar's
+  // argument above applies to it unchanged and is the reason it is taught here rather than skipped as
+  // regenerable: a derivative of plaintext PHI in the vault bucket is backed up like everything else.
+  // What the sidecar's own history adds is why that is not a judgement call — its class went
+  // undeclared when it shipped, the first object appeared 2026-08-19, and the nightly snapshot then
+  // refused to run for five nights while the app served normally, because an unclassified key is a
+  // hard failure at vault-snapshot.ts:217 and not a skipped row.
+  if (/^thumb\/.+/.test(rest)) return "thumb";
   if (/^logs\/.+/.test(rest)) return "logs";
   return null;
 }

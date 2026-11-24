@@ -45,14 +45,26 @@
   let pdfError = $state<string | null>(null);
   let canvasEl = $state<HTMLCanvasElement | undefined>();
 
-  // "Nothing can open it" is said only where a fetch has actually failed to bring anything back, and
-  // only about the FETCH. `url.error` is the bytes not arriving. `pdfError` on its own is bytes that
-  // ARRIVED and would not parse — a file that is present, however the listing answered, so the
-  // listing's wording must not be borrowed for it. Declared here rather than beside claimedMissing
-  // because a $derived reads its dependencies directly, and pdfError is only declared just above.
+  // "Nothing can open it" is said only where a fetch has actually failed to bring anything back —
+  // and the fetch is the WHOLE of the host's resolution, not the round trip alone. This comment
+  // used to read "`url.error` is the bytes not arriving", and that is wrong: attachment-url.svelte.ts
+  // names "a decrypt with no key" among the failures it reports, so `url.error` also carries a file
+  // that ARRIVED and could not be opened — whose content key the vault's ring is missing. Such a
+  // file is PRESENT in the store, and attaching it again is not its remedy; the sealing lane is.
+  // The listing cannot tell those apart and neither can this component — so the note carries the
+  // fetch's own reason beside it rather than letting the listing's wording stand as the diagnosis.
+  // Which of the two a given host is actually seeing is a measurement that host takes, and the
+  // reason on screen is the only thing that makes it takeable without a debugger.
+  //
+  // `pdfError` on its own is a third thing: bytes that arrived and would not PARSE — a file that is
+  // present however the listing answered, so the listing's wording must not be borrowed for it.
+  // Declared here rather than beside claimedMissing because a $derived reads its dependencies
+  // directly, and pdfError is only declared just above.
   const MISSING_NOTE =
     "This file is missing from storage — the record names it, but the store has no record of it, so nothing can open it. Attaching it again is the only way back.";
-  let bodyError = $derived(url.error && claimedMissing ? MISSING_NOTE : (url.error ?? pdfError ?? null));
+  let bodyError = $derived(
+    url.error && claimedMissing ? `${MISSING_NOTE} (${url.error})` : (url.error ?? pdfError ?? null),
+  );
 
   $effect(() => {
     pdfDoc = null;

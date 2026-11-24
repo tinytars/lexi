@@ -33,7 +33,7 @@
   import { hasAnyDose as hasAnyDoseInTreatments, editIndexOf as editIndexOfRow } from "./treatment-row-lookup";
   import { uploadPendingImages, mergeUploadedImages } from "./treatment-attachment-upload";
   import { planTreatmentSave, applyTreatmentSave, type TreatmentFieldScope as FieldScope } from "./treatment-save";
-  import { appendAttachments, buildAttachmentKey, uploadAttachment, attachmentUrl, attachmentsOf, groupAttachmentsOf, attachFiles, MAX_VISION_ATTACHMENTS } from "./attachment-store";
+  import { appendAttachments, buildAttachmentKey, uploadAttachment, attachmentUrl, attachmentThumbUrl as thumbUrl, attachmentsOf, groupAttachmentsOf, attachFiles, MAX_VISION_ATTACHMENTS } from "./attachment-store";
   import { openAttachPicker, DEFAULT_ATTACH_ACCEPT } from "@tinytars/frame/attach-controller";
   import AttachmentStrip from "@tinytars/frame/AttachmentStrip.svelte";
   import DictateButton from "@tinytars/frame/DictateButton.svelte";
@@ -852,7 +852,7 @@
           {#if t.extracted?.via === "photo" && t.rawCaptureAttachmentKeys?.length}
             {@const raw = (t.attachments ?? []).filter((a) => t.rawCaptureAttachmentKeys!.includes(a.key))}
             {#if raw.length}
-              <div class="med-raw-capture"><AttachmentStrip attachments={raw} {clientId} {attachmentUrl} productName={PRODUCT_NAME} /></div>
+              <div class="med-raw-capture"><AttachmentStrip attachments={raw} {clientId} {attachmentUrl} {thumbUrl} productName={PRODUCT_NAME} /></div>
             {/if}
           {:else if t.extracted?.via === "text" && t.rawCaptureText}
             <details class="med-raw-text"><summary>View original text</summary><p>{t.rawCaptureText}</p></details>
@@ -863,7 +863,7 @@
                identify-from-photo capture, so the same thumbnail never renders twice. -->
           {@const otherAttachments = groupAttachmentsOf(g.rows).filter((a) => !t.rawCaptureAttachmentKeys?.includes(a.key))}
           {#if otherAttachments.length > 0}
-            <div class="med-attachments"><AttachmentStrip attachments={otherAttachments} {clientId} {attachmentUrl} productName={PRODUCT_NAME} /></div>
+            <div class="med-attachments"><AttachmentStrip attachments={otherAttachments} {clientId} {attachmentUrl} {thumbUrl} productName={PRODUCT_NAME} /></div>
           {/if}
         {/snippet}
         {#snippet medDailyTotal()}
@@ -1036,7 +1036,7 @@
              so editing one dose period must not look like the place to change the drug's photos. -->
         <div class="field tedit-attachments">
           <span>Attachments</span>
-          <AttachmentStrip attachments={attachmentsOf(newTreatment)} {clientId} {attachmentUrl} productName={PRODUCT_NAME} onRemove={removeAttachmentFromEdit} />
+          <AttachmentStrip attachments={attachmentsOf(newTreatment)} {clientId} {attachmentUrl} {thumbUrl} productName={PRODUCT_NAME} onRemove={removeAttachmentFromEdit} />
           <Button onclick={addAttachmentToEdit}>+ Add photo/file</Button>
         </div>
       {/if}

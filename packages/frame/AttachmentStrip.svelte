@@ -13,14 +13,20 @@
   //
   // attachmentUrl is injected rather than imported — this package doesn't know the host app's API
   // route convention, only that one exists. It may resolve asynchronously; see attachment-url.svelte.ts.
+  //
+  // thumbUrl is the same injection for a SMALLER copy of the same attachment, and it is optional
+  // for the reason AttachmentThumb's own comment gives. It reaches the chip and deliberately not
+  // the viewer: the viewer exists to show the picture, and handing it the chip's copy would trade
+  // the whole point of opening one for bytes the strip had already paid.
   interface Props {
     attachments: Attachment[];
     clientId?: string | null;
     attachmentUrl: AttachmentUrl;
+    thumbUrl?: AttachmentUrl;
     productName: string;
     onRemove?: (a: Attachment) => void;
   }
-  let { attachments: given, clientId = null, attachmentUrl, productName, onRemove }: Props = $props();
+  let { attachments: given, clientId = null, attachmentUrl, thumbUrl, productName, onRemove }: Props = $props();
   // Items saved before appendAttachments deduped can already hold the same key twice.
   const attachments = $derived(uniqueByKey(given));
 
@@ -51,7 +57,7 @@
                AttachmentThumb renders its own warning then; the claim annotates instead, in the
                title above and the badge below. -->
           {#if a.mediaType.startsWith("image/")}
-            <AttachmentThumb {clientId} fileKey={a.key} {attachmentUrl} />
+            <AttachmentThumb {clientId} fileKey={a.key} {attachmentUrl} {thumbUrl} />
           {:else}
             <span class="attachment-glyph" aria-hidden="true">📄</span>
           {/if}

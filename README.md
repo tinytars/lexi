@@ -20,6 +20,14 @@ them, against three targets — and what it deliberately does not claim, is [`SD
 > **New here?** [`START-HERE.md`](START-HERE.md) has two short ways in — a few minutes with no
 > code, or about ten minutes to a running app.
 
+**Where an answer is, as opposed to what this is, is [`AGENTS.md`](AGENTS.md).** It routes a
+question to the document that answers it — three ranked commands, an alias table mapping the words a
+question uses onto the file holding the answer, and [`HEADINGS.md`](HEADINGS.md) beside it as the
+fallback where the subject itself is unknown. Thirty-nine documents and about 542,000 B are in
+scope, nine of them over 15,000 B, which is more than any one file can introduce; this one says what
+LexiTar is and `AGENTS.md` says where the rest of it is written down. It also declares what a hit
+may carry: `quote = line`, with no exclusion list and a stated reason there is none.
+
 ## Why
 
 **Absolute data sovereignty.** LexiTar is built on the principle that a patient's biometric data

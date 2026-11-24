@@ -47,18 +47,24 @@ export interface NamespaceEnv extends StoreEnv {
 }
 
 /**
- * The four key shapes one client's namespace occupies: originals under `raw/{id}/`, their extracted
- * text under `text/{id}/`, the regen-log segments under `regen-log/{id}/`, and the flat
- * `chat-{id}.enc` blob. Every question about a namespace — who owns it, is it empty, what does
- * claiming it cover — is asked of all four together, because letting them disagree is how an
- * ownership gap reappears one route at a time. The chat key is used as a list PREFIX like the
- * others, which matches exactly that key.
+ * The five key shapes one client's namespace occupies: originals under `raw/{id}/`, their extracted
+ * text under `text/{id}/`, the chip-sized thumbnails under `thumb/{id}/`, the regen-log segments
+ * under `regen-log/{id}/`, and the flat `chat-{id}.enc` blob. Every question about a namespace — who
+ * owns it, is it empty, what does claiming it cover — is asked of all five together, because letting
+ * them disagree is how an ownership gap reappears one route at a time. The chat key is used as a
+ * list PREFIX like the others, which matches exactly that key.
+ *
+ * `thumb/` is the one here that is DERIVED rather than uploaded, and it is named for the same reason
+ * `text/` is: a namespace holding only derivatives would otherwise read as empty and therefore as
+ * claimable, which hands a second account the ownership of a patient's pictures by way of the one
+ * question nobody thought to ask of the new prefix.
  */
 export function namespacePrefixes(env: StoreEnv, clientId: string): string[] {
   const slug = normalizeClientId(clientId);
   return [
     `${storeKey(env, "raw", slug)}/`,
     `${storeKey(env, "text", slug)}/`,
+    `${storeKey(env, "thumb", slug)}/`,
     `${storeKey(env, "regen-log", slug)}/`,
     storeKey(env, `chat-${slug}.enc`),
   ];

@@ -22,7 +22,7 @@
   import LeafCard from "@tinytars/frame/LeafCard.svelte";
   import TurnCard from "./TurnCard.svelte";
   import AttachmentStrip from "@tinytars/frame/AttachmentStrip.svelte";
-  import { appendAttachments, attachmentUrl } from "./attachment-store";
+  import { appendAttachments, attachmentUrl, attachmentThumbUrl as thumbUrl } from "./attachment-store";
   import DictateButton from "@tinytars/frame/DictateButton.svelte";
   import { sortPinnedFirst } from "./pin-sort";
   import { PRODUCT_NAME } from "./brand";
@@ -307,7 +307,7 @@
     {#if d.purpose}
       <p class="ft-purpose">{d.purpose}</p>
     {/if}
-    <AttachmentStrip attachments={d.attachments ?? []} {clientId} {attachmentUrl} productName={PRODUCT_NAME} />
+    <AttachmentStrip attachments={d.attachments ?? []} {clientId} {attachmentUrl} {thumbUrl} productName={PRODUCT_NAME} />
   </LeafCard>
 {/snippet}
 

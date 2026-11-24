@@ -56,6 +56,18 @@ const contentTypeFor = (file: string): string => {
 
 const refusal = (access: RawAccess): string => (access.kind === "denied" ? "not_owner" : access.kind);
 
+// The thumbnail's key and the original's, each spelled out with a LITERAL class rather than selected
+// inside one `storeKey` call. Three suites derive "which R2 key classes exist" by walking the
+// `storeKey(env, "<literal>", …)` call sites under `functions/`
+// (erasure-completeness.test.ts, store-key-classes.test.ts), which is what makes a new class fail CI
+// at the commit that adds it instead of five nights later. A ternary in the second argument is
+// invisible to every one of those sweeps, so a route could introduce a class no erasure and no
+// backup had ever heard of, and nothing would say so.
+const objectKey = (env: Env, thumb: boolean, id: string, file: string): string =>
+  thumb
+    ? storeKey(env, "thumb", normalizeClientId(id), file)
+    : storeKey(env, "raw", normalizeClientId(id), file);
+
 export async function onRequestGet(context: Ctx): Promise<Response> {
   const { request, env, params } = context;
   const start = Date.now();
@@ -77,6 +89,11 @@ export async function onRequestGet(context: Ctx): Promise<Response> {
   const query = new URL(request.url).searchParams;
   const unmeasured = query.get("unmeasured") === "1";
   const listing = query.get("files") === "1";
+  // A flag on this handler rather than a route of its own: every gate a thumbnail read owes is
+  // already above — the session, the namespace ownership, the 404-not-403 refusal and the per-object
+  // audit — and a second route would be a second copy of them, which is the arrangement where one
+  // copy is eventually fixed and the other is not.
+  const thumb = query.get("thumb") === "1";
   if (!id || segs.some((s) => s === "" || s === "." || s === "..") || (!file && !unmeasured && !listing)) {
     log(400, { errorCode: "bad_path" });
     return json(400, { error: "expected /api/raw/{id}/{file}" });
@@ -128,10 +145,14 @@ export async function onRequestGet(context: Ctx): Promise<Response> {
     return json(200, { files: keys.map((k) => k.slice(prefix.length)) });
   }
 
-  const obj = await env.VAULT.get(storeKey(env, "raw", normalizeClientId(id), file));
+  // The thumbnail is a different OBJECT and the same disclosure: a chip-sized picture of a document
+  // still says the document exists and still shows what it is, so everything above applies to it
+  // unchanged and only the key moves. A missing thumbnail is a plain 404, which is not an error
+  // condition but the signal the chip falls back on — it then paints from the original and seals one.
+  const obj = await env.VAULT.get(objectKey(env, thumb, id, file));
   if (!obj) {
     log(404, { errorCode: "not_found", access: access.kind });
-    return json(404, { error: "raw source not found" });
+    return json(404, { error: thumb ? "raw thumbnail not found" : "raw source not found" });
   }
 
   // Per object, never coalesced: "which documents were disclosed" is the question this log exists to
@@ -218,13 +239,28 @@ export async function onRequestPut(context: Ctx): Promise<Response> {
     return json(415, { error: "raw sources must be sealed before upload", errorCode: "plaintext_refused" });
   }
 
+  // AFTER the refusal above and not beside it, which is the whole reason the thumbnail arm is here
+  // rather than in a route of its own: it inherits the plaintext chokepoint instead of restating it,
+  // and the needle raw-seal-chokepoint.test.ts pins on this file does not move.
+  //
+  // Owner only, where an upload admits more. `mayWrite` lets `granted` and `unclaimed` through
+  // (raw-owner.ts:128) because those are a clinician's legitimate upload and a patient's first one —
+  // but a thumbnail is not offered content, it is a derivative somebody MINTED from a read, and a
+  // clinician reading under a consent grant must not write into a patient's namespace at all. Such a
+  // caller simply keeps falling back to the original, which is slow and correct.
+  const thumb = new URL(request.url).searchParams.get("thumb") === "1";
+  if (thumb && access.kind !== "owner") {
+    log(403, { errorCode: "thumb_owner_only", access: access.kind });
+    return json(403, { error: "only the owner may write a thumbnail", errorCode: "thumb_owner_only" });
+  }
+
   const pages = parsePages(request.url, file);
   if (pages === null) {
     log(400, { errorCode: "bad_pages" });
     return json(400, { error: `pages must be an integer 1-${MAX_PAGE_COUNT} on a .pdf upload` });
   }
 
-  const key = storeKey(env, "raw", normalizeClientId(id), file);
+  const key = objectKey(env, thumb, id, file);
   await env.VAULT.put(key, bytes);
   // W72 — record WHOSE RECORD it is, which on a granted write is the subject and not the caller
   // (recordSubject, raw-owner.ts). The key carries a client DISPLAY NAME, which lives only inside the
@@ -276,11 +312,21 @@ export async function onRequestDelete(context: Ctx): Promise<Response> {
     return json(404, { error: "not found" });
   }
 
-  const key = storeKey(env, "raw", normalizeClientId(id), file);
-  await env.VAULT.delete(key);
-  // W73 — the ownership row went with it. Leaving it orphaned made the namespace un-reclaimable and
-  // left erasure counting a key that no longer exists.
-  await env.DB.prepare("DELETE FROM raw_objects WHERE r2_key = ?").bind(key).run();
+  // The thumbnail goes unconditionally and with no flag to ask for it, which is the opposite of the
+  // GET and the PUT on purpose: a caller deleting an attachment is deleting the picture, and leaving
+  // a legible copy of it behind because nobody passed `?thumb=1` is the failure this whole phase's
+  // seven declarations exist to make impossible. R2 and the row are both idempotent on a key that
+  // was never written, so an attachment that has no thumbnail costs one no-op delete.
+  const keys = [
+    storeKey(env, "raw", normalizeClientId(id), file),
+    storeKey(env, "thumb", normalizeClientId(id), file),
+  ];
+  for (const key of keys) {
+    await env.VAULT.delete(key);
+    // W73 — the ownership row went with it. Leaving it orphaned made the namespace un-reclaimable and
+    // left erasure counting a key that no longer exists.
+    await env.DB.prepare("DELETE FROM raw_objects WHERE r2_key = ?").bind(key).run();
+  }
   log(200, { access: access.kind });
   return json(200, { deleted: true });
 }
